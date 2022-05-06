@@ -1,0 +1,6 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include_next <string_view>
+using namespace std::literals::string_view_literals;

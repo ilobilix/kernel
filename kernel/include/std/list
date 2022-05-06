@@ -1,0 +1,456 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <memory>
+#include <compare>
+#include <algorithm>
+#include <ranges>
+#include <concepts>
+
+namespace std
+{
+    namespace detail
+    {
+        template<typename Range, typename Type>
+        concept container_compatible_range = ranges::input_range<Range> && convertible_to<ranges::range_reference_t<Range>, Type>;
+    } // namespace detail
+
+#if !__glibcxx_ranges_to_container
+    struct from_range_t { explicit from_range_t() = default; };
+    inline constexpr from_range_t from_range { };
+#endif
+
+    // TODO: incomplete
+    template<typename Type, class Allocator = allocator<Type>>
+    class list
+    {
+        using alloc_traits = allocator_traits<Allocator>;
+
+        public:
+        using value_type = Type;
+        using allocator_type = Allocator;
+        using size_type = alloc_traits::size_type;
+        using difference_type = alloc_traits::difference_type;
+        using reference = value_type &;
+        using const_reference = const value_type &;
+        using pointer = alloc_traits::pointer;
+        using const_pointer = alloc_traits::const_pointer;
+
+        private:
+        struct node
+        {
+            Type *data;
+            node *next;
+            node *prev;
+
+            constexpr bool operator==(const node &rhs) { return data == rhs.data && next == rhs.next && prev == rhs.prev; }
+        };
+        using node_allocator_type = alloc_traits::template rebind_alloc<node>;
+        using node_alloc_traits = allocator_traits<node_allocator_type>;
+
+        class iterator_type
+        {
+            friend class list;
+
+            private:
+            node *_current;
+            iterator_type(node *data) : _current { data } { }
+
+            public:
+            using iterator_category = bidirectional_iterator_tag;
+            using value_type = list::value_type;
+            using difference_type = list::difference_type;
+            using pointer = list::pointer;
+            using reference = list::reference;
+
+            reference operator*() const { return *_current->data; }
+            pointer operator->() const { return _current->data; }
+
+            iterator_type &operator++()
+            {
+                _current = _current->next;
+                return *this;
+            }
+
+            iterator_type operator++(int)
+            {
+                auto ret { *this };
+                ++(*this);
+                return ret;
+            }
+
+            iterator_type &operator--()
+            {
+                _current = _current->prev;
+                return *this;
+            }
+
+            iterator_type operator--(int)
+            {
+                auto ret { *this };
+                --(*this);
+                return ret;
+            }
+
+            friend bool operator==(const iterator_type &lhs, const iterator_type &rhs)
+            {
+                return lhs._current == rhs._current;
+            }
+
+            friend bool operator!=(const iterator_type &lhs, const iterator_type &rhs)
+            {
+                return !(lhs == rhs);
+            }
+        };
+
+        allocator_type _allocator;
+        node_allocator_type _node_allocator;
+        node *_begin;
+        node *_end;
+
+        static inline constexpr bool _copy_alloc = alloc_traits::propagate_on_container_copy_assignment::value;
+
+        public:
+        using iterator = iterator_type;
+        using const_iterator = const iterator_type;
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+        private:
+        auto alloc_node()
+        {
+            auto ret = _node_allocator.allocate(1);
+            node_alloc_traits::construct(_node_allocator, ret, nullptr, nullptr, nullptr);
+            return ret;
+        }
+
+        void dealloc_node(node *node)
+        {
+            _allocator.deallocate(node->data, 1);
+            _node_allocator.deallocate(node, 1);
+        }
+
+        template<typename ...Args>
+        iterator create_before(const_iterator _pos, Args &&...args)
+        {
+            auto pos = _pos._current;
+            auto current = alloc_node();
+
+            if (_begin == nullptr)
+            {
+                _begin = current;
+                _end = alloc_node();
+                _begin->next = _end;
+                _end->prev = _begin;
+            }
+            else if (pos == _begin)
+            {
+                current->next = pos;
+                pos->prev = current;
+                _begin = current;
+            }
+            else
+            {
+                auto prev = pos->prev;
+                prev->next = current;
+                current->prev = prev;
+                current->next = pos;
+                pos->prev = current;
+            }
+            current->data = _allocator.allocate(1);
+            alloc_traits::construct(_allocator, current->data, forward<Args>(args)...);
+
+            return iterator_type { current };
+        }
+
+        iterator erase_internal(const_iterator first, const_iterator last)
+        {
+            if (first == last)
+                return last;
+
+            auto pos = first._current;
+            auto lpos = last._current;
+
+            auto prev = pos->prev;
+            if (pos == _begin)
+                _begin = lpos;
+            else
+                prev->next = lpos;
+            lpos->prev = prev;
+
+            auto node = pos;
+            while (node != lpos)
+            {
+                auto next = node->next;
+                dealloc_node(node);
+                node = next;
+            }
+
+            return last;
+        }
+
+        public:
+        list() : list(allocator_type()) { }
+
+        explicit list(const allocator_type &alloc) :
+            _allocator { alloc }, _node_allocator { }, _begin { nullptr }, _end { _begin } { }
+
+        list(size_type count, const value_type &value, const allocator_type &alloc = allocator_type()) : list(alloc)
+        {
+            insert(begin(), count, value);
+        }
+
+        explicit list(size_type count, const allocator_type &alloc = allocator_type()) : list(alloc)
+        {
+            insert(begin(), count, value_type { });
+        }
+
+        template<typename InputIt>
+        list(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) : list(alloc)
+        {
+            insert(begin(), first, last);
+        }
+
+        list(const list &other);
+        list(const list &other, const allocator_type &alloc);
+        list(list &&other);
+        list(list &&other, const allocator_type &alloc);
+
+        list(initializer_list<value_type> ilist, const allocator_type &alloc = allocator_type()) : list(alloc)
+        {
+            insert(begin(), ilist);
+        }
+
+        template<detail::container_compatible_range<value_type> Range>
+        list(from_range_t, Range &&rg, const allocator_type &alloc = allocator_type()) : list(alloc)
+        {
+            insert_range(begin(), forward<Range>(rg));
+        }
+
+        ~list()
+        {
+            if (!empty())
+                erase_internal(begin(), end());
+        }
+
+        list &operator=(const list &other);
+        list &operator=(list &&other) noexcept(allocator_traits<allocator_type>::is_always_equal::value);
+        list &operator=(initializer_list<value_type> ilist);
+
+        void assign(size_type count, const value_type &value);
+        template<typename InputIt>
+        void assign(InputIt first, InputIt last);
+        void assign(initializer_list<value_type> ilist);
+
+        template<detail::container_compatible_range<value_type> Range>
+        void assign_range(Range &&rg);
+
+        allocator_type get_allocator() const noexcept { return _allocator; }
+
+        reference front() { return *_begin->data; }
+        const_reference front() const { return *_begin->data; }
+
+        reference back() { return *_end->prev->data; }
+        const_reference back() const { return *_end->prev->data; }
+
+        iterator begin() noexcept { return iterator_type { _begin }; }
+        const_iterator begin() const noexcept { return iterator_type { _begin }; }
+        const_iterator cbegin() const noexcept { return iterator_type { _begin }; }
+
+        iterator end() noexcept { return iterator_type { _end }; }
+        const_iterator end() const noexcept { return iterator_type {_end }; }
+        const_iterator cend() const noexcept { return iterator_type { _end }; }
+
+        reverse_iterator rbegin();
+        const_reverse_iterator rbegin() const;
+        const_reverse_iterator crbegin() const noexcept;
+
+        reverse_iterator rend();
+        const_reverse_iterator rend() const;
+        const_reverse_iterator crend() const noexcept;
+
+        bool empty() const noexcept { return begin() == end(); }
+        size_type size() const noexcept { return distance(begin(), end()); }
+
+        size_type max_size() const noexcept
+        {
+            return min(allocator_traits<allocator_type>::max_size(_allocator), numeric_limits<difference_type>::min());
+        }
+
+        void clear() noexcept;
+
+        iterator insert(const_iterator pos, const value_type &value)
+        {
+            return create_before(pos, value);
+        }
+
+        iterator insert(const_iterator pos, value_type &&value)
+        {
+            return create_before(pos, move(value));
+        }
+
+        iterator insert(const_iterator pos, size_type count, const value_type &value)
+        {
+            if (count == 0)
+                return pos;
+
+            auto first = create_before(pos, value);
+            for (size_type i = 0; i < count - 1; i++)
+                create_before(pos, value);
+            return first;
+        }
+
+        template<typename InputIt>
+        iterator insert(const_iterator pos, InputIt first, InputIt last)
+        {
+            auto size = distance(first, last);
+            if (size == 0)
+                return pos;
+
+            iterator ret { nullptr };
+            bool is_first = true;
+            for (auto it = first; it != last; it++)
+            {
+                auto curr = create_before(pos, *it);
+                if (is_first)
+                {
+                    ret = curr;
+                    is_first = false;
+                }
+            }
+            return ret;
+        }
+
+        iterator insert(const_iterator pos, initializer_list<value_type> ilist)
+        {
+            if (ilist.size() == 0)
+                return pos;
+
+            iterator first { nullptr };
+            for (bool is_first = true; auto &value : ilist)
+            {
+                auto curr = create_before(pos, value);
+                if (is_first)
+                {
+                    first = curr;
+                    is_first = false;
+                }
+            }
+            return first;
+        }
+
+        template<detail::container_compatible_range<value_type> Range>
+        iterator insert_range(const_iterator pos, Range &&rg);
+
+        template<typename ...Args>
+        iterator emplace(const_iterator pos, Args &&...args)
+        {
+            return insert(pos, value_type { forward<Args>(args)... });
+        }
+
+        iterator erase(const_iterator pos)
+        {
+            return erase(pos, next(pos));
+        }
+
+        iterator erase(const_iterator first, const_iterator last)
+        {
+            return erase_internal(first, last);
+        }
+
+        void push_back(const value_type &value) { insert(end(), value); }
+        void push_back(value_type &&value) { insert(end(), move(value)); }
+
+        void push_front(const value_type &value) { insert(begin(), value); }
+        void push_front(value_type &&value) { insert(begin(), move(value)); }
+
+        void pop_back() { erase(prev(end())); }
+        void pop_front() { erase(begin(), next(begin())); }
+
+        template<typename ...Args>
+        reference emplace_back(Args &&...args) { return emplace(end(), forward<Args>(args)...); }
+
+        template<typename ...Args>
+        reference emplace_front(Args &&...args) { return emplace(begin(), forward<Args>(args)...); }
+
+        template<detail::container_compatible_range<value_type> Range>
+        void append_range(Range &&rg) { insert_range(end(), forward<Range>(rg)); }
+
+        template<detail::container_compatible_range<value_type> Range>
+        void prepend_range(Range &&rg) { insert_range(begin(), forward<Range>(rg)); }
+
+        void resize(size_type count);
+        void resize(size_type count, const value_type &value);
+
+        void swap(list &other) noexcept(allocator_traits<allocator_type>::is_always_equal::value)
+        {
+            using std::swap;
+            swap(_allocator, other._allocator);
+            swap(_node_allocator, other._node_allocator);
+            swap(_begin, other._begin);
+            swap(_end, other._end);
+        }
+
+        void merge(list &other);
+        void merge(list &&other);
+        template<typename Compare>
+        void merge(list &other, Compare comp);
+        template<typename Compare>
+        void merge(list &&other, Compare comp);
+
+        void splice(const_iterator pos, list &other);
+        void splice(const_iterator pos, list &&other);
+        void splice(const_iterator pos, list &other, const_iterator it);
+        void splice(const_iterator pos, list &&other, const_iterator it);
+        void splice(const_iterator pos, list &other, const_iterator first, const_iterator last);
+        void splice(const_iterator pos, list &&other, const_iterator first, const_iterator last);
+
+        size_type remove(const value_type &value);
+        template<typename UnaryPredicate>
+        size_type remove_if(UnaryPredicate pred);
+
+        void reverse() noexcept;
+
+        size_type unique();
+        template<typename BinaryPredicate>
+        size_type unique(BinaryPredicate pred);
+
+        void sort();
+        template<typename Compare>
+        void sort(Compare comp);
+    };
+
+    template<typename Type, typename Allocator>
+    bool operator==(const list<Type, Allocator> &lhs, const list<Type, Allocator> &rhs);
+
+    template<typename Type, typename Allocator>
+    auto operator<=>(const list<Type, Allocator> &lhs, const list<Type, Allocator> &rhs)
+    {
+        return lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), __detail::__synth3way);
+    }
+
+    template<typename Type, typename Allocator>
+    void swap(list<Type, Allocator> &lhs, list<Type, Allocator> &rhs) noexcept(noexcept(lhs.swap(rhs)))
+    {
+        lhs.swap(rhs);
+    }
+
+    template<typename Type, typename Allocator, typename U = Type>
+    list<Type, Allocator>::size_type erase(list<Type, Allocator> &lhs, const U &value)
+    {
+        return lhs.remove_if([&](auto &elem) { return elem == value; });
+    }
+
+    template<typename Type, typename Allocator, typename Pred>
+    list<Type, Allocator>::size_type erase_if(list<Type, Allocator> &lhs, Pred pred)
+    {
+        return lhs.remove_if(pred);
+    }
+
+    template<typename InputIt, typename Allocator = allocator<typename iterator_traits<InputIt>::value_type>>
+    list(InputIt, InputIt, Allocator = Allocator()) -> list<typename iterator_traits<InputIt>::value_type, Allocator>;
+
+    template<ranges::input_range Range, typename Allocator = allocator<ranges::range_value_t<Range>>>
+    list(from_range_t, Range &&, Allocator = Allocator()) -> list<ranges::range_value_t<Range>, Allocator>;
+} // namespace std

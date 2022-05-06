@@ -1,0 +1,8 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <enable_shared_from_this.hpp>
+#include <owner_less.hpp>
+
+namespace std { using namespace smart_ptr; }

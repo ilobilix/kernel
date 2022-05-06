@@ -1,0 +1,5 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <errno.h>

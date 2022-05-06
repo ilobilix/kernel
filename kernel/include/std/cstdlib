@@ -1,0 +1,26 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <stdlib.h>
+#include_next <cstdlib>
+
+namespace std
+{
+    using ::malloc;
+    using ::calloc;
+    using ::realloc;
+    using ::free;
+
+    using ::atoi;
+    using ::atol;
+    using ::atoll;
+
+    using ::strtol;
+    using ::strtoll;
+
+    using ::strtoul;
+    using ::strtoull;
+} // namespace std
+
+extern "C" [[gnu::noreturn]] void abort() noexcept;

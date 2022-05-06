@@ -1,0 +1,23 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <ctype.h>
+
+namespace std
+{
+    using ::isalnum;
+    using ::isalpha;
+    using ::islower;
+    using ::isupper;
+    using ::isdigit;
+    using ::isxdigit;
+    using ::iscntrl;
+    using ::isgraph;
+    using ::isspace;
+    using ::isblank;
+    using ::isprint;
+    using ::ispunct;
+    using ::toupper;
+    using ::tolower;
+} // namespace std

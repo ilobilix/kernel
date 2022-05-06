@@ -1,0 +1,17 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <wchar.h>
+
+namespace std
+{
+    using ::wint_t;
+
+    using ::wmemcpy;
+    using ::wmemmove;
+    using ::wmemset;
+    using ::wmemcmp;
+    using ::wmemchr;
+    using ::wcslen;
+} // namespace std
