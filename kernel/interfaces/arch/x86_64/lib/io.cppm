@@ -24,6 +24,7 @@ export namespace lib::x86_64::io
             asm volatile ("in %0, %w1" : "=a"(data) : "Nd"(_port));
         else
             static_assert(false, "io::in invalid size");
+
         return data;
     }
 

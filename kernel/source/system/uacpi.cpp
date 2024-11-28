@@ -7,7 +7,7 @@ import std;
 
 extern "C"
 {
-    #ifdef UACPI_KERNEL_INITIALIZATION
+#ifdef UACPI_KERNEL_INITIALIZATION
     uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl)
     {
         log::debug("uacpi_kernel_initialize({})", static_cast<int>(current_init_lvl));
@@ -29,7 +29,7 @@ extern "C"
     {
         log::debug("uacpi_kernel_deinitialize()");
     }
-    #endif
+#endif
 
     uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rdsp_address)
     {
@@ -204,13 +204,13 @@ extern "C"
     void *uacpi_kernel_alloc(uacpi_size size) { return std::malloc(size); }
     void *uacpi_kernel_calloc(uacpi_size count, uacpi_size size) { return std::calloc(count, size); }
 
-    #ifndef UACPI_SIZED_FREES
+#ifndef UACPI_SIZED_FREES
     void uacpi_kernel_free(void *mem) { std::free(mem); }
     #else
     void uacpi_kernel_free(void *mem, uacpi_size) { std::free(mem); }
     #endif
 
-    #ifndef UACPI_FORMATTED_LOGGING
+#ifndef UACPI_FORMATTED_LOGGING
     void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *str)
     {
         switch (lvl)
@@ -232,7 +232,7 @@ extern "C"
                 std::unreachable();
         }
     }
-    #else
+#else
     UACPI_PRINTF_DECL(2, 3)
     void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *str, ...)
     {
@@ -274,7 +274,7 @@ extern "C"
         }
         std::free(buffer);
     }
-    #endif
+#endif
 
     uacpi_u64 uacpi_kernel_get_ticks()
     {

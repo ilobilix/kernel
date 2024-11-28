@@ -6,8 +6,8 @@
 
 namespace std
 {
-    struct error_code { error_code(auto...) { } };
-    struct error_category { error_category(auto...) { } };
+    struct error_code { error_code(auto ...) { } };
+    struct error_category { error_category(auto ...) { } };
     inline const error_category generic_category() noexcept { return error_category(); }
 
     class system_error : public exception
@@ -17,17 +17,17 @@ namespace std
 
         public:
         system_error(auto);
-        system_error(auto, const string &what_arg) : _str(what_arg) { }
-        system_error(auto, const char *what_arg) : _str(what_arg) { }
+        system_error(auto, const string &what_arg) : _str { what_arg } { }
+        system_error(auto, const char *what_arg) : _str { what_arg } { }
         system_error(auto, auto &);
-        system_error(auto, auto &, const string &what_arg) : _str(what_arg) { }
-        system_error(auto, auto &, const char *what_arg) : _str(what_arg) { }
+        system_error(auto, auto &, const string &what_arg) : _str { what_arg } { }
+        system_error(auto, auto &, const char *what_arg) : _str { what_arg } { }
 
         system_error(const system_error &) noexcept = default;
 
         system_error &operator=(const system_error &) noexcept = default;
         const error_code code() const noexcept { return error_code(); }
 
-        const char *what() const noexcept { return this->_str.c_str(); }
+        const char *what() const noexcept { return _str.c_str(); }
     };
 } // namespace std

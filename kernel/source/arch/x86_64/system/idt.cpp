@@ -15,6 +15,9 @@ namespace x86_64::idt
 {
     namespace
     {
+        entry idt[num_ints];
+        ptr idtr { sizeof(idt) - 1, reinterpret_cast<std::uintptr_t>(&idt) };
+
         const char *exception_messages[32]
         {
             "Division by zero", "Debug",
@@ -88,18 +91,16 @@ namespace x86_64::idt
             log::info("Setting up IDT");
 
         for (std::size_t i = 0; i < num_ints; i++)
-            cpu->arch.idt[i].set(isr_table[i]);
+            idt[i].set(isr_table[i]);
 
         // page fault ist 2. see TSS
-        cpu->arch.idt[14].ist = 2;
+        idt[14].ist = 2;
 
         cpu->arch.int_handlers.resize(num_preints);
 
         auto phandler = handler_at(cpu->idx, panic_int).value();
         phandler.get().set([](cpu::registers *) { arch::halt(false); });
 
-        cpu->arch.idtr.limit = sizeof(entry) * num_ints - 1;
-        cpu->arch.idtr.base = reinterpret_cast<std::uint64_t>(&cpu->arch.idt);
-        cpu->arch.idtr.load();
+        idtr.load();
     }
 } // namespace x86_64::idt

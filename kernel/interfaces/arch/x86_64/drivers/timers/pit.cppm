@@ -12,7 +12,7 @@ import std;
 
 namespace x86_64::timers::pit
 {
-    export inline constexpr std::size_t frequency = 1'000;
+    export constexpr std::size_t frequency = 1'000;
     export bool initialised = false;
 
     namespace

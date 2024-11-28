@@ -20,7 +20,7 @@ extern "C" void kmain()
     pmm::reclaim();
     acpi::init();
 
-    // lib::panic("get stick bugged lol");
+    lib::panic("get stick bugged lol");
 
     arch::halt();
 }

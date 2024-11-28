@@ -19,5 +19,4 @@ export import :panic;
 export import :partitions;
 export import :path;
 export import :set;
-export import :space;
 export import :types;

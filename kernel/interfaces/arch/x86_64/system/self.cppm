@@ -14,9 +14,6 @@ export namespace cpu::arch
 {
     struct processor
     {
-        x86_64::idt::entry idt[x86_64::idt::num_ints];
-        x86_64::idt::ptr idtr;
-
         frg::small_vector<
             interrupts::handler, x86_64::idt::num_preints,
             frg::allocator<interrupts::handler>

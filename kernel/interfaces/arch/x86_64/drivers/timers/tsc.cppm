@@ -39,7 +39,7 @@ namespace x86_64::timers::tsc
         if (!self.calibrated) [[unlikely]]
             lib::panic("TSC not calibrated");
 
-        return ((static_cast<uint128_t>(rdtsc()) * self.n) >> self.p) - self.offset;
+        return lib::ticks2ns(rdtsc(), self.p, self.n) - self.offset;
     }
 
     time::clock clock { "tsc", 75, time_ns };
@@ -95,9 +95,7 @@ namespace x86_64::timers::tsc
 
             if (self.tsc.calibrated)
             {
-                // Thank you qookie and korona
-                self.tsc.p = 64 - lib::log2(freq);
-                self.tsc.n = (1'000'000'000ull << self.tsc.p) / freq;
+                std::tie(self.tsc.p, self.tsc.n) = lib::freq2nspn(freq);
 
                 if (auto clock = time::main_clock(); clock)
                     self.tsc.offset = time_ns() - clock->ns();
