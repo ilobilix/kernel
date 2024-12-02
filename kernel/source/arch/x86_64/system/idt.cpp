@@ -54,7 +54,6 @@ namespace x86_64::idt
         num -= irq(0);
 
         auto &handlers = cpu::processors[cpuidx].arch.int_handlers;
-
         if (num >= handlers.size())
             handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
 
@@ -88,13 +87,15 @@ namespace x86_64::idt
     void init_on(cpu::processor *cpu)
     {
         if (cpu->idx == cpu::bsp_idx)
+        {
             log::info("Setting up IDT");
 
-        for (std::size_t i = 0; i < num_ints; i++)
-            idt[i].set(isr_table[i]);
+            for (std::size_t i = 0; i < num_ints; i++)
+                idt[i].set(isr_table[i]);
 
-        // page fault ist 2. see TSS
-        idt[14].ist = 2;
+            // page fault ist 2. see TSS
+            idt[14].ist = 2;
+        }
 
         cpu->arch.int_handlers.resize(num_preints);
 

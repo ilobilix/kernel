@@ -158,7 +158,7 @@ toolchain("ilobilix-clang")
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_KERNEL_INITIALIZATION")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
-    add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=','", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
+    add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
     -- TODO: performance impact
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
 

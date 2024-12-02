@@ -12,7 +12,7 @@ export namespace vmm
         acpi, pci,
         other
     };
-    std::uintptr_t alloc_vspace(vspace type, std::size_t increment = 0, std::uint16_t alignment = 0);
+    std::uintptr_t alloc_vpages(vspace type, std::size_t pages = 1);
 
     void init();
 } // export namespace vmm

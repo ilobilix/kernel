@@ -35,7 +35,7 @@ namespace acpi
                 return;
 
             madt::hdr = new acpi_madt;
-            auto ptr = reinterpret_cast<acpi_madt *>(out_table.virt_addr);
+            auto ptr = static_cast<acpi_madt *>(out_table.ptr);
             std::memcpy(madt::hdr, ptr, ptr->hdr.length);
             uacpi_table_unref(&out_table);
 

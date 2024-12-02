@@ -62,7 +62,8 @@ namespace x86_64::apic
             uacpi_table table;
             if (uacpi_table_find_by_signature("DMAR", &table) == UACPI_STATUS_OK)
             {
-                auto flags = reinterpret_cast<acpi_dmar *>(table.virt_addr)->flags;
+                auto flags = static_cast<acpi_dmar *>(table.ptr)->flags;
+                uacpi_table_unref(&table);
                 if ((flags & (1 << 0)) && (flags & (1 << 1)))
                     return false;
             }
@@ -121,12 +122,12 @@ namespace x86_64::apic
             if (is_bsp)
             {
                 _pmmio = phys_mmio;
-                _mmio = vmm::alloc_vspace(vmm::vspace::other, pmm::page_size, pmm::page_size);
+                _mmio = vmm::alloc_vpages(vmm::vspace::other, 1);
 
                 log::debug("Mapping APIC base address to 0x{:X}", _mmio);
 
                 if (!vmm::kernel_pagemap->map(_mmio, _pmmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
-                    lib::panic("Could not map APIC base address to 0x{:X}", _mmio);
+                    lib::panic("Could not map APIC base address");
             }
             else lib::ensure(phys_mmio == _pmmio, "APIC base address differs from the BSP");
         }
