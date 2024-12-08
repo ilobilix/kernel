@@ -1,6 +1,6 @@
 // Copyright (C) 2024  ilobilo
 
-#include <mutex>
+#include <lib/lock.hpp>
 
 import system.time;
 import arch;
@@ -102,14 +102,20 @@ extern "C"
 
 void ticket_lock::arch_lock()
 {
-    _interrupts = arch::int_status();
-    arch::int_toggle(false);
+    if (_is_spinlock)
+    {
+        _interrupts = arch::int_status();
+        arch::int_toggle(false);
+    }
 }
 
 void ticket_lock::arch_unlock() const
 {
-    if (arch::int_status() != _interrupts)
-        arch::int_toggle(_interrupts);
+    if (_is_spinlock)
+    {
+        if (arch::int_status() != _interrupts)
+            arch::int_toggle(_interrupts);
+    }
 }
 
 void ticket_lock::arch_pause() const

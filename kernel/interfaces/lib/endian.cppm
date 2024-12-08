@@ -39,8 +39,8 @@ export namespace lib
         constexpr endian_storage(const endian_storage &) = default;
         constexpr endian_storage(endian_storage &&) = default;
 
-        constexpr endian_storage(Type value) :
-            value { convert_endian<E, std::endian::native>(static_cast<Type>(value)) } { }
+        constexpr endian_storage(Type value)
+            : value { convert_endian<E, std::endian::native>(static_cast<Type>(value)) } { }
 
         constexpr endian_storage &operator=(const endian_storage &) = default;
         constexpr endian_storage &operator=(endian_storage &&) = default;

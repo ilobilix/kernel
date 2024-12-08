@@ -102,7 +102,7 @@ namespace vmm
          * none:               PAT7:  PAT = 1, PCD = 1, PWT = 1
         */
 
-        auto pat = (psize == page_size::small) ? arch::flag::pat : arch::flag::lpat;
+        const auto pat = (psize == page_size::small) ? arch::flag::pat : arch::flag::lpat;
         switch (cache)
         {
             case caching::uncacheable:
@@ -191,7 +191,7 @@ namespace vmm
 
         auto pml = lib::tohh(_table);
 
-        auto retidx = levels - static_cast<std::size_t>(psize) - 1;
+        const auto retidx = levels - static_cast<std::size_t>(psize) - 1;
         auto shift = shift_start;
 
         for (std::size_t i = 0; i < levels; i++)
@@ -219,7 +219,7 @@ namespace vmm
 
     void pagemap::load() const
     {
-        auto addr = reinterpret_cast<std::uintptr_t>(_table);
+        const auto addr = reinterpret_cast<std::uintptr_t>(_table);
         asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
     }
 
@@ -239,9 +239,8 @@ namespace vmm
         else
         {
             auto table = lib::tohh(_table);
-            auto ktable = lib::tohh(kernel_pagemap->_table);
-            for (std::size_t i = 256; i < 512; i++)
-                table->entries[i] = ktable->entries[i];
+            const auto ktable = lib::tohh(kernel_pagemap->_table);
+            std::memcpy(table->entries + 256, ktable->entries + 256, 256);
         }
     }
 

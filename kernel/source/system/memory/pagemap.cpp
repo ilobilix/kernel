@@ -38,23 +38,23 @@ namespace vmm
     {
         psize = fixpsize(psize);
 
-        auto npsize = from_page_size(psize);
+        const auto npsize = from_page_size(psize);
         if (paddr % npsize || vaddr % npsize)
             return std::unexpected { error::addr_not_aligned };
 
         std::unique_lock _ { _lock };
 
-        auto aflags = to_arch(flags, cache, psize);
+        const auto aflags = to_arch(flags, cache, psize);
 
         for (std::size_t i = 0; i < length; i += npsize)
         {
-            auto ret = getpte(vaddr + i, psize, true);
+            const auto ret = getpte(vaddr + i, psize, true);
             if (!ret.has_value())
             {
                 // umap
                 for (std::size_t ii = 0; ii < i; ii += npsize)
                 {
-                    auto ret1 = getpte(vaddr + ii, psize, true);
+                    const auto ret1 = getpte(vaddr + ii, psize, true);
                     if (!ret1.has_value())
                         return std::unexpected { ret1.error() };
 
@@ -87,10 +87,10 @@ namespace vmm
 
         psize = fixpsize(psize);
 
-        auto fact = from_page_size(psize);
+        const auto fact = from_page_size(psize);
         for (std::size_t i = 0; i < length; i += fact)
         {
-            auto ret = getpte(vaddr + i, psize, false);
+            const auto ret = getpte(vaddr + i, psize, false);
             if (!ret.has_value())
                 return std::unexpected { ret.error() };
 
@@ -113,7 +113,7 @@ namespace vmm
 
         psize = fixpsize(psize);
 
-        auto ret = getpte(vaddr, psize, false);
+        const auto ret = getpte(vaddr, psize, false);
         if (!ret.has_value())
             return std::unexpected { ret.error() };
 
@@ -138,8 +138,8 @@ namespace vmm
         {
             log::debug(" - Memory map entries");
 
-            auto memmaps = boot::requests::memmap.response->entries;
-            std::size_t num = boot::requests::memmap.response->entry_count;
+            const auto memmaps = boot::requests::memmap.response->entries;
+            const std::size_t num = boot::requests::memmap.response->entry_count;
 
             for (std::size_t i = 0; i < num; i++)
             {
@@ -163,8 +163,8 @@ namespace vmm
                 if (type == boot::memmap::framebuffer)
                     cache = caching::framebuffer;
 
-                auto vaddr = lib::tohh(base);
-                auto len = end - base;
+                const auto vaddr = lib::tohh(base);
+                const auto len = end - base;
 
                 log::debug("   - type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
@@ -196,15 +196,15 @@ namespace vmm
 
     std::uintptr_t alloc_vpages(vspace type, std::size_t pages)
     {
-        auto index = std::to_underlying(type);
+        const auto index = std::to_underlying(type);
         auto entry = &vspaces[index];
 
-        auto increment = pages * pmm::page_size;
+        const auto increment = pages * pmm::page_size;
 
         if (type != vspace::other && increment && *entry + increment > (vspace_base + (lib::gib(1) * (index + 1))))
             entry = &vspaces[std::to_underlying(vspace::other)];
 
-        auto ret = *entry;
+        const auto ret = *entry;
         *entry += increment;
         return ret;
     }

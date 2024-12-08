@@ -11,8 +11,8 @@ namespace net::addr
         std::array<Type, N> data;
 
         constexpr base() = default;
-        constexpr base(auto ...data) requires (sizeof...(data) == N) :
-            data { static_cast<Type>(data)... } { }
+        constexpr base(auto ...data) requires (sizeof...(data) == N)
+            : data { static_cast<Type>(data)... } { }
 
         base(std::byte *ptr)
         {
@@ -20,8 +20,8 @@ namespace net::addr
                 data[i] = reinterpret_cast<Type *>(ptr)[i];
         }
 
-        base(std::uint8_t *ptr) :
-            base(reinterpret_cast<std::byte *>(ptr)) { }
+        base(std::uint8_t *ptr)
+            : base(reinterpret_cast<std::byte *>(ptr)) { }
 
         std::byte *to_bytes(std::byte *ptr) const
         {

@@ -35,12 +35,12 @@ namespace acpi
                 return;
 
             madt::hdr = new acpi_madt;
-            auto ptr = static_cast<acpi_madt *>(out_table.ptr);
+            const auto ptr = static_cast<acpi_madt *>(out_table.ptr);
             std::memcpy(madt::hdr, ptr, ptr->hdr.length);
             uacpi_table_unref(&out_table);
 
-            auto start = reinterpret_cast<std::uintptr_t>(madt::hdr->entries);
-            auto end = reinterpret_cast<std::uintptr_t>(madt::hdr) + madt::hdr->hdr.length;
+            const auto start = reinterpret_cast<std::uintptr_t>(madt::hdr->entries);
+            const auto end = reinterpret_cast<std::uintptr_t>(madt::hdr) + madt::hdr->hdr.length;
 
             auto madt = reinterpret_cast<acpi_entry_hdr *>(start);
 
@@ -134,6 +134,8 @@ namespace acpi
     {
         log::debug("Setting up ACPI early table access");
         uacpi_setup_early_table_access(early_table_buffer, early_table_buffer_size);
+
+        uacpi_table_fadt(&fadt);
 
         parse_madt();
     }

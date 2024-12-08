@@ -20,7 +20,7 @@ extern "C"
         va_list arg;
         va_start(arg, format);
 
-        int ret = vprintf(format, arg);
+        const int ret = vprintf(format, arg);
 
         va_end(arg);
         return ret;
@@ -36,7 +36,7 @@ extern "C"
         va_list arg;
         va_start(arg, format);
 
-        int ret = vsprintf(str, format, arg);
+        const int ret = vsprintf(str, format, arg);
 
         va_end(arg);
         return ret;
@@ -52,7 +52,7 @@ extern "C"
         va_list arg;
         va_start(arg, format);
 
-        int ret = vsnprintf(str, count, format, arg);
+        const int ret = vsnprintf(str, count, format, arg);
 
         va_end(arg);
         return ret;
@@ -82,7 +82,7 @@ extern "C"
         va_list arg;
         va_start(arg, format);
 
-        int ret = vasprintf(str, format, arg);
+        const int ret = vasprintf(str, format, arg);
 
         va_end(arg);
         return ret;
@@ -115,7 +115,7 @@ extern "C"
         va_list arg;
         va_start(arg, format);
 
-        int ret = vprintf(format, arg);
+        const int ret = vprintf(format, arg);
 
         va_end(arg);
         return ret;
@@ -125,7 +125,7 @@ extern "C"
     {
         std::unique_lock _ { lock };
 
-        auto uptr = static_cast<const std::uint8_t *>(ptr);
+        const auto uptr = static_cast<const std::uint8_t *>(ptr);
         for (std::size_t i = 0; i < size * nmemb; i += size)
             log::unsafe::prints({ reinterpret_cast<const char *>(uptr + i), size });
 

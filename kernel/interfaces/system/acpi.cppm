@@ -14,8 +14,10 @@ export namespace acpi
         std::vector<acpi_madt_ioapic> ioapics;
         std::vector<acpi_madt_interrupt_source_override> isos;
 
-        acpi_madt *hdr;
+        acpi_madt *hdr = nullptr;
     } // namespace madt
+
+    acpi_fadt *fadt = nullptr;
 
     std::uintptr_t get_rsdp();
 

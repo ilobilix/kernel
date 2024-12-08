@@ -42,7 +42,7 @@ namespace pmm
                 {
                     if (++p == count)
                     {
-                        auto page = index - count;
+                        const auto page = index - count;
                         for (std::size_t i = page; i < index; i++)
                             bitmap[i] = used;
                         return reinterpret_cast<void *>(page * page_size);
@@ -53,7 +53,7 @@ namespace pmm
             return nullptr;
         };
 
-        auto i = index;
+        const auto i = index;
         void *ret = inner_alloc(mem.usable_top / page_size);
         if (ret == nullptr)
         {
@@ -76,8 +76,7 @@ namespace pmm
 
         std::unique_lock _ { lock };
 
-        std::size_t page = reinterpret_cast<std::uintptr_t>(ptr) / page_size;
-
+        const std::size_t page = reinterpret_cast<std::uintptr_t>(ptr) / page_size;
         for (std::size_t i = page; i < page + count; i++)
             bitmap[i] = available;
 
@@ -88,12 +87,12 @@ namespace pmm
     {
         log::debug("Reclaiming bootloader memory");
 
-        auto memmaps = boot::requests::memmap.response->entries;
-        std::size_t num = boot::requests::memmap.response->entry_count;
+        const auto memmaps = boot::requests::memmap.response->entries;
+        const std::size_t num = boot::requests::memmap.response->entry_count;
 
         for (std::size_t i = 0; i < num; i++)
         {
-            auto memmap = memmaps[i];
+            const auto memmap = memmaps[i];
             if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader_reclaimable)
                 continue;
 
@@ -105,16 +104,16 @@ namespace pmm
     {
         log::info("Initialising the physical memory manager");
 
-        auto memmaps = boot::requests::memmap.response->entries;
-        std::size_t num = boot::requests::memmap.response->entry_count;
+        const auto memmaps = boot::requests::memmap.response->entries;
+        const std::size_t num = boot::requests::memmap.response->entry_count;
 
         log::debug("Memory map entries: {}", num);
 
         for (std::size_t i = 0; i < num; i++)
         {
-            auto memmap = memmaps[i];
+            const auto memmap = memmaps[i];
 
-            std::uintptr_t end = memmap->base + memmap->length;
+            const std::uintptr_t end = memmap->base + memmap->length;
             mem.top = std::max(end, mem.top);
 
             switch (static_cast<boot::memmap>(memmap->type))
@@ -177,6 +176,9 @@ namespace pmm
             for (std::uintptr_t ii = 0; ii < memmap->length; ii += page_size)
                 bitmap[(memmap->base + ii) / page_size] = available;
         }
+
+        // sometimes a useable memmap entry starts at 0
+        bitmap[0] = used;
 
         log::info("Usable memory: {} Mebibytes", mem.usable / 1024 / 1024);
     }

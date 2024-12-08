@@ -19,11 +19,12 @@ namespace x86_64::gdt
             asm volatile (R"(
                 lgdt [rdi]
 
+                mov ss, si
+                mov si, 0
                 mov ds, si
                 mov fs, si
                 mov gs, si
                 mov es, si
-                mov ss, si
 
                 push rdx
                 lea rax, [rip + 1f]
@@ -47,11 +48,11 @@ namespace x86_64::gdt
 
         auto allocate_stack = [] { return lib::tohh(pmm::alloc<std::uint64_t>(boot::kernel_stack_size / pmm::page_size)) + boot::kernel_stack_size; };
         tss.rsp[0] = allocate_stack(); // cpl3 to cpl0
-        tss.ist[0] = allocate_stack(); // scheduler
-        tss.ist[1] = allocate_stack(); // page fault
+        tss.ist[0] = allocate_stack(); // page fault
+        tss.ist[1] = allocate_stack(); // scheduler
 
-        auto base = reinterpret_cast<std::uintptr_t>(&tss);
-        std::uint16_t limit = sizeof(tss::ptr) - 1;
+        const auto base = reinterpret_cast<std::uintptr_t>(&tss);
+        const std::uint16_t limit = sizeof(tss::ptr) - 1;
 
         gdt = entries {
             { 0x0000, 0, 0x0FE, 0x00, 0x00, 0 }, // null
@@ -70,8 +71,7 @@ namespace x86_64::gdt
             }
         };
 
-        ptr gdtr
-        {
+        const ptr gdtr {
             sizeof(entries) - 1,
             reinterpret_cast<std::uintptr_t>(&gdt),
         };

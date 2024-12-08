@@ -155,7 +155,7 @@ export namespace net::ether
         template<std::size_t I>
         auto &nth_processor()
         {
-            return std::get<I>(this->processors);
+            return std::get<I>(processors);
         }
     };
 } // export namespace net::ether

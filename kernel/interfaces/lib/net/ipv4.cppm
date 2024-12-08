@@ -60,7 +60,7 @@ namespace net::ipv4
             *bytes++ = (4 << 4) | ihl;
             *bytes++ = 0;
 
-            auto size = data_size + (ihl * 4);
+            const auto size = data_size + (ihl * 4);
             *bytes++ = size >> 8;
             *bytes++ = size & 0xFF;
 

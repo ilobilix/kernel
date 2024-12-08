@@ -25,10 +25,10 @@ export namespace lib
             swap(lhs._count, rhs._count);
         }
 
-        buffer() :
-            _alloc { }, _ptr { nullptr }, _count { 0 } { }
-        buffer(std::size_t count) :
-            _alloc { }, _ptr { _alloc.allocate(count) }, _count { count } { }
+        buffer()
+            : _alloc { }, _ptr { nullptr }, _count { 0 } { }
+        buffer(std::size_t count)
+            : _alloc { }, _ptr { _alloc.allocate(count) }, _count { count } { }
 
         buffer(Type *ptr, std::size_t count) : buffer { count }
         {

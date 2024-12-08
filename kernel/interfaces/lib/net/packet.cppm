@@ -52,7 +52,7 @@ export namespace net
     {
         auto parts = std::make_tuple(std::forward<Args>(args)...);
 
-        auto total_size = [&parts]<std::size_t ...I>(std::index_sequence<I...>) {
+        const auto total_size = [&parts]<std::size_t ...I>(std::index_sequence<I...>) {
             return (std::get<I>(parts).size() + ...);
         } (std::make_index_sequence<sizeof...(Args)> { });
 
