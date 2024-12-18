@@ -95,7 +95,7 @@ namespace arch
             x86_64::timers::kvm::init();
             x86_64::timers::tsc::init();
 
-            ptr->arch.lapic.initialise();
+            ptr->arch.lapic.initialize();
 
             ptr->online = true;
             halt(true);
@@ -112,7 +112,7 @@ namespace arch
 
             cpu::features::enable();
 
-            ptr->arch.lapic.initialise();
+            ptr->arch.lapic.initialize();
             ptr->online = true;
         }
     } // namespace core

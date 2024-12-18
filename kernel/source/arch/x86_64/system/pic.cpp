@@ -3,6 +3,7 @@
 module x86_64.system.pic;
 
 import magic_enum;
+import arch;
 import lib;
 import std;
 
@@ -64,14 +65,14 @@ namespace x86_64::pic
 
     void disable()
     {
-        log::debug("Masking all PIC IRQs");
+        log::debug("pic: masking all IRQs");
         lib::io::out<8>(port::master_data, 0xFF);
         lib::io::out<8>(port::slave_data,  0xFF);
     }
 
     void init()
     {
-        log::info("Initialising PIC");
+        log::info("pic: remapping");
 
         // auto i1 = lib::io::in<8>(port::master_data);
         // auto i2 = lib::io::in<8>(port::slave_data);
@@ -89,7 +90,7 @@ namespace x86_64::pic
         // lib::io::out<8>(port::slave_data, i2);
 
         disable();
-
         unmask(0x20 + 2);
+        arch::int_toggle(true);
     }
 } // namespace x86_64::pic

@@ -225,7 +225,7 @@ namespace vmm
 
     pagemap::pagemap() : _table { new_table() }
     {
-        if (!kernel_pagemap.is_initialised())
+        if (!kernel_pagemap.valid())
         {
             // assume currently initialising the kernel_pagemap
             std::uint32_t a, b, c, d;

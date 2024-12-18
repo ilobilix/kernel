@@ -16,38 +16,6 @@ namespace pci
         std::vector<std::shared_ptr<bridge>> bridges;
         std::vector<std::shared_ptr<device>> devs;
 
-        void get_capabilites(auto &device, auto &&extra)
-        {
-            if (auto status = device->template read<16>(reg::status); status & (1 << 4))
-            {
-                auto offset = device->template read<16>(reg::capabilities) & 0xFC;
-                if (offset != 0)
-                    log::debug("  - Capabilities:");
-
-                while (offset)
-                {
-                    const auto entry = device->template read<16>(offset);
-                    switch (auto id = entry & 0xFF; id)
-                    {
-                        case 0x10:
-                        {
-                            log::debug("  -  PCIe");
-                            device->is_pcie = true;
-                            auto tp = (device->template read<16>(offset + 2) >> 4) & 0x0F;
-                            device->is_secondary = (tp == 4 || tp == 6 || tp == 8);
-                            break;
-                        }
-                        default:
-                            if (!extra(id, offset))
-                                log::debug("  -  Unknown: 0x{:X}", id);
-                            break;
-                    }
-
-                    offset = (entry >> 8) & 0xFC;
-                }
-            }
-        }
-
         void enum_bus(const auto &bus);
         void enum_func(const auto &bus, std::uint8_t dev, std::uint8_t func)
         {
@@ -59,7 +27,7 @@ namespace pci
             const auto header = bus->template read<8>(dev, func, reg::header);
             if (header == 0x00) // device
             {
-                log::debug("- General device: {:04X}:{:04X}", venid, devid);
+                log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
 
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
@@ -72,29 +40,6 @@ namespace pci
                 device->subclass = subclass;
                 device->class_ = class_;
 
-                get_capabilites(device, [](auto id, auto offset)
-                {
-                    if (acpi::fadt && (acpi::fadt->iapc_boot_arch & (1 << 3)))
-                        return false;
-
-                    switch (id)
-                    {
-                        case 0x5:
-                            log::debug("  -  MSI");
-                            // TODO
-                            break;
-                        case 0x11:
-                            log::debug("  -  MSI-X");
-                            // TODO
-                            break;
-                        default:
-                            return false;
-                    }
-                    return true;
-
-                    lib::unused(offset);
-                });
-
                 const auto pin = device->template read<8>(reg::intpin);
                 if (pin != 0 && bus->router)
                     device->irq.route = bus->router->resolve(dev, pin);
@@ -104,10 +49,8 @@ namespace pci
             }
             else if (header == 0x01) // PCI-to-PCI bridge
             {
-                log::debug("- PCI-to-PCI: {:04X}:{:04X}", venid, devid);
+                log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
                 auto bridge = std::make_shared<pci::bridge>(bus, dev, func);
-
-                get_capabilites(bridge, [](auto ...) { return false; });
 
                 const auto secondary_id = bridge->template read<8>(reg::secondary_bus);
                 if (secondary_id)
@@ -149,6 +92,28 @@ namespace pci
                 enum_dev(bus, i);
         }
     } // namespace
+
+    entity::entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
+        : dev { dev }, func { func }, parent { parent }
+    {
+        if (const auto status = read<16>(reg::status); status & (1 << 4))
+        {
+            auto offset = read<16>(reg::capabilities) & 0xFC;
+            while (offset)
+            {
+                const auto entry = read<16>(offset);
+                const std::uint8_t type = entry & 0xFF;
+                if (type == 0x10)
+                {
+                    is_pcie = true;
+                    auto tp = (read<16>(offset + 2) >> 4) & 0x0F;
+                    is_secondary = (tp == 4 || tp == 6 || tp == 8);
+                }
+                caps.emplace_back(type, offset);
+                offset = (entry >> 8) & 0xFC;
+            }
+        }
+    }
 
     auto router::resolve(std::int32_t dev, std::uint8_t pin, std::int32_t func) -> entry *
     {
@@ -197,16 +162,16 @@ namespace pci
 
     void init()
     {
-        log::info("Enumerating PCI devices");
+        log::info("pci: enumerating devices");
 
         if (ios.empty())
         {
-            log::error("PCI: No config spaces found");
+            log::error("pci: no config spaces found");
             return;
         }
         if (rbs.empty())
         {
-            log::error("PCI: No root buses found");
+            log::error("pci: no root buses found");
             return;
         }
 

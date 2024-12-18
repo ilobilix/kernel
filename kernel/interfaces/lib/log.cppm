@@ -2,12 +2,13 @@
 
 export module lib:log;
 
+import :lock;
 import :math;
 import std;
 
 namespace log
 {
-    std::mutex _lock;
+    lib::spinlock _lock;
     std::uint64_t get_time();
 
     export namespace unsafe

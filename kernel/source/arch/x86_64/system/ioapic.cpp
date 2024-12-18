@@ -31,11 +31,11 @@ namespace x86_64::apic::io
 
     void init()
     {
-        log::info("Setting up IOAPIC");
+        log::info("ioapic: setting up");
 
         if (acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty())
         {
-            log::error("No IOAPICs found, falling back to legacy PIC");
+            log::error("ioapic: no IOAPICs found, falling back to legacy PIC");
             return;
         }
 

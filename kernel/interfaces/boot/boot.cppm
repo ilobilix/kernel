@@ -182,29 +182,29 @@ export namespace boot
             lib::panic("Limine base revision not supported");
 
         if (requests::memmap.response == nullptr)
-            lib::panic("Could not get a response to the memmap request");
+            lib::panic("could not get a response to the memmap request");
         if (requests::paging_mode.response == nullptr)
-            lib::panic("Could not get a response to the paging mode request");
+            lib::panic("could not get a response to the paging mode request");
         if (requests::hhdm.response == nullptr)
-            lib::panic("Could not get a response to the hhdm request");
+            lib::panic("could not get a response to the hhdm request");
         if (requests::kernel_file.response == nullptr)
-            lib::panic("Could not get a response to the kernel file request");
+            lib::panic("could not get a response to the kernel file request");
         if (requests::kernel_address.response == nullptr)
-            lib::panic("Could not get a response to the kernel address request");
+            lib::panic("could not get a response to the kernel address request");
         if (requests::framebuffer.response == nullptr)
-            lib::panic("Could not get a response to the framebuffer request");
+            lib::panic("could not get a response to the framebuffer request");
         if (requests::smp.response == nullptr)
-            lib::panic("Could not get a response to the smp request");
+            lib::panic("could not get a response to the smp request");
         if (requests::rsdp.response == nullptr)
-            lib::panic("Could not get a response to the rsdp request");
+            lib::panic("could not get a response to the rsdp request");
         if (requests::module_.response == nullptr)
-            lib::panic("Could not get a response to the module request");
+            lib::panic("could not get a response to the module request");
         if (requests::boot_time.response == nullptr)
-            lib::panic("Could not get a response to the boot time request");
+            lib::panic("could not get a response to the boot time request");
 
 // #if defined(__aarch64__)
 //         if (requests::dtb.response == nullptr)
-//             lib::panic("Could not get a response to the dtb request");
+//             lib::panic("could not get a response to the dtb request");
 // #endif
     }
 } // export namespace boot

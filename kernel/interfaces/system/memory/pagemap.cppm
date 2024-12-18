@@ -3,6 +3,7 @@
 export module system.memory.virt:pagemap;
 
 import magic_enum;
+import frigg;
 import lib;
 import std;
 
@@ -106,7 +107,7 @@ export namespace vmm
 
         struct table;
         table *_table;
-        std::mutex _lock;
+        lib::spinlock _lock;
 
         static table *new_table();
 
@@ -136,5 +137,5 @@ export namespace vmm
         ~pagemap();
     };
 
-    inline lib::lazy_init<pagemap> kernel_pagemap;
+    inline frg::manual_box<pagemap> kernel_pagemap;
 } // export namespace vmm

@@ -75,7 +75,7 @@ namespace timers::acpipm
     void init()
     {
         auto pmtimer = supported();
-        log::info("ACPI PM timer supported: {}", pmtimer);
+        log::info("acpipm: timer supported: {}", pmtimer);
     }
 
     time::clock clock { "acpipm", 50, time_ns };

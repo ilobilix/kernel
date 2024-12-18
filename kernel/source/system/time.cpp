@@ -33,9 +33,9 @@ namespace time
 
     void register_clock(clock &clock)
     {
-        log::debug("Registering clock '{}'", clock.name);
+        log::debug("time: registering clock source '{}'", clock.name);
         clocks.push(&clock);
-        log::debug("Main clock is set to '{}'", (main = clocks.top())->name);
+        log::debug("time: main clock is set to '{}'", (main = clocks.top())->name);
     }
 
     clock *main_clock()

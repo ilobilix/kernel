@@ -111,11 +111,7 @@ namespace x86_64::apic
         const auto phys_mmio = val & ~0xFFF;
 
         if (is_bsp)
-        {
-            log::info("Setting up Local APIC");
-            log::debug("x2APIC: {}, APIC base address 0x{:X}", _x2apic, phys_mmio);
-        }
-        else log::debug("Setting up Local APIC");
+            log::debug("lapic: x2APIC: {}, APIC base address 0x{:X}", _x2apic, phys_mmio);
 
         if (!_x2apic)
         {
@@ -124,10 +120,10 @@ namespace x86_64::apic
                 _pmmio = phys_mmio;
                 _mmio = vmm::alloc_vpages(vmm::vspace::other, 1);
 
-                log::debug("Mapping APIC base address to 0x{:X}", _mmio);
+                log::debug("lapic: mapping APIC base address to 0x{:X}", _mmio);
 
                 if (!vmm::kernel_pagemap->map(_mmio, _pmmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
-                    lib::panic("Could not map APIC base address");
+                    lib::panic("could not map APIC base address");
             }
             else lib::ensure(phys_mmio == _pmmio, "APIC base address differs from the BSP");
         }

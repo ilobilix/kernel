@@ -47,7 +47,7 @@ namespace cpu
             if (aid != bsp_aid)
                 continue;
 
-            log::info("{} {}: arch id: {}", "Initialising BSP", i, aid);
+            log::info("cpu: {} {}: arch id: {}", "initialising BSP", i, aid);
 
             auto &proc = processors[i];
             proc.self = &proc;
@@ -64,7 +64,7 @@ namespace cpu
     void init()
     {
         const auto smp = boot::requests::smp.response;
-        log::info("Number of available processors: {}", smp->cpu_count);
+        log::info("cpu: number of available processors: {}", smp->cpu_count);
 
         for (std::size_t i = 0; i < smp->cpu_count; i++)
         {
@@ -74,7 +74,7 @@ namespace cpu
             if (aid == bsp_aid)
                 continue;
 
-            log::info("{} {}: arch id: {}", "Bringing up CPU", i, aid);
+            log::info("cpu: {} {}: arch id: {}", "bringing up CPU", i, aid);
 
             auto &proc = processors[i];
             proc.self = &proc;

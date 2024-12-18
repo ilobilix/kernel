@@ -76,7 +76,7 @@ struct alignment_assumption_data
 static void print(auto message, source_location loc)
 {
     log::fatal("UBSan failure {} at {}:{}:{}", message, loc.file, loc.line, loc.column);
-    log::fatal("Halting the system");
+    log::fatal("halting the system");
     lib::stop_all();
 }
 

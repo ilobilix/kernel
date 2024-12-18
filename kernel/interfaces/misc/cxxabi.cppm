@@ -10,7 +10,7 @@ namespace cxxabi
 
     export void construct()
     {
-        log::debug("Running global constructors");
+        log::debug("cxxabi: running global constructors");
         for (auto ctor = __init_array_start; ctor < __init_array_end; ctor++)
             (*ctor)();
     }

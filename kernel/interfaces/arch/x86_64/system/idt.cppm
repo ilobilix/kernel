@@ -48,7 +48,6 @@ export namespace x86_64::idt
         {
             asm volatile ("cli");
             asm volatile ("lidt %0" :: "memory"(*this));
-            asm volatile ("sti");
         }
     };
 
