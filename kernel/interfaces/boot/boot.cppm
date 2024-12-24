@@ -42,15 +42,15 @@ export namespace boot
 
     namespace requests
     {
-#if defined(__aarch64__)
-        [[gnu::used, gnu::section(".requests")]]
-        volatile limine_dtb_request dtb
-        {
-            .id = LIMINE_DTB_REQUEST,
-            .revision = 0,
-            .response = nullptr
-        };
-#endif
+// #if defined(__aarch64__)
+//         [[gnu::used, gnu::section(".requests")]]
+//         volatile limine_dtb_request dtb
+//         {
+//             .id = LIMINE_DTB_REQUEST,
+//             .revision = 0,
+//             .response = nullptr
+//         };
+// #endif
 
         [[gnu::used, gnu::section(".requests")]]
         volatile limine_framebuffer_request framebuffer

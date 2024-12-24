@@ -126,10 +126,10 @@ namespace std
         std::unreachable();
     }
 
-    // std::size_t _Hash_bytes(const void *key, std::size_t len, std::size_t seed)
-    // {
-    //     return MurmurHash2_64A(key, len, seed);
-    // }
+    std::size_t _Hash_bytes(const void *key, std::size_t len, std::size_t seed)
+    {
+        return lib::hash::murmur3_64(key, len, seed);
+    }
 
     // std::size_t _Fnv_hash_bytes(const void *key, std::size_t len, std::size_t seed)
     // {
