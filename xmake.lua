@@ -490,12 +490,8 @@ task("qemu")
             bios = true
 
             multi_insert(qemu_args,
-                "-cpu", "host,migratable=off,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35"
+                "-cpu", "host,migratable=off,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35,smm=off"
                 -- "-audiodev", "id=audio,driver=alsa", "-machine", "pcspk-audiodev=audio"
-            )
-
-            multi_insert(qemu_dbg_args,
-                "-M", "smm=off"
             )
 
             qemu_exec = find_program("qemu-system-x86_64")

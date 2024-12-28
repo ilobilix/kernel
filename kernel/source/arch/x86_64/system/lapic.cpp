@@ -80,7 +80,7 @@ namespace x86_64::apic
             return true;
         } ();
 
-        return { lapic, !x2apic && cached };
+        return { lapic, x2apic && cached };
     }
 
     void eoi() { write(0xB0, 0); }
@@ -118,16 +118,16 @@ namespace x86_64::apic
         cpu::msr::write(reg::apic_base, val);
 
         if (is_bsp)
-            log::debug("lapic: x2apic: {}, physical mmio: 0x{:X}", _x2apic, phys_mmio);
+            log::debug("lapic: x2apic supported: {}", _x2apic);
 
         if (!_x2apic)
         {
             if (is_bsp)
             {
                 _pmmio = phys_mmio;
-                _mmio = lib::fromhh(vmm::alloc_vpages(vmm::vspace::other, 1));
+                _mmio = vmm::alloc_vpages(vmm::vspace::other, 1);
 
-                log::debug("lapic: mapping mmio to 0x{:X}", _mmio);
+                log::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, _mmio);
 
                 if (!vmm::kernel_pagemap->map(_mmio, _pmmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
                     lib::panic("could not map lapic mmio");

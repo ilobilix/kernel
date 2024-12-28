@@ -218,7 +218,19 @@ export namespace pci
     std::shared_ptr<configio> getio(std::uint16_t seg, std::uint8_t bus);
     void addrb(std::shared_ptr<bus> rb);
 
-    const std::vector<std::shared_ptr<device>> &devices();
+    std::uint32_t devidx(std::uint32_t seg, std::uint32_t bus, std::uint32_t dev, std::uint32_t func)
+    {
+        return (seg << 24) | (bus << 16) | (dev << 8) | func;
+    }
+
+    std::uint32_t devidx(const auto &dev)
+    {
+        lib::ensure(static_cast<bool>(dev));
+        return devidx(dev->parent->seg, dev->parent->id, dev->dev, dev->func);
+    }
+
+    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges();
+    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices();
 
     void register_ios();
     void register_rbs();

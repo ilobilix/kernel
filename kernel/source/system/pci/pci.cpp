@@ -15,8 +15,8 @@ namespace pci
         lib::map::flat_hash<std::uint32_t, std::shared_ptr<configio>> ios;
         std::vector<std::shared_ptr<bus>> rbs;
 
-        std::vector<std::shared_ptr<bridge>> bridges;
-        std::vector<std::shared_ptr<device>> devs;
+        lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> brdgs;
+        lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> devs;
 
         void enum_bus(const auto &bus);
         void enum_func(const auto &bus, std::uint8_t dev, std::uint8_t func)
@@ -47,7 +47,7 @@ namespace pci
                 if (pin != 0 && bus->router)
                     device->irq.route = bus->router->resolve(dev, pin);
 
-                devs.push_back(device);
+                devs[devidx(device)] = device;
                 bus->devices.push_back(device);
             }
             else if (header == 0x01) // PCI-to-PCI bridge
@@ -73,7 +73,7 @@ namespace pci
                     enum_bus(secondary_bus);
                 }
 
-                bridges.push_back(bridge);
+                brdgs[devidx(bridge)] = bridge;
             }
         }
 
@@ -269,7 +269,8 @@ namespace pci
         rbs.push_back(rb);
     }
 
-    const std::vector<std::shared_ptr<device>> &devices() { return devs; }
+    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges() { return brdgs; }
+    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices() { return devs; }
 
     void init()
     {
