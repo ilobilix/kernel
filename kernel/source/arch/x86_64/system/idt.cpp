@@ -3,6 +3,7 @@
 module x86_64.system.idt;
 
 import x86_64.system.ioapic;
+import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.interrupts;
 import system.cpu;
@@ -43,13 +44,14 @@ namespace x86_64::idt
         void eoi(std::uint8_t vector)
         {
             if (apic::io::initialised)
-                apic::io::eoi();
+                apic::eoi();
             else
                 pic::eoi(vector);
         }
     } // namespace
 
-    std::optional<std::reference_wrapper<interrupts::handler>> handler_at(std::size_t cpuidx, std::uint8_t num)
+    [[nodiscard]]
+    auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>
     {
         if (num < irq(0))
             return std::nullopt;

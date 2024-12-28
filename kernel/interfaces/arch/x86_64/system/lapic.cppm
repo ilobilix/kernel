@@ -19,28 +19,10 @@ export namespace x86_64::apic
         all_noself = 0b11
     };
 
-    class lapic
-    {
-        private:
-        static inline std::uintptr_t _pmmio;
-        static inline std::uintptr_t _mmio;
+    std::pair<bool, bool> supported();
 
-        bool _x2apic;
+    void eoi();
+    void ipi(std::uint8_t id, dest dsh, std::uint8_t vector);
 
-        static std::uint32_t to_x2apic(std::uint32_t reg)
-        {
-            return (reg >> 4) + 0x800;
-        }
-
-        std::uint32_t read(std::uint32_t reg) const;
-        void write(std::uint32_t reg, std::uint32_t val) const;
-
-        std::pair<bool, bool> supported() const;
-
-        public:
-        lapic();
-
-        void eoi();
-        void ipi(std::uint8_t id, dest dsh, std::uint8_t vector);
-    };
+    void init_cpu();
 } // export namespace x86_64::apic

@@ -107,7 +107,7 @@ export namespace vmm
 
         struct table;
         table *_table;
-        lib::spinlock _lock;
+        lib::spinlock<true> _lock;
 
         static table *new_table();
 

@@ -58,6 +58,8 @@ namespace x86_64::timers::pit
         const std::uint8_t low = divisor & 0xFF;
         const std::uint8_t high = (divisor >> 8) & 0xFF;
 
+        log::info("pit: setting up with frequency {} hz", frequency);
+
         lib::io::out<8>(port::command, cmd::mode2 | cmd::accesslh);
         lib::io::out<8>(port::channel0, low);
         lib::io::out<8>(port::channel0, high);

@@ -8,40 +8,50 @@ module;
 module x86_64.system.lapic;
 
 import system.memory;
-import system.cpu.self;
 import system.cpu;
 import lib;
 import std;
 
 namespace x86_64::apic
 {
-    namespace reg
+    namespace
     {
-        constexpr std::uintptr_t apic_base = 0x1B;
-        constexpr std::uintptr_t tpr = 0x80;
-        constexpr std::uintptr_t eoi = 0xB0;
-        constexpr std::uintptr_t siv = 0xF0;
-        constexpr std::uintptr_t icrl = 0x300;
-        constexpr std::uintptr_t icrh = 0x310;
-    } // namespace reg
+        namespace reg
+        {
+            constexpr std::uintptr_t apic_base = 0x1B;
+            constexpr std::uintptr_t tpr = 0x80;
+            constexpr std::uintptr_t siv = 0xF0;
+            constexpr std::uintptr_t icrl = 0x300;
+            constexpr std::uintptr_t icrh = 0x310;
+        } // namespace reg
 
-    std::uint32_t lapic::read(std::uint32_t reg) const
-    {
-        if (_x2apic)
-            return cpu::msr::read(to_x2apic(reg));
+        std::uintptr_t _pmmio;
+        std::uintptr_t _mmio;
+        bool _x2apic = false;
 
-        return lib::mmio::in<32>(_mmio + reg);
-    }
+        std::uint32_t to_x2apic(std::uint32_t reg)
+        {
+            return (reg >> 4) + 0x800;
+        }
 
-    void lapic::write(std::uint32_t reg, std::uint32_t val) const
-    {
-        if (_x2apic)
-            cpu::msr::write(to_x2apic(reg), val);
-        else
-            lib::mmio::out<32>(_mmio + reg, val);
-    }
+        // std::uint32_t read(std::uint32_t reg)
+        // {
+        //     if (_x2apic)
+        //         return cpu::msr::read(to_x2apic(reg));
 
-    std::pair<bool, bool> lapic::supported() const
+        //     return lib::mmio::in<32>(_mmio + reg);
+        // }
+
+        void write(std::uint32_t reg, std::uint32_t val)
+        {
+            if (_x2apic)
+                cpu::msr::write(to_x2apic(reg), val);
+            else
+                lib::mmio::out<32>(_mmio + reg, val);
+        }
+    } // namespace
+
+    std::pair<bool, bool> supported()
     {
         std::uint32_t a, b, c, d;
         const bool cpuid = cpu::id(1, 0, a, b, c, d);
@@ -70,15 +80,11 @@ namespace x86_64::apic
             return true;
         } ();
 
-        return { lapic, x2apic && cached };
+        return { lapic, !x2apic && cached };
     }
 
-    void lapic::eoi()
-    {
-        write(reg::eoi, 0);
-    }
-
-    void lapic::ipi(std::uint8_t id, dest dsh, std::uint8_t vector)
+    void eoi() { write(0xB0, 0); }
+    void ipi(std::uint8_t id, dest dsh, std::uint8_t vector)
     {
         auto flags = (static_cast<std::uint32_t>(dsh) << 18) | vector;
         if (!_x2apic)
@@ -89,43 +95,44 @@ namespace x86_64::apic
         else write(reg::icrl, (static_cast<std::uint64_t>(id) << 32) | flags);
     }
 
-    lapic::lapic() : _x2apic { false }
+    void init_cpu()
     {
         auto [lapic, x2apic] = supported();
         if (!lapic)
-            lib::panic("CPU does not support LAPIC");
-
-        _x2apic = x2apic;
+            lib::panic("CPU does not support lapic");
 
         auto val = cpu::msr::read(reg::apic_base);
-        {
-            // APIC global enable
-            val |= (1 << 11);
-            // x2APIC enable
-            if (_x2apic)
-                val |= (1 << 10);
-        }
-        cpu::msr::write(reg::apic_base, val);
-
         const bool is_bsp = (val & (1 << 8));
         const auto phys_mmio = val & ~0xFFF;
 
+        if (!is_bsp)
+            lib::ensure(_x2apic == x2apic, "x2apic support differs from the BSP");
+        else
+            _x2apic = x2apic;
+
+        // APIC global enable
+        val |= (1 << 11);
+        // x2APIC enable
+        if (_x2apic)
+            val |= (1 << 10);
+        cpu::msr::write(reg::apic_base, val);
+
         if (is_bsp)
-            log::debug("lapic: x2APIC: {}, APIC base address 0x{:X}", _x2apic, phys_mmio);
+            log::debug("lapic: x2apic: {}, physical mmio: 0x{:X}", _x2apic, phys_mmio);
 
         if (!_x2apic)
         {
             if (is_bsp)
             {
                 _pmmio = phys_mmio;
-                _mmio = vmm::alloc_vpages(vmm::vspace::other, 1);
+                _mmio = lib::fromhh(vmm::alloc_vpages(vmm::vspace::other, 1));
 
-                log::debug("lapic: mapping APIC base address to 0x{:X}", _mmio);
+                log::debug("lapic: mapping mmio to 0x{:X}", _mmio);
 
                 if (!vmm::kernel_pagemap->map(_mmio, _pmmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
-                    lib::panic("could not map APIC base address");
+                    lib::panic("could not map lapic mmio");
             }
-            else lib::ensure(phys_mmio == _pmmio, "APIC base address differs from the BSP");
+            else lib::ensure(phys_mmio == _pmmio, "APIC mmio address differs from the BSP");
         }
 
         // Enable all external interrupts

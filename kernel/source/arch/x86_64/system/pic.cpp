@@ -34,6 +34,7 @@ namespace x86_64::pic
 
     void eoi(std::uint8_t vector)
     {
+        lib::ensure(vector >= 0x20);
         if (vector >= 40)
             lib::io::out<8>(port::slave_command, cmd::eoi);
         lib::io::out<8>(port::master_command, cmd::eoi);
@@ -41,6 +42,9 @@ namespace x86_64::pic
 
     void mask(std::uint8_t vector)
     {
+        lib::ensure(vector >= 0x20);
+        log::debug("pic: masking vector 0x{:X}", vector);
+
         auto port = port::master_data;
         auto irq = vector - 0x20;
         if (irq >= 8)
@@ -53,6 +57,9 @@ namespace x86_64::pic
 
     void unmask(std::uint8_t vector)
     {
+        lib::ensure(vector >= 0x20);
+        log::debug("pic: unmasking vector 0x{:X}", vector);
+
         auto port = port::master_data;
         auto irq = vector - 0x20;
         if (irq >= 8)
@@ -65,7 +72,7 @@ namespace x86_64::pic
 
     void disable()
     {
-        log::debug("pic: masking all IRQs");
+        log::debug("pic: masking all irqs");
         lib::io::out<8>(port::master_data, 0xFF);
         lib::io::out<8>(port::slave_data,  0xFF);
     }

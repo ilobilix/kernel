@@ -3,10 +3,10 @@
 export module lib:lock;
 import std;
 
-namespace lib
+export namespace lib
 {
     template<bool ints>
-    class spinlock_base
+    class spinlock
     {
         private:
         std::atomic_size_t _next_ticket;
@@ -18,11 +18,11 @@ namespace lib
         void arch_pause() const;
 
         public:
-        constexpr spinlock_base()
+        constexpr spinlock()
             : _next_ticket { 0 }, _serving_ticket { 0 }, _interrupts { false } { }
 
-        spinlock_base(const spinlock_base &) = delete;
-        spinlock_base &operator=(const spinlock_base &) = delete;
+        spinlock(const spinlock &) = delete;
+        spinlock &operator=(const spinlock &) = delete;
 
         void lock()
         {
@@ -39,11 +39,11 @@ namespace lib
             if (is_locked() == false)
                 return;
 
-            if constexpr (ints)
-                arch_unlock();
-
             auto current = _serving_ticket.load(std::memory_order_relaxed);
             _serving_ticket.store(current + 1, std::memory_order_release);
+
+            if constexpr (ints)
+                arch_unlock();
         }
 
         bool is_locked() const
@@ -62,11 +62,4 @@ namespace lib
             return true;
         }
     };
-
-#if ILOBILIX_MAX_UACPI_POINTS
-    export using spinlock = spinlock_base<false>;
-#else
-    export using spinlock = spinlock_base<true>;
-#endif
-    export using spinlock_noints = spinlock_base<false>;
 } // export namespace lib

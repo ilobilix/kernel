@@ -2,7 +2,9 @@
 
 module system.pci;
 
+import system.memory;
 import system.acpi;
+import magic_enum;
 import lib;
 import std;
 
@@ -27,7 +29,8 @@ namespace pci
             const auto header = bus->template read<8>(dev, func, reg::header);
             if (header == 0x00) // device
             {
-                log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                // log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                log::debug("pci: general device: {:04X}:{:04X}", venid, devid);
 
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
@@ -49,7 +52,8 @@ namespace pci
             }
             else if (header == 0x01) // PCI-to-PCI bridge
             {
-                log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                // log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                log::debug("pci: bridge: {:04X}:{:04X}", venid, devid);
                 auto bridge = std::make_shared<pci::bridge>(bus, dev, func);
 
                 const auto secondary_id = bridge->template read<8>(reg::secondary_bus);
@@ -60,7 +64,10 @@ namespace pci
 
                     auto secondary_bus = std::make_shared<pci::bus>(bus->seg, secondary_id, bus->io, bridge, nullptr);
                     if (bus->router)
+                    {
                         secondary_bus->router = bus->router->downstream(secondary_bus);
+                        secondary_bus->router->parent = bus->router;
+                    }
 
                     bridge->parent = secondary_bus;
                     enum_bus(secondary_bus);
@@ -93,6 +100,52 @@ namespace pci
         }
     } // namespace
 
+    auto router::resolve(std::int32_t dev, std::uint8_t pin, std::int32_t func) -> entry *
+    {
+        if (mod == model::root)
+        {
+            const auto entry = std::ranges::find_if(table, [&](const auto &entry) {
+                bool ret = (entry.dev == dev && entry.pin == pin);
+                if (func != -1)
+                    ret = ret && (entry.func == -1 || entry.func == func);
+                return ret;
+            });
+
+            if (entry == table.cend())
+                return nullptr;
+
+            return std::addressof(*entry);
+        }
+        else if (mod == model::expansion)
+            return bridge_irq[(static_cast<std::size_t>(pin) - 1 + dev) % 4];
+
+        return nullptr;
+    }
+
+    std::uintptr_t bar::map()
+    {
+        lib::ensure(type == type::mem);
+        lib::ensure(phys && size);
+
+        if (virt != 0)
+            return virt;
+
+        auto &pmap = vmm::kernel_pagemap;
+
+        const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+
+        const auto paddr = lib::align_down(phys, npsize);
+        const auto alsize = lib::align_up(size + (phys - paddr), npsize);
+
+        const auto vaddr = vmm::alloc_vpages(vmm::vspace::pci, lib::div_roundup(size, pmm::page_size));
+
+        if (!pmap->map(vaddr, paddr, alsize, vmm::flag::rw, psize, vmm::caching::mmio))
+            lib::panic("could not map pci bar");
+
+        return virt = (vaddr + (phys - paddr));
+    }
+
     entity::entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
         : dev { dev }, func { func }, parent { parent }
     {
@@ -115,26 +168,84 @@ namespace pci
         }
     }
 
-    auto router::resolve(std::int32_t dev, std::uint8_t pin, std::int32_t func) -> entry *
+    void entity::read_bars(std::size_t nbars)
     {
-        if (mod == model::root)
+        auto bars = get_bars();
+
+        for (std::size_t i = 0; i < nbars; i++)
         {
-            const auto entry = std::ranges::find_if(table, [&](const auto &entry) {
-                bool ret = (entry.dev == dev && entry.pin == pin);
-                if (func != -1)
-                    ret = ret && (entry.func == -1 || entry.func == func);
-                return ret;
-            });
+            bar ret { 0, 0, 0, false, false, bar::type::invalid };
+            bool bit64 = false;
 
-            if (entry == table.cend())
-                return nullptr;
+            auto offset = std::to_underlying(reg::bar0) + i * sizeof(std::uint32_t);
+            auto bar = read<std::uint32_t>(offset);
 
-            return std::addressof(*entry);
+            write<std::uint32_t>(offset, 0xFFFFFFFF);
+            auto lenlow = read<std::uint32_t>(offset);
+            write<std::uint32_t>(offset, bar);
+
+            if (bar & 0x01)
+            {
+                std::uintptr_t addr = bar & ~0b11;
+                std::size_t length = (~(lenlow & ~0b11) + 1) & 0xFFFF;
+
+                ret.virt = addr;
+                ret.phys = addr;
+                ret.size = length;
+                ret.type = bar::type::io;
+                ret.prefetch = false;
+            }
+            else
+            {
+                std::size_t length = 0;
+                std::uintptr_t addr = 0;
+
+                switch (auto type = (bar >> 1) & 0x03)
+                {
+                    case 0x00:
+                        length = ~(lenlow & ~0b1111) + 1;
+                        addr = bar & ~0b1111;
+                        break;
+                    case 0x02:
+                    {
+                        if (i == nbars - 1)
+                            continue;
+
+                        auto offseth = offset + sizeof(std::uint32_t);
+                        auto barh = read<std::uint32_t>(offseth);
+
+                        write<std::uint32_t>(offseth, 0xFFFFFFFF);
+                        auto lenhigh = read<std::uint32_t>(offseth);
+                        write<std::uint32_t>(offseth, barh);
+
+                        length = ~((static_cast<std::uint64_t>(lenhigh) << 32) | (lenlow & ~0b1111)) + 1;
+                        addr = (static_cast<std::uint64_t>(barh) << 32) | (bar & ~0b1111);
+
+                        bit64 = true;
+                        break;
+                    }
+                    default:
+                        log::warn("pci: unknown memory mapped bar type 0x{:X}", type);
+                        break;
+                }
+
+                ret.phys = addr;
+                ret.size = length;
+                ret.type = bar::type::mem;
+                ret.prefetch = bar & (1 << 3);
+                ret.bits64 = bit64;
+
+                if (ret.phys == 0 && ret.size == 0)
+                    ret.type = bar::type::invalid;
+            }
+
+            if (ret.type != bar::type::invalid)
+                log::debug("pci: - bar: 0x{:X}, size: 0x{:X}, type: {}", ret.phys, ret.size, magic_enum::enum_name(ret.type));
+
+            bars[i] = ret;
+            if (bit64 == true)
+                bars[++i] = { 0, 0, 0, false, true, bar::type::invalid };
         }
-        else if (mod == model::expansion)
-            return bridge_irq[(static_cast<std::size_t>(pin) - 1 + dev) % 4];
-
-        return nullptr;
     }
 
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus)

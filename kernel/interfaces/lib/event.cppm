@@ -12,7 +12,7 @@ export namespace lib
         private:
         std::atomic_size_t _triggers;
         std::atomic_size_t _awaiters;
-        lib::spinlock _lock;
+        lib::spinlock<false> _lock;
 
         void arch_pause();
 

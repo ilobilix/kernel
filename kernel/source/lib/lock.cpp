@@ -6,7 +6,7 @@ import arch;
 namespace lib
 {
     template<bool ints>
-    void spinlock_base<ints>::arch_lock()
+    void spinlock<ints>::arch_lock()
     {
         if constexpr (ints)
         {
@@ -16,7 +16,7 @@ namespace lib
     }
 
     template<bool ints>
-    void spinlock_base<ints>::arch_unlock() const
+    void spinlock<ints>::arch_unlock() const
     {
         if constexpr (ints)
         {
@@ -26,11 +26,11 @@ namespace lib
     }
 
     template<bool ints>
-    void spinlock_base<ints>::arch_pause() const
+    void spinlock<ints>::arch_pause() const
     {
         arch::pause();
     }
 
-    template class spinlock_base<true>;
-    template class spinlock_base<false>;
+    template class spinlock<true>;
+    template class spinlock<false>;
 } // namespace lib

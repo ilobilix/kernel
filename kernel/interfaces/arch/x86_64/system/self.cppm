@@ -2,7 +2,6 @@
 
 export module x86_64.system.cpu.self;
 
-import x86_64.system.lapic;
 import x86_64.system.gdt;
 import x86_64.system.idt;
 import system.interrupts;
@@ -21,8 +20,6 @@ export namespace cpu::arch
 
         x86_64::gdt::entries gdt;
         x86_64::gdt::tss::ptr tss;
-
-        frg::manual_box<x86_64::apic::lapic> lapic;
 
         struct {
             void *pvclock = nullptr;

@@ -26,7 +26,7 @@ namespace arch
     void halt_others()
     {
         if (auto self = cpu::self(); self)
-            self->arch.lapic->ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
+            x86_64::apic::ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
     }
 
     void wfi() { asm volatile ("hlt"); }
@@ -95,9 +95,9 @@ namespace arch
             x86_64::timers::kvm::init();
             x86_64::timers::tsc::init();
 
-            ptr->arch.lapic.initialize();
-
+            x86_64::apic::init_cpu();
             ptr->online = true;
+
             halt(true);
         }
 
@@ -112,7 +112,7 @@ namespace arch
 
             cpu::features::enable();
 
-            ptr->arch.lapic.initialize();
+            x86_64::apic::init_cpu();
             ptr->online = true;
         }
     } // namespace core
