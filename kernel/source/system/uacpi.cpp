@@ -258,13 +258,13 @@ extern "C"
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
-    {
-        return reinterpret_cast<uacpi_handle>(new std::mutex);
+    {\
+        return reinterpret_cast<uacpi_handle>(new lib::mutex);
     }
 
     void uacpi_kernel_free_mutex(uacpi_handle handle)
     {
-        delete reinterpret_cast<std::mutex *>(handle);
+        delete reinterpret_cast<lib::mutex *>(handle);
     }
 
     uacpi_handle uacpi_kernel_create_event()
@@ -282,7 +282,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
-        auto *mutex = reinterpret_cast<std::mutex *>(handle);
+        auto *mutex = reinterpret_cast<lib::mutex *>(handle);
         bool locked = false;
 
         if (timeout == 0xFFFF)
@@ -300,7 +300,7 @@ extern "C"
 
     void uacpi_kernel_release_mutex(uacpi_handle handle)
     {
-        auto *mutex = reinterpret_cast<std::mutex *>(handle);
+        auto *mutex = reinterpret_cast<lib::mutex *>(handle);
         mutex->unlock();
     }
 

@@ -61,5 +61,10 @@ export namespace lib
             lock();
             return true;
         }
+
+        bool try_lock_until(std::uint64_t ns);
     };
+
+    // TODO: actually implement a mutex
+    using mutex = spinlock<false>;
 } // export namespace lib

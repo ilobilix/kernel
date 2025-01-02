@@ -27,7 +27,7 @@ int asprintf(char **str, const char *format, ...) ATTR_FORMAT(2, 3);
 int fctprintf(void (*out)(char c, void *extra_arg), void *extra_arg, const char *format, ...);
 int vfctprintf(void (*out)(char c, void *extra_arg), void *extra_arg, const char *format, va_list arg);
 
-// fmtlib
+// fmtlib stubs
 typedef size_t FILE;
 extern FILE *stdout;
 extern FILE *stderr;

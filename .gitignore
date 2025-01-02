@@ -7,15 +7,3 @@ serial.txt
 log.txt
 
 build*
-sysroot
-userspace/*
-!userspace/bootstrap.yml
-!userspace/tools
-!userspace/patches
-!userspace/cross-files
-!userspace/base-files
-!userspace/sysroot
-
-subprojects/*
-!subprojects/*.wrap
-!subprojects/packagefiles

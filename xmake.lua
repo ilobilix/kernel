@@ -253,8 +253,7 @@ toolchain("ilobilix-clang")
             "$(projectdir)/kernel/include/std/stubs",
             "$(projectdir)/kernel/include/libc",
             "$(projectdir)/kernel/include/kernel",
-            "$(projectdir)/kernel/include/kernel/uacpi",
-            "$(projectdir)/kernel/include/modules"
+            "$(projectdir)/kernel/include/kernel/uacpi"
         )
     end)
 toolchain_end()

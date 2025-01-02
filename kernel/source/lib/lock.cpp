@@ -1,7 +1,10 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module lib;
+
+import system.time;
 import arch;
+import std;
 
 namespace lib
 {
@@ -29,6 +32,20 @@ namespace lib
     void spinlock<ints>::arch_pause() const
     {
         arch::pause();
+    }
+
+    template<bool ints>
+    bool spinlock<ints>::try_lock_until(std::uint64_t ns)
+    {
+        auto clock = time::main_clock();
+        if (clock == nullptr)
+            return try_lock();
+
+        auto target = clock->ns() + ns;
+        while (is_locked() && clock->ns() < target)
+            arch_pause();
+
+        return try_lock();
     }
 
     template class spinlock<true>;

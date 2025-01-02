@@ -1,6 +1,6 @@
 -- Copyright (C) 2024-2025  ilobilo
 
--- shared between kernel and drivers
+-- shared between the kernel and modules
 target("ilobilix.dependencies")
     set_kind("phony")
     set_toolchains("ilobilix-clang", { public = true })
@@ -30,7 +30,7 @@ target("ilobilix.dependencies")
     elseif is_arch("aarch64") then
     end
 
--- only for kernel
+-- only for the kernel
 target("ilobilix.kernel.dependencies")
     set_kind("phony")
     add_deps("ilobilix.dependencies")
@@ -44,7 +44,7 @@ target("ilobilix.kernel.dependencies")
     elseif is_arch("aarch64") then
     end
 
--- C++ modules, not kernel drivers
+-- C++ modules, not loadable kernel modules
 target("ilobilix.modules")
     set_default(false)
     set_kind("static")
