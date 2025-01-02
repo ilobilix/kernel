@@ -2,7 +2,7 @@
 
 import std;
 
-#if ILOBILIX_PHD_MEM
+#if ILOBILIX_MAX_UACPI_POINTS
 template<typename Type>
 struct word_helper { enum class [[gnu::may_alias, gnu::aligned(1)]] word_enum : Type { }; };
 
@@ -29,7 +29,7 @@ inline void alias_store(std::uint8_t *&p, word<Type> value)
 
 extern "C"
 {
-#if ILOBILIX_PHD_MEM
+#if ILOBILIX_MAX_UACPI_POINTS
     void *memcpy(void *dest, const void *src, std::size_t n)
     {
         auto cur_dest = reinterpret_cast<std::uint8_t *>(dest);

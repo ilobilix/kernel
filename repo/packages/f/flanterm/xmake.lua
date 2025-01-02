@@ -1,8 +1,8 @@
 -- Copyright (C) 2024-2025  ilobilo
 
-package("limine-terminal")
-    add_urls("https://github.com/ilobilo/limine-terminal.git")
-    add_versions("latest", "master")
+package("flanterm")
+    add_urls("https://github.com/mintsuki/flanterm.git")
+    add_versions("latest", "trunk")
 
     add_deps("freestnd-c-hdrs")
 
@@ -16,15 +16,12 @@ package("limine-terminal")
 
                 add_includedirs("fonts", "src")
                 add_files(
-                    "src/flanterm/backends/fb.c",
-                    "src/flanterm/flanterm.c",
-                    "src/stb_image.c",
-                    "src/image.c",
-                    "src/term.c"
+                    "flanterm.c",
+                    "backends/fb.c"
                 )
         ]])
         local configs = { }
         import("package.tools.xmake").install(package, configs)
-        os.cp("fonts/*", package:installdir("include"))
-        os.cp("src/*|**.c", package:installdir("include"))
+        os.cp("flanterm.h", package:installdir("include"))
+        os.cp("backends", package:installdir("include"))
     end)

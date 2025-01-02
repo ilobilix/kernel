@@ -80,7 +80,7 @@ namespace arch
 
     namespace core
     {
-        extern "C" void arch_core_entry(boot::limine_smp_info *cpu)
+        extern "C" void arch_core_entry(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
 
@@ -101,7 +101,7 @@ namespace arch
             halt(true);
         }
 
-        void bsp(boot::limine_smp_info *cpu)
+        void bsp(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
 

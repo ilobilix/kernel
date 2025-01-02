@@ -1,6 +1,6 @@
 # Copyright (C) 2024-2025  ilobilo
 
-#if !ILOBILIX_PHD_MEM
+#if !ILOBILIX_MAX_UACPI_POINTS
 memcpy:
     mov rcx, rdx
     mov rax, rdi
