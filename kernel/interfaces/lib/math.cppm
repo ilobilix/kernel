@@ -1,4 +1,4 @@
-// Copyright (C) 2024  ilobilo
+// Copyright (C) 2024-2025  ilobilo
 
 export module lib:math;
 import std;
@@ -84,9 +84,14 @@ export namespace lib
     }
 
     template<std::unsigned_integral Type>
-    inline constexpr auto log2(Type val)
+    inline constexpr Type log2(Type val)
     {
         return std::bit_width<Type>(val) - 1;
+    }
+
+    inline constexpr auto pow2(std::size_t val)
+    {
+        return 1ull << val;
     }
 
     inline constexpr bool is_pow2(std::unsigned_integral auto num)

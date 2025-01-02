@@ -1,4 +1,4 @@
-// Copyright (C) 2024  ilobilo
+// Copyright (C) 2024-2025  ilobilo
 
 // networking code is based on:
 // https://github.com/qookei/tart

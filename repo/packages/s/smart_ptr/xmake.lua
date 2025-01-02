@@ -1,4 +1,4 @@
--- Copyright (C) 2024  ilobilo
+-- Copyright (C) 2024-2025  ilobilo
 
 package("smart_ptr")
     add_urls("https://github.com/ilobilo/smart_ptr.git")

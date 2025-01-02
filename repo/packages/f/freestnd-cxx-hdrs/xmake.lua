@@ -1,4 +1,4 @@
--- Copyright (C) 2024  ilobilo
+-- Copyright (C) 2024-2025  ilobilo
 
 package("freestnd-cxx-hdrs")
     add_urls("https://github.com/osdev0/freestnd-cxx-hdrs.git")

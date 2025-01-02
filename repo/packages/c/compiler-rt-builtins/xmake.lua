@@ -1,4 +1,4 @@
--- Copyright (C) 2024  ilobilo
+-- Copyright (C) 2024-2025  ilobilo
 
 package("compiler-rt-builtins")
     add_urls("https://github.com/ilobilo/compiler-rt-builtins.git")
