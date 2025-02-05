@@ -1,0 +1,73 @@
+[submodule "dependencies/compiler-rt-builtins/compiler-rt-builtins"]
+	path = dependencies/compiler-rt-builtins/compiler-rt-builtins
+	url = https://github.com/ilobilo/compiler-rt-builtins
+	shallow = true
+[submodule "dependencies/cwalk/cwalk"]
+	path = dependencies/cwalk/cwalk
+	url = https://github.com/likle/cwalk
+	shallow = true
+[submodule "dependencies/demangler/demangler"]
+	path = dependencies/demangler/demangler
+	url = https://github.com/ilobilo/demangler
+	shallow = true
+[submodule "dependencies/flanterm/flanterm"]
+	path = dependencies/flanterm/flanterm
+	url = https://github.com/mintsuki/flanterm
+	shallow = true
+[submodule "dependencies/fmt/fmt"]
+	path = dependencies/fmt/fmt
+	url = https://github.com/ilobilo/fmt
+	shallow = true
+[submodule "dependencies/freestnd-c-hdrs/freestnd-c-hdrs"]
+	path = dependencies/freestnd-c-hdrs/freestnd-c-hdrs
+	url = https://github.com/osdev0/freestnd-c-hdrs
+	shallow = true
+[submodule "dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs"]
+	path = dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs
+	url = https://github.com/osdev0/freestnd-cxx-hdrs
+	shallow = true
+[submodule "dependencies/frigg/frigg"]
+	path = dependencies/frigg/frigg
+	url = https://github.com/managarm/frigg
+	shallow = true
+[submodule "dependencies/frozen/frozen"]
+	path = dependencies/frozen/frozen
+	url = https://github.com/serge-sans-paille/frozen
+	shallow = true
+[submodule "dependencies/limine/limine"]
+	path = dependencies/limine/limine
+	url = https://github.com/limine-bootloader/limine
+	shallow = true
+	branch = v8.x-binary
+[submodule "dependencies/magic_enum/magic_enum"]
+	path = dependencies/magic_enum/magic_enum
+	url = https://github.com/Neargye/magic_enum
+	shallow = true
+[submodule "dependencies/ovmf-binaries/ovmf-binaries"]
+	path = dependencies/ovmf-binaries/ovmf-binaries
+	url = https://github.com/ilobilo/ovmf-binaries
+	shallow = true
+[submodule "dependencies/parallel-hashmap/parallel-hashmap"]
+	path = dependencies/parallel-hashmap/parallel-hashmap
+	url = https://github.com/greg7mdp/parallel-hashmap
+	shallow = true
+[submodule "dependencies/printf/printf"]
+	path = dependencies/printf/printf
+	url = https://github.com/eyalroz/printf
+	shallow = true
+[submodule "dependencies/smart_ptr/smart_ptr"]
+	path = dependencies/smart_ptr/smart_ptr
+	url = https://github.com/ilobilo/smart_ptr
+	shallow = true
+[submodule "dependencies/string/string"]
+	path = dependencies/string/string
+	url = https://github.com/ilobilo/string
+	shallow = true
+[submodule "dependencies/uacpi/uACPI"]
+	path = dependencies/uacpi/uACPI
+	url = https://github.com/uACPI/uACPI
+	shallow = true
+[submodule "dependencies/veque/veque"]
+	path = dependencies/veque/veque
+	url = https://github.com/ilobilo/veque
+	shallow = true

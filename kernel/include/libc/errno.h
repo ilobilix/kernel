@@ -144,11 +144,13 @@ enum errno_t
     EHWPOISON = 133
 };
 
-errno_t *__errno_location();
+enum errno_t *__errno_location();
 #define errno (*__errno_location())
 
 #define no_error ((errno_t)0)
 #define return_err(ret, err) do { errno = err; return ret; } while (0)
+
+#define strerror(x) "error"
 
 #ifdef __cplusplus
 } // extern "C"

@@ -61,7 +61,7 @@ namespace x86_64::timers::tsc
                 freq = kvm::tsc_freq();
                 self.tsc.calibrated = true;
             }
-            else if (auto calibrator = ::timers::calibrator(); calibrator)
+            else if (auto calibrator = ::timers::calibrator())
             {
                 static constexpr std::size_t millis = 50;
                 static constexpr std::size_t times = 3;

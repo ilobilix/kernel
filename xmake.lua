@@ -133,7 +133,6 @@ local qemu_dbg_args = {
     -- "-monitor", "telnet:127.0.0.1:12345,server,nowait"
 }
 
-local ovmf_id = ""
 local bios = false
 
 -- <-- variables
@@ -158,6 +157,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
 
     add_defines("LIMINE_API_REVISION=2")
+    add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
@@ -166,15 +166,13 @@ toolchain("ilobilix-clang")
     -- TODO: performance impact
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
 
-    on_check(function (toolchain)
-        return import("lib.detect.find_tool")("clang")
-    end)
-
     on_load(function (toolchain)
         local cx_args = {
             "-ffreestanding",
             "-fno-stack-protector",
             "-fno-omit-frame-pointer",
+
+            "-mgeneral-regs-only",
 
             "-nostdinc",
 
@@ -182,6 +180,7 @@ toolchain("ilobilix-clang")
             "-Wall", "-Wextra",
 
             "-Wno-error=#warnings",
+            "-Wno-c23-extensions",
             -- "-Wno-builtin-macro-redefined",
             -- "-Wno-macro-redefined",
             -- "-Wno-deprecated-declarations",
@@ -218,7 +217,9 @@ toolchain("ilobilix-clang")
                 "-mno-red-zone",
                 "-mno-mmx",
                 "-mno-sse",
-                "-mno-sse2"
+                "-mno-sse2",
+                "-mno-80387",
+                "-mcmodel=kernel"
             )
         elseif is_arch("aarch64") then
             target = "aarch64-elf"
@@ -248,34 +249,16 @@ toolchain("ilobilix-clang")
         toolchain:add("asflags", c_args, { force = true })
 
         toolchain:add("ldflags", ld_args, { force = true })
-
-        toolchain:add("includedirs",
-            "$(projectdir)/kernel/include",
-            "$(projectdir)/kernel/include/std",
-            "$(projectdir)/kernel/include/std/stubs",
-            "$(projectdir)/kernel/include/libc",
-            "$(projectdir)/kernel/include/kernel",
-            "$(projectdir)/kernel/include/kernel/uacpi"
-        )
     end)
 toolchain_end()
+
+set_toolchains("ilobilix-clang")
 
 -- <-- toolchain
 
 -- dependencies -->
 
-add_toolchains("ilobilix-clang")
-
-add_repositories("local-repo repo")
-
-add_requires(
-    "compiler-rt-builtins", "demangler",
-    "cwalk", "printf", "uacpi",
-    "freestnd-cxx-hdrs", "freestnd-c-hdrs",
-    "string", "smart_ptr", "veque", "parallel_hashmap",
-    "fmt", "frigg", "frozen", "magic_enum",
-    "flanterm", "limine", "ovmf-binaries"
-)
+includes("dependencies/xmake.lua")
 
 -- <-- dependencies
 
@@ -342,10 +325,7 @@ target("initrd")
 target("iso")
     set_default(false)
     set_kind("phony")
-    add_deps("initrd")
-    add_deps("modules", "ilobilix.elf")
-
-    add_packages("ovmf-binaries")
+    add_deps("ovmf-binaries", "limine", "initrd", "modules", "ilobilix.elf")
 
     on_clean(function (target)
         os.rm(get_targetfile(target:targetdir(), "image", ".iso"))
@@ -368,21 +348,15 @@ target("iso")
         local iso_dir_bl = path.join(iso_dir, "boot/limine")
         local iso_dir_eb = path.join(iso_dir, "EFI/BOOT")
 
-        local limine_binaries = path.join(kernel:pkg("limine"):installdir(), "limine-binaries")
-        local limine_exec = path.join(limine_binaries, "limine")
+        local limine_dep = target:deps()["limine"]
+        local limine_exec = limine_dep:targetfile()
+
+        local binaries = limine_dep:get("values")["binaries"]
+        local uefi_binaries = limine_dep:get("values")["uefi-binaries"]
 
         local limine_files = {
-            "$(projectdir)/misc/limine.conf",
-            path.join(limine_binaries, "limine-uefi-cd.bin")
+            "$(projectdir)/misc/limine.conf"
         }
-
-        local boot_files = {
-            "$(projectdir)/misc/bg.png",
-            "$(projectdir)/misc/dtb.img",
-            "$(projectdir)/misc/font.bin"
-        }
-
-        local efi_files = { }
 
         local xorriso_args = {
             "-as", "mkisofs"
@@ -394,17 +368,7 @@ target("iso")
                 "-no-emul-boot", "-boot-load-size", "4",
                 "-boot-info-table"
             )
-
-            multi_insert(limine_files,
-                path.join(limine_binaries, "limine-bios.sys"),
-                path.join(limine_binaries, "limine-bios-cd.bin")
-            )
-            multi_insert(efi_files,
-                path.join(limine_binaries, "BOOTX64.EFI")
-                -- path.join(limine_binaries, "BOOTIA32.EFI")
-            )
         elseif is_arch("aarch64") then
-            table.insert(efi_files, path.join(limine_binaries, "BOOTAA64.EFI"))
         end
 
         multi_insert(xorriso_args,
@@ -428,13 +392,16 @@ target("iso")
 
             print(" => copying target files to temporary iso directory...")
 
-            for idx, val in ipairs(boot_files) do
-                os.cp(val, iso_dir_b)
-            end
+            -- for idx, val in ipairs(boot_files) do
+            --     os.cp(val, iso_dir_b)
+            -- end
             for idx, val in ipairs(limine_files) do
                 os.cp(val, iso_dir_bl)
             end
-            for idx, val in ipairs(efi_files) do
+            for idx, val in ipairs(binaries) do
+                os.cp(val, iso_dir_bl)
+            end
+            for idx, val in ipairs(uefi_binaries) do
                 os.cp(val, iso_dir_eb)
             end
             os.cp(kernelfile, path.join(iso_dir_b, "kernel.elf"))
@@ -487,7 +454,6 @@ task("qemu")
 
         local qemu_exec = ""
         if is_arch("x86_64") then
-            ovmf_id = "X64"
             bios = true
 
             multi_insert(qemu_args,
@@ -497,7 +463,6 @@ task("qemu")
 
             qemu_exec = find_program("qemu-system-x86_64")
         elseif is_arch("aarch64") then
-            ovmf_id = "AA64"
             bios = false
 
             multi_insert(qemu_args,
@@ -523,8 +488,7 @@ task("qemu")
         end
 
         local iso = project.target("iso")
-        local pkg = iso:pkg("ovmf-binaries"):installdir()
-        local ovmf_fd = path.join(pkg, "ovmf-binaries/OVMF_" .. ovmf_id .. ".fd")
+        local ovmf_fd = iso:deps()["ovmf-binaries"]:get("values")["ovmf-binary"]
 
         multi_insert(qemu_args,
             "-cdrom", iso:get("values", "targetfile")["targetfile"]

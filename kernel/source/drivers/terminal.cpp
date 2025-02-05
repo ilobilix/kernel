@@ -4,10 +4,6 @@ module;
 
 #include <flanterm.h>
 #include <backends/fb.h>
-#if !ILOBILIX_MAX_UACPI_POINTS
-#  include <lib/unifont.h>
-#endif
-
 
 module drivers.terminal;
 
@@ -17,12 +13,24 @@ import std;
 
 namespace term
 {
+#if !ILOBILIX_MAX_UACPI_POINTS
     namespace
     {
-        auto font = const_cast<void *>(reinterpret_cast<const void *>(unifont));
-        std::uint32_t ansi_colours[] { 0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500, 0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA };
-        std::uint32_t ansi_bright_colours[] { 0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55, 0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF };
+        std::uint32_t ansi_colours[] {
+            0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500,
+            0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA
+        };
+
+        std::uint32_t ansi_bright_colours[] {
+            0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55,
+            0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF
+        };
+
+        char font[] {
+            #embed "../../embed/font.bin"
+        };
     } // namespace
+#endif
 
     void init()
     {
@@ -40,7 +48,7 @@ namespace term
                 frm.blue_mask_size, frm.blue_mask_shift,
                 nullptr, ansi_colours, ansi_bright_colours,
                 nullptr, nullptr, nullptr, nullptr,
-                font, UNIFONT_WIDTH, UNIFONT_HEIGHT, 1,
+                font, 8, 16, 1,
                 0, 0, 0
             );
             if (ctx == nullptr)
