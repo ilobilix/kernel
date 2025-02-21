@@ -22,7 +22,7 @@ target("ilobilix.dependencies")
         "demangler", "flanterm", "fmt",
         "frigg", "frozen", "magic_enum",
         "parallel-hashmap", "printf", "limine",
-        "smart_ptr", "string", "uacpi", "veque"
+        "smart-ptr", "string", "uacpi", "veque"
     )
 
     if is_arch("x86_64") then

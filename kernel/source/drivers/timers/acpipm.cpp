@@ -88,7 +88,7 @@ namespace timers::acpipm
 
         initialised = true;
 
-        if (const auto clock = time::main_clock(); clock)
+        if (const auto clock = time::main_clock())
             offset = time_ns() - clock->ns();
 
         time::register_clock(clock);

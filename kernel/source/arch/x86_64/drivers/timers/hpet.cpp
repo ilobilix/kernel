@@ -109,7 +109,7 @@ namespace x86_64::timers::hpet
         regs->cfg = 1;
 
         initialised = true;
-        if (const auto clock = time::main_clock(); clock)
+        if (const auto clock = time::main_clock())
             offset = time_ns() - clock->ns();
 
         // TODO: overflows after 42-ish seconds

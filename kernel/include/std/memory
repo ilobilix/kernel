@@ -2,51 +2,31 @@
 
 #pragma once
 
+#undef __glibcxx_shared_ptr_weak_type
+#undef __glibcxx_enable_shared_from_this
+#undef __glibcxx_smart_ptr_for_overwrite
+#undef __glibcxx_shared_ptr_arrays
+#undef __glibcxx_atomic_shared_ptr
+#undef __glibcxx_make_unique
+
+#define __glibcxx_shared_ptr_weak_type __cplusplus
+#define __glibcxx_enable_shared_from_this __cplusplus
+#define __glibcxx_smart_ptr_for_overwrite __cplusplus
+#define __glibcxx_shared_ptr_arrays __cplusplus
+#define __glibcxx_atomic_shared_ptr __cplusplus
+#define __glibcxx_make_unique __cplusplu
+
 #include_next <memory>
-#include <smart_ptr>
 #include <new>
+
+namespace std { void __throw_bad_array_new_length(); }
+
+#include <bits/allocator.h>
+#include <smart_ptr/shared_ptr.h>
+#include <smart_ptr/shared_ptr_atomic.h>
 
 namespace std
 {
-    template<typename Alloc>
-    struct allocator_traits;
-
-    namespace detail
-    {
-        template<typename Type>
-        struct make_unique_t { using single_object = unique_ptr<Type>; };
-
-        template<typename Type>
-        struct make_unique_t<Type[]> { using array = unique_ptr<Type[]>; };
-
-        template<typename Type, std::size_t Bound>
-        struct make_unique_t<Type[Bound]> { struct invalid_type { }; };
-
-        template<typename Type>
-        using unique_ptr_t = typename make_unique_t<Type>::single_object;
-
-        template<typename Type>
-        using unique_ptr_array_t = typename make_unique_t<Type>::array;
-
-        template<typename Type>
-        using invalid_make_unique_t = typename make_unique_t<Type>::invalid_type;
-    } // namespace detail
-
-    template<typename Type, typename ...Args>
-    inline constexpr detail::unique_ptr_t<Type> make_unique(Args &&...args)
-    {
-        return unique_ptr<Type> { new Type(forward<Args>(args)...) };
-    }
-
-    template<typename Type>
-    inline constexpr detail::unique_ptr_array_t<Type> make_unique(std::size_t num)
-    {
-        return unique_ptr<Type> { new remove_extent_t<Type>[num]() };
-    }
-
-    template<typename Type, typename ...Args>
-    inline constexpr detail::invalid_make_unique_t<Type> make_unique(Args &&...) = delete;
-
     template<typename Allocator>
     struct deallocator
     {
@@ -60,6 +40,7 @@ namespace std
 
         constexpr void operator()(value_type *ptr)
         {
+            auto _ = std::make_unique<char[]>(1);
             using Traits = allocator_traits<Allocator>;
             for (std::ptrdiff_t i = _size - 1; i >= 0; --i)
                 Traits::destroy(_alloc, ptr + i);
@@ -100,36 +81,4 @@ namespace std
         deallocator<Alloc> dealloc { alloc, size };
         return unique_ptr<Type, deallocator<Alloc>> { ptr, dealloc };
     }
-
-    template<typename Type>
-    struct allocator
-    {
-        using value_type = Type;
-        using pointer = Type *;
-        using const_pointer = const Type *;
-        using reference = Type &;
-        using const_reference = const Type &;
-        using size_type = std::size_t;
-        using difference_type = std::ptrdiff_t;
-
-        constexpr allocator() noexcept = default;
-
-        template<typename U>
-        constexpr allocator(const allocator<U> &) noexcept { }
-
-        [[nodiscard]] constexpr Type *allocate(std::size_t count)
-        {
-            return static_cast<Type *>(::operator new(count * sizeof(Type)));
-        }
-
-        constexpr void deallocate(Type *ptr, std::size_t count)
-        {
-            ::operator delete(ptr, count * sizeof(Type));
-        }
-
-        friend constexpr bool operator==(const allocator &, const allocator &) noexcept
-        {
-            return true;
-        }
-    };
 } // namespace std

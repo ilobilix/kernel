@@ -83,7 +83,7 @@ namespace x86_64::timers::tsc
             {
                 std::tie(self.tsc.p, self.tsc.n) = lib::freq2nspn(freq);
 
-                if (const auto clock = time::main_clock(); clock)
+                if (const auto clock = time::main_clock())
                     self.tsc.offset = time_ns() - clock->ns();
 
                 log::debug("tsc: frequency: {} hz", freq);
