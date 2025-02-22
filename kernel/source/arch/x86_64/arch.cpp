@@ -91,7 +91,9 @@ namespace arch
 
             cpu::gs::write_user(cpu->extra_argument);
 
-            cpu::features::enable();
+            auto &fpu = ptr->arch.fpu;
+            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+
             x86_64::timers::kvm::init();
             x86_64::timers::tsc::init();
 
