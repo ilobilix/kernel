@@ -29,5 +29,9 @@ export namespace cpu::arch
             std::int64_t offset = 0;
             bool calibrated = false;
         } tsc;
+        struct {
+            std::uint64_t n, p;
+            bool calibrated = false;
+        } lapic;
     };
 } // export namespace cpu::::arch

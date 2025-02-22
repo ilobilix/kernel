@@ -127,6 +127,11 @@ export namespace lib
         return (ticks * n) >> p;
     }
 
+    inline constexpr std::uint64_t ns2ticks(std::uint64_t ns, std::uint64_t p, std::uint64_t n)
+    {
+        return (ns << p) / n;
+    }
+
     inline constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)
     {
         constexpr auto days_from_civil = [](std::int64_t years, std::uint64_t months, std::uint64_t days)
