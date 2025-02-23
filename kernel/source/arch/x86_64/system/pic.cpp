@@ -98,6 +98,6 @@ namespace x86_64::pic
 
         disable();
         unmask(0x20 + 2);
-        arch::int_toggle(true);
+        arch::int_switch(true);
     }
 } // namespace x86_64::pic

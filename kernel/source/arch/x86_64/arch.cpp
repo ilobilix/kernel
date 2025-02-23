@@ -32,7 +32,7 @@ namespace arch
     void wfi() { asm volatile ("hlt"); }
     void pause() { asm volatile ("pause"); }
 
-    void int_toggle(bool on)
+    void int_switch(bool on)
     {
         if (on)
             asm volatile ("sti");
@@ -100,7 +100,7 @@ namespace arch
             x86_64::apic::init_cpu();
             ptr->online = true;
 
-            halt(true);
+            sched::start();
         }
 
         void bsp(boot::limine_mp_info *cpu)
@@ -112,7 +112,8 @@ namespace arch
 
             cpu::gs::write_user(cpu->extra_argument);
 
-            cpu::features::enable();
+            auto &fpu = ptr->arch.fpu;
+            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
 
             x86_64::apic::init_cpu();
             ptr->online = true;

@@ -18,6 +18,7 @@ export namespace cpu
 
     std::size_t bsp_idx;
     std::size_t bsp_aid;
+    std::size_t cpu_count;
 
     void init_bsp();
     void init();

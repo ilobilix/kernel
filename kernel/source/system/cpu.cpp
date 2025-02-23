@@ -66,7 +66,9 @@ namespace cpu
         const auto smp = boot::requests::smp.response;
         log::info("cpu: number of available processors: {}", smp->cpu_count);
 
-        for (std::size_t i = 0; i < smp->cpu_count; i++)
+        cpu_count = smp->cpu_count;
+
+        for (std::size_t i = 0; i < cpu_count; i++)
         {
             auto cpu = smp->cpus[i];
             const auto aid = get_arch_id(cpu);

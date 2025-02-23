@@ -98,8 +98,10 @@ namespace x86_64::idt
             for (std::size_t i = 0; i < num_ints; i++)
                 idt[i].set(isr_table[i]);
 
-            // page fault ist 0. see TSS
+            // page fault ist 0
             idt[14].ist = 1;
+            // // scheduler ist 1
+            // idt[0xFF].ist = 2;
         }
 
         cpu->arch.int_handlers.resize(num_preints);

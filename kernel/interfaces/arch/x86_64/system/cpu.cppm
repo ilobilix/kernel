@@ -298,5 +298,18 @@ export namespace cpu
         }
     } // namespace gs
 
+    namespace fs
+    {
+        void write(std::uintptr_t addr)
+        {
+            msr::write(0xC0000100, addr);
+        }
+
+        std::uintptr_t read()
+        {
+            return msr::read(0xC0000100);
+        }
+    } // namespace gs
+
     std::uintptr_t arch_self() { return gs::read(); }
 } // export namespace cpu

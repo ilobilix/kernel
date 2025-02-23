@@ -25,7 +25,7 @@ namespace arch
     void wfi() { asm volatile ("wfi"); }
     void pause() { asm volatile ("isb" ::: "memory"); }
 
-    void int_toggle(bool on)
+    void int_switch(bool on)
     {
         if (on)
             asm volatile ("msr daifclr, #0b1111");

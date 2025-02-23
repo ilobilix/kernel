@@ -5,6 +5,8 @@ module;
 #include <limine.h>
 
 export module boot;
+
+import system.scheduler;
 import lib;
 import std;
 
@@ -19,6 +21,8 @@ namespace
 
 export namespace boot
 {
+    std::shared_ptr<sched::process> pid0;
+
     // constexpr std::uintptr_t kernel_stack_size = 0x10000; // 64 kib
     constexpr std::uintptr_t kernel_stack_size = 0x4000; // 16 kib
     constexpr std::uintptr_t user_stack_size = 0x200000; // 2 mib

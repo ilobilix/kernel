@@ -1,6 +1,8 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:types;
+
+import magic_enum;
 import std;
 
 export namespace lib
@@ -54,6 +56,25 @@ export
         eaccess = 0x200
     };
 
+    enum class fmode : mode_t
+    {
+        s_irwxu = 00700, // user rwx
+        s_irusr = 00400, // user r
+        s_iwusr = 00200, // user w
+        s_ixusr = 00100, // user x
+        s_irwxg = 00070, // group rwx
+        s_irgrp = 00040, // group r
+        s_iwgrp = 00020, // group w
+        s_ixgrp = 00010, // group x
+        s_irwxo = 00007, // others rwx
+        s_iroth = 00004, // others r
+        s_iwoth = 00002, // others w
+        s_ixoth = 00001, // others x
+        s_isuid = 04000, // set-user-id
+        s_isgid = 02000, // set-group-id
+        s_isvtx = 01000, // set-sticky
+    };
+
     struct timespec
     {
         long tv_sec;
@@ -99,4 +120,6 @@ export
             return st_mode & ~static_cast<mode_t>(type::s_ifmt);
         }
     };
+
+    using magic_enum::bitwise_operators::operator|;
 } // export

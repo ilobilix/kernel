@@ -242,7 +242,7 @@ namespace vmm
         {
             auto table = lib::tohh(_table);
             const auto ktable = lib::tohh(kernel_pagemap->_table);
-            std::memcpy(table->entries + 256, ktable->entries + 256, 256);
+            std::memcpy(table->entries + 256, ktable->entries + 256, 256 * sizeof(entry));
         }
     }
 

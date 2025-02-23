@@ -3,6 +3,16 @@
 import ilobilix;
 import std;
 
+void kthread()
+{
+    log::debug("entered main kernel thread");
+
+    pci::register_rbs();
+    pci::init();
+
+    arch::halt(true);
+}
+
 extern "C"
 {
     std::byte kernel_stack[boot::kernel_stack_size] { };
@@ -26,11 +36,16 @@ extern "C"
 
         pci::register_ios();
         acpi::init();
-        pci::register_rbs();
-        pci::init();
 
-        lib::panic("get stick bugged lol");
+        auto thread = sched::thread::create(
+            boot::pid0 = sched::process::create(
+                nullptr,
+                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+            ), reinterpret_cast<std::uintptr_t>(kthread)
+        );
+        thread->status = sched::status::ready;
+        sched::enqueue(thread, cpu::self()->idx);
 
-        arch::halt();
+        sched::start();
     }
 } // extern "C"

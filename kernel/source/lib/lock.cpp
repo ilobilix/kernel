@@ -14,7 +14,7 @@ namespace lib
         if constexpr (ints)
         {
             _interrupts = arch::int_status();
-            arch::int_toggle(false);
+            arch::int_switch(false);
         }
     }
 
@@ -24,7 +24,7 @@ namespace lib
         if constexpr (ints)
         {
             if (arch::int_status() != _interrupts)
-                arch::int_toggle(_interrupts);
+                arch::int_switch(_interrupts);
         }
     }
 
