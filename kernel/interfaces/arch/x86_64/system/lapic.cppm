@@ -15,6 +15,8 @@ export namespace x86_64::apic
 
     std::pair<bool, bool> supported();
 
+    void calibrate_timer();
+
     void eoi();
     void ipi(std::uint8_t id, dest dsh, std::uint8_t vector);
     void arm(std::size_t ns, std::uint8_t vector);

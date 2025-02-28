@@ -74,6 +74,7 @@ namespace arch
         x86_64::apic::io::init();
 
         timers::init();
+        x86_64::apic::calibrate_timer();
         cpu::init();
         x86_64::timers::tsc::finalise();
     }

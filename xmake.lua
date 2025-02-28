@@ -159,7 +159,7 @@ toolchain("ilobilix-clang")
     add_defines("LIMINE_API_REVISION=2")
     add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 
-    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC")
+    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
     add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
@@ -192,6 +192,7 @@ toolchain("ilobilix-clang")
             "-fno-rtti",
             "-fno-exceptions",
             "-fsized-deallocation",
+            "-fcheck-new"
         }
 
         local ld_args = {

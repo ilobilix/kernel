@@ -316,8 +316,13 @@ extern "C"
         delete reinterpret_cast<lib::simple_event *>(handle);
     }
 
-    // TODO
-    uacpi_thread_id uacpi_kernel_get_thread_id() { return reinterpret_cast<uacpi_thread_id>(1); }
+    uacpi_thread_id uacpi_kernel_get_thread_id()
+    {
+        if (sched::initialised)
+            return reinterpret_cast<uacpi_thread_id>(cpu::self()->sched.running_thread->tid);
+
+        return reinterpret_cast<uacpi_thread_id>(1);
+    }
 
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {

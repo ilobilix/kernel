@@ -119,18 +119,19 @@ namespace acpi
         // );
         // check();
 
-        if (timers::acpipm::supported())
-        {
-            ret = uacpi_install_fixed_event_handler(
-                UACPI_FIXED_EVENT_TIMER_STATUS,
-                [](uacpi_handle) -> uacpi_interrupt_ret
-                {
-                    timers::acpipm::overflows++;
-                    return UACPI_INTERRUPT_HANDLED;
-                }, nullptr
-            ); check();
-            timers::acpipm::finalise();
-        }
+        // TODO: TODO
+        // if (timers::acpipm::supported())
+        // {
+        //     ret = uacpi_install_fixed_event_handler(
+        //         UACPI_FIXED_EVENT_TIMER_STATUS,
+        //         [](uacpi_handle) -> uacpi_interrupt_ret
+        //         {
+        //             timers::acpipm::overflows++;
+        //             return UACPI_INTERRUPT_HANDLED;
+        //         }, nullptr
+        //     ); check();
+        //     timers::acpipm::finalise();
+        // }
     }
 
     void early()

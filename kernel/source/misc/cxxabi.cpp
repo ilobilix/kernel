@@ -99,6 +99,9 @@ extern "C"
 
 namespace std
 {
+    [[maybe_unused]]
+    const nothrow_t nothrow;
+
     [[gnu::noreturn]] void terminate() noexcept
     {
         lib::panic("std::terminate()");
@@ -119,62 +122,38 @@ namespace std
     const char *bad_alloc::what() const throw() { return "bad_alloc"; }
 } // namespace std
 
-void *operator new(std::size_t size)
-{
-    return std::malloc(size);
-}
+[[nodiscard]] void *operator new(std::size_t size) { return std::malloc(size); }
+[[nodiscard]] void *operator new(std::size_t size, const std::nothrow_t &) noexcept { return std::malloc(size); }
 
-void *operator new(std::size_t size, std::align_val_t)
-{
-    return std::malloc(size);
-}
+[[nodiscard]] void *operator new(std::size_t size, std::align_val_t) { return std::malloc(size); }
+[[nodiscard]] void *operator new(std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return std::malloc(size); }
 
-void *operator new[](std::size_t size)
-{
-    return std::malloc(size);
-}
+[[nodiscard]] void *operator new[](std::size_t size) { return std::malloc(size); }
+[[nodiscard]] void *operator new[](std::size_t size, const std::nothrow_t &) noexcept { return std::malloc(size); }
 
-void *operator new[](std::size_t size, std::align_val_t)
-{
-    return std::malloc(size);
-}
+[[nodiscard]] void *operator new[](std::size_t size, std::align_val_t) { return std::malloc(size); }
+[[nodiscard]] void *operator new[](std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return std::malloc(size); }
 
-void operator delete(void *ptr) noexcept
-{
-    std::free(ptr);
-}
+void operator delete(void *ptr) noexcept { std::free(ptr); }
+void operator delete(void *ptr, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete(void *ptr, std::align_val_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete(void *ptr, std::align_val_t) noexcept { std::free(ptr); }
+void operator delete(void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete(void *ptr, std::size_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete(void *ptr, std::size_t) noexcept { std::free(ptr); }
+void operator delete(void *ptr, std::size_t, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete(void *ptr, std::size_t, std::align_val_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete(void *ptr, std::size_t, std::align_val_t) noexcept { std::free(ptr); }
+void operator delete(void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete[](void *ptr) noexcept
-{
-    std::free(ptr);
-}
+void operator delete[](void *ptr) noexcept { std::free(ptr); }
+void operator delete[](void *ptr, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete[](void *ptr, std::align_val_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete[](void *ptr, std::align_val_t) noexcept { std::free(ptr); }
+void operator delete[](void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete[](void *ptr, std::size_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete[](void *ptr, std::size_t) noexcept { std::free(ptr); }
+void operator delete[](void *ptr, std::size_t, const std::nothrow_t &) noexcept { std::free(ptr); }
 
-void operator delete[](void *ptr, std::size_t, std::align_val_t) noexcept
-{
-    std::free(ptr);
-}
+void operator delete[](void *ptr, std::size_t, std::align_val_t) noexcept { std::free(ptr); }
+void operator delete[](void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { std::free(ptr); }

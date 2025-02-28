@@ -98,6 +98,8 @@ export namespace sched
         std::shared_ptr<thread> idle_thread;
     };
 
+    bool initialised = false;
+
     std::size_t allocate_cpu();
     void enqueue(std::shared_ptr<thread> thread, std::size_t cpu_idx);
     [[noreturn]] void start();

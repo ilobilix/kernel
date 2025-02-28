@@ -75,8 +75,8 @@ namespace x86_64::apic::io
             {
                 std::uint64_t entry = 0;
                 entry |= vector;
-                entry |= std::to_underlying(deliv);
-                entry |= std::to_underlying(flags);
+                entry |= (std::to_underlying(deliv) & (0b111 << 8));
+                entry |= (std::to_underlying(flags) & ~0x7FF);
                 entry |= (dest << 56);
                 write_entry(idx, entry);
             }
@@ -197,11 +197,8 @@ namespace x86_64::apic::io
                     if (entry.source == i)
                     {
                         set_gsi(
-                            entry.gsi,
-                            entry.source + 0x20,
-                            cpu::bsp_aid,
-                            static_cast<flag>(entry.flags) | flag::masked,
-                            delivery::fixed
+                            entry.gsi, entry.source + 0x20, cpu::bsp_aid,
+                            static_cast<flag>(entry.flags) | flag::masked, delivery::fixed
                         );
                         if (auto handler = idt::handler_at(cpu::bsp_aid, entry.source + 0x20))
                             handler.value().get().reserve();
@@ -210,14 +207,12 @@ namespace x86_64::apic::io
                 }
 
                 set_gsi(
-                    i, i + 0x20,
-                    cpu::bsp_aid,
-                    flag::masked,
-                    delivery::fixed
+                    i, i + 0x20, cpu::bsp_aid,
+                    flag::masked, delivery::fixed
                 );
+
                 if (auto handler = idt::handler_at(cpu::bsp_aid, i + 0x20))
                     handler.value().get().reserve();
-
                 end:
             }
         }

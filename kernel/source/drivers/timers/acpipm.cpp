@@ -92,6 +92,5 @@ namespace timers::acpipm
             offset = time_ns() - clock->ns();
 
         time::register_clock(clock);
-        initialised = false;
     }
 } // namespace timers::acpipm
