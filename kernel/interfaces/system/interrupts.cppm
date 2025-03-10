@@ -10,7 +10,7 @@ export namespace interrupts
     class handler
     {
         private:
-        std::function<void(cpu::registers *)> _handler;
+        std::function<void (cpu::registers *)> _handler;
         bool _reserved;
 
         public:

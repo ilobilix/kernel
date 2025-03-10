@@ -32,14 +32,14 @@ export namespace vfs
         {
             lib::mutex lock;
 
-            std::shared_ptr<node> root;
+            std::weak_ptr<node> root;
             std::weak_ptr<node> mounted_on;
             std::shared_ptr<filesystem> fs;
 
             virtual auto create(std::shared_ptr<node> parent, std::string_view name, mode_t mode) -> expect<std::shared_ptr<node>> = 0;
             virtual auto symlink(std::shared_ptr<node> parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<node>> = 0;
             virtual auto link(std::shared_ptr<node> parent, std::string_view name, std::shared_ptr<node> target) -> expect<std::shared_ptr<node>> = 0;
-            virtual auto unlink(std::shared_ptr<node> node) -> std::expected<void, error> = 0;
+            virtual auto unlink(std::shared_ptr<node> node) -> expect<void> = 0;
 
             virtual bool populate(std::shared_ptr<node> node, std::string_view name = "") = 0;
             virtual bool sync() = 0;
@@ -48,7 +48,7 @@ export namespace vfs
             virtual ~instance() = default;
         };
 
-        virtual std::shared_ptr<instance> mount(std::shared_ptr<node>) const = 0;
+        virtual std::pair<std::shared_ptr<instance>, std::shared_ptr<node>> mount(std::shared_ptr<node>) const = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -77,7 +77,7 @@ export namespace vfs
 
     struct node : std::enable_shared_from_this<node>
     {
-        static std::shared_ptr<node> root();
+        static std::shared_ptr<node> root(bool from_sched = false);
 
         lib::mutex lock;
 
@@ -122,8 +122,8 @@ export namespace vfs
         std::shared_ptr<node> target;
     };
 
-    bool register_fs(std::shared_ptr<filesystem> fs);
-    std::shared_ptr<filesystem> find_fs(std::string_view name);
+    bool register_fs(std::unique_ptr<filesystem> fs);
+    auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
 
     auto resolve(std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>;
 

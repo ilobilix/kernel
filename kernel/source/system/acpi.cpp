@@ -119,7 +119,7 @@ namespace acpi
         // );
         // check();
 
-        // TODO: TODO
+        // TODO: causes a page fault
         // if (timers::acpipm::supported())
         // {
         //     ret = uacpi_install_fixed_event_handler(
