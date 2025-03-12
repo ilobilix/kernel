@@ -13,6 +13,10 @@ void kthread()
     lib::ensure(vfs::register_fs(fs::tmpfs::init()));
     lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
 
+    initramfs::init();
+
+    pmm::reclaim();
+
     arch::halt(true);
 }
 
@@ -35,7 +39,6 @@ extern "C"
 
         acpi::early();
         arch::init();
-        pmm::reclaim();
 
         pci::register_ios();
         acpi::init();

@@ -34,6 +34,8 @@ export namespace lib
 
 export
 {
+    using time_t = std::int64_t;
+
     using dev_t = std::uint64_t;
     using ino_t = std::uint64_t;
     using mode_t = std::int32_t;

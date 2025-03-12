@@ -268,13 +268,13 @@ includes("dependencies/xmake.lua")
 includes("modules/xmake.lua")
 includes("kernel/xmake.lua")
 
-target("initrd")
+target("initramfs")
     set_default(false)
     set_kind("phony")
     add_deps("modules")
 
     on_clean(function (target)
-        os.tryrm(get_targetfile(target:targetdir(), "initrd", ".img.gz"))
+        os.tryrm(get_targetfile(target:targetdir(), "initramfs", ".tar"))
     end)
 
     on_build(function (target)
@@ -285,7 +285,7 @@ target("initrd")
         -- might not be created yet
         os.mkdir(target:targetdir())
 
-        targetfile = get_targetfile(target:targetdir(), "initrd", ".img.gz")
+        targetfile = get_targetfile(target:targetdir(), "initramfs", ".tar")
         target:set("values", "targetfile", targetfile)
 
         local sysroot = path.join(os.projectdir(), "userspace/sysroot")
@@ -295,7 +295,7 @@ target("initrd")
         local extmods = modules:values("modules.external_modules")
         local created = false
 
-        local function create_initrd()
+        local function create_initramfs()
             os.tryrm(targetfile)
             os.tryrm(modules_dir)
             os.mkdir(modules_dir)
@@ -308,25 +308,25 @@ target("initrd")
                 end
             end
 
-            print(" => building the initrd...")
-            os.execv(find_program("tar"), { "--format", "posix", "-czf", targetfile, "-C", sysroot, "./" })
+            print(" => building the initramfs...")
+            os.execv(find_program("tar"), { "--format", "posix", "-cf", targetfile, "-C", sysroot, "./" })
 
             created = true
         end
 
         if extmods ~= nil then
-            depend.on_changed(create_initrd, { files = extmods })
+            depend.on_changed(create_initramfs, { files = extmods })
         end
 
         if not created and not os.isfile(targetfile) then
-            create_initrd()
+            create_initramfs()
         end
     end)
 
 target("iso")
     set_default(false)
     set_kind("phony")
-    add_deps("ovmf-binaries", "limine", "initrd", "modules", "ilobilix.elf")
+    add_deps("ovmf-binaries", "limine", "initramfs", "modules", "ilobilix.elf")
 
     on_clean(function (target)
         os.rm(get_targetfile(target:targetdir(), "image", ".iso"))
@@ -341,7 +341,7 @@ target("iso")
         target:set("values", "targetfile", targetfile)
 
         local kernel = project.target("ilobilix.elf")
-        local initrd = project.target("initrd")
+        local initramfs = project.target("initramfs")
 
         local iso_dirname = "ilobilix.iso.dir"
         local iso_dir = path.join(os.tmpdir(), iso_dirname)
@@ -379,7 +379,7 @@ target("iso")
         )
 
         local kernelfile = kernel:targetfile()
-        local initrdfile = initrd:get("values", "targetfile")["targetfile"]
+        local initramfsfile = initramfs:get("values", "targetfile")["targetfile"]
         local created = false
 
         local function create_iso()
@@ -406,7 +406,7 @@ target("iso")
                 os.cp(val, iso_dir_eb)
             end
             os.cp(kernelfile, path.join(iso_dir_b, "kernel.elf"))
-            os.cp(initrdfile, path.join(iso_dir_b, "initrd.img.gz"))
+            os.cp(initramfsfile, path.join(iso_dir_b, "initramfs.tar"))
 
             multi_insert(xorriso_args,
                 iso_dir, "-o", targetfile
@@ -422,7 +422,7 @@ target("iso")
             os.tryrm(iso_dir)
         end
 
-        depend.on_changed(create_iso, { files = { kernelfile, initrdfile } })
+        depend.on_changed(create_iso, { files = { kernelfile, initramfsfile } })
 
         if not created and not os.isfile(targetfile) then
             create_iso()

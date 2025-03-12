@@ -256,9 +256,9 @@ namespace vfs
         return std::unexpected(ret.error());
     }
 
-    auto link(std::shared_ptr<node> parent, lib::path path, lib::path target) -> expect<std::shared_ptr<node>>
+    auto link(std::shared_ptr<node> parent, lib::path path, std::shared_ptr<node> tgtparent, lib::path target) -> expect<std::shared_ptr<node>>
     {
-        lib::unused(parent, path, target);
+        lib::unused(parent, path, tgtparent, target);
         return std::unexpected(error::todo);
     }
 
