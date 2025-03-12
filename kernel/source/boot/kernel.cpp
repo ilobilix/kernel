@@ -11,7 +11,12 @@ void kthread()
     pci::init();
 
     lib::ensure(vfs::register_fs(fs::tmpfs::init()));
+    lib::ensure(vfs::register_fs(fs::devtmpfs::init()));
     lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
+
+    auto err = vfs::create(nullptr, "/dev", stat::type::s_ifdir);
+    lib::ensure(err.has_value() || err.error() == vfs::error::already_exists);
+    lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
 
     initramfs::init();
 

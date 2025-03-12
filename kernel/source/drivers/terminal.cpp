@@ -54,7 +54,7 @@ namespace term
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");
 
-            terminals.push_back(reinterpret_cast<terminal *>(ctx));
+            terminals.emplace_back(ctx);
         }
 #endif
     }

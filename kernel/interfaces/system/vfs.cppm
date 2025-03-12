@@ -37,6 +37,8 @@ export namespace vfs
             std::shared_ptr<filesystem> fs;
 
             virtual auto create(std::shared_ptr<node> parent, std::string_view name, mode_t mode) -> expect<std::shared_ptr<node>> = 0;
+            virtual auto mknod(std::shared_ptr<node> parent, std::string_view name, mode_t mode, dev_t dev) -> expect<std::shared_ptr<node>> = 0;
+
             virtual auto symlink(std::shared_ptr<node> parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<node>> = 0;
             virtual auto link(std::shared_ptr<node> parent, std::string_view name, std::shared_ptr<node> target) -> expect<std::shared_ptr<node>> = 0;
             virtual auto unlink(std::shared_ptr<node> node) -> expect<void> = 0;
@@ -88,9 +90,17 @@ export namespace vfs
 
         std::weak_ptr<node> parent;
         lib::map::flat_hash<std::string_view, std::shared_ptr<node>> children;
+        std::weak_ptr<node> children_redirect;
 
         std::shared_ptr<filesystem::instance> fs;
         std::shared_ptr<node> mountpoint;
+
+        inline decltype(children) &get_children()
+        {
+            if (!children_redirect.expired())
+                return children_redirect.lock()->get_children();
+            return children;
+        }
 
         inline std::shared_ptr<node> me()
         {
@@ -100,17 +110,29 @@ export namespace vfs
                 return shared_from_this();
         }
 
-        inline lib::path to_path() const
-        {
-            if (!parent.expired())
-            {
-                auto ptr = parent.lock();
-                if (ptr.get() == this)
-                    return name;
-                return ptr->to_path() / name;
-            }
-            else return name;
-        }
+        // not really useful and can't be properly implemented
+        // inline std::shared_ptr<node> get_parent()
+        // {
+        //     auto ret = parent.lock();
+        //     if (auto root = node::root(); this == root.get())
+        //         ret = root;
+        //     else if (ret == fs->root.lock())
+        //         ret = fs->mounted_on.lock();
+        //     else if (this == fs->root.lock().get())
+        //         ret = fs->mounted_on.lock()->parent.lock();
+        //     return ret;
+        // }
+
+        // inline lib::path to_path()
+        // {
+        //     if (auto parent = get_parent())
+        //     {
+        //         if (parent.get() == this)
+        //             return name;
+        //         return parent->to_path() / name;
+        //     }
+        //     else return name;
+        // }
 
         static constexpr auto symloop_max = 40;
         expect<std::shared_ptr<node>> reduce(std::size_t symlink_depth = symloop_max);
@@ -136,4 +158,4 @@ export namespace vfs
     auto unlink(std::shared_ptr<node> parent, lib::path path) -> expect<void>;
 
     auto stat(std::shared_ptr<node> parent, lib::path path) -> expect<stat>;
-} // namespace vfs
+} // export namespace vfs
