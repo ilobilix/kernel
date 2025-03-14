@@ -12,9 +12,10 @@ export namespace x86_64::gdt
         constexpr std::uint8_t null = 0x00;
         constexpr std::uint8_t code = 0x08;
         constexpr std::uint8_t data = 0x10;
-        constexpr std::uint8_t udata = 0x18;
-        constexpr std::uint8_t ucode = 0x20;
-        constexpr std::uint8_t tss = 0x28;
+        constexpr std::uint8_t ucode32 = 0x18;
+        constexpr std::uint8_t udata = 0x20;
+        constexpr std::uint8_t ucode = 0x28;
+        constexpr std::uint8_t tss = 0x30;
     }
 
     struct [[gnu::packed]] ptr
@@ -25,11 +26,12 @@ export namespace x86_64::gdt
 
     struct [[gnu::packed]] entry
     {
-        std::uint16_t limit;
+        std::uint16_t limit0;
         std::uint16_t base0;
         std::uint8_t base1;
         std::uint8_t access;
-        std::uint8_t granularity;
+        std::uint8_t limit1 : 4;
+        std::uint8_t flags : 4;
         std::uint8_t base2;
     };
 
@@ -48,11 +50,12 @@ export namespace x86_64::gdt
 
         struct [[gnu::packed]] entry
         {
-            std::uint16_t length;
+            std::uint16_t limit0;
             std::uint16_t base0;
             std::uint8_t base1;
-            std::uint8_t flags1;
-            std::uint8_t flags2;
+            std::uint8_t access;
+            std::uint8_t limit1 : 4;
+            std::uint8_t flags : 4;
             std::uint8_t base2;
             std::uint32_t base3;
             std::uint32_t reserved;
@@ -64,8 +67,9 @@ export namespace x86_64::gdt
         entry null;
         entry kcode;
         entry kdata;
-        entry ucode;
+        entry ucode32;
         entry udata;
+        entry ucode;
         tss::entry tss;
     };
 

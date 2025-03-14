@@ -45,7 +45,7 @@ namespace vmm
     std::uintptr_t pagemap::pa_mask = 0x000FFFFFFFFFF000;
 
     const std::uintptr_t pagemap::valid_table_flags = arch::flag::present;
-    const std::uintptr_t pagemap::new_table_flags = arch::flag::present | arch::flag::write;
+    const std::uintptr_t pagemap::new_table_flags = arch::flag::present | arch::flag::write | arch::flag::user;
 
     struct [[gnu::packed]] pagemap::table
     {

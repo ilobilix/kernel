@@ -58,19 +58,20 @@ namespace x86_64::gdt
         const std::uint16_t limit = sizeof(tss::ptr) - 1;
 
         gdt = entries {
-            { 0x0000, 0, 0x0FE, 0x00, 0x00, 0 }, // null
-            { 0x0000, 0, 0, 0x9A, 0x20, 0 }, // kernel code
-            { 0xB00B, 0xBABE, 0xFE, 0x92, 0x00, 0xCA }, // kernel data
-            { 0x0000, 0, 0, 0xF2, 0x00, 0 }, // user data
-            { 0x0000, 0, 0, 0xFA, 0x20, 0 }, // user code
+            { 0x0000, 0x0000, 0x00, 0b00000000, 0x0, 0b0000, 0x00 }, // null
+            { 0x0000, 0x0000, 0x00, 0b10011010, 0x0, 0b0010, 0x00 }, // kernel code
+            { 0x0000, 0x0000, 0x00, 0b10010010, 0x0, 0b0010, 0x00 }, // kernel data
+            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0100, 0x00 }, // user code 32 bit
+            { 0x0000, 0x0000, 0x00, 0b11110010, 0x0, 0b0010, 0x00 }, // user data
+            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0010, 0x00 }, // user code
             { // tss
                 limit,
                 static_cast<std::uint16_t>(base),
                 static_cast<std::uint8_t>(base >> 16),
-                0x89, 0x00,
+                0b10001001, 0x0, 0x0,
                 static_cast<std::uint8_t>(base >> 24),
                 static_cast<std::uint32_t>(base >> 32),
-                0x00
+                0x00000000
             }
         };
 
