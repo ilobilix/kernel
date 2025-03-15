@@ -12,6 +12,7 @@ namespace x86_64::syscall
     extern "C" void syscall_entry();
     extern "C" void syscall_handler(cpu::registers *regs)
     {
+        // args: rdi rsi rdx r10 r8 r9
         log::debug("syscall {}", regs->rax);
         // TODO
     }

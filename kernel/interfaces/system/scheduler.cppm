@@ -2,6 +2,7 @@
 
 export module system.scheduler;
 
+import system.scheduler.base;
 import system.memory.virt;
 import system.cpu;
 import system.vfs;
@@ -19,11 +20,18 @@ export namespace sched
         ready,
         running,
         blocked,
+        sleeping,
         killed
     };
 
+    enum wake_reason
+    {
+        success = 0,
+        interrupted = 1
+    };
+
     struct process;
-    struct thread
+    struct thread : thread_base
     {
         processor *running_on;
 
@@ -39,6 +47,12 @@ export namespace sched
         cpu::registers regs;
         std::vector<std::byte *> stacks;
 
+        lib::spinlock<false> sleep_lock;
+        bool sleep_ints;
+        std::size_t wake_reason;
+        std::optional<std::size_t> sleep_for;
+        std::optional<std::size_t> sleep_until;
+
 #if defined(__x86_64__)
         std::uintptr_t pfstack_top;
 
@@ -53,6 +67,9 @@ export namespace sched
         std::uintptr_t allocate_kstack();
 
         static std::shared_ptr<thread> create(std::shared_ptr<process> parent, std::uintptr_t ip);
+
+        void prepare_sleep(std::size_t ms = 0);
+        bool wake_up(std::size_t reason);
 
         thread() = default;
         ~thread();
@@ -87,6 +104,8 @@ export namespace sched
 
         static std::shared_ptr<process> create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap);
 
+        void prepare_sleep();
+
         process() = default;
         ~process();
     };
@@ -103,6 +122,9 @@ export namespace sched
     };
 
     bool initialised = false;
+
+    std::shared_ptr<thread> this_thread();
+    std::size_t yield();
 
     std::size_t allocate_cpu();
     void enqueue(std::shared_ptr<thread> thread, std::size_t cpu_idx);

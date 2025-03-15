@@ -2,8 +2,9 @@
 
 module system.scheduler;
 
-import system.memory;
 import system.cpu.self;
+import system.memory;
+import system.time;
 import boot;
 import arch;
 import lib;
@@ -114,6 +115,38 @@ namespace sched
         return thread;
     }
 
+    void thread::prepare_sleep(std::size_t ms)
+    {
+        sleep_ints = ::arch::int_switch_status(false);
+        sleep_lock.lock();
+        status = status::sleeping;
+
+        if (ms)
+            sleep_for = ms;
+        else
+            sleep_for = std::nullopt;
+    }
+
+    bool thread::wake_up(std::size_t reason)
+    {
+        bool ints = ::arch::int_switch_status(false);
+        sleep_lock.lock();
+
+        if (status != status::sleeping)
+        {
+            sleep_lock.unlock();
+            ::arch::int_switch(ints);
+            return false;
+        }
+
+        status = status::ready;
+        wake_reason = reason;
+
+        sleep_lock.unlock();
+        ::arch::int_switch(ints);
+        return true;
+    }
+
     thread::~thread()
     {
         for (auto &stack : stacks)
@@ -145,6 +178,30 @@ namespace sched
     process::~process()
     {
         // TODO
+    }
+
+    std::shared_ptr<thread> this_thread()
+    {
+        return cpu::self()->sched.running_thread;
+    }
+
+    std::size_t yield()
+    {
+        auto thread = this_thread();
+
+        bool eeping = thread->status == status::sleeping;
+        bool old = eeping ? thread->sleep_ints : ::arch::int_status();
+
+        if (eeping && thread->sleep_for.has_value())
+        {
+            auto clock = time::main_clock();
+            thread->sleep_until = clock->ns() / 1'000'000 + thread->sleep_for.value();
+            thread->sleep_for = std::nullopt;
+        }
+
+        arch::reschedule(0);
+        ::arch::int_switch(old);
+        return eeping ? thread->wake_reason : wake_reason::success;
     }
 
     std::size_t allocate_cpu()
@@ -180,21 +237,40 @@ namespace sched
         auto self = cpu::self();
         auto &sched = self->sched;
 
+        auto current = sched.running_thread;
+
         auto first = next_thread();
         auto next = first;
         while (next->status != status::ready)
         {
+            if (next->status == status::sleeping)
+            {
+                auto clock = time::main_clock();
+                if (next->sleep_until.has_value() && clock->ns() / 1'000'000 >= next->sleep_until.value())
+                {
+                    next->status = status::ready;
+                    next->wake_reason = wake_reason::success;
+                    break;
+                }
+            }
+            enqueue(next, self->idx);
             next = next_thread();
             if (next == first)
-                next = sched.idle_thread;
+            {
+                enqueue(next, self->idx);
+                next = current != sched.idle_thread ? current : sched.idle_thread;
+            }
         }
 
-        auto current = sched.running_thread;
         if (current && current->status != status::killed)
         {
             save(current, regs);
             if (current != sched.idle_thread)
+            {
+                if (current->status == status::sleeping)
+                    current->sleep_lock.unlock();
                 enqueue(current, self->idx);
+            }
         }
 
         sched.running_thread = next;

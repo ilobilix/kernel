@@ -2,7 +2,7 @@
 
 export module lib:log;
 
-import :lock;
+import :spinlock;
 import :math;
 import std;
 

@@ -24,5 +24,4 @@ export namespace time
     clock *main_clock();
 
     bool stall_ns(std::size_t ns);
-    bool sleep_ns(std::size_t ns);
 } // export namespace time

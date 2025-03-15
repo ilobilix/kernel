@@ -1,6 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module lib:lock;
+export module lib:spinlock;
+
 import std;
 
 export namespace lib
@@ -22,7 +23,10 @@ export namespace lib
             : _next_ticket { 0 }, _serving_ticket { 0 }, _interrupts { false } { }
 
         spinlock(const spinlock &) = delete;
+        spinlock(spinlock &&) = delete;
+
         spinlock &operator=(const spinlock &) = delete;
+        spinlock &operator=(spinlock &&) = delete;
 
         void lock()
         {
@@ -64,7 +68,4 @@ export namespace lib
 
         bool try_lock_until(std::uint64_t ns);
     };
-
-    // TODO: actually implement this
-    using mutex = spinlock<false>;
 } // export namespace lib
