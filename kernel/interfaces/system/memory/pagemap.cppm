@@ -2,7 +2,6 @@
 
 export module system.memory.virt:pagemap;
 
-import magic_enum;
 import frigg;
 import lib;
 import std;
@@ -38,12 +37,6 @@ export namespace vmm
         rwxu = rwx | user
     };
 
-    using magic_enum::bitwise_operators::operator~;
-    using magic_enum::bitwise_operators::operator&;
-    using magic_enum::bitwise_operators::operator&=;
-    using magic_enum::bitwise_operators::operator|;
-    using magic_enum::bitwise_operators::operator|=;
-
     enum class page_size
     {
         // do not modify
@@ -64,6 +57,8 @@ export namespace vmm
 
     class pagemap
     {
+        friend class vspace;
+
         private:
         static std::uintptr_t pa_mask;
 
@@ -135,6 +130,7 @@ export namespace vmm
 
         pagemap();
         pagemap(pagemap *ref) : _table { ref->_table } { }
+        pagemap(table *ref) : _table { ref } { }
 
         ~pagemap();
     };

@@ -2,6 +2,7 @@
 
 module drivers.fs.tmpfs;
 
+import system.memory;
 import system.vfs;
 import lib;
 import std;
@@ -25,7 +26,7 @@ namespace fs::tmpfs
 
                 auto size = buffer.size_bytes();
                 auto real_size = size;
-                if (off_t(offset + size) >= back->stat.st_size)
+                if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
                     real_size = size - ((offset + size) - back->stat.st_size);
 
                 std::memcpy(buffer.data(), back->data.data() + offset, real_size);
@@ -41,12 +42,33 @@ namespace fs::tmpfs
                 back->data.resize(std::max(back->data.size(), offset + size));
                 std::memcpy(back->data.data() + offset, buffer.data(), size);
 
-                if (off_t(offset + size) >= back->stat.st_size)
+                if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
                 {
                     back->stat.st_size = offset + size;
                     back->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(back->stat.st_blksize));
                 }
                 return size;
+            }
+
+            std::uintptr_t mmap(std::shared_ptr<vfs::backing> self, std::uintptr_t page, int flags) override
+            {
+                auto back = reinterpret_cast<backing *>(self.get());
+                std::unique_lock _ { back->lock };
+
+                lib::ensure(page * pmm::page_size < back->data.size());
+
+                if (flags & vmm::map::shared)
+                    return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
+
+                auto copy = pmm::alloc(1);
+                std::memcpy(lib::tohh(copy), back->data.data() + (page * pmm::page_size), std::min(pmm::page_size, back->data.size()));
+                return reinterpret_cast<std::uintptr_t>(copy);
+            }
+
+            bool munmap(std::shared_ptr<vfs::backing> self, std::uintptr_t page) override
+            {
+                lib::unused(self, page);
+                return false;
             }
         };
 
@@ -54,6 +76,8 @@ namespace fs::tmpfs
 
         backing(ino_t ino, mode_t mode, std::shared_ptr<ops> op) : vfs::backing { op }
         {
+            can_mmap = true;
+
             stat.st_size = 0;
             stat.st_blocks = 0;
             stat.st_blksize = 512;

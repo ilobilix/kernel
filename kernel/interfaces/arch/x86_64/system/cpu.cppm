@@ -9,11 +9,11 @@ import std;
 
 export namespace cpu
 {
-    #define rdreg(reg)                                               \
-    ({                                                               \
-        std::uintptr_t val;                                          \
+    #define rdreg(reg)                                             \
+    ({                                                             \
+        std::uintptr_t val;                                        \
         asm volatile ("mov %0, " #reg "" : "=r"(val) :: "memory"); \
-        val;                                                         \
+        val;                                                       \
     })
 
     #define wrreg(reg, val) asm volatile ("mov " #reg ", %0" :: "r"(val) : "memory")
