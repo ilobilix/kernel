@@ -157,7 +157,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
 
     add_defines("LIMINE_API_REVISION=2")
-    add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
+    -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
@@ -171,6 +171,7 @@ toolchain("ilobilix-clang")
             "-ffreestanding",
             "-fno-stack-protector",
             "-fno-omit-frame-pointer",
+            "-fno-strict-aliasing",
 
             "-mgeneral-regs-only",
 

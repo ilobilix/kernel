@@ -12,22 +12,11 @@ import std;
 
 export namespace term
 {
-    struct terminal
-    {
-        flanterm_context *ctx;
+    void write(flanterm_context *ctx, std::string_view str);
+    void write(flanterm_context *ctx, char chr);
 
-        void write(std::string_view str)
-        {
-            flanterm_write(ctx, str.data(), str.length());
-        }
-        void write(char chr)
-        {
-            flanterm_write(ctx, &chr, 1);
-        }
-    };
+    flanterm_context *main();
 
-    std::vector<terminal> terminals;
-    inline auto *main() { return terminals.empty() ? nullptr : &terminals.back(); }
-
+    void early_init();
     void init();
 } // export namespace term

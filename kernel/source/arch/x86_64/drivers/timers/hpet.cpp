@@ -98,7 +98,10 @@ namespace x86_64::timers::hpet
 
         is_64bit = (regs->cap & ACPI_HPET_COUNT_SIZE_CAP);
         if (is_64bit == false)
-            lib::panic("hpet: TODO: 32 bit timer");
+        {
+            log::error("hpet: TODO: 32 bit timer is not supported");
+            return;
+        }
 
         frequency = 1'000'000'000'000'000ull / (regs->cap >> 32);
         std::tie(p, n) = lib::freq2nspn(frequency);

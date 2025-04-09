@@ -53,7 +53,7 @@ export namespace boot
 //         volatile limine_dtb_request dtb
 //         {
 //             .id = LIMINE_DTB_REQUEST,
-//             .revision = limine_rev,
+//             .revision = 0,
 //             .response = nullptr
 //         };
 // #endif
@@ -62,7 +62,7 @@ export namespace boot
         volatile limine_framebuffer_request framebuffer
         {
             .id = LIMINE_FRAMEBUFFER_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -70,7 +70,7 @@ export namespace boot
         volatile limine_mp_request smp
         {
             .id = LIMINE_MP_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr,
 #if defined(__x86_64__)
             .flags = LIMINE_MP_X2APIC
@@ -83,7 +83,7 @@ export namespace boot
         volatile limine_paging_mode_request paging_mode
         {
             .id = LIMINE_PAGING_MODE_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr,
             .mode = LIMINE_PAGING_MODE_DEFAULT,
             .max_mode = LIMINE_PAGING_MODE_DEFAULT,
@@ -94,7 +94,7 @@ export namespace boot
         volatile limine_memmap_request memmap
         {
             .id = LIMINE_MEMMAP_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -102,7 +102,7 @@ export namespace boot
         volatile limine_rsdp_request rsdp
         {
             .id = LIMINE_RSDP_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -110,7 +110,7 @@ export namespace boot
         volatile limine_module_request module_
         {
             .id = LIMINE_MODULE_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr,
             .internal_module_count = 0,
             .internal_modules = nullptr
@@ -120,7 +120,7 @@ export namespace boot
         volatile limine_executable_file_request kernel_file
         {
             .id = LIMINE_EXECUTABLE_FILE_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -128,7 +128,7 @@ export namespace boot
         volatile limine_boot_time_request boot_time
         {
             .id = LIMINE_BOOT_TIME_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -136,7 +136,7 @@ export namespace boot
         volatile limine_hhdm_request hhdm
         {
             .id = LIMINE_HHDM_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -144,7 +144,7 @@ export namespace boot
         volatile limine_executable_address_request kernel_address
         {
             .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr
         };
 
@@ -152,7 +152,7 @@ export namespace boot
         volatile limine_stack_size_request stack_size
         {
             .id = LIMINE_STACK_SIZE_REQUEST,
-            .revision = limine_rev,
+            .revision = 0,
             .response = nullptr,
             .stack_size = kernel_stack_size
         };

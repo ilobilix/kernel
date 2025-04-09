@@ -71,6 +71,12 @@ struct alignment_assumption_data
     type_descriptor *type;
 };
 
+struct invalid_builtin_data
+{
+    source_location location;
+    unsigned char kind;
+};
+
 #ifdef ILOBILIX_UBSAN
 
 static void print(auto message, source_location loc)
@@ -165,6 +171,11 @@ extern "C"
     void __ubsan_handle_alignment_assumption(alignment_assumption_data *data, unsigned long, unsigned long, unsigned long)
     {
         print("alignment-assumption", data->location);
+    }
+
+    void __ubsan_handle_invalid_builtin(invalid_builtin_data *data)
+    {
+        print("invalid-builtin", data->location);
     }
 } // extern "C"
 

@@ -49,8 +49,8 @@ namespace lib
         log::println("");
 #if ILOBILIX_EXTRA_PANIC_MSG
 #  if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto term = term::main())
-            term->write(nooo_ascii);
+        if (auto ctx = term::main())
+            term::write(ctx, nooo_ascii);
 #  endif
         for (auto chr : nooo_unicode)
             serial::printc(chr);

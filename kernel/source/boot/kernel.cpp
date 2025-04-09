@@ -33,6 +33,8 @@ extern "C"
     void kmain()
     {
         serial::early_init();
+        term::early_init();
+
         boot::check_requests();
 
         memory::init();

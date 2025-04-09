@@ -20,8 +20,8 @@ namespace log::unsafe
         for (auto chr : str)
             serial::printc(chr);
 #if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto term = term::main())
-            term->write(str);
+        if (auto ctx = term::main())
+            term::write(ctx, str);
 #endif
     }
 
@@ -29,8 +29,8 @@ namespace log::unsafe
     {
         serial::printc(chr);
 #if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto term = term::main())
-            term->write(chr);
+        if (auto ctx = term::main())
+            term::write(ctx, chr);
 #endif
     }
 
