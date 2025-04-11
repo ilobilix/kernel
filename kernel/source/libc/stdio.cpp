@@ -11,7 +11,7 @@ extern "C"
 
     int vprintf(const char *format, va_list arg)
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
         return vprintf_(format, arg);
     }
 
@@ -110,7 +110,7 @@ extern "C"
 
     int fprintf(std::FILE *, const char *format, ...)
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         va_list arg;
         va_start(arg, format);
@@ -123,7 +123,7 @@ extern "C"
 
     std::size_t fwrite(const void *ptr, std::size_t size, std::size_t nmemb, std::FILE *)
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         const auto uptr = static_cast<const std::uint8_t *>(ptr);
         for (std::size_t i = 0; i < size * nmemb; i += size)

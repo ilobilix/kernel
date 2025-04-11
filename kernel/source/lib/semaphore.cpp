@@ -10,7 +10,7 @@ namespace lib
 {
     bool semaphore::test()
     {
-        bool ints = arch::int_switch_status(false);
+        const bool ints = arch::int_switch_status(false);
         lock.lock();
 
         bool ret = false;
@@ -27,7 +27,7 @@ namespace lib
 
     void semaphore::wait()
     {
-        bool ints = arch::int_switch_status(false);
+        const bool ints = arch::int_switch_status(false);
         lock.lock();
 
         auto me = sched::this_thread();
@@ -80,7 +80,7 @@ namespace lib
         if (n == 0)
             return;
 
-        bool ints = arch::int_switch_status(false);
+        const bool ints = arch::int_switch_status(false);
         lock.lock();
 
         while (n--)

@@ -258,7 +258,7 @@ extern "C"
 
     char *strdup(const char *str)
     {
-        std::size_t len = strlen(str) + 1;
+        const std::size_t len = strlen(str) + 1;
 
         void *newstr = std::malloc(len);
         if (newstr == nullptr)
@@ -367,7 +367,7 @@ extern "C"
 
         for (std::size_t i = 0, j = len - 1; i < j; i++, j--)
         {
-            char a = str[i];
+            const char a = str[i];
             str[i] = str[j];
             str[j] = a;
         }

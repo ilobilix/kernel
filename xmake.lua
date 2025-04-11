@@ -28,13 +28,8 @@ if is_mode("debug") then
 elseif is_mode("releasedbg") then
     set_symbols("debug")
     set_optimize("fastest")
--- release with -Os
-elseif is_mode("releasesmall") then
-    set_strip("debug")
-    set_optimize("smallest")
 -- release
 elseif is_mode("release") then
-    set_strip("debug")
     set_optimize("fastest")
 end
 

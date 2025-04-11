@@ -88,13 +88,13 @@ export namespace log
 
     inline void print(std::string_view fmt, auto &&...args)
     {
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
         detail::print(fmt, args...);
     }
 
     inline void println(std::string_view fmt, auto &&...args)
     {
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
 
         detail::print(fmt, args...);
         detail::print("\n");
@@ -102,7 +102,7 @@ export namespace log
 
     inline constexpr void println(level lvl, std::string_view fmt, auto &&...args)
     {
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
 
         const auto index = std::to_underlying(lvl);
 

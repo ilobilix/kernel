@@ -32,7 +32,7 @@ namespace sched
         std::atomic_size_t next_pid = 0;
         std::size_t alloc_pid(std::shared_ptr<process> proc)
         {
-            std::unique_lock _ { process_lock };
+            const std::unique_lock _ { process_lock };
             auto pid = next_pid++;
             processes[pid] = proc;
             return pid;
@@ -41,7 +41,7 @@ namespace sched
         std::shared_ptr<thread> next_thread(bool idle = false)
         {
             auto &self = cpu::self()->sched;
-            std::unique_lock _ { self.lock };
+            const std::unique_lock _ { self.lock };
 
             auto &queue = self.queue;
             if (queue.empty() || idle)
@@ -108,7 +108,7 @@ namespace sched
         thread->kstack_top = thread->ustack_top = stack;
         arch::finalise(thread, ip);
 
-        std::unique_lock _ { parent->lock };
+        const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
         // enqueued manually
 
@@ -129,7 +129,7 @@ namespace sched
 
     bool thread::wake_up(std::size_t reason)
     {
-        bool ints = ::arch::int_switch_status(false);
+        const bool ints = ::arch::int_switch_status(false);
         sleep_lock.lock();
 
         if (status != status::sleeping)
@@ -167,7 +167,7 @@ namespace sched
             proc->cwd = parent->cwd;
             proc->parent = parent;
 
-            std::unique_lock _ { parent->lock };
+            const std::unique_lock _ { parent->lock };
             parent->children[proc->pid] = proc;
         }
         else proc->root = proc->cwd = vfs::node::root(true);
@@ -189,8 +189,8 @@ namespace sched
     {
         auto thread = this_thread();
 
-        bool eeping = thread->status == status::sleeping;
-        bool old = eeping ? thread->sleep_ints : ::arch::int_status();
+        const bool eeping = thread->status == status::sleeping;
+        const bool old = eeping ? thread->sleep_ints : ::arch::int_status();
 
         if (eeping && thread->sleep_for.has_value())
         {
@@ -228,7 +228,7 @@ namespace sched
             thread->status = status::ready;
 
         auto &sched = cpu::processors[cpu_idx].sched;
-        std::unique_lock _ { sched.lock };
+        const std::unique_lock _ { sched.lock };
         sched.queue.push_back(thread);
     }
 

@@ -24,7 +24,7 @@ namespace pmm
 
     memory info()
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
         return mem;
     }
 
@@ -33,7 +33,7 @@ namespace pmm
         if (count == 0)
             return nullptr;
 
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         auto inner_alloc = [count](auto limit) -> void *
         {
@@ -76,7 +76,7 @@ namespace pmm
         if (ptr == nullptr)
             return;
 
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         const std::size_t page = reinterpret_cast<std::uintptr_t>(ptr) / page_size;
         for (std::size_t i = page; i < page + count; i++)

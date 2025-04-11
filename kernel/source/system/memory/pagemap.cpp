@@ -43,7 +43,7 @@ namespace vmm
         if (paddr % npsize || vaddr % npsize)
             return std::unexpected { error::addr_not_aligned };
 
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
 
         const auto aflags = to_arch(flags, cache, psize);
 
@@ -84,7 +84,7 @@ namespace vmm
         if (vaddr % from_page_size(psize))
             return std::unexpected { error::addr_not_aligned };
 
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
 
         psize = fixpsize(psize);
 
@@ -110,7 +110,7 @@ namespace vmm
         if (vaddr % from_page_size(psize))
             return std::unexpected { error::addr_not_aligned };
 
-        std::unique_lock _ { _lock };
+        const std::unique_lock _ { _lock };
 
         psize = fixpsize(psize);
 

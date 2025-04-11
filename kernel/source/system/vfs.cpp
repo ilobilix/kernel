@@ -23,7 +23,7 @@ namespace vfs
 
     bool register_fs(std::unique_ptr<filesystem> fs)
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
         if (filesystems.contains(fs->name))
             return false;
 
@@ -34,7 +34,7 @@ namespace vfs
 
     auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
         if (auto it = filesystems.find(name); it != filesystems.end())
             return it->second;
         return std::unexpected(error::invalid_filesystem);
@@ -103,11 +103,11 @@ namespace vfs
 
         for (const auto segment_view : std::views::split(path.str(), '/'))
         {
-            std::string_view segment { segment_view };
+            const std::string_view segment { segment_view };
             if (segment.empty())
                 continue;
 
-            bool last = is_last(segment);
+            const bool last = is_last(segment);
             auto current_me = current->me();
 
             if (segment == "..")
@@ -169,7 +169,7 @@ namespace vfs
         if (!fs)
             return std::unexpected(fs.error());
 
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         std::shared_ptr<node> source_node;
         if (!source.empty())
@@ -209,7 +209,7 @@ namespace vfs
 
     auto create(std::shared_ptr<node> parent, lib::path path, mode_t mode) -> expect<std::shared_ptr<node>>
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         auto res = resolve(parent, path);
         if (res)
@@ -226,7 +226,7 @@ namespace vfs
             auto node = ret.value();
             node->fs = parent_node->fs;
 
-            std::unique_lock _ { parent_node->lock };
+            const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
             return node;
         }
@@ -235,7 +235,7 @@ namespace vfs
 
     auto symlink(std::shared_ptr<node> parent, lib::path path, lib::path target) -> expect<std::shared_ptr<node>>
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         auto res = resolve(parent, path);
         if (res)
@@ -249,8 +249,8 @@ namespace vfs
         auto ret = parent_node->fs->symlink(parent_node, path.basename(), target);
         if (ret)
         {
-            auto node = ret.value();
-            std::unique_lock _ { parent_node->lock };
+            const auto node = ret.value();
+            const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
             return node;
         }
@@ -271,7 +271,7 @@ namespace vfs
 
     auto stat(std::shared_ptr<node> parent, lib::path path) -> expect<::stat>
     {
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
 
         auto res = resolve(parent, path);
         if (!res)

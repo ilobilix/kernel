@@ -91,6 +91,6 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
         constexpr const char *function_name() const noexcept
         { return _func; }
     };
-    custom_location loc { file, line, func };
+    const custom_location loc { file, line, func };
     lib::vpanic(message, std::make_format_args(), nullptr, loc);
 }
