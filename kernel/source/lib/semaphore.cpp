@@ -75,13 +75,20 @@ namespace lib
         return false;
     }
 
-    void semaphore::signal(std::size_t n)
+    void semaphore::signal(std::size_t n, bool drop)
     {
-        if (n == 0)
-            return;
-
         const bool ints = arch::int_switch_status(false);
         lock.lock();
+
+        if (n == 0)
+            n = threads.size();
+
+        if (n == 0 && drop)
+        {
+            lock.unlock();
+            arch::int_switch(ints);
+            return;
+        }
 
         while (n--)
         {

@@ -24,5 +24,4 @@ Make sure you have recent versions of the following programs installed:
 
 ## Known Bugs
 * #PF when uACPI fixed events are invoked
-* triple fault on pagemap load in release mode
-* threads sometimes do not execute after yielding in debug mode
+* threads sometimes do not execute after yielding

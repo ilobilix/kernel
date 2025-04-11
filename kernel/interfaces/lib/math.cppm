@@ -69,8 +69,8 @@ export namespace lib
 
     inline constexpr auto unique_from(std::unsigned_integral auto a) { return a; }
 
-    template<std::unsigned_integral ...Args>
-    inline constexpr auto unique_from(std::unsigned_integral auto a, Args &&...args)
+    template<typename ...Args>
+    inline constexpr auto unique_from(auto a, Args &&...args)
     {
         static constexpr auto szudzik = [](std::size_t x, std::size_t y)
         {

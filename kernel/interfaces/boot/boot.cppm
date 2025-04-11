@@ -38,7 +38,7 @@ export namespace boot
         acpi_reclaimable = LIMINE_MEMMAP_ACPI_RECLAIMABLE,
         acpi_nvs = LIMINE_MEMMAP_ACPI_NVS,
         bad_memory = LIMINE_MEMMAP_BAD_MEMORY,
-        bootloader_reclaimable = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE,
+        bootloader = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE,
         kernel_and_modules = LIMINE_MEMMAP_EXECUTABLE_AND_MODULES,
         framebuffer = LIMINE_MEMMAP_FRAMEBUFFER
     };

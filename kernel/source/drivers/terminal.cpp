@@ -80,14 +80,14 @@ namespace term
         );
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
+
+        log::info("initialised the graphical terminal");
 #endif
     }
 
     void init()
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
-        log::info("initialising the graphical terminal");
-
         for (auto &frm : frm::framebuffers)
         {
             if (frm.address == early_addr)

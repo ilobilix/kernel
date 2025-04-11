@@ -95,7 +95,7 @@ namespace pmm
         for (std::size_t i = 0; i < num; i++)
         {
             const auto memmap = memmaps[i];
-            if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader_reclaimable)
+            if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
                 continue;
 
             free(reinterpret_cast<void *>(memmap->base), memmap->length / page_size);
@@ -121,7 +121,7 @@ namespace pmm
             switch (static_cast<boot::memmap>(memmap->type))
             {
                 case boot::memmap::kernel_and_modules:
-                case boot::memmap::bootloader_reclaimable:
+                case boot::memmap::bootloader:
                     mem.used += memmap->length;
                     [[fallthrough]];
                 case boot::memmap::usable:
@@ -153,7 +153,7 @@ namespace pmm
                 std::memset(data, 0xFF, bitmap_size);
                 bitmap.initialise(data, bitmap_size);
 
-                log::debug("pmm: bitmap address: 0x{:X}, size: {} bytes", addr, bitmap_size);
+                log::debug("pmm: bitmap address: 0x{:X}, size: 0x{:X} bytes", addr, bitmap_size);
 
                 memmap->length -= bitmap_size;
                 memmap->base += bitmap_size;
