@@ -102,7 +102,7 @@ namespace pci::acpi
             if (node == nullptr)
             {
                 for (std::size_t i = 0; i < 4; i++)
-                    bridge_irq[i] = parent->resolve(bus->bridge->dev, i + 1);
+                    bridge_irq[i] = parent->resolve(bus->associated_bridge.lock()->dev, i + 1);
                 mod = model::expansion;
                 return;
             }
@@ -115,7 +115,7 @@ namespace pci::acpi
                 {
                     log::warn("pci: no '_PRT' for bus. assuming expansion bridge routing");
                     for (std::size_t i = 0; i < 4; i++)
-                        bridge_irq[i] = parent->resolve(bus->bridge->dev, i + 1);
+                        bridge_irq[i] = parent->resolve(bus->associated_bridge.lock()->dev, i + 1);
                     mod = model::expansion;
                 }
                 else log::error("pci: no '_PRT' for bus");
@@ -192,12 +192,13 @@ namespace pci::acpi
             uacpi_namespace_node *dev_handle = nullptr;
             if (node != nullptr)
             {
+                const auto bridge = bus->associated_bridge.lock();
                 struct devctx
                 {
                     std::uint64_t addr;
                     uacpi_namespace_node *out;
                 } ctx {
-                    .addr = static_cast<std::uint64_t>((bus->bridge->dev << 16) | bus->bridge->func),
+                    .addr = static_cast<std::uint64_t>((bridge->dev << 16) | bridge->func),
                     .out = nullptr
                 };
 
@@ -279,7 +280,7 @@ namespace pci::acpi
                 uacpi_eval_simple_integer(node, "_SEG", &seg);
                 uacpi_eval_simple_integer(node, "_BBN", &bus);
 
-                auto rbus = std::make_shared<pci::bus>(seg, bus, getio(seg, bus), nullptr, nullptr);
+                auto rbus = std::make_shared<pci::bus>(seg, bus, getio(seg, bus));
                 rbus->router = std::make_shared<router>(nullptr, rbus, node);
                 addrb(rbus);
 

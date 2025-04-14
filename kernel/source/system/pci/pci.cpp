@@ -47,8 +47,8 @@ namespace pci
                 if (pin != 0 && bus->router)
                     device->irq.route = bus->router->resolve(dev, pin);
 
-                devs[devidx(device)] = device;
                 bus->devices.push_back(device);
+                devs[devidx(device)] = device;
             }
             else if (header == 0x01) // PCI-to-PCI bridge
             {
@@ -69,10 +69,11 @@ namespace pci
                         secondary_bus->router->parent = bus->router;
                     }
 
-                    bridge->parent = secondary_bus;
+                    bridge->associated_bus = secondary_bus;
                     enum_bus(secondary_bus);
                 }
 
+                bus->bridges.push_back(bridge);
                 brdgs[devidx(bridge)] = bridge;
             }
         }
@@ -94,7 +95,13 @@ namespace pci
 
         void enum_bus(const auto &bus)
         {
-            const bool devs32 = !(bus->bridge && bus->bridge->is_pcie && bus->bridge->is_secondary);
+            bool devs32 = true;
+            if (!bus->associated_bridge.expired())
+            {
+                const auto bridge = bus->associated_bridge.lock();
+                if (bridge->is_pcie && bridge->is_secondary)
+                    devs32 = false;
+            }
             for (std::uint8_t i = 0; i < (devs32 ? 32 : 1); i++)
                 enum_dev(bus, i);
         }
@@ -146,7 +153,7 @@ namespace pci
         return virt = (vaddr + (phys - paddr));
     }
 
-    entity::entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
+    entity::entity(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
         : dev { dev }, func { func }, parent { parent }
     {
         if (const auto status = read<16>(reg::status); status & (1 << 4))
@@ -225,7 +232,7 @@ namespace pci
                         break;
                     }
                     default:
-                        log::warn("pci: unknown memory mapped bar type 0x{:X}", type);
+                        log::error("pci: unknown memory mapped bar type 0x{:X}", type);
                         break;
                 }
 
