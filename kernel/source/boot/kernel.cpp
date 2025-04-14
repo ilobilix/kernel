@@ -27,8 +27,11 @@ void kthread()
 
 extern "C"
 {
-    std::byte kernel_stack[boot::kernel_stack_size] { };
-    auto kernel_stack_top = kernel_stack + boot::kernel_stack_size;
+    [[gnu::used]]
+    std::byte kernel_stack[boot::kstack_size] { };
+
+    [[gnu::used]]
+    auto kernel_stack_top = kernel_stack + boot::kstack_size;
 
     void kmain()
     {

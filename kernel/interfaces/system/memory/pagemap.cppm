@@ -117,6 +117,8 @@ export namespace vmm
         static auto getlvl(entry &entry, bool allocate) -> table *;
 
         public:
+        inline auto get_arch_table() const { return _table; }
+
         static std::size_t from_page_size(page_size psize);
         static page_size max_page_size(std::size_t size);
 

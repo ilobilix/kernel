@@ -18,13 +18,13 @@ export namespace pmm
     };
     memory info();
 
-    void *alloc(std::size_t count = 1);
+    void *alloc(std::size_t count = 1, bool clear = false);
     void free(void *ptr, std::size_t count = 1);
 
     template<typename Type = void *>
-    inline Type alloc(std::size_t count = 1)
+    inline Type alloc(std::size_t count = 1, bool clear = false)
     {
-        return reinterpret_cast<Type>(alloc(count));
+        return reinterpret_cast<Type>(alloc(count, clear));
     }
 
     inline void free(auto ptr, std::size_t count = 1)

@@ -45,7 +45,6 @@ export namespace sched
         bool is_user;
 
         cpu::registers regs;
-        std::vector<std::byte *> stacks;
 
         lib::spinlock<false> sleep_lock;
         bool sleep_ints;
