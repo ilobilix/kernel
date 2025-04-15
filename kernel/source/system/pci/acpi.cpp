@@ -19,6 +19,9 @@ import std;
 
 namespace pci::acpi
 {
+    [[gnu::weak]] std::uint32_t ecam_read(std::uintptr_t addr, std::size_t width);
+    [[gnu::weak]] void ecam_write(std::uintptr_t addr, std::uint32_t val, std::size_t width);
+
     class ecam : public configio
     {
         private:
@@ -53,8 +56,14 @@ namespace pci::acpi
 
         std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) override
         {
+            lib::ensure(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
             lib::ensure(seg == _seg);
+
             const auto addr = getaddr(bus, dev, func, offset);
+
+#if defined(__x86_64__)
+            return ecam_read(addr, width);
+#else
             switch (width)
             {
                 case sizeof(std::uint8_t):
@@ -63,16 +72,21 @@ namespace pci::acpi
                     return lib::mmio::in<16>(addr);
                 case sizeof(std::uint32_t):
                     return lib::mmio::in<32>(addr);
-                default:
-                    lib::panic("pci::ecam::read: invalid width {}", width);
             }
             std::unreachable();
+#endif
         }
 
         void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) override
         {
+            lib::ensure(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
             lib::ensure(seg == _seg);
-            auto addr = getaddr(bus, dev, func, offset);
+
+            const auto addr = getaddr(bus, dev, func, offset);
+
+#if defined(__x86_64__)
+            ecam_write(addr, value, width);
+#else
             switch (width)
             {
                 case sizeof(std::uint8_t):
@@ -84,9 +98,8 @@ namespace pci::acpi
                 case sizeof(std::uint32_t):
                     lib::mmio::out<32>(addr, value);
                     break;
-                default:
-                    lib::panic("pci::ecam::write: invalid width {}", width);
             }
+#endif
         }
     };
 
@@ -113,17 +126,17 @@ namespace pci::acpi
             {
                 if (parent)
                 {
-                    log::warn("pci: no '_PRT' for bus. assuming expansion bridge routing");
+                    log::warn("pci: no '_PRT' for bus {:04X}:{:02X}. assuming expansion bridge routing", bus->seg, bus->id);
                     for (std::size_t i = 0; i < 4; i++)
                         bridge_irq[i] = parent->resolve(bus->associated_bridge.lock()->dev, i + 1);
                     mod = model::expansion;
                 }
-                else log::error("pci: no '_PRT' for bus");
+                else log::error("pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible", bus->seg, bus->id);
                 return;
             }
             else if (ret != UACPI_STATUS_OK)
             {
-                log::error("pci: failed to evaluate '_PRT': {}", uacpi_status_to_string(ret));
+                log::error("pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}", bus->seg, bus->id, uacpi_status_to_string(ret));
                 return;
             }
 
@@ -187,7 +200,7 @@ namespace pci::acpi
             mod = model::root;
         }
 
-        std::shared_ptr<pci::router> downstream(std::shared_ptr<bus> &bus) override
+        std::shared_ptr<pci::router> downstream(std::shared_ptr<pci::router> me, std::shared_ptr<bus> &bus) override
         {
             uacpi_namespace_node *dev_handle = nullptr;
             if (node != nullptr)
@@ -222,7 +235,7 @@ namespace pci::acpi
                 );
                 dev_handle = ctx.out;
             }
-            return std::make_shared<router>(nullptr, bus, dev_handle);
+            return std::make_shared<router>(me, bus, dev_handle);
         }
     };
 
@@ -249,7 +262,12 @@ namespace pci::acpi
         for (std::size_t i = 0; i < entries; i++)
         {
             auto &entry = mcfg->entries[i];
-            auto io = std::make_shared<ecam>(entry.address, entry.segment, entry.start_bus, entry.end_bus);
+            auto io = std::make_shared<ecam>(
+                static_cast<std::uintptr_t>(entry.address),
+                static_cast<std::uint16_t>(entry.segment),
+                static_cast<std::uint8_t>(entry.start_bus),
+                static_cast<std::uint8_t>(entry.end_bus)
+            );
 
             for (std::size_t b = entry.start_bus; b <= entry.end_bus; b++)
                 addio(io, entry.segment, b);
@@ -268,12 +286,13 @@ namespace pci::acpi
             nullptr,
         };
 
-        bool found = false;
+        std::size_t num = 0;
         uacpi_find_devices_at(
             uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
             root_ids, [](void *ptr, uacpi_namespace_node *node, std::uint32_t)
             {
-                *static_cast<bool *>(ptr) = true;
+                auto &num = *static_cast<std::size_t *>(ptr);
+                num++;
 
                 std::uint64_t seg = 0, bus = 0;
 
@@ -285,11 +304,11 @@ namespace pci::acpi
                 addrb(rbus);
 
                 return UACPI_ITERATION_DECISION_CONTINUE;
-            }, &found
+            }, &num
         );
 
-        if (found)
-            log::debug("pci: found root buses with acpi");
-        return found;
+        if (num)
+            log::debug("pci: found {} root bus{} with acpi", num, num > 1 ? "es" : "");
+        return num;
     }
 } // namespace pci::acpi

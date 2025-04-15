@@ -91,7 +91,10 @@ namespace x86_64::timers::hpet
         const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
         log::debug("hpet: mapping to 0x{:X}", vaddr);
 
-        if (!vmm::kernel_pagemap->map(vaddr, paddr, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
+        const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+
+        if (!vmm::kernel_pagemap->map(vaddr, paddr, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
             lib::panic("could not map HPET");
 
         regs = reinterpret_cast<decltype(regs)>(vaddr);

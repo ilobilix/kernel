@@ -63,7 +63,10 @@ namespace x86_64::apic::io
 
                 log::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
 
-                if (!vmm::kernel_pagemap->map(_mmio, mmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
+                const auto psize = vmm::page_size::small;
+                const auto npsize = vmm::pagemap::from_page_size(psize);
+
+                if (!vmm::kernel_pagemap->map(_mmio, mmio, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
                     lib::panic("could not map ioapic mmio");
 
                 _redirs = ((read(0x01) >> 16) & 0xFF) + 1;
@@ -118,8 +121,8 @@ namespace x86_64::apic::io
         {
             for (const auto &entry : acpi::madt::isos)
             {
-                if (entry.source == irq)
-                    return entry.gsi;
+                if (static_cast<std::uint8_t>(entry.source) == irq)
+                    return static_cast<std::uint32_t>(entry.gsi);
             }
             return std::nullopt;
         }
@@ -183,24 +186,25 @@ namespace x86_64::apic::io
         pic::disable();
 
         for (const auto &entry : acpi::madt::ioapics)
-            ioapics.emplace_back(entry.address, entry.gsi_base);
+            ioapics.emplace_back(static_cast<std::uintptr_t>(entry.address), static_cast<std::uint32_t>(entry.gsi_base));
 
         if (acpi::madt::hdr->flags & ACPI_PIC_ENABLED)
         {
-            for (std::size_t i = 0; i < 16; i++)
+            for (std::uint8_t i = 0; i < 16; i++)
             {
                 if (i == 2)
                     continue;
 
                 for (const auto &entry : acpi::madt::isos)
                 {
-                    if (entry.source == i)
+                    auto src = static_cast<std::uint8_t>(entry.source);
+                    if (src == i)
                     {
                         set_gsi(
-                            entry.gsi, entry.source + 0x20, cpu::bsp_aid,
+                            static_cast<std::uint32_t>(entry.gsi), src + 0x20, cpu::bsp_aid,
                             static_cast<flag>(entry.flags) | flag::masked, delivery::fixed
                         );
-                        if (auto handler = idt::handler_at(cpu::bsp_aid, entry.source + 0x20))
+                        if (auto handler = idt::handler_at(cpu::bsp_aid, src + 0x20))
                             handler.value().get().reserve();
                         goto end;
                     }

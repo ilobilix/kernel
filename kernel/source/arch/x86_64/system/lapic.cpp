@@ -220,7 +220,10 @@ namespace x86_64::apic
 
                 log::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
 
-                if (!vmm::kernel_pagemap->map(mmio, pmmio, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
+                const auto psize = vmm::page_size::small;
+                const auto npsize = vmm::pagemap::from_page_size(psize);
+
+                if (!vmm::kernel_pagemap->map(mmio, pmmio, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
                     lib::panic("could not map lapic mmio");
             }
             else lib::ensure(phys_mmio == pmmio, "APIC mmio address differs from the BSP");

@@ -26,7 +26,7 @@ namespace pci
             if (venid == 0xFFFF || devid == 0xFFFF)
                 return;
 
-            const auto header = bus->template read<8>(dev, func, reg::header);
+            const auto header = bus->template read<8>(dev, func, reg::header) & 0x7F;
             if (header == 0x00) // device
             {
                 // log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
@@ -59,15 +59,14 @@ namespace pci
                 const auto secondary_id = bridge->template read<8>(reg::secondary_bus);
                 if (secondary_id)
                 {
+                    log::debug("pci: secondary bus: {:04X}:{:02X}", bus->seg, secondary_id);
+
                     bridge->secondary_bus = secondary_id;
                     bridge->subordinate_bus = bridge->template read<8>(reg::subordinate_bus);
 
                     auto secondary_bus = std::make_shared<pci::bus>(bus->seg, secondary_id, bus->io, bridge, nullptr);
                     if (bus->router)
-                    {
-                        secondary_bus->router = bus->router->downstream(secondary_bus);
-                        secondary_bus->router->parent = bus->router;
-                    }
+                        secondary_bus->router = bus->router->downstream(bus->router, secondary_bus);
 
                     bridge->associated_bus = secondary_bus;
                     enum_bus(secondary_bus);
@@ -76,6 +75,7 @@ namespace pci
                 bus->bridges.push_back(bridge);
                 brdgs[devidx(bridge)] = bridge;
             }
+            else lib::panic("pci: unknown header type: {:X}", header);
         }
 
         void enum_dev(const auto &bus, std::uint8_t dev)
@@ -295,7 +295,10 @@ namespace pci
         }
 
         for (const auto &rb : rbs)
+        {
+            log::debug("pci: root bus: {:04X}:{:02X}", rb->seg, rb->id);
             enum_bus(rb);
+        }
     }
 
     namespace arch

@@ -89,7 +89,7 @@ namespace cpu
             auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
             for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
             {
-                if (!vmm::kernel_pagemap->map(stack + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::normal))
+                if (!vmm::kernel_pagemap->map(stack + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
                     lib::panic("could not map kernel stack");
             }
 

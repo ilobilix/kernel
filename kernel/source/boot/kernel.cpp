@@ -3,9 +3,16 @@
 import ilobilix;
 import std;
 
+namespace uacpi
+{
+    extern "C++" void init_workers();
+} // namespace uacpi
+
 void kthread()
 {
     log::debug("entered main kernel thread");
+
+    uacpi::init_workers();
 
     pci::register_rbs();
     pci::init();
