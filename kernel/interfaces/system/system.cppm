@@ -4,6 +4,7 @@ export module system;
 
 export import arch.system;
 export import system.acpi;
+export import system.bin;
 export import system.cpu;
 export import system.cpu.self;
 export import system.interrupts;

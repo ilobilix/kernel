@@ -23,4 +23,5 @@ export import :rwlock;
 export import :semaphore;
 export import :set;
 export import :spinlock;
+export import :trace;
 export import :types;
