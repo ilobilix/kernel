@@ -41,6 +41,8 @@ namespace term
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
         flanterm_write(ctx, str.data(), str.length());
+#else
+        lib::unused(ctx, str);
 #endif
     }
 
@@ -48,6 +50,8 @@ namespace term
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
         flanterm_write(ctx, &chr, 1);
+#else
+        lib::unused(ctx, chr);
 #endif
     }
 

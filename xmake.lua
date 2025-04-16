@@ -167,6 +167,7 @@ toolchain("ilobilix-clang")
             "-fno-stack-protector",
             "-fno-omit-frame-pointer",
             "-fno-strict-aliasing",
+            "-fstrict-vtable-pointers",
 
             "-mgeneral-regs-only",
 
@@ -200,7 +201,12 @@ toolchain("ilobilix-clang")
         local target = ""
 
         if is_mode("releasesmall") or is_mode("release") then
-            table.insert(cx_args, "-flto")
+            multi_insert(cx_args,
+                "-flto=full",
+                "-funified-lto"
+            )
+            table.insert(cxx_args, "-fwhole-program-vtables")
+            table.insert(ld_args, "--lto=full")
             toolchain:add("defines", "ILOBILIX_DEBUG=0");
         else
             toolchain:add("defines", "ILOBILIX_DEBUG=1");
