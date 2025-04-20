@@ -5,7 +5,7 @@ export module net:ether;
 import :addr;
 import :packet;
 import lib;
-import std;
+import cppstd;
 
 namespace utils
 {

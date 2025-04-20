@@ -3,7 +3,7 @@
 module arch;
 
 import system.cpu;
-import std;
+import cppstd;
 
 namespace arch
 {

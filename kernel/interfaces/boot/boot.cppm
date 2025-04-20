@@ -8,7 +8,7 @@ export module boot;
 
 import system.scheduler;
 import lib;
-import std;
+import cppstd;
 
 namespace
 {

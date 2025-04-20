@@ -7,7 +7,7 @@ import system.cpu;
 import boot;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 #if ILOBILIX_EXTRA_PANIC_MSG
 namespace
@@ -34,7 +34,7 @@ namespace lib
         std::unreachable();
     }
 
-    [[noreturn]]
+    [[noreturn, clang::no_sanitize("undefined")]]
     void vpanic(std::string_view fmt, std::format_args args, cpu::registers *regs, std::source_location location)
     {
         arch::halt_others();

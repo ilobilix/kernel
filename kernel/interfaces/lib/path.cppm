@@ -5,7 +5,7 @@ module;
 #include <cwalk.h>
 
 export module lib:path;
-import std;
+import cppstd;
 
 export namespace lib
 {

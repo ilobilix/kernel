@@ -5,7 +5,7 @@ module x86_64.system.syscall;
 import x86_64.system.gdt;
 import system.cpu;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::syscall
 {

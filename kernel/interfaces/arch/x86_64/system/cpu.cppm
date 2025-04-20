@@ -5,7 +5,7 @@ module;
 #include <cassert>
 
 export module x86_64.system.cpu;
-import std;
+import cppstd;
 
 export namespace cpu
 {

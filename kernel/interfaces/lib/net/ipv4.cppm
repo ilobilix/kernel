@@ -8,7 +8,7 @@ import :ether;
 import :packet;
 
 import lib;
-import std;
+import cppstd;
 
 namespace net::ipv4
 {

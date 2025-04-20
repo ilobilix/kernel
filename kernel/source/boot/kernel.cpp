@@ -1,11 +1,11 @@
 // Copyright (C) 2024-2025  ilobilo
 
 import ilobilix;
-import std;
+import cppstd;
 
 namespace uacpi
 {
-    extern "C++" void init_workers();
+    void init_workers();
 } // namespace uacpi
 
 void kthread()
@@ -26,8 +26,9 @@ void kthread()
     lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
 
     initramfs::init();
-
     pmm::reclaim();
+
+    bin::elf::mod::load();
 
     arch::halt(true);
 }
@@ -48,10 +49,11 @@ extern "C"
         boot::check_requests();
 
         memory::init();
-        bin::elf::init_ksyms();
 
         serial::init();
         cxxabi::construct();
+
+        bin::elf::sym::load_kernel();
 
         frm::init();
         term::init();

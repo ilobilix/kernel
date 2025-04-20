@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module net:checksum;
-import std;
+import cppstd;
 
 export namespace net
 {

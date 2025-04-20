@@ -7,7 +7,7 @@ import system.memory.virt;
 import system.cpu;
 import system.vfs;
 import lib;
-import std;
+import cppstd;
 
 extern "C++" struct processor;
 export namespace sched

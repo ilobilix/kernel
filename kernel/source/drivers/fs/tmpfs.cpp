@@ -5,7 +5,7 @@ module drivers.fs.tmpfs;
 import system.memory;
 import system.vfs;
 import lib;
-import std;
+import cppstd;
 
 namespace fs::tmpfs
 {

@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module aarch64.system.cpu.self;
-import std;
+import cppstd;
 
 export namespace cpu::arch
 {

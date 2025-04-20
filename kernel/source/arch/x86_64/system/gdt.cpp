@@ -6,7 +6,7 @@ import system.cpu.self;
 import system.memory;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::gdt
 {

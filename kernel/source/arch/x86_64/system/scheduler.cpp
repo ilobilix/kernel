@@ -10,7 +10,7 @@ import system.cpu.self;
 import system.cpu;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace sched
 {

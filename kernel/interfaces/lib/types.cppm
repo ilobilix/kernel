@@ -3,7 +3,7 @@
 export module lib:types;
 
 import magic_enum;
-import std;
+import cppstd;
 
 export namespace lib
 {

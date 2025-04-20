@@ -5,7 +5,7 @@ module system.time;
 import frigg;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace time
 {
@@ -33,7 +33,7 @@ namespace time
 
     void register_clock(clock &clock)
     {
-        log::debug("time: registering clock source '{}'", clock.name);
+        log::info("time: registering clock source '{}'", clock.name);
         clocks.push(&clock);
         log::debug("time: main clock is set to '{}'", (main = clocks.top())->name);
     }

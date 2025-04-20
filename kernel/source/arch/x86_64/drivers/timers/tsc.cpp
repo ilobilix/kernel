@@ -8,7 +8,7 @@ import system.cpu;
 import system.time;
 
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::timers::tsc
 {

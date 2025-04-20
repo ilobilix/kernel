@@ -5,7 +5,7 @@ module system.memory.slab;
 import system.memory.phys;
 import frigg;
 import lib;
-import std;
+import cppstd;
 
 namespace slab
 {

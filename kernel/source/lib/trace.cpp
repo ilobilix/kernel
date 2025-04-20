@@ -9,7 +9,7 @@ module lib;
 
 import system.bin.elf;
 import :log;
-import std;
+import cppstd;
 
 namespace lib
 {
@@ -27,14 +27,13 @@ namespace lib
         if (!frame)
             return;
 
-        auto print = [prefix](std::uintptr_t ip)
+        auto print = [prefix](std::uintptr_t ip) -> bool
         {
-            auto [sym, offset, where] = bin::elf::lookup(ip, STT_FUNC);
-            if (sym == bin::elf::empty_symbol)
-                return false;
+            auto [sym, offset, where] = bin::elf::sym::lookup(ip, STT_FUNC);
+            bool is_empty = sym == bin::elf::sym::empty;
 
-            int status = 1;
-            const char *str = abi::__cxa_demangle(sym.name.data(), nullptr, nullptr, &status) ?: sym.name.data();
+            int status = -1;
+            const char *str = !is_empty ? (abi::__cxa_demangle(sym.name.data(), nullptr, nullptr, &status) ?: sym.name.data()) : "unknown";
             if (status == 1)
                 return false;
 
@@ -43,7 +42,7 @@ namespace lib
             if (status == 0)
                 std::free(const_cast<char *>(str));
 
-            return sym.name != "isr_handler" && sym.name != "syscall_handler";
+            return is_empty ?is_empty: (sym.name != "isr_handler" && sym.name != "syscall_handler");
         };
 
         log::println(prefix, "stack trace:");

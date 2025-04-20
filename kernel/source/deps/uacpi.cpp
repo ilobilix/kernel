@@ -4,7 +4,7 @@
 
 import ilobilix;
 import magic_enum;
-import std;
+import cppstd;
 
 namespace uacpi
 {

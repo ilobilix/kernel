@@ -3,7 +3,7 @@
 module system.scheduler;
 
 import lib;
-import std;
+import cppstd;
 
 namespace sched
 {

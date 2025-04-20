@@ -2,7 +2,7 @@
 
 export module lib:hash;
 import :math;
-import std;
+import cppstd;
 
 export namespace lib::hash
 {

@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:endian;
-import std;
+import cppstd;
 
 export namespace lib
 {

@@ -4,7 +4,7 @@ module lib;
 
 import system.scheduler;
 import arch;
-import std;
+import cppstd;
 
 namespace lib
 {

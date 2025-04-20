@@ -5,7 +5,7 @@ module;
 #include <uacpi/acpi.h>
 
 export module system.acpi;
-import std;
+import cppstd;
 
 export namespace acpi
 {

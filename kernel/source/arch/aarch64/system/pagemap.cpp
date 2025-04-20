@@ -4,7 +4,7 @@ module system.memory.virt;
 
 import system.memory.phys;
 import lib;
-import std;
+import cppstd;
 
 import :pagemap;
 

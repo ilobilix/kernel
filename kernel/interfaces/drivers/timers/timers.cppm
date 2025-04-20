@@ -5,7 +5,7 @@ export module drivers.timers;
 export import drivers.timers.acpipm;
 export import arch.drivers.timers;
 
-import std;
+import cppstd;
 
 export namespace timers
 {

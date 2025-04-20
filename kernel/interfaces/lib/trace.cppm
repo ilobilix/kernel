@@ -3,7 +3,7 @@
 export module lib:trace;
 
 import :log;
-import std;
+import cppstd;
 
 export namespace lib
 {

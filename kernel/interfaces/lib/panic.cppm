@@ -3,7 +3,7 @@
 export module lib:panic;
 
 import system.cpu;
-import std;
+import cppstd;
 
 export namespace lib
 {

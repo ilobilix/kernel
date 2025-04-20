@@ -11,7 +11,7 @@ import system.memory;
 import system.time;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::timers::hpet
 {

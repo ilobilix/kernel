@@ -8,7 +8,7 @@ import system.time;
 import boot;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace sched
 {

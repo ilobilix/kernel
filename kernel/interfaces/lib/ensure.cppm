@@ -2,7 +2,7 @@
 
 export module lib:ensure;
 import :panic;
-import std;
+import cppstd;
 
 export namespace lib
 {

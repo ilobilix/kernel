@@ -10,7 +10,7 @@ import system.cpu;
 import system.cpu.self;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::idt
 {

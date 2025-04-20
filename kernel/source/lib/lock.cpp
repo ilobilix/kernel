@@ -4,7 +4,7 @@ module lib;
 
 import system.time;
 import arch;
-import std;
+import cppstd;
 
 namespace lib
 {

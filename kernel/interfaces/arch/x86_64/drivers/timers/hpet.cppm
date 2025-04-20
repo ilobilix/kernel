@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module x86_64.drivers.timers.hpet;
-import std;
+import cppstd;
 
 export namespace x86_64::timers::hpet
 {

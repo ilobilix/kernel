@@ -1,7 +1,7 @@
 -- Copyright (C) 2024-2025  ilobilo
 
 target("ilobilix.headers")
-    set_kind("phony")
+    set_kind("headeronly")
     add_includedirs(
         "$(projectdir)/kernel/include",
         "$(projectdir)/kernel/include/std",
@@ -13,17 +13,17 @@ target("ilobilix.headers")
     )
     add_deps("freestnd-cxx-hdrs", "freestnd-c-hdrs")
 
-target("ilobilix.dependencies")
+target("ilobilix.dependencies.base")
     set_kind("phony")
 
     add_deps("ilobilix.headers")
     add_deps(
-        "compiler-rt-builtins", "cwalk",
-        "demangler", "flanterm", "fmt",
         "frigg", "frozen", "magic_enum",
-        "parallel-hashmap", "printf", "limine",
-        "smart-ptr", "string", "uacpi", "veque"
+        "parallel-hashmap",
+        "smart-ptr", "string", "veque"
     )
+
+    add_defines("USED_IN_MODULES=[[gnu::used]]", { public = true })
 
     if is_arch("x86_64") then
         local flags = {
@@ -34,12 +34,32 @@ target("ilobilix.dependencies")
     elseif is_arch("aarch64") then
     end
 
+target("ilobilix.dependencies")
+    set_kind("phony")
+
+    add_deps("ilobilix.dependencies.base")
+    add_deps(
+        "compiler-rt-builtins", "cwalk",
+        "demangler", "flanterm", "fmt",
+        "printf", "limine", "uacpi"
+    )
+
+target("ilobilix.dependencies.nolink")
+    set_kind("phony")
+
+    add_deps("ilobilix.dependencies.base")
+    add_deps(
+        "cwalk-headers", "demangler-headers",
+        "flanterm-headers", "fmt-headers",
+        "printf-headers", "limine-headers",
+        "uacpi-headers"
+    )
+
 target("ilobilix.modules")
     set_default(false)
     set_kind("static")
 
     add_deps("ilobilix.dependencies")
-
     add_files("interfaces/**.cppm", { public = true })
 
     if not is_arch("x86_64") then
@@ -70,11 +90,6 @@ target("ilobilix.elf")
         remove_files("source/arch/aarch64/**.cpp")
         remove_files("source/arch/aarch64/**.S")
     end
-
-    add_ldflags(
-        "-zmax-page-size=0x1000",
-        { force = true }
-    )
 
     if is_arch("x86_64") then
         add_ldflags(

@@ -5,7 +5,7 @@ module;
 #include <uacpi/types.h>
 
 export module drivers.timers.acpipm;
-import std;
+import cppstd;
 
 export namespace timers::acpipm
 {

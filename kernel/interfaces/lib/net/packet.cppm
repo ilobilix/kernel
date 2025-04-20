@@ -3,7 +3,7 @@
 export module net:packet;
 
 import :addr;
-import std;
+import cppstd;
 import lib;
 
 export namespace net

@@ -17,7 +17,7 @@ target("modules.aarch64")
         table.insert(list, module)
     end
 
-    before_build(function (target)
+    before_config(function (target)
         import("core.project.project")
         local parent = project.target("modules")
         for idx, val in ipairs(list) do

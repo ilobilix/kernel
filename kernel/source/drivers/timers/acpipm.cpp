@@ -11,7 +11,7 @@ module drivers.timers.acpipm;
 import system.acpi;
 import system.time;
 import lib;
-import std;
+import cppstd;
 
 namespace timers::acpipm
 {

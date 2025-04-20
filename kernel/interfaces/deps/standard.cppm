@@ -53,7 +53,7 @@ module;
 #include <vector>
 #include <version>
 
-export module std;
+export module cppstd;
 
 export namespace std
 {

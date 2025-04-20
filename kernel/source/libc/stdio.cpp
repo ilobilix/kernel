@@ -3,7 +3,7 @@
 #include <printf/printf.h>
 
 import lib;
-import std;
+import cppstd;
 
 extern "C"
 {

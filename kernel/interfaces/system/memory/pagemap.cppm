@@ -4,7 +4,7 @@ export module system.memory.virt:pagemap;
 
 import frigg;
 import lib;
-import std;
+import cppstd;
 
 export namespace vmm
 {
@@ -70,6 +70,7 @@ export namespace vmm
             std::uintptr_t value = 0;
 
             void clear() { value = 0; }
+            void clearflags() { value &= pa_mask; }
 
             void setflags(std::uintptr_t aflags, bool enabled)
             {
@@ -123,6 +124,7 @@ export namespace vmm
         static page_size max_page_size(std::size_t size);
 
         std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::normal, caching cache = caching::normal);
+        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::normal, caching cache = caching::normal);
         std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::normal);
 
         std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::normal);
