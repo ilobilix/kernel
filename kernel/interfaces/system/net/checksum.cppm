@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:checksum;
+export module system.net:checksum;
 import cppstd;
 
 export namespace net

@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:ipv4;
+export module system.net:ipv4;
 
 import :addr;
 import :checksum;
