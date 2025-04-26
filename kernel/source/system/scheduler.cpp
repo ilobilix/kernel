@@ -62,7 +62,7 @@ namespace sched
         {
             std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
             arch::load(thread);
-            thread->proc.lock()->vspace->pmap->load();
+            thread->proc.lock()->vmspace->pmap->load();
         }
 
         void idle()
@@ -78,7 +78,7 @@ namespace sched
         const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
         for (std::size_t i = 0; i < boot::ustack_size; i += pmm::page_size)
         {
-            if (!parent->vspace->pmap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
+            if (!parent->vmspace->pmap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
                 lib::panic("could not map user stack");
         }
 
@@ -103,6 +103,7 @@ namespace sched
 
         thread->tid = parent->next_tid++;
         thread->proc = parent;
+        thread->timeslice = default_timeslice;
         thread->status = status::not_ready;
         thread->is_user = false;
 
@@ -165,7 +166,7 @@ namespace sched
         };
         if (is_user)
         {
-            auto pmap = proc.lock()->vspace->pmap;
+            auto pmap = proc.lock()->vmspace->pmap;
             unmap_stack(pmap, ustack_top, boot::ustack_size);
         }
         unmap_stack(vmm::kernel_pagemap, kstack_top, boot::kstack_size);
@@ -177,7 +178,7 @@ namespace sched
     {
         auto proc = std::make_shared<process>();
         proc->pid = alloc_pid(proc);
-        proc->vspace = std::make_shared<vmm::vspace>(pagemap);
+        proc->vmspace = std::make_shared<vmm::vmspace>(pagemap);
 
         if (parent)
         {
@@ -294,7 +295,7 @@ namespace sched
         sched.running_thread = next;
         next->running_on = reinterpret_cast<decltype(next->running_on)>(self);
 
-        arch::reschedule(fixed_timeslice);
+        arch::reschedule(next->timeslice);
         load(next, regs);
     }
 
@@ -302,12 +303,12 @@ namespace sched
     {
         static std::atomic_bool should_start = false;
 
-        static auto idle_vspace = std::make_shared<vmm::vspace>(
+        static auto idle_vmspace = std::make_shared<vmm::vmspace>(
             std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
         );
 
         auto idle_proc = std::make_shared<process>();
-        idle_proc->vspace = idle_vspace;
+        idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = static_cast<std::size_t>(-1);
 
         auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));

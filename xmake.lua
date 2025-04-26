@@ -67,6 +67,11 @@ option("more_panic_msg")
     set_showmenu(true)
     set_description("More information when panicking")
 
+option("max_uacpi_points")
+    set_default(false )
+    set_showmenu(true)
+    set_description("Maximise uACPI points")
+
 option("ubsan")
     set_default(false)
     set_showmenu(true)
@@ -150,7 +155,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_SYSCALL_LOG=" .. (get_config("syscall_log") and "1" or "0"))
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
-    add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
+    add_defines("ILOBILIX_MAX_UACPI_POINTS=" .. (get_config("max_uacpi_points") and "1" or "0"))
 
     add_defines("LIMINE_API_REVISION=2")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
@@ -205,18 +210,20 @@ toolchain("ilobilix-clang")
         local target = ""
 
         if is_mode("releasesmall") or is_mode("release") then
-            multi_insert(cx_args,
-                "-flto=full",
-                "-funified-lto"
-            )
-            table.insert(cxx_args, "-fwhole-program-vtables")
-            table.insert(ld_args, "--lto=full")
-            multi_insert(sh_args,
-                "-fuse-ld=lld",
-                "-flto=full",
-                "-funified-lto",
-                "-Wl,--lto=full"
-            )
+            if get_config("max_uacpi_points") then
+                multi_insert(cx_args,
+                    "-flto=full",
+                    "-funified-lto"
+                )
+                table.insert(cxx_args, "-fwhole-program-vtables")
+                table.insert(ld_args, "--lto=full")
+                multi_insert(sh_args,
+                    "-fuse-ld=lld",
+                    "-flto=full",
+                    "-funified-lto",
+                    "-Wl,--lto=full"
+                )
+            end
             toolchain:add("defines", "ILOBILIX_DEBUG=0");
         else
             toolchain:add("defines", "ILOBILIX_DEBUG=1");

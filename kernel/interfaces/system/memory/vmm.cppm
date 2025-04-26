@@ -2,7 +2,7 @@
 
 export module system.memory.virt;
 export import :pagemap;
-export import :mmap;
+export import :uvm;
 
 import magic_enum;
 import cppstd;
