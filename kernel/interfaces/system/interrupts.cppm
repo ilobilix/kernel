@@ -44,7 +44,7 @@ export namespace interrupts
         bool reset()
         {
             bool ret = static_cast<bool>(_handler);
-            _handler.clear();
+            _handler = { };
             return ret;
         }
 

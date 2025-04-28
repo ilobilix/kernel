@@ -20,7 +20,7 @@ target("ilobilix.dependencies.base")
     add_deps(
         "frigg", "frozen", "magic_enum",
         "parallel-hashmap",
-        "smart-ptr", "string", "veque"
+        "hosted-libstdcxx", "string", "veque"
     )
 
     add_defines("USED_IN_MODULES=[[gnu::used]]", { public = true })
