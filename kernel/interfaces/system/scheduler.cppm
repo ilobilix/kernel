@@ -4,6 +4,7 @@ export module system.scheduler;
 
 import system.scheduler.base;
 import system.memory.virt;
+import system.cpu.self;
 import system.cpu;
 import system.vfs;
 import lib;
@@ -67,7 +68,7 @@ export namespace sched
         std::uintptr_t allocate_ustack();
         std::uintptr_t allocate_kstack();
 
-        static std::shared_ptr<thread> create(std::shared_ptr<process> parent, std::uintptr_t ip);
+        static std::shared_ptr<thread> create(std::shared_ptr<process> &parent, std::uintptr_t ip);
 
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
@@ -123,6 +124,7 @@ export namespace sched
         std::shared_ptr<process> idle_proc;
         std::shared_ptr<thread> idle_thread;
     };
+    cpu_local<percpu> percpu;
 
     bool initialised = false;
 
@@ -131,5 +133,6 @@ export namespace sched
 
     std::size_t allocate_cpu();
     void enqueue(std::shared_ptr<thread> thread, std::size_t cpu_idx);
+
     [[noreturn]] void start();
 } // export namespace sched

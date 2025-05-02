@@ -11,7 +11,6 @@ import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
-import system.cpu.self;
 import lib;
 import cppstd;
 

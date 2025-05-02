@@ -49,7 +49,7 @@ namespace arch
 
     namespace core
     {
-        extern "C" void arch_core_entry(boot::limine_mp_info *cpu) { lib::unused(cpu); }
+        void entry(boot::limine_mp_info *cpu) { lib::unused(cpu); }
         void bsp(boot::limine_mp_info *cpu) { lib::unused(cpu); }
     } // namespace core
 } // namespace arch

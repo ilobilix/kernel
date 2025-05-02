@@ -14,11 +14,12 @@ export import aarch64.system.cpu;
 export namespace cpu
 {
     extern "C++" struct processor;
-    processor *processors;
+    processor *nth(std::size_t n);
+    std::uintptr_t nth_base(std::size_t n);
 
     std::size_t bsp_idx;
     std::size_t bsp_aid;
-    std::size_t cpu_count;
+    std::size_t cpu_count = 0;
 
     void init_bsp();
     void init();

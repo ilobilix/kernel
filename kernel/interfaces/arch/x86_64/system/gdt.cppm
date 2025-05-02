@@ -60,6 +60,8 @@ export namespace x86_64::gdt
             std::uint32_t base3;
             std::uint32_t reserved;
         };
+
+        ptr &self();
     } // namespace tss
 
     struct [[gnu::packed]] entries

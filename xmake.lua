@@ -167,6 +167,9 @@ toolchain("ilobilix-clang")
     -- TODO: performance impact
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
 
+    add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage")
+    add_defines("cpu_local_init(name, ...)=void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); }; [[gnu::section(\".percpu_init\"), gnu::used]] const auto name ## _init_ptr__ = name ## _init_func__")
+
     on_load(function (toolchain)
         local cx_args = {
             "-fpic", "-fpie",
@@ -205,7 +208,10 @@ toolchain("ilobilix-clang")
             "-znoexecstack",
             "-zmax-page-size=0x1000"
         }
-        local sh_args = { }
+        local sh_args = {
+            "-fuse-ld=lld",
+            "-Wl,-shared"
+        }
 
         local target = ""
 
@@ -218,7 +224,6 @@ toolchain("ilobilix-clang")
                 table.insert(cxx_args, "-fwhole-program-vtables")
                 table.insert(ld_args, "--lto=full")
                 multi_insert(sh_args,
-                    "-fuse-ld=lld",
                     "-flto=full",
                     "-funified-lto",
                     "-Wl,--lto=full"
@@ -250,6 +255,7 @@ toolchain("ilobilix-clang")
         end
 
         table.insert(cx_args, "--target=" .. target)
+        table.insert(sh_args, "--target=" .. target)
 
         table.insert(c_args, get_config("extra_cflags"))
         table.insert(cxx_args, get_config("extra_cxxflags"))

@@ -6,8 +6,9 @@ import x86_64.system.ioapic;
 import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.interrupts;
-import system.cpu;
 import system.cpu.self;
+import system.cpu;
+import frigg;
 import arch;
 import lib;
 import cppstd;
@@ -50,6 +51,14 @@ namespace x86_64::idt
         }
     } // namespace
 
+    cpu_local<
+        frg::small_vector<
+            interrupts::handler, x86_64::idt::num_preints,
+            frg::allocator<interrupts::handler>
+        >
+    > int_handlers;
+    cpu_local_init(int_handlers);
+
     [[nodiscard]]
     auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>
     {
@@ -58,7 +67,7 @@ namespace x86_64::idt
 
         num -= irq(0);
 
-        auto &handlers = cpu::processors[cpuidx].arch.int_handlers;
+        auto &handlers = int_handlers.get(cpu::nth_base(cpuidx));
         if (num >= handlers.size())
             handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
 
@@ -73,13 +82,10 @@ namespace x86_64::idt
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
-            const auto ptr = self ?: &cpu::processors[cpu::bsp_idx];
-            auto &handlers = ptr->arch.int_handlers;
-
             const auto idx = vector - irq(0);
-            if (handlers.size() > idx)
+            if (int_handlers->size() > idx)
             {
-                auto &handler = handlers[idx];
+                auto &handler = int_handlers[idx];
                 if (handler.used())
                     handler(regs);
             }
@@ -116,7 +122,7 @@ namespace x86_64::idt
             // idt[0xFF].ist = 2;
         }
 
-        cpu->arch.int_handlers.resize(num_preints);
+        int_handlers.get(cpu::nth_base(cpu->idx)).resize(num_preints);
 
         auto phandler = handler_at(cpu->idx, panic_int).value();
         phandler.get().set([](cpu::registers *) { arch::halt(false); });

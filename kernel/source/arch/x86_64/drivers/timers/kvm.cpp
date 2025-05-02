@@ -33,6 +33,9 @@ namespace x86_64::timers::kvm
         std::int64_t offset = 0;
     } // namespace
 
+    cpu_local<void *> clockptr;
+    cpu_local_init(clockptr, nullptr);
+
     bool supported()
     {
         static const auto cached = [] -> bool
@@ -51,8 +54,7 @@ namespace x86_64::timers::kvm
 
     std::uint64_t time_ns()
     {
-        const auto self = cpu::self()->arch.kvm;
-        volatile auto pvclock = static_cast<kvmclock_info *>(self.pvclock);
+        volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
 
         while (pvclock->version % 2)
             arch::pause();
@@ -70,8 +72,7 @@ namespace x86_64::timers::kvm
 
     std::uint64_t tsc_freq()
     {
-        const auto self = cpu::self()->arch.kvm;
-        volatile auto pvclock = static_cast<kvmclock_info *>(self.pvclock);
+        volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
 
         std::uint64_t freq = (1'000'000'000ull << 32) / pvclock->tsc_to_system_mul;
         if (pvclock->tsc_shift < 0)
@@ -87,9 +88,8 @@ namespace x86_64::timers::kvm
         if (!supported())
             return;
 
-        auto &self = cpu::self()->arch.kvm;
-        self.pvclock = reinterpret_cast<void *>(new kvmclock_info);
-        cpu::msr::write(0x4B564D01, reinterpret_cast<std::uint64_t>(lib::fromhh(self.pvclock)) | 1);
+        clockptr = reinterpret_cast<void *>(new kvmclock_info);
+        cpu::msr::write(0x4B564D01, reinterpret_cast<std::uint64_t>(lib::fromhh(clockptr.get())) | 1);
 
         [[maybe_unused]]
         static const auto cached = []

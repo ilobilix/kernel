@@ -176,6 +176,9 @@ namespace vmm
                     type != boot::memmap::kernel_and_modules && type != boot::memmap::framebuffer)
                     continue;
 
+                if (memmap->length == 0)
+                    continue;
+
                 const auto psize = pagemap::max_page_size(memmap->length);
                 const auto npsize = pagemap::from_page_size(psize);
 

@@ -25,7 +25,7 @@ namespace arch
 
     void halt_others()
     {
-        if (cpu::processors != nullptr)
+        if (cpu::cpu_count != 0)
             x86_64::apic::ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
     }
 
@@ -81,23 +81,17 @@ namespace arch
 
     namespace core
     {
-        extern "C" void arch_core_entry(boot::limine_mp_info *cpu)
+        void entry(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
+
+            cpu::gs::write_user(cpu->extra_argument);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::gs::write_user(cpu->extra_argument);
-
-            auto &arch = ptr->arch;
-            auto [can_smap, fpu] = cpu::features::enable();
-            arch.can_smap = can_smap;
-            std::tie(
-                arch.fpu.size,
-                arch.fpu.save,
-                arch.fpu.restore
-            ) = fpu;
+            cpu::features::enable();
 
             x86_64::syscall::init_cpu();
 
@@ -113,20 +107,13 @@ namespace arch
         void bsp(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
+            cpu::gs::write_user(cpu->extra_argument);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::gs::write_user(cpu->extra_argument);
-
-            auto &arch = ptr->arch;
-            auto [can_smap, fpu] = cpu::features::enable();
-            arch.can_smap = can_smap;
-            std::tie(
-                arch.fpu.size,
-                arch.fpu.save,
-                arch.fpu.restore
-            ) = fpu;
+            cpu::features::enable();
 
             x86_64::syscall::init_cpu();
 

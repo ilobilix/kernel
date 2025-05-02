@@ -45,6 +45,12 @@ SECTIONS
         PROVIDE_HIDDEN(__init_array_end = .);
     } :rodata
 
+    .percpu_init : {
+        __percpu_init_start = .;
+        *(.percpu_init)
+        __percpu_init_end = .;
+    } :rodata
+
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .data : {
@@ -54,6 +60,16 @@ SECTIONS
     .bss : {
         *(.bss .bss.*)
         *(COMMON)
+    } :data
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+
+    .percpu : {
+        __percpu_start = .;
+        *(.percpu_head)
+        *(.percpu)
+        . = ALIGN(CONSTANT(MAXPAGESIZE));
+        __percpu_end = .;
     } :data
 
     /DISCARD/ : {

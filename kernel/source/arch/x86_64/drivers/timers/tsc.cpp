@@ -12,6 +12,8 @@ import cppstd;
 
 namespace x86_64::timers::tsc
 {
+    cpu_local_init(local);
+
     bool supported()
     {
         static const auto cached = []
@@ -34,11 +36,10 @@ namespace x86_64::timers::tsc
 
     std::uint64_t time_ns()
     {
-        const auto &self = cpu::self()->arch.tsc;
-        if (!self.calibrated) [[unlikely]]
+        if (!local->calibrated) [[unlikely]]
             lib::panic("TSC not calibrated");
 
-        return lib::ticks2ns(rdtsc(), self.p, self.n) - self.offset;
+        return lib::ticks2ns(rdtsc(), local->p, local->n) - local->offset;
     }
 
     time::clock clock { "tsc", 75, time_ns };
@@ -46,7 +47,7 @@ namespace x86_64::timers::tsc
 
     namespace
     {
-        void calibrate(auto &self)
+        void calibrate()
         {
             std::uint64_t freq = 0;
 
@@ -54,12 +55,12 @@ namespace x86_64::timers::tsc
             if (cpu::id(0x15, 0, a, b, c, d) && a != 0 && b != 0 && c != 0)
             {
                 freq = c * b / a;
-                self.tsc.calibrated = true;
+                local->calibrated = true;
             }
-            else if (kvm::supported() && self.kvm.pvclock)
+            else if (kvm::supported())
             {
                 freq = kvm::tsc_freq();
-                self.tsc.calibrated = true;
+                local->calibrated = true;
             }
             else if (auto calibrator = ::timers::calibrator())
             {
@@ -76,15 +77,15 @@ namespace x86_64::timers::tsc
                 }
                 freq /= times;
 
-                self.tsc.calibrated = true;
+                local->calibrated = true;
             }
 
-            if (self.tsc.calibrated)
+            if (local->calibrated)
             {
-                std::tie(self.tsc.p, self.tsc.n) = lib::freq2nspn(freq);
+                std::tie(local->p, local->n) = lib::freq2nspn(freq);
 
                 if (const auto clock = time::main_clock())
-                    self.tsc.offset = time_ns() - clock->ns();
+                    local->offset = time_ns() - clock->ns();
 
                 log::debug("tsc: frequency: {} hz", freq);
 
@@ -98,10 +99,9 @@ namespace x86_64::timers::tsc
         if (!supported())
             return;
 
-        auto &self = cpu::self()->arch;
-        calibrate(self);
+        calibrate();
 
-        if (!self.tsc.calibrated)
+        if (!local->calibrated)
             log::debug("tsc: not calibrated");
     }
 

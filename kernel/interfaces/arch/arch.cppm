@@ -32,6 +32,7 @@ export namespace arch
 
     namespace core
     {
+        void entry(boot::limine_mp_info *cpu);
         void bsp(boot::limine_mp_info *cpu);
     } // namespace core
 } // export namespace arch

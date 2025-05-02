@@ -112,10 +112,11 @@ export namespace cpu
         inline void enable() { asm volatile ("stac" ::: "cc"); }
         inline void disable() { asm volatile ("clac" ::: "cc"); }
 
+        // if one core supports smap, others do too
+        bool supported = false;
+
         struct guard
         {
-            bool can_smap;
-
             guard();
             ~guard();
         };
@@ -203,8 +204,15 @@ export namespace cpu
             asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
         }
 
-        using fpu_func = void (*)(std::byte *);
-        std::pair<bool, std::tuple<std::size_t, fpu_func, fpu_func>> enable()
+        // again, others cores probably share the same state
+        struct
+        {
+            std::size_t size = 0;
+            void (*save)(std::byte *) = nullptr;
+            void (*restore)(std::byte *) = nullptr;
+        } fpu;
+
+        void enable()
         {
             // SSE
             {
@@ -218,7 +226,6 @@ export namespace cpu
             }
 
             // UMIP SMEP SMAP
-            bool can_smap = false;
             {
                 static std::uint32_t a, b, c, d;
                 static const auto cached = [] { return cpu::id(0x07, 0, a, b, c, d); } ();
@@ -236,7 +243,7 @@ export namespace cpu
                         if (b & (1 << 20))
                         {
                             cr4 |= (1 << 21);
-                            can_smap = true;
+                            smap::supported = true;
                         }
                     }
                     wrreg(cr4, cr4);
@@ -267,12 +274,23 @@ export namespace cpu
 
                 asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
 
+                if (fpu.save != nullptr && fpu.restore != nullptr)
+                    return;
+
                 assert(cpu::id(0x0D, 0, a, b, c, d));
 
                 bool xopt = cpu::id(0x0D, 1, a, b, c, d) && (a & (1 << 0));
-                return { can_smap, { c, xopt ? xsaveopt : xsave, xrstor } };
+
+                fpu.size = c;
+                fpu.save = xopt ? xsaveopt : xsave;
+                fpu.restore = xrstor;
             }
-            else return { can_smap, { 512, fxsave, fxrstor } };
+            else if (fpu.save == nullptr || fpu.restore == nullptr)
+            {
+                fpu.size = 512;
+                fpu.save = fxsave;
+                fpu.restore = fxrstor;
+            }
         }
     } // namespace features
 
@@ -319,5 +337,5 @@ export namespace cpu
         }
     } // namespace gs
 
-    std::uintptr_t self_addr() { return gs::read(); }
+    extern "C++" std::uintptr_t self_addr() { return gs::read(); }
 } // export namespace cpu
