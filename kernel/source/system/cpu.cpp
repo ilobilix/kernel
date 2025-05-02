@@ -4,6 +4,7 @@ module system.cpu;
 
 import system.cpu.self;
 import system.memory;
+import magic_enum;
 import boot;
 import arch;
 import lib;
@@ -29,7 +30,7 @@ namespace cpu
         if (processors == nullptr) [[unlikely]]
             return nullptr;
 
-        return reinterpret_cast<processor *>(arch_self());
+        return reinterpret_cast<processor *>(self_addr());
     }
 
     extern "C" std::uint8_t kernel_stack[];
@@ -86,11 +87,18 @@ namespace cpu
             proc.idx = i;
             proc.arch_id = aid;
 
-            auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-            for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
+            const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
+
+            const auto flags = vmm::flag::rw;
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+            for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
             {
-                if (!vmm::kernel_pagemap->map(stack + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
-                    lib::panic("could not map kernel stack");
+                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+                if (auto ret = vmm::kernel_pagemap->map(stack + i, paddr, npsize, flags, psize); !ret)
+                    lib::panic("could not map cpu {} kernel stack: {}", i, magic_enum::enum_name(ret.error()));
             }
 
             proc.stack_top = stack + boot::kstack_size;

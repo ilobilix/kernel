@@ -4,6 +4,7 @@ module x86_64.system.gdt;
 
 import system.cpu.self;
 import system.memory;
+import magic_enum;
 import boot;
 import lib;
 import cppstd;
@@ -45,11 +46,19 @@ namespace x86_64::gdt
 
         auto allocate_stack = [] {
             const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-            for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
+
+            const auto flags = vmm::flag::rw;
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+            for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
             {
-                if (!vmm::kernel_pagemap->map(stack + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
-                    lib::panic("could not map kernel stack");
+                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+                if (auto ret = vmm::kernel_pagemap->map(stack + i, paddr, npsize, flags, psize); !ret)
+                    lib::panic("could not map kernel stack: {}", magic_enum::enum_name(ret.error()));
             }
+
             return reinterpret_cast<std::uintptr_t>(stack) + boot::kstack_size;
         };
         tss.rsp[0] = allocate_stack(); // cpl3 to cpl0

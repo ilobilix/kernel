@@ -5,6 +5,7 @@ module system.scheduler;
 import system.cpu.self;
 import system.memory;
 import system.time;
+import magic_enum;
 import boot;
 import arch;
 import lib;
@@ -76,10 +77,17 @@ namespace sched
         auto parent = proc.lock();
 
         const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
-        for (std::size_t i = 0; i < boot::ustack_size; i += pmm::page_size)
+
+        const auto flags = vmm::flag::rw;
+        const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+        for (std::size_t i = 0; i < boot::ustack_size; i += npsize)
         {
-            if (!parent->vmspace->pmap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
-                lib::panic("could not map user stack");
+            const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+            if (auto ret = vmm::kernel_pagemap->map(vaddr + i, paddr, npsize, flags, psize); !ret)
+                lib::panic("could not map user thread stack: {}", magic_enum::enum_name(ret.error()));
         }
 
         return vaddr + boot::ustack_size;
@@ -88,10 +96,17 @@ namespace sched
     std::uintptr_t thread::allocate_kstack()
     {
         auto vaddr = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-        for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
+
+        const auto flags = vmm::flag::rw;
+        const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+        for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
         {
-            if (!vmm::kernel_pagemap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
-                lib::panic("could not map kernel stack");
+            const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+            if (auto ret = vmm::kernel_pagemap->map(vaddr + i, paddr, npsize, flags, psize); !ret)
+                lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
         }
 
         return vaddr + boot::kstack_size;
