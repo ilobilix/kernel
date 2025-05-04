@@ -109,7 +109,7 @@ namespace x86_64::idt
 
     void init_on(cpu::processor *cpu)
     {
-        if (cpu->idx == cpu::bsp_idx)
+        if (cpu->idx == cpu::bsp_idx())
         {
             log::info("idt: setting up and loading");
 

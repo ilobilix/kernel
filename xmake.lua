@@ -5,7 +5,7 @@ set_version("v0.2")
 
 set_license("EUPL-1.2")
 
-add_rules("plugin.compile_commands.autoupdate", { outputdir = ".vscode" })
+add_rules("plugin.compile_commands.autoupdate", { outputdir = "build" })
 
 set_policy("run.autobuild", true)
 set_policy("package.install_locally", true)
@@ -498,7 +498,7 @@ task("qemu")
             bios = false
 
             multi_insert(qemu_args,
-                "-cpu", "max", "-M", "virt", "-device", "ramfb"
+                "-cpu", "cortex-a72", "-M", "virt", "-device", "ramfb"
             )
 
             qemu_exec = find_program("qemu-system-aarch64")

@@ -13,7 +13,7 @@ import cppstd;
 extern "C++" struct processor;
 export namespace sched
 {
-    constexpr std::size_t default_timeslice = 6;
+    constexpr std::size_t timeslice = 6;
 
     enum class status
     {
@@ -41,8 +41,6 @@ export namespace sched
 
         std::size_t tid;
         std::weak_ptr<process> proc;
-
-        std::size_t timeslice;
 
         status status;
         bool is_user;

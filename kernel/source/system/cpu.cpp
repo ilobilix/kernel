@@ -28,7 +28,15 @@ namespace cpu
         per::storage<processor> me;
 
         std::uintptr_t *bases;
+
+        std::size_t _bsp_idx;
+        std::size_t _bsp_aid;
+        std::size_t _cpu_count = 0;
     } // namespace
+
+    std::size_t bsp_idx() { return _bsp_idx; }
+    std::size_t bsp_aid() { return _bsp_aid; }
+    std::size_t cpu_count() { return _cpu_count; }
 
     namespace per
     {
@@ -88,14 +96,14 @@ namespace cpu
         const auto smp = boot::requests::smp.response;
 
         bases = new std::uintptr_t[smp->cpu_count] { };
-        bsp_aid = get_bsp_id(smp);
+        _bsp_aid = get_bsp_id(smp);
 
         for (std::size_t i = 0; i < smp->cpu_count; i++)
         {
             auto cpu = smp->cpus[i];
             const auto aid = get_arch_id(cpu);
 
-            if (aid != bsp_aid)
+            if (aid != _bsp_aid)
                 continue;
 
             log::info("cpu: {} {}: arch id: {}", "initialising bsp", i, aid);
@@ -107,7 +115,7 @@ namespace cpu
             lib::ensure(base == reinterpret_cast<std::uintptr_t>(proc));
 
             proc->self = proc;
-            proc->idx = bsp_idx = i;
+            proc->idx = _bsp_idx = i;
             proc->arch_id = aid;
 
             // unnecessary
@@ -137,14 +145,14 @@ namespace cpu
         const auto smp = boot::requests::smp.response;
         log::info("cpu: number of available processors: {}", smp->cpu_count);
 
-        cpu_count = smp->cpu_count;
+        _cpu_count = smp->cpu_count;
 
-        for (std::size_t i = 0; i < cpu_count; i++)
+        for (std::size_t i = 0; i < _cpu_count; i++)
         {
             auto cpu = smp->cpus[i];
             const auto aid = get_arch_id(cpu);
 
-            if (aid == bsp_aid)
+            if (aid == _bsp_aid)
                 continue;
 
             log::info("cpu: {} {}: arch id: {}", "bringing up cpu", i, aid);

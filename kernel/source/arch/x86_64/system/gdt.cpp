@@ -49,7 +49,7 @@ namespace x86_64::gdt
 
     void init_on(cpu::processor *cpu)
     {
-        if (cpu->idx == cpu::bsp_idx)
+        if (cpu->idx == cpu::bsp_idx())
             log::info("gdt: loading on bsp");
 
         auto allocate_stack = [] {

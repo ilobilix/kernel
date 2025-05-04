@@ -119,7 +119,6 @@ namespace sched
 
         thread->tid = parent->next_tid++;
         thread->proc = parent;
-        thread->timeslice = default_timeslice;
         thread->status = status::not_ready;
         thread->is_user = false;
 
@@ -244,7 +243,7 @@ namespace sched
         std::size_t idx = 0;
         std::size_t min = std::numeric_limits<std::size_t>::max();
 
-        for (std::size_t i = 0; i < cpu::cpu_count; i++)
+        for (std::size_t i = 0; i < cpu::cpu_count(); i++)
         {
             auto size = percpu->queue.size();
             if (size < min)
@@ -309,7 +308,7 @@ namespace sched
         percpu->running_thread = next;
         next->running_on = reinterpret_cast<decltype(next->running_on)>(self);
 
-        arch::reschedule(next->timeslice);
+        arch::reschedule(timeslice);
         load(next, regs);
     }
 
@@ -334,7 +333,7 @@ namespace sched
         arch::init();
         ::arch::int_switch(true);
 
-        if (cpu::self()->idx == cpu::bsp_idx)
+        if (cpu::self()->idx == cpu::bsp_idx())
         {
             should_start = true;
             initialised = true;

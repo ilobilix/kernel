@@ -497,7 +497,7 @@ extern "C"
         const auto vector = irq;
 #endif
 
-        auto handler = interrupts::get(cpu::bsp_idx, vector).value();
+        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
         if (handler.get().used()) [[unlikely]]
             lib::panic("requested uACPI interrupt vector {} is already in use", vector);
 
@@ -513,7 +513,7 @@ extern "C"
         const auto vector = reinterpret_cast<std::size_t>(irq_handle);
         interrupts::mask(vector);
 
-        auto handler = interrupts::get(cpu::bsp_idx, vector).value();
+        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
         handler.get().reset();
 
         return UACPI_STATUS_OK;
