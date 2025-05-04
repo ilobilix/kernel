@@ -41,17 +41,13 @@ namespace sched
             return pid;
         }
 
-        std::shared_ptr<thread> next_thread(bool idle = false)
+        std::shared_ptr<thread> next_thread()
         {
             const std::unique_lock _ { percpu->lock };
-
-            auto &queue = percpu->queue;
-            if (queue.empty() || idle)
+            auto left = percpu->queue.begin();
+            if (left == percpu->queue.end())
                 return percpu->idle_thread;
-
-            auto thread = queue.front();
-            queue.pop_front();
-            return thread;
+            return percpu->queue.extract(left).value();
         }
 
         void save(std::shared_ptr<thread> thread, cpu::registers *regs)
@@ -121,6 +117,7 @@ namespace sched
         thread->proc = parent;
         thread->status = status::not_ready;
         thread->is_user = false;
+        thread->vruntime = 0;
 
         auto stack = thread->allocate_kstack();
         thread->kstack_top = thread->ustack_top = stack;
@@ -262,14 +259,31 @@ namespace sched
 
         auto &obj = percpu.get(cpu::nth_base(cpu_idx));
         const std::unique_lock _ { obj.lock };
-        obj.queue.push_back(thread);
+        obj.queue.insert(thread);
     }
 
     void schedule(cpu::registers *regs)
     {
+        auto clock = time::main_clock();
+        const auto time = clock->ns();
+
         auto self = cpu::self();
 
         auto current = percpu->running_thread;
+        if (current && current->status != status::killed)
+        {
+            if (current != percpu->idle_thread)
+            {
+                save(current, regs);
+
+                if (current->status == status::sleeping)
+                    current->sleep_lock.unlock();
+
+                current->vruntime += time - current->schedule_time;
+                enqueue(current, self->idx);
+            }
+        }
+        // TODO: if killed
 
         auto first = next_thread();
         auto next = first;
@@ -277,8 +291,7 @@ namespace sched
         {
             if (next->status == status::sleeping)
             {
-                auto clock = time::main_clock();
-                if (next->sleep_until.has_value() && clock->ns() / 1'000'000 >= next->sleep_until.value())
+                if (next->sleep_until.has_value() && time / 1'000'000 >= next->sleep_until.value())
                 {
                     next->status = status::ready;
                     next->wake_reason = wake_reason::success;
@@ -290,26 +303,18 @@ namespace sched
             if (next == first)
             {
                 enqueue(next, self->idx);
-                next = current != percpu->idle_thread ? current : percpu->idle_thread;
-            }
-        }
-
-        if (current && current->status != status::killed)
-        {
-            save(current, regs);
-            if (current != percpu->idle_thread)
-            {
-                if (current->status == status::sleeping)
-                    current->sleep_lock.unlock();
-                enqueue(current, self->idx);
+                next = percpu->idle_thread;
             }
         }
 
         percpu->running_thread = next;
-        next->running_on = reinterpret_cast<decltype(next->running_on)>(self);
+        next->schedule_time = time;
 
-        arch::reschedule(timeslice);
+        if (self->idx == cpu::bsp_idx())
+            log::unsafe::prints(std::to_string(next->tid) + " " + std::to_string(next->vruntime) + "\n");
+
         load(next, regs);
+        arch::reschedule(timeslice);
     }
 
     [[noreturn]] void start()

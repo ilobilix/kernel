@@ -6,48 +6,32 @@ import system.time;
 import arch;
 import cppstd;
 
-namespace lib
+namespace lib::lock
 {
-    template<bool ints>
-    void spinlock<ints>::arch_lock()
+    bool lock()
     {
-        if constexpr (ints)
-        {
-            _interrupts = arch::int_status();
-            arch::int_switch(false);
-        }
+        auto ints = arch::int_status();
+        arch::int_switch(false);
+        return ints;
     }
 
-    template<bool ints>
-    void spinlock<ints>::arch_unlock() const
+    void unlock(bool ints)
     {
-        if constexpr (ints)
-        {
-            if (arch::int_status() != _interrupts)
-                arch::int_switch(_interrupts);
-        }
+        if (arch::int_status() != ints)
+            arch::int_switch(ints);
     }
 
-    template<bool ints>
-    void spinlock<ints>::arch_pause() const
+    void pause()
     {
         arch::pause();
     }
 
-    template<bool ints>
-    bool spinlock<ints>::try_lock_until(std::uint64_t ns)
+    // auto clock() -> std::uint64_t (*)();
+    std::uint64_t (*clock())()
     {
         auto clock = time::main_clock();
         if (clock == nullptr)
-            return try_lock();
-
-        auto target = clock->ns() + ns;
-        while (is_locked() && clock->ns() < target)
-            arch_pause();
-
-        return try_lock();
+            return nullptr;
+        return clock->ns;
     }
-
-    template class spinlock<true>;
-    template class spinlock<false>;
-} // namespace lib
+} // namespace lib::lock

@@ -34,8 +34,6 @@ export namespace sched
     struct process;
     struct thread : thread_base
     {
-        processor *running_on;
-
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
 
@@ -46,6 +44,9 @@ export namespace sched
         bool is_user;
 
         cpu::registers regs;
+
+        std::uint64_t vruntime;
+        std::uint64_t schedule_time;
 
         lib::spinlock<false> sleep_lock;
         bool sleep_ints;
@@ -112,11 +113,31 @@ export namespace sched
         ~process();
     };
 
+    // struct percpu
+    // {
+    //     lib::spinlock<true> lock;
+
+    //     std::list<std::shared_ptr<thread>> queue;
+    //     std::shared_ptr<thread> running_thread;
+
+    //     std::shared_ptr<process> idle_proc;
+    //     std::shared_ptr<thread> idle_thread;
+    // };
+    // cpu_local<percpu> percpu;
+
     struct percpu
     {
+        struct compare
+        {
+            constexpr bool operator()(const std::shared_ptr<thread> &lhs, const std::shared_ptr<thread> &rhs) const
+            {
+                return lhs->vruntime < rhs->vruntime;
+            }
+        };
+
         lib::spinlock<true> lock;
 
-        std::list<std::shared_ptr<thread>> queue;
+        lib::btree::set<std::shared_ptr<thread>, compare> queue;
         std::shared_ptr<thread> running_thread;
 
         std::shared_ptr<process> idle_proc;

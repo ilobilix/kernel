@@ -7,6 +7,7 @@ import cppstd;
 
 export namespace lib
 {
+    // TODO: make me smol
     struct rwlock
     {
         private:
