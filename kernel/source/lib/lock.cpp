@@ -29,7 +29,7 @@ namespace lib::lock
     // auto clock() -> std::uint64_t (*)();
     std::uint64_t (*clock())()
     {
-        auto clock = time::main_clock();
+        const auto clock = time::main_clock();
         if (clock == nullptr)
             return nullptr;
         return clock->ns;

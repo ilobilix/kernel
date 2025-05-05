@@ -74,7 +74,7 @@ export namespace lib
 
         bool try_lock_until(std::uint64_t ns)
         {
-            auto clock = lock::clock();
+            const auto clock = lock::clock();
             if (clock == nullptr)
                 return try_lock();
 
