@@ -28,8 +28,17 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
 
-    initgraph::stage *bsp_stage();
-    initgraph::stage *cpus_stage();
+    initgraph::stage *bsp_stage()
+    {
+        static initgraph::stage stage { "arch.bsp-initialised" };
+        return &stage;
+    }
+
+    initgraph::stage *cpus_stage()
+    {
+        static initgraph::stage stage { "arch.cpus-initialised" };
+        return &stage;
+    }
 
     void early_init();
 
