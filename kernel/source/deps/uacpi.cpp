@@ -407,8 +407,7 @@ extern "C"
         if (sched::initialised)
         {
             const auto &thread = sched::percpu->running_thread;
-            const auto &proc = sched::proc_for(thread->pid);
-            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, proc->pid));
+            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->pid));
         }
 
         return reinterpret_cast<uacpi_thread_id>(1);
