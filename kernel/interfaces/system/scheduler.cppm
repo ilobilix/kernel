@@ -125,7 +125,7 @@ export namespace sched
 
         lib::spinlock<true> lock;
 
-        lib::btree::set<std::shared_ptr<thread>, compare> queue;
+        lib::btree::multiset<std::shared_ptr<thread>, compare> queue;
         std::shared_ptr<thread> running_thread;
 
         std::shared_ptr<process> idle_proc;
