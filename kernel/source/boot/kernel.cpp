@@ -64,11 +64,13 @@ extern "C"
         pci::register_ios();
         acpi::init();
 
+        auto proc = sched::process::create(
+            nullptr,
+            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+        );
+        lib::ensure(proc->pid == 0);
         auto thread = sched::thread::create(
-            boot::pid0 = sched::process::create(
-                nullptr,
-                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-            ), reinterpret_cast<std::uintptr_t>(kthread)
+            proc, reinterpret_cast<std::uintptr_t>(kthread)
         );
         thread->status = sched::status::ready;
         sched::enqueue(thread, cpu::self()->idx);

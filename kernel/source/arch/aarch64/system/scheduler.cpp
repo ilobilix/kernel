@@ -21,22 +21,22 @@ namespace sched::arch
         lib::unused(ms);
     }
 
-    void finalise(std::shared_ptr<thread> thread, std::uintptr_t ip)
+    void finalise(std::shared_ptr<thread> &thread, std::uintptr_t ip)
     {
         lib::unused(thread, ip);
     }
 
-    void deinitialise(std::shared_ptr<thread> thread)
+    void deinitialise(std::shared_ptr<thread> &thread)
     {
         lib::unused(thread);
     }
 
-    void save(std::shared_ptr<thread> thread)
+    void save(std::shared_ptr<thread> &thread)
     {
         lib::unused(thread);
     }
 
-    void load(std::shared_ptr<thread> thread)
+    void load(std::shared_ptr<thread> &thread)
     {
         lib::unused(thread);
     }

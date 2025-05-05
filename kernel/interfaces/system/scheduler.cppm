@@ -38,7 +38,7 @@ export namespace sched
         std::uintptr_t kstack_top;
 
         std::size_t tid;
-        std::weak_ptr<process> proc;
+        std::size_t pid;
 
         status status;
         bool is_user;
@@ -113,18 +113,6 @@ export namespace sched
         ~process();
     };
 
-    // struct percpu
-    // {
-    //     lib::spinlock<true> lock;
-
-    //     std::list<std::shared_ptr<thread>> queue;
-    //     std::shared_ptr<thread> running_thread;
-
-    //     std::shared_ptr<process> idle_proc;
-    //     std::shared_ptr<thread> idle_thread;
-    // };
-    // cpu_local<percpu> percpu;
-
     struct percpu
     {
         struct compare
@@ -145,13 +133,15 @@ export namespace sched
     };
     cpu_local<percpu> percpu;
 
+    std::shared_ptr<process> &proc_for(std::size_t pid);
+
     bool initialised = false;
 
     std::shared_ptr<thread> this_thread();
     std::size_t yield();
 
     std::size_t allocate_cpu();
-    void enqueue(std::shared_ptr<thread> thread, std::size_t cpu_idx);
+    void enqueue(std::shared_ptr<thread> &thread, std::size_t cpu_idx);
 
     [[noreturn]] void start();
 } // export namespace sched
