@@ -33,6 +33,7 @@ export namespace bin::elf::sym
     auto lookup(std::uintptr_t addr, std::uint8_t type) -> const std::tuple<symbol, std::uintptr_t, std::string_view>;
     const symbol klookup(std::string_view name);
 
+    bool kernel_loaded();
     void load_kernel();
 } // export namespace bin::elf::sym
 

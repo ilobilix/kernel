@@ -96,6 +96,11 @@ namespace bin::elf::sym
         return symbols;
     }
 
+    bool kernel_loaded()
+    {
+        return !kernel_symbols.empty();
+    }
+
     void load_kernel()
     {
         auto kfile = reinterpret_cast<std::uintptr_t>(boot::requests::kernel_file.response->executable_file->address);

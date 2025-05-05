@@ -28,6 +28,7 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
 
+    void early_init();
     void init();
 
     namespace core
