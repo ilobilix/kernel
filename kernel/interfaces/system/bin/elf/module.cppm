@@ -42,6 +42,4 @@ namespace bin::elf::mod
     };
 
     lib::map::flat_hash<std::string_view, entry> modules;
-
-    export void load();
 } // export namespace bin::elf::mod

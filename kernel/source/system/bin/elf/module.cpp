@@ -6,6 +6,7 @@ module;
 
 module system.bin.elf;
 
+import drivers.initramfs;
 import system.memory;
 import system.vfs;
 import magic_enum;
@@ -437,9 +438,20 @@ namespace bin::elf::mod
         }
     } // namespace
 
-    void load()
+    initgraph::stage *modules_loaded_stage()
     {
-        load_internal();
-        load_external();
+        static initgraph::stage stage { "modules-loaded" };
+        return &stage;
     }
+
+    initgraph::task modules_load_task
+    {
+        "load-modules",
+        initgraph::require { initramfs::extracted_stage() },
+        initgraph::entail { modules_loaded_stage() },
+        [] {
+            load_internal();
+            load_external();
+        }
+    };
 } // namespace bin::elf::mod

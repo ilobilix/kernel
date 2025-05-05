@@ -235,7 +235,8 @@ export namespace pci
     const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges();
     const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices();
 
-    void register_ios();
-    void register_rbs();
+    initgraph::stage *ios_discovered_stage();
+    initgraph::stage *rbs_discovered_stage();
+
     void init();
 } // export namespace pci

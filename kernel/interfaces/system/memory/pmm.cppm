@@ -32,6 +32,5 @@ export namespace pmm
         return free(reinterpret_cast<void *>(ptr), count);
     }
 
-    void reclaim();
     void init();
 } // export namespace pmm

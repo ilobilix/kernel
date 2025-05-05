@@ -28,8 +28,10 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
 
+    initgraph::stage *bsp_stage();
+    initgraph::stage *cpus_stage();
+
     void early_init();
-    void init();
 
     namespace core
     {

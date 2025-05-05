@@ -62,20 +62,6 @@ namespace timers::acpipm
         return cached;
     }
 
-    // uacpi_interrupt_ret handle_overflow(uacpi_handle)
-    // {
-    //     overflows++;
-    //     return UACPI_INTERRUPT_HANDLED;
-    // }
-
-    // std::uint64_t time_ns()
-    // {
-    //     static constexpr auto pn = lib::freq2nspn(frequency);
-
-    //     lib::ensure(!!initialised);
-    //     return lib::ticks2ns(read() + (overflows * mask), pn.first, pn.second) - offset;
-    // }
-
     void calibrate(std::size_t ms)
     {
         lib::ensure(supported() && (ms * frequency) / 1'000 <= mask);
@@ -93,24 +79,20 @@ namespace timers::acpipm
         }
     }
 
-    void init()
+    initgraph::stage *available_stage()
     {
-        auto pmtimer = supported();
-        log::info("acpipm: timer supported: {}", pmtimer);
+        static initgraph::stage stage { "timers.acpipm-available" };
+        return &stage;
     }
 
-    // overflows are not handled properly, use just for calibrating other timers
-
-    // time::clock clock { "acpipm", 50, time_ns };
-    // void finalise()
-    // {
-    //     lib::ensure(!!supported());
-
-    //     initialised = true;
-
-    //     if (const auto clock = time::main_clock())
-    //         offset = time_ns() - clock->ns();
-
-    //     time::register_clock(clock);
-    // }
+    initgraph::task acpipm_task
+    {
+        "timers.init-acpipm",
+        initgraph::require { acpi::tables_stage() },
+        initgraph::entail { available_stage() },
+        [] {
+            auto pmtimer = supported();
+            log::info("acpipm: timer supported: {}", pmtimer);
+        }
+    };
 } // namespace timers::acpipm

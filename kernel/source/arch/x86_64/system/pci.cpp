@@ -118,36 +118,70 @@ namespace pci
                     std::unreachable();
             }
         }
+
+        initgraph::stage *ios_discovered_stage();
+        initgraph::stage *rbs_discovered_stage();
+
+        extern bool need_arch_ios;
+        extern bool need_arch_rbs;
     } // namespace acpi
 
     namespace arch
     {
-        void register_ios()
+        initgraph::stage *ios_discovered_stage()
         {
-            auto io = std::make_shared<legacy>();
-            for (auto bus : std::views::iota(0, 256))
-                addio(io, 0, bus);
+            static initgraph::stage stage { "pci.arch.ios-discovered" };
+            return &stage;
         }
 
-        void register_rbs()
+        initgraph::stage *rbs_discovered_stage()
         {
-            bool at_least_one = false;
+            static initgraph::stage stage { "pci.arch.rbs-discovered" };
+            return &stage;
+        }
 
-            auto io = getio(0, 0);
-            if (io->read<8>(0, 0, 0, 0, reg::header) & (1 << 7))
-            {
-                for (std::uint8_t i = 0; i < 8; i++)
-                {
-                    if (io->read<16>(0, 0, 0, i, reg::venid) == 0xFFFF)
-                        continue;
+        initgraph::task ios_task
+        {
+            "pci.arch.discover-ios",
+            initgraph::require { acpi::ios_discovered_stage() },
+            initgraph::entail { ios_discovered_stage() },
+            [] {
+                if (!acpi::need_arch_ios)
+                    return;
 
-                    at_least_one = true;
-                    addrb(std::make_shared<bus>(0, i, getio(0, i)));
-                }
+                auto io = std::make_shared<legacy>();
+                for (auto bus : std::views::iota(0, 256))
+                    addio(io, 0, bus);
             }
+        };
 
-            if (!at_least_one) // hmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
-                addrb(std::make_shared<bus>(0, 0, io));
-        }
+        initgraph::task rbs_task
+        {
+            "pci.arch.discover-rbs",
+            initgraph::require { acpi::rbs_discovered_stage() },
+            initgraph::entail { rbs_discovered_stage() },
+            [] {
+                if (!acpi::need_arch_rbs)
+                    return;
+
+                bool at_least_one = false;
+
+                auto io = getio(0, 0);
+                if (io->read<8>(0, 0, 0, 0, reg::header) & (1 << 7))
+                {
+                    for (std::uint8_t i = 0; i < 8; i++)
+                    {
+                        if (io->read<16>(0, 0, 0, i, reg::venid) == 0xFFFF)
+                            continue;
+
+                        at_least_one = true;
+                        addrb(std::make_shared<bus>(0, i, getio(0, i)));
+                    }
+                }
+
+                if (!at_least_one) // hmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+                    addrb(std::make_shared<bus>(0, 0, io));
+            }
+        };
     } // namespace arch
 } // namespace pci
