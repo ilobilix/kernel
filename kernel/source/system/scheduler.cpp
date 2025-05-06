@@ -22,8 +22,8 @@ namespace sched
         void init();
         void reschedule(std::size_t ms);
 
-        void finalise(std::shared_ptr<thread> &thread, std::uintptr_t ip);
-        void deinitialise(std::shared_ptr<thread> &thread);
+        void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip);
+        void deinitialise(std::shared_ptr<process> &proc, thread *thread);
 
         void save(std::shared_ptr<thread> &thread);
         void load(std::shared_ptr<thread> &thread);
@@ -79,42 +79,23 @@ namespace sched
         return processes.at(pid);
     }
 
-    std::uintptr_t thread::allocate_ustack()
+    std::uintptr_t thread::allocate_ustack(std::shared_ptr<process> &proc)
     {
-        auto &parent = proc_for(pid);
-
-        const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
-
-        const auto flags = vmm::flag::rw;
-        const auto psize = vmm::page_size::small;
-        const auto npsize = vmm::pagemap::from_page_size(psize);
-        const auto npages = lib::div_roundup(npsize, pmm::page_size);
-
-        for (std::size_t i = 0; i < boot::ustack_size; i += npsize)
-        {
-            const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
-            if (auto ret = vmm::kernel_pagemap->map(vaddr + i, paddr, npsize, flags, psize); !ret)
-                lib::panic("could not map user thread stack: {}", magic_enum::enum_name(ret.error()));
-        }
+        // TODO: mmap
+        auto &pmap = proc->vmspace->pmap;
+        const auto vaddr = (proc->next_stack_top -= boot::ustack_size);
+        if (const auto ret = pmap->map_alloc(vaddr, boot::ustack_size, vmm::flag::rwu, vmm::page_size::small); !ret)
+            lib::panic("could not map user thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::ustack_size;
     }
 
-    std::uintptr_t thread::allocate_kstack()
+    std::uintptr_t thread::allocate_kstack(std::shared_ptr<process> &proc)
     {
+        auto &pmap = proc->vmspace->pmap;
         auto vaddr = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-
-        const auto flags = vmm::flag::rw;
-        const auto psize = vmm::page_size::small;
-        const auto npsize = vmm::pagemap::from_page_size(psize);
-        const auto npages = lib::div_roundup(npsize, pmm::page_size);
-
-        for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
-        {
-            const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
-            if (auto ret = vmm::kernel_pagemap->map(vaddr + i, paddr, npsize, flags, psize); !ret)
-                lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
-        }
+        if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
+            lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::kstack_size;
     }
@@ -129,9 +110,9 @@ namespace sched
         thread->is_user = false;
         thread->vruntime = 0;
 
-        auto stack = thread->allocate_kstack();
+        auto stack = thread::allocate_kstack(parent);
         thread->kstack_top = thread->ustack_top = stack;
-        arch::finalise(thread, ip);
+        arch::finalise(parent, thread, ip);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
@@ -177,21 +158,17 @@ namespace sched
         auto unmap_stack = [](auto &pmap, std::uintptr_t top, std::size_t size)
         {
             const std::uintptr_t bottom = top - size;
-            for (std::size_t i = 0; i < size; i += pmm::page_size)
-            {
-                const auto vaddr = bottom + i;
-                const auto ret = pmap->translate(vaddr);
-                if (!ret.has_value())
-                    lib::panic("could not unmap user stack");
-                pmm::free(ret.value());
-            }
+            if (const auto ret = pmap->unmap_dealloc(bottom, size, vmm::page_size::small); !ret)
+                lib::panic("could not unmap stack: {}", magic_enum::enum_name(ret.error()));
         };
+
+        auto &proc = proc_for(pid);
+        auto &pmap = proc->vmspace->pmap;
         if (is_user)
-        {
-            auto &pmap = proc_for(pid)->vmspace->pmap;
             unmap_stack(pmap, ustack_top, boot::ustack_size);
-        }
-        unmap_stack(vmm::kernel_pagemap, kstack_top, boot::kstack_size);
+        unmap_stack(pmap, kstack_top, boot::kstack_size);
+
+        arch::deinitialise(proc, this);
 
         lib::panic("TODO: thread {} deconstructor", tid);
     }

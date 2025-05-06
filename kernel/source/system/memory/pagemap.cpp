@@ -41,6 +41,9 @@ namespace vmm
 
     std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags, page_size psize, caching cache)
     {
+        lib::ensure(magic_enum::enum_contains(psize));
+        lib::ensure(magic_enum::enum_contains(cache));
+
         psize = fixpsize(psize);
 
         const auto npsize = from_page_size(psize);
@@ -81,10 +84,63 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
+    std::expected<void, error> pagemap::map_alloc(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
     {
+        lib::ensure(magic_enum::enum_contains(psize));
+        lib::ensure(magic_enum::enum_contains(cache));
+
+        struct page { page *next = nullptr; };
+        page *current = nullptr;
+        page head { };
+
         psize = fixpsize(psize);
 
+        const auto npsize = from_page_size(psize);
+        const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+        for (std::size_t i = 0; i < length; i += npsize)
+        {
+            const auto paddr = pmm::alloc<std::uintptr_t>(npages, false);
+            const auto pg = reinterpret_cast<page *>(lib::tohh(paddr));
+
+            if (!head.next)
+            {
+                current = pg;
+                head.next = current;
+            }
+            else
+            {
+                current->next = pg;
+                current = current->next;
+            }
+
+            if (const auto ret = map(vaddr + i, paddr, npsize, flags, psize, cache); !ret)
+            {
+                current = head.next;
+                while (current)
+                {
+                    pmm::free(current);
+                    current = current->next;
+                }
+                return std::unexpected { ret.error() };
+            }
+        }
+
+        current = head.next;
+        while (current)
+        {
+            std::memset(current, 0, pmm::page_size);
+            current = current->next;
+        }
+        return { };
+    }
+
+    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
+    {
+        lib::ensure(magic_enum::enum_contains(psize));
+        lib::ensure(magic_enum::enum_contains(cache));
+
+        psize = fixpsize(psize);
         const auto npsize = from_page_size(psize);
         if (vaddr % npsize)
             return std::unexpected { error::addr_not_aligned };
@@ -113,15 +169,14 @@ namespace vmm
     {
         lib::ensure(magic_enum::enum_contains(psize));
 
-        if (vaddr % from_page_size(psize))
-            return std::unexpected { error::addr_not_aligned };
-
         const std::unique_lock _ { _lock };
 
         psize = fixpsize(psize);
+        const auto npsize = from_page_size(psize);
+        if (vaddr % npsize)
+            return std::unexpected { error::addr_not_aligned };
 
-        const auto fact = from_page_size(psize);
-        for (std::size_t i = 0; i < length; i += fact)
+        for (std::size_t i = 0; i < length; i += npsize)
         {
             const auto ret = getpte(vaddr + i, psize, false);
             if (!ret.has_value())
@@ -135,16 +190,38 @@ namespace vmm
         return { };
     }
 
+    std::expected<void, error> pagemap::unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize)
+    {
+        lib::ensure(magic_enum::enum_contains(psize));
+
+        psize = fixpsize(psize);
+        const auto npsize = from_page_size(psize);
+
+        for (std::size_t i = 0; i < length; i += npsize)
+        {
+            const auto rett = translate(vaddr + i, psize);
+            if (!rett)
+                return std::unexpected { rett.error() };
+
+            const auto retu = unmap(vaddr + i, npsize, psize);
+            if (!retu)
+                return std::unexpected { retu.error() };
+
+            pmm::free(rett.value());
+        }
+
+        return { };
+    }
+
     std::expected<std::uintptr_t, error> pagemap::translate(std::uintptr_t vaddr, page_size psize)
     {
         lib::ensure(magic_enum::enum_contains(psize));
 
-        if (vaddr % from_page_size(psize))
-            return std::unexpected { error::addr_not_aligned };
-
         const std::unique_lock _ { _lock };
 
         psize = fixpsize(psize);
+        if (vaddr % from_page_size(psize))
+            return std::unexpected { error::addr_not_aligned };
 
         const auto ret = getpte(vaddr, psize, false);
         if (!ret.has_value())
@@ -197,7 +274,7 @@ namespace vmm
 
                 log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
-                if (auto ret = kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache); !ret)
+                if (const auto ret = kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache); !ret)
                     lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
             }
         }
@@ -231,7 +308,7 @@ namespace vmm
 
                     log::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
 
-                    if (auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache); !ret)
+                    if (const auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache); !ret)
                         lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
                 }
                 phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize);

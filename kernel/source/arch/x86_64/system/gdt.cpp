@@ -83,18 +83,8 @@ namespace x86_64::gdt
 
         auto allocate_stack = [] {
             const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-
-            const auto flags = vmm::flag::rw;
-            const auto psize = vmm::page_size::small;
-            const auto npsize = vmm::pagemap::from_page_size(psize);
-            const auto npages = lib::div_roundup(npsize, pmm::page_size);
-
-            for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
-            {
-                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
-                if (auto ret = vmm::kernel_pagemap->map(stack + i, paddr, npsize, flags, psize); !ret)
-                    lib::panic("could not map kernel stack: {}", magic_enum::enum_name(ret.error()));
-            }
+            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
+                lib::panic("could not map kernel stack: {}", magic_enum::enum_name(ret.error()));
 
             return reinterpret_cast<std::uintptr_t>(stack) + boot::kstack_size;
         };

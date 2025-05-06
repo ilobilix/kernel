@@ -55,17 +55,8 @@ namespace cpu
                 reinterpret_cast<std::uintptr_t>(__percpu_end) -
                 reinterpret_cast<std::uintptr_t>(__percpu_start);
 
-            const auto flags = vmm::flag::rw;
-            const auto psize = vmm::page_size::small;
-            const auto npsize = vmm::pagemap::from_page_size(psize);
-            const auto npages = lib::div_roundup(npsize, pmm::page_size);
-
-            for (std::size_t i = 0; i < size; i += npsize)
-            {
-                const auto paddr = pmm::alloc<std::uintptr_t>(npages);
-                if (auto ret = vmm::kernel_pagemap->map(base + i, paddr, npsize, flags, psize); !ret)
-                    lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
-            }
+            if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, vmm::flag::rw, vmm::page_size::small); !ret)
+                lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
 
             for (auto func = __percpu_init_start; func < __percpu_init_end; func++)
                 (*func)(base);
@@ -168,18 +159,8 @@ namespace cpu
             proc->arch_id = aid;
 
             const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
-
-            const auto flags = vmm::flag::rw;
-            const auto psize = vmm::page_size::small;
-            const auto npsize = vmm::pagemap::from_page_size(psize);
-            const auto npages = lib::div_roundup(npsize, pmm::page_size);
-
-            for (std::size_t i = 0; i < boot::kstack_size; i += npsize)
-            {
-                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
-                if (auto ret = vmm::kernel_pagemap->map(stack + i, paddr, npsize, flags, psize); !ret)
-                    lib::panic("could not map cpu {} kernel stack: {}", i, magic_enum::enum_name(ret.error()));
-            }
+            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
+                lib::panic("could not map cpu {} kernel stack: {}", i, magic_enum::enum_name(ret.error()));
 
             proc->stack_top = stack + boot::kstack_size;
 
