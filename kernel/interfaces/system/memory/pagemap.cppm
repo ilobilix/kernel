@@ -16,6 +16,7 @@ export namespace vmm
         write_protected,
         write_combining,
         write_back,
+        device,
 
         normal = write_back,
         mmio = uncacheable_strong,
@@ -134,7 +135,6 @@ export namespace vmm
 
         std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::normal);
 
-        void store();
         void load() const;
 
         pagemap();
