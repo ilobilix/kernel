@@ -172,7 +172,8 @@ namespace cpu
             earg.pcpu = base;
 
             cpu->extra_argument = reinterpret_cast<std::uintptr_t>(&earg);
-            cpu->goto_address = &cpu_entry;
+            // cpu->goto_address = &cpu_entry;
+            __atomic_store_n(&cpu->goto_address, cpu_entry, __ATOMIC_SEQ_CST);
 
             while (!proc->online)
                 arch::pause();
