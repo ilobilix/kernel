@@ -284,7 +284,7 @@ namespace std
             return min(allocator_traits<allocator_type>::max_size(_allocator), numeric_limits<difference_type>::min());
         }
 
-        void clear() noexcept;
+        void clear() noexcept { erase(begin(), end()); }
 
         iterator insert(const_iterator pos, const value_type &value)
         {

@@ -163,8 +163,9 @@ toolchain("ilobilix-clang")
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
-    add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
+    add_defines("FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
     -- TODO: performance impact
+    -- remove FMT_BUILTIN_TYPES=0 for fmt::group_digits
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
 
     add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage")
