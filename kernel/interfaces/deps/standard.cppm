@@ -1125,6 +1125,7 @@ export namespace std
         namespace views
         {
             using std::ranges::views::filter;
+            using std::ranges::views::enumerate;
             using std::ranges::views::transform;
             using std::ranges::views::take;
             using std::ranges::views::take_while;

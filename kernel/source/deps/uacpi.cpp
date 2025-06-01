@@ -255,6 +255,7 @@ extern "C"
 
     void uacpi_kernel_unmap(void *addr, uacpi_size len)
     {
+#if !ILOBILIX_MAX_UACPI_POINTS
         auto &pmap = vmm::kernel_pagemap;
 
         const auto psize = vmm::page_size::small;
@@ -266,6 +267,9 @@ extern "C"
 
         if (!pmap->unmap(vaddr, size, psize))
             lib::panic("could not unmap acpi memory");
+#else
+        lib::unused(addr, len);
+#endif
     }
 
     void *uacpi_kernel_alloc(uacpi_size size) { return std::malloc(size); }
@@ -396,7 +400,6 @@ extern "C"
             }
         }
     };
-
 
     uacpi_handle uacpi_kernel_create_event()
     {
