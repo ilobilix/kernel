@@ -15,6 +15,12 @@ import cppstd;
 
 namespace sched
 {
+    cpu_local<bool> preemption;
+    cpu_local_init(preemption, true);
+
+    cpu_local<bool> in_scheduler;
+    cpu_local_init(in_scheduler, false);
+
     cpu_local_init(percpu);
 
     namespace arch
@@ -32,7 +38,7 @@ namespace sched
     namespace
     {
         lib::map::flat_hash<std::size_t, std::shared_ptr<process>> processes;
-        lib::spinlock<false> process_lock;
+        lib::spinlock process_lock;
 
         std::size_t alloc_pid(std::shared_ptr<process> proc)
         {
@@ -254,6 +260,11 @@ namespace sched
 
     void schedule(cpu::registers *regs)
     {
+        if (!preemption.get())
+            return;
+
+        in_scheduler = true;
+
         const auto clock = time::main_clock();
         const auto time = clock->ns();
 
@@ -314,6 +325,8 @@ namespace sched
 
         load(next, regs);
         arch::reschedule(timeslice);
+
+        in_scheduler = false;
     }
 
     initgraph::stage *available_stage()
@@ -335,6 +348,27 @@ namespace sched
             lib::ensure(proc->pid == 0);
         }
     };
+
+    void enable()
+    {
+        if (initialised)
+        {
+            preemption = true;
+            if (!in_scheduler.get())
+                arch::reschedule(0);
+        }
+    }
+
+    void disable()
+    {
+        if (initialised)
+            preemption = false;
+    }
+
+    bool is_enabled()
+    {
+        return initialised && preemption.get();
+    }
 
     [[noreturn]] void start()
     {

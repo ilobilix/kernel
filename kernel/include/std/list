@@ -212,8 +212,15 @@ namespace std
             insert(begin(), first, last);
         }
 
-        list(const list &other);
-        list(const list &other, const allocator_type &alloc);
+        list(const list &other) : list()
+        {
+            insert(begin(), other.begin(), other.end());
+        }
+
+        list(const list &other, const allocator_type &alloc) : list(alloc)
+        {
+            insert(begin(), other.begin(), other.end());
+        }
 
         list(list &&other)
             : _allocator { std::move(other._allocator) }, _node_allocator { std::move(other._node_allocator) },

@@ -12,7 +12,7 @@ export namespace lib
     struct semaphore
     {
         private:
-        spinlock<false> lock;
+        spinlock lock;
         std::list<std::shared_ptr<sched::thread_base>> threads;
         std::ssize_t signals;
 
