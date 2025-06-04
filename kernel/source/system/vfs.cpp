@@ -67,7 +67,8 @@ namespace vfs
         auto og = symlink_depth;
         while (symlink_depth > 0)
         {
-            auto ret = resolve(current->parent.lock(), current->symlinked_to);
+            auto parent = current->parent.lock();
+            auto ret = resolve(nullptr, parent, current->symlinked_to);
             if (!ret || ret->target == current)
                 return std::unexpected(error::invalid_symlink);
 
@@ -81,7 +82,16 @@ namespace vfs
         return current;
     }
 
-    auto resolve(std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>
+    auto mount_for(std::shared_ptr<node> parent, lib::path path) -> expect<std::shared_ptr<struct mount>>
+    {
+        auto res = resolve(nullptr, parent, path);
+        auto node = res->target->me();
+        if (!node->inode)
+            return std::unexpected(error::invalid_mount);
+        return node->inode->mount;
+    }
+
+    auto resolve(std::shared_ptr<struct mount> mount, std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>
     {
         auto root = node::root()->me();
 
@@ -94,43 +104,64 @@ namespace vfs
         }
         else parent = root;
 
-        if (path == "/" || path.empty())
+        if (mount == nullptr && parent->inode)
+            mount = parent->inode->mount;
+
+        if (path == "/" || path.empty() || path == ".")
             return resolve_res { parent, parent };
 
         auto current = parent;
-        auto is_last = [&path](std::string_view segment) {
-            return path.basename().str() == segment;
-        };
 
-        for (const auto segment_view : std::views::split(path.str(), '/'))
+        bool first_mount = true;
+
+        auto split = std::views::split(path.str(), '/');
+        const std::size_t size = std::ranges::distance(split);
+        for (std::size_t i = 0; const auto segment_view : split)
         {
+            i++;
             const std::string_view segment { segment_view };
             if (segment.empty())
                 continue;
 
-            const bool last = is_last(segment);
+            const bool last = i == size;
             auto current_me = current->me();
 
             if (segment == "..")
             {
-                auto parent = current->parent.lock();
-                if (auto root = node::root(); current == root)
-                    parent = root;
-                else if (current_me == current->inode->fs->root.lock())
-                    parent = current->inode->fs->mounted_on.lock()->parent.lock();
+                auto get_parent = [&first_mount, &current, &current_me, &mount]
+                {
+                    auto parent = current->parent.lock();
+                    if (auto root = node::root(); current == root)
+                        parent = root;
+                    else if (current_me == current->inode->mount->root.lock())
+                    {
+                        parent = (first_mount ? mount : current->inode->mount)->mounted_on.lock()->parent.lock();
+                        first_mount = false;
+                    }
+                    return parent;
+                };
 
+                auto parent = get_parent();
                 if (!parent)
                     return std::unexpected(error::not_found);
 
-                if (last)
-                    return resolve_res { parent, current };
-
                 current = parent;
                 current_me = current->me();
+
+                if (current_me == current->inode->mount->root.lock())
+                {
+                    current = (first_mount ? mount : current->inode->mount)->mounted_on.lock()   ;
+                    current_me = current->me();
+                    first_mount = false;
+                }
+
+                if (last)
+                    return resolve_res { get_parent(), current };
+
                 continue;
             }
 
-            lib::ensure(current_me->inode->fs.get() != nullptr);
+            lib::ensure(current_me->inode->mount.get() != nullptr);
 
             try_again:
             auto &children = current_me->get_children();
@@ -173,7 +204,7 @@ namespace vfs
         std::shared_ptr<node> source_node;
         if (!source.empty())
         {
-            auto ret = resolve(parent, source);
+            auto ret = resolve(nullptr, parent, source);
             if (!ret)
                 return std::unexpected(ret.error());
 
@@ -182,7 +213,7 @@ namespace vfs
                 return std::unexpected(error::not_a_block);
         }
 
-        auto ret = resolve(parent, target);
+        auto ret = resolve(nullptr, parent, target);
         if (!ret)
             return std::unexpected(ret.error());
 
@@ -193,7 +224,7 @@ namespace vfs
 
         auto [instance, root] = fs->get()->mount(source_node);
         target_node->mountpoint = root;
-        instance->mounted_on = target_node;
+        root->inode->mount = std::make_shared<struct mount>(instance, root, target_node);
 
         log::info("vfs: mount('{}', '{}', '{}')", source, target, fsname);
 
@@ -210,24 +241,24 @@ namespace vfs
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(parent, path);
+        auto res = resolve(nullptr, parent, path);
         if (res)
             return std::unexpected(error::already_exists);
 
-        res = resolve(parent, path.dirname());
+        res = resolve(nullptr, parent, path.dirname());
         if (!res)
             return std::unexpected(res.error());
 
         auto parent_node = res->target->me();
         const auto name = path.basename();
-        auto ret = parent_node->inode->fs->create(parent_node->inode, name, mode);
+        auto ret = parent_node->inode->mount->fs->create(parent_node->inode, name, mode);
         if (ret)
         {
             auto node = std::make_shared<vfs::node>();
-            node->parent = parent;
+            node->parent = parent_node;
             node->name = name;
             node->inode = ret.value();
-            node->inode->fs = parent_node->inode->fs;
+            node->inode->mount = parent_node->inode->mount;
 
             const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
@@ -240,24 +271,24 @@ namespace vfs
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(parent, path);
+        auto res = resolve(nullptr, parent, path);
         if (res)
             return std::unexpected(error::already_exists);
 
-        res = resolve(parent, path.dirname());
+        res = resolve(nullptr, parent, path.dirname());
         if (!res)
             return std::unexpected(res.error());
 
         auto parent_node = res->target->me();
         const auto name = path.basename();
-        auto ret = parent_node->inode->fs->symlink(parent_node->inode, name, target);
+        auto ret = parent_node->inode->mount->fs->symlink(parent_node->inode, name, target);
         if (ret)
         {
             auto node = std::make_shared<vfs::node>();
-            node->parent = parent;
+            node->parent = parent_node;
             node->name = name;
             node->inode = ret.value();
-            node->inode->fs = parent_node->inode->fs;
+            node->inode->mount = parent_node->inode->mount;
 
             const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
@@ -282,7 +313,7 @@ namespace vfs
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(parent, path);
+        auto res = resolve(nullptr, parent, path);
         if (!res)
             return std::unexpected(res.error());
 
@@ -292,7 +323,7 @@ namespace vfs
 
     bool populate(std::shared_ptr<node> parent, std::string_view name)
     {
-        const auto ret = parent->inode->fs->populate(parent->inode, name);
+        const auto ret = parent->inode->mount->fs->populate(parent->inode, name);
         if (!ret.has_value())
             return false;
 
@@ -305,7 +336,7 @@ namespace vfs
                 node->parent = parent;
                 node->name = name;
                 node->inode = inode;
-                node->inode->fs = parent->inode->fs;
+                node->inode->mount = parent->inode->mount;
 
                 const std::unique_lock _ { parent->lock };
                 parent->get_children()[node->name] = node;
@@ -327,11 +358,11 @@ namespace vfs
         initgraph::require { fs::filesystems_registered_stage() },
         initgraph::entail { root_mounted_stage() },
         [] {
-            lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
+            lib::ensure(mount(nullptr, "", "/", "tmpfs"));
 
-            auto err = vfs::create(nullptr, "/dev", stat::type::s_ifdir);
-            lib::ensure(err.has_value() || err.error() == vfs::error::already_exists);
-            lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
+            auto err = create(nullptr, "/dev", stat::type::s_ifdir);
+            lib::ensure(err.has_value() || err.error() == error::already_exists);
+            lib::ensure(mount(nullptr, "", "/dev", "devtmpfs"));
         }
     };
 } // namespace vfs

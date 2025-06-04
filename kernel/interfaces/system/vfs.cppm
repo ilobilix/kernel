@@ -38,6 +38,7 @@ export namespace vfs
     };
 
     struct node;
+    struct mount;
     struct filesystem
     {
         std::string name;
@@ -46,8 +47,6 @@ export namespace vfs
         {
             lib::mutex lock;
 
-            std::weak_ptr<node> root;
-            std::weak_ptr<node> mounted_on;
             std::shared_ptr<filesystem> fs;
 
             virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<ops> ops = nullptr) -> expect<std::shared_ptr<inode>> = 0;
@@ -67,6 +66,16 @@ export namespace vfs
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
+    };
+
+    struct mount
+    {
+        std::shared_ptr<filesystem::instance> fs;
+        std::weak_ptr<node> root;
+        std::weak_ptr<node> mounted_on;
+
+        mount(std::shared_ptr<filesystem::instance> fs, std::weak_ptr<node> root, std::weak_ptr<node> mounted_on)
+            : fs { fs }, root { root }, mounted_on { mounted_on } { }
     };
 
     struct inode : std::enable_shared_from_this<inode>
@@ -100,7 +109,7 @@ export namespace vfs
         stat stat;
         bool can_mmap;
 
-        std::shared_ptr<filesystem::instance> fs;
+        std::shared_ptr<mount> mount;
         std::shared_ptr<ops> op;
 
         inode(std::shared_ptr<ops> op) : op { op } { }
@@ -127,6 +136,8 @@ export namespace vfs
 
         inline decltype(children) &get_children()
         {
+            // children_redirect is either always expired, or always set.
+            // if it was initially set to a valid node, it'll never expire.
             if (!children_redirect.expired())
                 return children_redirect.lock()->get_children();
             return children;
@@ -134,10 +145,10 @@ export namespace vfs
 
         inline std::shared_ptr<node> me()
         {
+            // literally me fr
             if (mountpoint)
                 return mountpoint->me();
-            else
-                return shared_from_this();
+            return shared_from_this();
         }
 
         static constexpr auto symloop_max = 40;
@@ -153,7 +164,8 @@ export namespace vfs
     bool register_fs(std::unique_ptr<filesystem> fs);
     auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
 
-    auto resolve(std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>;
+    auto mount_for(std::shared_ptr<node> parent, lib::path path) -> expect<std::shared_ptr<struct mount>>;
+    auto resolve(std::shared_ptr<struct mount> fs, std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>;
 
     auto mount(std::shared_ptr<node> parent, lib::path source, lib::path target, std::string_view fsname) -> expect<void>;
     auto unmount(std::shared_ptr<node> parent, lib::path target) -> expect<void>;
