@@ -12,10 +12,12 @@ namespace vfs
 {
     namespace
     {
-        std::shared_ptr<node> root = [] {
-            auto root = std::make_shared<node>();
+        std::shared_ptr<dentry> root = [] {
+            auto root = std::make_shared<dentry>();
             root->name = "/";
             root->parent = root;
+            root->inode = std::make_shared<inode>(nullptr);
+            root->inode->stat.st_mode = stat::s_ifdir;
             return root;
         } ();
         lib::map::flat_hash<std::string_view, std::unique_ptr<filesystem>> filesystems;
@@ -41,80 +43,68 @@ namespace vfs
         return std::unexpected(error::invalid_filesystem);
     }
 
-    std::shared_ptr<node> node::root(bool from_sched)
+    std::shared_ptr<dentry> dentry::root(bool from_sched)
     {
         if (!from_sched && sched::initialised)
             return sched::proc_for(sched::percpu->running_thread->pid)->root;
-        return vfs::root->reduce().value();
+        return vfs::root;
     }
 
-    auto node::reduce(std::size_t symlink_depth) -> expect<std::shared_ptr<node>>
+    auto dentry::reduce(std::size_t symlink_depth) -> expect<std::shared_ptr<dentry>>
     {
         auto current = shared_from_this();
-        if (mountpoint)
-        {
-            auto ret = mountpoint->reduce(symlink_depth);
-            if (!ret)
-                return std::unexpected(error::invalid_mount);
 
-            if (ret.value() != mountpoint)
-                current = ret.value();
-        }
+        // TODO
+        lib::unused(symlink_depth);
 
-        if (symlinked_to.empty())
-            return current;
+        // if (symlinked_to.empty())
+        //     return current;
 
-        auto og = symlink_depth;
-        while (symlink_depth > 0)
-        {
-            auto parent = current->parent.lock();
-            auto ret = resolve(nullptr, parent, current->symlinked_to);
-            if (!ret || ret->target == current)
-                return std::unexpected(error::invalid_symlink);
+        // auto og = symlink_depth;
+        // while (symlink_depth > 0)
+        // {
+        //     auto parent = current->parent.lock();
+        //     auto ret = resolve(nullptr, parent, current->symlinked_to);
+        //     if (!ret || ret->target == current)
+        //         return std::unexpected(error::invalid_symlink);
 
-            current = ret->target;
-            symlink_depth--;
-        }
+        //     current = ret->target;
+        //     symlink_depth--;
+        // }
 
-        if (og && symlink_depth == 0 && !current->symlinked_to.empty())
-            return std::unexpected(error::symloop_max);
+        // if (og && symlink_depth == 0 && !current->symlinked_to.empty())
+        //     return std::unexpected(error::symloop_max);
 
         return current;
     }
 
-    auto mount_for(std::shared_ptr<node> parent, lib::path path) -> expect<std::shared_ptr<struct mount>>
+    auto path_for(lib::path _path) -> expect<path>
     {
-        auto res = resolve(nullptr, parent, path);
-        auto node = res->target->me();
-        if (!node->inode)
-            return std::unexpected(error::invalid_mount);
-        return node->inode->mount;
+        auto res = resolve(std::nullopt, _path);
+        // TODO: relative path based on cwd
+        return res->target;
     }
 
-    auto resolve(std::shared_ptr<struct mount> mount, std::shared_ptr<node> parent, lib::path path) -> expect<resolve_res>
+    auto resolve(std::optional<path> parent, lib::path _path) -> expect<resolve_res>
     {
-        auto root = node::root()->me();
+        auto root = dentry::root();
 
-        if (parent)
+        if (!parent)
         {
-            auto ret = parent->reduce();
-            if (!ret)
-                return std::unexpected(error::not_found);
-            parent = ret.value();
+            parent = path { .mnt = nullptr, .dentry = root };
+            if (!root->child_mounts.empty())
+                parent->mnt = root->child_mounts.front().lock();
         }
-        else parent = root;
+        lib::ensure(parent.has_value());
 
-        if (mount == nullptr && parent->inode)
-            mount = parent->inode->mount;
+        if (_path == "/" || _path.empty() || _path == ".")
+            return resolve_res { parent.value(), parent.value() };
 
-        if (path == "/" || path.empty() || path == ".")
-            return resolve_res { parent, parent };
+        lib::ensure(parent->mnt != nullptr);
 
-        auto current = parent;
+        auto current = parent.value();
 
-        bool first_mount = true;
-
-        auto split = std::views::split(path.str(), '/');
+        auto split = std::views::split(_path.str(), '/');
         const std::size_t size = std::ranges::distance(split);
         for (std::size_t i = 0; const auto segment_view : split)
         {
@@ -124,68 +114,62 @@ namespace vfs
                 continue;
 
             const bool last = i == size;
-            auto current_me = current->me();
 
             if (segment == "..")
             {
-                auto get_parent = [&first_mount, &current, &current_me, &mount]
+                auto resolve_mounts = [](auto path)
                 {
-                    auto parent = current->parent.lock();
-                    if (auto root = node::root(); current == root)
-                        parent = root;
-                    else if (current_me == current->inode->mount->root.lock())
-                    {
-                        parent = (first_mount ? mount : current->inode->mount)->mounted_on.lock()->parent.lock();
-                        first_mount = false;
-                    }
-                    return parent;
+                    while (path.dentry == path.mnt->root)
+                        path = path.mnt->mounted_on.value();
+                    return path;
                 };
 
-                auto parent = get_parent();
-                if (!parent)
-                    return std::unexpected(error::not_found);
-
-                current = parent;
-                current_me = current->me();
-
-                if (current_me == current->inode->mount->root.lock())
-                {
-                    current = (first_mount ? mount : current->inode->mount)->mounted_on.lock()   ;
-                    current_me = current->me();
-                    first_mount = false;
-                }
+                current = resolve_mounts(current);
+                current.dentry = current.dentry->parent.lock();
+                current = resolve_mounts(current);
 
                 if (last)
-                    return resolve_res { get_parent(), current };
-
+                {
+                    auto parent = resolve_mounts(current);
+                    parent.dentry = parent.dentry->parent.lock();
+                    parent = resolve_mounts(parent);
+                    return resolve_res { parent, current };
+                }
                 continue;
             }
 
-            lib::ensure(current_me->inode->mount.get() != nullptr);
-
             try_again:
-            auto &children = current_me->get_children();
+            const auto &children = current.dentry->children;
             if (auto it = children.find(segment); it != children.end())
             {
-                auto node = it->second->reduce(0);
-                if (!node)
-                    return std::unexpected(node.error());
+                auto dentry = it->second;
+                auto mnt = current.mnt;
+
+                again:
+                for (const auto &child_mnt : dentry->child_mounts)
+                {
+                    const auto locked = child_mnt.lock();
+                    if (mnt == locked->mounted_on->mnt)
+                    {
+                        mnt = locked;
+                        dentry = locked->root;
+                        goto again;
+                    }
+                }
+
+                path next { mnt, dentry };
 
                 if (last)
-                    return resolve_res { current, node.value() };
+                    return resolve_res { current, next };
 
-                auto ret = node.value()->reduce();
-                if (!ret)
-                    return std::unexpected(ret.error());
-
-                current = ret.value();
-                if (current->inode->stat.type() != stat::type::s_ifdir)
+                current = next;
+                if (current.dentry->inode->stat.type() != stat::type::s_ifdir)
                     return std::unexpected(error::not_a_dir);
 
                 continue;
             }
 
-            if (populate(current_me, segment))
+            if (populate(current, segment))
                 goto try_again;
 
             break;
@@ -193,137 +177,141 @@ namespace vfs
         return std::unexpected(error::not_found);
     }
 
-    auto mount(std::shared_ptr<node> parent, lib::path source, lib::path target, std::string_view fsname) -> expect<void>
+    auto mount(lib::path source_path, lib::path target_path, std::string_view fstype, int flags) -> expect<void>
     {
-        auto fs = find_fs(fsname);
+        // TODO
+        lib::unused(flags);
+
+        auto fs = find_fs(fstype);
         if (!fs)
             return std::unexpected(fs.error());
 
         const std::unique_lock _ { lock };
 
-        std::shared_ptr<node> source_node;
-        if (!source.empty())
+        std::optional<path> source { };
+        if (!source_path.empty())
         {
-            auto ret = resolve(nullptr, parent, source);
+            auto ret = path_for(source_path);
             if (!ret)
                 return std::unexpected(ret.error());
 
-            source_node = ret->target;
-            if (source_node->inode->stat.type() != stat::type::s_ifblk)
+            source = ret.value();
+            if (source->dentry->inode->stat.type() != stat::type::s_ifblk)
                 return std::unexpected(error::not_a_block);
         }
 
-        auto ret = resolve(nullptr, parent, target);
+        auto ret = path_for(target_path);
         if (!ret)
             return std::unexpected(ret.error());
 
-        auto target_node = ret->target;
-
-        if (target_node != node::root() && target_node->inode->stat.type() != stat::type::s_ifdir)
+        auto target = ret.value();
+        if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected(error::not_a_dir);
 
-        auto [instance, root] = fs->get()->mount(source_node);
-        target_node->mountpoint = root;
-        root->inode->mount = std::make_shared<struct mount>(instance, root, target_node);
+        auto mnt = fs->get()->mount(source);
+        if (!mnt)
+            return std::unexpected(mnt.error());
 
-        log::info("vfs: mount('{}', '{}', '{}')", source, target, fsname);
+        mnt.value()->mounted_on = target;
+        target.dentry->child_mounts.push_back(mnt.value());
+
+        log::info("vfs: mount('{}', '{}', '{}')", source_path, target_path, fstype);
 
         return { };
     }
 
-    auto unmount(std::shared_ptr<node> parent, lib::path target) -> expect<void>
+    auto unmount(lib::path target) -> expect<void>
     {
-        lib::unused(parent, target);
+        lib::unused(target);
         return std::unexpected(error::todo);
     }
 
-    auto create(std::shared_ptr<node> parent, lib::path path, mode_t mode) -> expect<std::shared_ptr<node>>
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode) -> expect<path>
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(nullptr, parent, path);
+        auto res = resolve(parent, _path);
         if (res)
             return std::unexpected(error::already_exists);
 
-        res = resolve(nullptr, parent, path.dirname());
+        res = resolve(parent, _path.dirname());
         if (!res)
             return std::unexpected(res.error());
 
-        auto parent_node = res->target->me();
-        const auto name = path.basename();
-        auto ret = parent_node->inode->mount->fs->create(parent_node->inode, name, mode);
+        const auto real_parent = res->target;
+        const auto name = _path.basename();
+
+        auto ret = real_parent.mnt->fs->create(real_parent.dentry->inode, name, mode);
         if (ret)
         {
-            auto node = std::make_shared<vfs::node>();
-            node->parent = parent_node;
-            node->name = name;
-            node->inode = ret.value();
-            node->inode->mount = parent_node->inode->mount;
+            auto dentry = std::make_shared<vfs::dentry>();
+            dentry->parent = real_parent.dentry;
+            dentry->name = name;
+            dentry->inode = ret.value();
 
-            const std::unique_lock _ { parent_node->lock };
-            parent_node->get_children()[node->name] = node;
-            return node;
+            const std::unique_lock _ { real_parent.dentry->lock };
+            real_parent.dentry->children[dentry->name] = dentry;
+            return path { real_parent.mnt, dentry };
         }
         return std::unexpected(ret.error());
     }
 
-    auto symlink(std::shared_ptr<node> parent, lib::path path, lib::path target) -> expect<std::shared_ptr<node>>
+    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(nullptr, parent, path);
+        auto res = resolve(parent, src);
         if (res)
             return std::unexpected(error::already_exists);
 
-        res = resolve(nullptr, parent, path.dirname());
+        res = resolve(parent, src.dirname());
         if (!res)
             return std::unexpected(res.error());
 
-        auto parent_node = res->target->me();
-        const auto name = path.basename();
-        auto ret = parent_node->inode->mount->fs->symlink(parent_node->inode, name, target);
+        const auto real_parent = res->target;
+        const auto name = src.basename();
+
+        auto ret = real_parent.mnt->fs->symlink(real_parent.dentry->inode, name, target);
         if (ret)
         {
-            auto node = std::make_shared<vfs::node>();
-            node->parent = parent_node;
-            node->name = name;
-            node->inode = ret.value();
-            node->inode->mount = parent_node->inode->mount;
+            auto dentry = std::make_shared<vfs::dentry>();
+            dentry->parent = real_parent.dentry;
+            dentry->name = name;
+            dentry->inode = ret.value();
 
-            const std::unique_lock _ { parent_node->lock };
-            parent_node->get_children()[node->name] = node;
-            return node;
+            const std::unique_lock _ { real_parent.dentry->lock };
+            real_parent.dentry->children[dentry->name] = dentry;
+            return path { real_parent.mnt, dentry };
         }
         return std::unexpected(ret.error());
     }
 
-    auto link(std::shared_ptr<node> parent, lib::path path, std::shared_ptr<node> tgtparent, lib::path target) -> expect<std::shared_ptr<node>>
+    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target) -> expect<path>
     {
-        lib::unused(parent, path, tgtparent, target);
+        lib::unused(parent, src, tgtparent, target);
         return std::unexpected(error::todo);
     }
 
-    auto unlink(std::shared_ptr<node> parent, lib::path path) -> expect<void>
+    auto unlink(std::optional<path> parent, lib::path path) -> expect<void>
     {
         lib::unused(parent, path);
         return std::unexpected(error::todo);
     }
 
-    auto stat(std::shared_ptr<node> parent, lib::path path) -> expect<::stat>
+    auto stat(std::optional<path> parent, lib::path path) -> expect<::stat>
     {
         const std::unique_lock _ { lock };
 
-        auto res = resolve(nullptr, parent, path);
+        auto res = resolve(parent, path);
         if (!res)
             return std::unexpected(res.error());
 
-        auto node = res->target->me();
-        return node->inode->stat;
+        return res->target.dentry->inode->stat;
     }
 
-    bool populate(std::shared_ptr<node> parent, std::string_view name)
+    bool populate(path parent, std::string_view name)
     {
-        const auto ret = parent->inode->mount->fs->populate(parent->inode, name);
+        const auto ret = parent.mnt->fs->populate(parent.dentry->inode, name);
         if (!ret.has_value())
             return false;
 
@@ -332,14 +320,13 @@ namespace vfs
         {
             for (const auto [name, inode] : list)
             {
-                auto node = std::make_shared<vfs::node>();
-                node->parent = parent;
-                node->name = name;
-                node->inode = inode;
-                node->inode->mount = parent->inode->mount;
+                auto dentry = std::make_shared<vfs::dentry>();
+                dentry->parent = parent.dentry;
+                dentry->name = name;
+                dentry->inode = inode;
 
-                const std::unique_lock _ { parent->lock };
-                parent->get_children()[node->name] = node;
+                const std::unique_lock _ { parent.dentry->lock };
+                parent.dentry->children[dentry->name] = dentry;
             }
             return true;
         }
@@ -358,11 +345,11 @@ namespace vfs
         initgraph::require { fs::filesystems_registered_stage() },
         initgraph::entail { root_mounted_stage() },
         [] {
-            lib::ensure(mount(nullptr, "", "/", "tmpfs"));
+            lib::ensure(mount("", "/", "tmpfs", 0));
 
-            auto err = create(nullptr, "/dev", stat::type::s_ifdir);
+            auto err = create(std::nullopt, "/dev", stat::type::s_ifdir);
             lib::ensure(err.has_value() || err.error() == error::already_exists);
-            lib::ensure(mount(nullptr, "", "/dev", "devtmpfs"));
+            lib::ensure(mount("", "/dev", "devtmpfs", 0));
         }
     };
 } // namespace vfs

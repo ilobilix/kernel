@@ -194,7 +194,7 @@ namespace sched
             const std::unique_lock _ { parent->lock };
             parent->children[proc->pid] = proc;
         }
-        else proc->root = proc->cwd = vfs::node::root(true);
+        else proc->root = proc->cwd = vfs::dentry::root(true);
 
         return proc;
     }

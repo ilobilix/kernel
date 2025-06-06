@@ -64,7 +64,7 @@ namespace initramfs
                 // auto devmajor = lib::oct2int<time_t>(current->devmajor);
                 // auto devminor = lib::oct2int<time_t>(current->devminor);
 
-                std::shared_ptr<vfs::node> node;
+                std::shared_ptr<vfs::inode> inode;
 
                 if (name == "./")
                     goto next;
@@ -74,13 +74,13 @@ namespace initramfs
                     case types::regular:
                     case types::aregular:
                     {
-                        auto ret = vfs::create(nullptr, name, mode | stat::type::s_ifreg);
+                        auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifreg);
                         if (!ret)
                             log::error("ustar: could not create a regular file '{}'", name);
 
-                        node = ret.value();
+                        inode = ret.value().dentry->inode;
                         const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
-                        if (node->inode->write(0, data) != std::ssize_t(size))
+                        if (inode->write(0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
                             // TODO: remove node
@@ -89,18 +89,18 @@ namespace initramfs
                     }
                     case types::hardlink:
                     {
-                        auto ret = vfs::link(nullptr, name, nullptr, linkname);
+                        auto ret = vfs::link(std::nullopt, name, std::nullopt, linkname);
                         if (!ret)
                             log::error("ustar: could not create a hardlink '{}' -> '{}'", name, linkname);
-                        node = ret.value();
+                        inode = ret.value().dentry->inode;
                         break;
                     }
                     case types::symlink:
                     {
-                        auto ret = vfs::symlink(nullptr, name, linkname);
+                        auto ret = vfs::symlink(std::nullopt, name, linkname);
                         if (!ret)
                             log::error("ustar: could not create a symlink '{}' -> '{}'", name, linkname);
-                        node = ret.value();
+                        inode = ret.value().dentry->inode;
                         break;
                     }
                     case types::chardev:
@@ -111,10 +111,10 @@ namespace initramfs
                         break;
                     case types::directory:
                     {
-                        auto ret = vfs::create(nullptr, name, mode | stat::type::s_ifdir);
+                        auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifdir);
                         if (!ret)
                             log::error("ustar: could not create a directory '{}'", name);
-                        node = ret.value();
+                        inode = ret.value().dentry->inode;
                         break;
                     }
                     case types::fifo:
@@ -122,8 +122,8 @@ namespace initramfs
                         break;
                 }
 
-                if (node != nullptr)
-                    node->inode->stat.st_mtim = timespec { mtim, 0 };
+                if (inode != nullptr)
+                    inode->stat.st_mtim = timespec { mtim, 0 };
 
                 next:
                 current = reinterpret_cast<header *>(reinterpret_cast<std::uintptr_t>(current) + 512 + lib::align_up(size, 512zu));
