@@ -146,13 +146,17 @@ namespace fs::tmpfs
             ~instance() = default;
         };
 
+        mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
         auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
             auto instance = std::make_shared<fs::instance>();
             auto root = std::make_shared<vfs::dentry>();
             root->name = "tmpfs root";
             root->inode = std::make_shared<inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
-            return std::make_shared<struct vfs::mount>(instance, root);
+
+            auto mount = std::make_shared<struct vfs::mount>(instance, root);
+            mounts.push_back(mount);
+            return mount;
         }
 
         fs() : vfs::filesystem { "tmpfs" } { }
@@ -175,10 +179,13 @@ namespace fs::devtmpfs
     {
         std::shared_ptr<tmpfs::fs::instance> instance;
         std::shared_ptr<vfs::dentry> root;
+        mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
 
         auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
-            return std::make_shared<struct vfs::mount>(instance, root);
+            auto mount = std::make_shared<struct vfs::mount>(instance, root);
+            mounts.push_back(mount);
+            return mount;
         }
 
         fs() : vfs::filesystem { "devtmpfs" }, instance { std::make_shared<tmpfs::fs::instance>() }
