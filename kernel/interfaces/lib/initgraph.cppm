@@ -162,43 +162,10 @@ export namespace initgraph
         constexpr engine() = default;
         ~engine() = default;
 
-        void run(node *goal = nullptr)
+        void run()
         {
-            frg::intrusive_list<
-                node,
-                frg::locate_member<
-                node,
-                    frg::default_list_hook<node>,
-                    &node::_queuehook
-                >
-            > queue;
-
-            if (goal != nullptr)
-            {
-                if (!goal->_wanted)
-                {
-                    queue.push_back(goal);
-                    goal->_wanted = true;
-                }
-
-                while (!queue.empty())
-                {
-                    auto node = queue.pop_front();
-                    for (auto edge : node->_inlist)
-                    {
-                        if (!edge->_source->_wanted)
-                        {
-                            queue.push_back(edge->_source);
-                            edge->_source->_wanted = true;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                for (auto node : _nodes)
-                    node->_wanted = true;
-            }
+            for (auto node : _nodes)
+                node->_wanted = true;
 
             for (auto node : _nodes)
             {
