@@ -6,7 +6,7 @@ Hobby OS in modern C++
 ## Dependencies
 
 Make sure you have recent versions of the following programs installed:
-* [xmake](https://xmake.io/#/getting_started?id=installation) or just use ``./xmake.sh`` instead
+* [xmake >=v3.0.0](https://xmake.io/#/getting_started?id=installation) or just use ``./xmake.sh`` instead
 * clang/clang++ (plus clang-scan-deps)
 * llvm/lld
 * xorriso

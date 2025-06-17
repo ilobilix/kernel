@@ -64,12 +64,12 @@ export namespace vfs
 
             virtual auto populate(std::shared_ptr<vfs::inode> &inode, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
             virtual bool sync() = 0;
-            virtual bool unmount() = 0;
+            virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
             virtual ~instance() = default;
         };
 
-        virtual auto mount(std::optional<path> &) const -> expect<std::shared_ptr<mount>> = 0;
+        virtual auto mount(std::optional<std::shared_ptr<dentry>> src) const -> expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -80,9 +80,6 @@ export namespace vfs
         std::shared_ptr<filesystem::instance> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
-
-        mount(std::shared_ptr<filesystem::instance> fs, std::shared_ptr<dentry> root)
-            : fs { fs }, root { root } { }
     };
 
     struct inode : std::enable_shared_from_this<inode>

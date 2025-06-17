@@ -141,13 +141,13 @@ namespace fs::tmpfs
             bool sync() override { return true; }
 
             // TODO
-            bool unmount() override { lib::panic("tmpfs::unmount"); return false; }
+            bool unmount(std::shared_ptr<struct vfs::mount>) override { lib::panic("tmpfs::unmount"); return false; }
 
             ~instance() = default;
         };
 
         mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
-        auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
+        auto mount(std::optional<std::shared_ptr<vfs::dentry>>) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
             auto instance = std::make_shared<fs::instance>();
             auto root = std::make_shared<vfs::dentry>();
@@ -181,7 +181,7 @@ namespace fs::devtmpfs
         std::shared_ptr<vfs::dentry> root;
         mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
 
-        auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
+        auto mount(std::optional<std::shared_ptr<vfs::dentry>>) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
             auto mount = std::make_shared<struct vfs::mount>(instance, root);
             mounts.push_back(mount);

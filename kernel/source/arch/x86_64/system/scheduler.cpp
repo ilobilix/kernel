@@ -34,11 +34,12 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, 0xFF);
     }
 
-    void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip)
+    void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         auto &regs = thread->regs;
         regs.rflags = 0x202;
         regs.rip = ip;
+        regs.rdi = arg;
 
         const auto &fpu = cpu::features::fpu;
         const auto pages = lib::div_roundup(fpu.size, pmm::page_size);

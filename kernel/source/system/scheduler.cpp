@@ -28,7 +28,7 @@ namespace sched
         void init();
         void reschedule(std::size_t ms);
 
-        void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip);
+        void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg);
         void deinitialise(std::shared_ptr<process> &proc, thread *thread);
 
         void save(std::shared_ptr<thread> &thread);
@@ -106,7 +106,7 @@ namespace sched
         return vaddr + boot::kstack_size;
     }
 
-    std::shared_ptr<thread> thread::create(std::shared_ptr<process> &parent, std::uintptr_t ip)
+    std::shared_ptr<thread> thread::create(std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg)
     {
         auto thread = std::make_shared<sched::thread>();
 
@@ -118,7 +118,7 @@ namespace sched
 
         auto stack = thread::allocate_kstack(parent);
         thread->kstack_top = thread->ustack_top = stack;
-        arch::finalise(parent, thread, ip);
+        arch::finalise(parent, thread, ip, arg);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
