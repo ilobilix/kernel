@@ -7,8 +7,8 @@ module;
 export module system.cpu.self;
 import cppstd;
 
-extern "C" char __percpu_start[];
-extern "C" char __percpu_end[];
+extern "C" char __start_percpu[];
+extern "C" char __end_percpu[];
 
 export namespace cpu
 {
@@ -43,7 +43,7 @@ export namespace cpu
             Type &get(std::uintptr_t base = self_addr()) const
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
-                const auto peraddr = reinterpret_cast<std::uintptr_t>(__percpu_start);
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
                 const auto offset =  addr - peraddr;
                 return *const_cast<Type *>(std::launder(reinterpret_cast<volatile Type *>(reinterpret_cast<std::uintptr_t>(base) + offset)));
             }
@@ -56,7 +56,7 @@ export namespace cpu
             void initialise_base(std::uintptr_t base, Args &&...args) const
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
-                const auto peraddr = reinterpret_cast<std::uintptr_t>(__percpu_start);
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
                 const auto offset =  addr - peraddr;
 
                 auto ptr = reinterpret_cast<void *>(base + offset);

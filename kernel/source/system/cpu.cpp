@@ -40,25 +40,25 @@ namespace cpu
 
     namespace per
     {
-        extern "C" void (*__percpu_init_start[])(std::uintptr_t);
-        extern "C" void (*__percpu_init_end[])(std::uintptr_t);
+        extern "C" void (*__start_percpu_init[])(std::uintptr_t);
+        extern "C" void (*__end_percpu_init[])(std::uintptr_t);
 
-        extern "C" char __percpu_start[];
-        extern "C" char __percpu_end[];
+        extern "C" char __start_percpu[];
+        extern "C" char __end_percpu[];
 
         extern "C++" std::uintptr_t init()
         {
             static std::size_t offset = 0;
 
-            const auto base = reinterpret_cast<std::uintptr_t>(__percpu_end) + offset;
+            const auto base = reinterpret_cast<std::uintptr_t>(__end_percpu) + offset;
             const std::size_t size =
-                reinterpret_cast<std::uintptr_t>(__percpu_end) -
-                reinterpret_cast<std::uintptr_t>(__percpu_start);
+                reinterpret_cast<std::uintptr_t>(__end_percpu) -
+                reinterpret_cast<std::uintptr_t>(__start_percpu);
 
             if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, vmm::flag::rw, vmm::page_size::small); !ret)
                 lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
 
-            for (auto func = __percpu_init_start; func < __percpu_init_end; func++)
+            for (auto func = __start_percpu_init; func < __end_percpu_init; func++)
                 (*func)(base);
 
             offset += size;

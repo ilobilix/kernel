@@ -31,17 +31,17 @@ SECTIONS
     } :rodata :modules
 
     .init_array : {
-        PROVIDE_HIDDEN(__init_array_start = .);
+        PROVIDE_HIDDEN(__start_init_array = .);
         KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
         KEEP(*(.init_array .ctors))
-        PROVIDE_HIDDEN(__init_array_end = .);
+        PROVIDE_HIDDEN(__end_init_array = .);
     } :rodata
 
     .fini_array : {
-        PROVIDE_HIDDEN(__fini_array_start = .);
+        PROVIDE_HIDDEN(__start_fini_array = .);
         KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
         KEEP(*(.fini_array .dtors))
-        PROVIDE_HIDDEN(__fini_array_end = .);
+        PROVIDE_HIDDEN(__end_fini_array = .);
     } :rodata
 
     .data : {

@@ -12,7 +12,6 @@ export namespace bin::elf::sym
         std::string_view name;
         std::uintptr_t address;
         std::size_t size;
-        std::uint8_t type;
 
         constexpr auto operator<=>(const symbol &rhs) const { return address <=> rhs.address; }
         constexpr auto operator<=>(std::uintptr_t rhs) const { return address <=> rhs; }
@@ -22,22 +21,19 @@ export namespace bin::elf::sym
             return
                 name == rhs.name &&
                 address == rhs.address &&
-                size == rhs.size &&
-                type == rhs.type;
+                size == rhs.size;
         }
     };
-    constexpr symbol empty { { }, -1ul, 0, 0 };
+    constexpr symbol empty { { }, -1ul, 0 };
 
-    using symbol_table = std::vector<symbol>;
+    using symbol_table = lib::btree::set<symbol>;
 
-    auto lookup(std::uintptr_t addr, std::uint8_t type) -> const std::tuple<symbol, std::uintptr_t, std::string_view>;
+    struct lookup_result { std::uintptr_t offset; std::string_view from; };
+    auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<lookup_result>;
     const symbol klookup(std::string_view name);
 
     bool kernel_loaded();
     void load_kernel();
-} // export namespace bin::elf::sym
 
-namespace bin::elf::sym
-{
     auto get_symbols(const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz, std::uintptr_t offset = 0) -> symbol_table;
 } // namespace bin::elf::sym

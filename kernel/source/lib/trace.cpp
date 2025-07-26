@@ -2,7 +2,6 @@
 
 module;
 
-#include <elf.h>
 #include <cxxabi.h>
 
 module lib;
@@ -32,20 +31,16 @@ namespace lib
 
         auto print = [prefix](std::uintptr_t ip) -> bool
         {
-            auto [sym, offset, where] = bin::elf::sym::lookup(ip, STT_FUNC);
-            bool is_empty = sym == bin::elf::sym::empty;
+            std::array<char, KSYM_NAME_LEN> namebuf { "unknown" };
+            auto ret = bin::elf::sym::lookup(ip, namebuf);
+            bool is_empty = !ret.has_value();
 
-            int status = -1;
-            const char *str = !is_empty ? (abi::__cxa_demangle(sym.name.data(), nullptr, nullptr, &status) ?: sym.name.data()) : "unknown";
-            if (status == 1)
-                return false;
+            std::string_view str = !is_empty ? std::string_view { namebuf.data(), std::strnlen(namebuf.data(), KSYM_NAME_LEN) } : std::string_view { "unknown" };
 
+            auto [offset, where] = ret.value_or(bin::elf::sym::lookup_result { 0, "unknown" });
             log::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
 
-            if (status == 0)
-                std::free(const_cast<char *>(str));
-
-            return is_empty ?is_empty: (sym.name != "isr_handler" && sym.name != "syscall_handler");
+            return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };
 
         log::println(prefix, "stack trace:");

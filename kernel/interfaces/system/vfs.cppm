@@ -54,8 +54,6 @@ export namespace vfs
         {
             lib::mutex lock;
 
-            std::shared_ptr<filesystem> fs;
-
             virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<ops> ops = nullptr) -> expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<inode>> = 0;

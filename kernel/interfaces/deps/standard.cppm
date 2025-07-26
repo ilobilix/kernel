@@ -620,6 +620,7 @@ export namespace std
     using std::strcmp;
     using std::strcpy;
     using std::strlen;
+    using std::strnlen;
     using std::strncat;
     using std::strncmp;
     using std::strncpy;
@@ -1553,3 +1554,8 @@ export namespace std
     using std::operator<<;
     using std::operator>>;
 } // namespace std
+
+export
+{
+    using std::literals::string_view_literals::operator""sv;
+} // export

@@ -15,6 +15,8 @@ SECTIONS
 {
     . = 0xffffffff80000000;
 
+    _skernel = .;
+
     .requests : {
         KEEP(*(.requests_start_marker))
         KEEP(*(.requests))
@@ -24,7 +26,10 @@ SECTIONS
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .text : {
+        _text = .;
+        _stext = .;
         *(.text .text.*)
+        _etext = .;
     } :text
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
@@ -34,22 +39,22 @@ SECTIONS
     } :rodata
 
     .modules : {
-        __section_modules_start = .;
+        __start_section_modules = .;
         KEEP(*(.modules))
-        __section_modules_end = .;
+        __end_section_modules = .;
     } :rodata
 
     .init_array : {
-        PROVIDE_HIDDEN(__init_array_start = .);
+        PROVIDE_HIDDEN(__start_init_array = .);
         KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
         KEEP(*(.init_array .ctors))
-        PROVIDE_HIDDEN(__init_array_end = .);
+        PROVIDE_HIDDEN(__end_init_array = .);
     } :rodata
 
     .percpu_init : {
-        __percpu_init_start = .;
+        __start_percpu_init = .;
         *(.percpu_init)
-        __percpu_init_end = .;
+        __end_percpu_init = .;
     } :rodata
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
@@ -66,12 +71,14 @@ SECTIONS
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .percpu : {
-        __percpu_start = .;
+        __start_percpu = .;
         *(.percpu_head)
         *(.percpu)
         . = ALIGN(CONSTANT(MAXPAGESIZE));
-        __percpu_end = .;
+        __end_percpu = .;
     } :data
+
+    _ekernel = .;
 
     /DISCARD/ : {
         *(.eh_frame*)
