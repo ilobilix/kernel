@@ -14,9 +14,6 @@ namespace lib
 {
     void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip)
     {
-        if (!bin::elf::sym::kernel_loaded())
-            return;
-
         if (fp == 0)
             fp = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
 
@@ -35,10 +32,32 @@ namespace lib
             auto ret = bin::elf::sym::lookup(ip, namebuf);
             bool is_empty = !ret.has_value();
 
-            std::string_view str = !is_empty ? std::string_view { namebuf.data(), std::strnlen(namebuf.data(), KSYM_NAME_LEN) } : std::string_view { "unknown" };
+            std::string_view str { "unknown" };
+            char *ptr = nullptr;
+
+            if (!is_empty)
+            {
+                int status = -1;
+                ptr = abi::__cxa_demangle(namebuf.data(), nullptr, nullptr, &status);
+                log::println("{} {}", status, namebuf.data());
+                if (!ptr || status != 0)
+                {
+                    ptr = nullptr;
+                    str = std::string_view { namebuf.data(), std::strnlen(namebuf.data(), KSYM_NAME_LEN) };
+                }
+                else
+                {
+                    str = ptr;
+                    if (str.ends_with("()"))
+                        str.remove_suffix(2);
+                }
+            }
 
             auto [offset, where] = ret.value_or(bin::elf::sym::lookup_result { 0, "unknown" });
             log::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
+
+            if (ptr)
+                std::free(ptr);
 
             return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };

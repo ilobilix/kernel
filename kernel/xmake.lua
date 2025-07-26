@@ -38,7 +38,7 @@ target("ilobilix.dependencies")
     add_deps("ilobilix.dependencies.base")
     add_deps(
         "compiler-rt-builtins", "cwalk",
-        "flanterm", "fmt",
+        "demangler", "flanterm", "fmt",
         "printf", "limine", "uacpi"
     )
 
@@ -47,7 +47,7 @@ target("ilobilix.dependencies.nolink")
 
     add_deps("ilobilix.dependencies.base")
     add_deps(
-        "cwalk-headers",
+        "cwalk-headers", "demangler-headers",
         "flanterm-headers", "fmt-headers",
         "printf-headers", "limine-headers",
         "uacpi-headers"
@@ -128,7 +128,7 @@ target("ilobilix.elf")
     if is_mode("debug") then
         add_defines("KSYM_NAME_LEN=4096")
     else
-        add_defines("KSYM_NAME_LEN=2048")
+        add_defines("KSYM_NAME_LEN=1024")
     end
 
     on_link(function (target)
@@ -150,14 +150,14 @@ target("ilobilix.elf")
                 import("core.project.project")
                 import("core.tool.compiler")
 
-                local wdir = path.join(tmpdir, "tmp")
+                local wdir = path.join(tmpdir, "kallsyms_wdir")
                 os.tryrm(wdir)
                 os.mkdir(wdir)
 
                 local filenameS = path.join(wdir, path.basename(syms) .. ".S")
 
-                local exec = path.absolute(project.target("kallsyms"):targetfile(), os.projectdir())
-                os.execv(exec, { syms }, { stdout = filenameS })
+                local exec = project.target("kallsyms"):targetfile()
+                os.execv(exec, { "--all-symbols", syms }, { stdout = filenameS })
 
                 local filenameO = path.join(tmpdir, path.basename(filenameS) .. ".o")
                 compiler.compile(filenameS, filenameO, { target = project.target("kallsyms-syms") })
@@ -168,7 +168,7 @@ target("ilobilix.elf")
 
             local function mksysmap(inelf, outsyms)
                 local outsymstmp = outsyms .. ".txt"
-                os.execv("llvm-nm", { "-C", "-n", inelf }, { stdout = outsymstmp })
+                os.execv("llvm-nm", { "-n", inelf }, { stdout = outsymstmp })
                 os.execv("sed", { outsymstmp, "-f", path.join(os.projectdir(), "misc/mksysmap") }, { stdout = outsyms })
                 os.rm(outsymstmp)
             end
@@ -211,10 +211,7 @@ target("ilobilix.elf")
 
             print(" => kallsyms step 3...")
             sysmap_and_kallsyms(tmp_ilobilix3)
-            link(tmp_ilobilix3)
-
-            os.cp(tmp_ilobilix3, targetelf)
-            -- TODO: verify
+            link(targetelf)
 
             os.rm(tmpdir)
         end, { files = objects })

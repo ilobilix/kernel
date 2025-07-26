@@ -67,3 +67,7 @@
 	url = https://github.com/limine-bootloader/limine
 	shallow = true
 	branch = v8.x-binary
+[submodule "dependencies/demangler/demangler"]
+	path = dependencies/demangler/demangler
+	url = https://github.com/ilobilo/demangler
+	shallow = true

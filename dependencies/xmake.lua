@@ -2,6 +2,7 @@
 
 includes("compiler-rt-builtins/xmake.lua")
 includes("cwalk/xmake.lua")
+includes("demangler/xmake.lua")
 includes("flanterm/xmake.lua")
 includes("fmt/xmake.lua")
 includes("freestnd-c-hdrs/xmake.lua")
