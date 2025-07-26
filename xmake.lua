@@ -537,8 +537,10 @@ task("qemu")
             )
         end
 
+        local cxxfilt = path.join(os.projectdir(), "misc/cxxfilt.sh")
+
         print(" => running qemu...")
-        os.execv(qemu_exec, qemu_args)
+        os.execv(cxxfilt, { qemu_exec, unpack(qemu_args) })
     end)
 
 target("bios")
