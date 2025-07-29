@@ -40,6 +40,8 @@ namespace sched
         lib::map::flat_hash<std::size_t, std::shared_ptr<process>> processes;
         lib::spinlock process_lock;
 
+        bool initialised = false;
+
         std::size_t alloc_pid(std::shared_ptr<process> proc)
         {
             static std::atomic_size_t next_pid = 0;
@@ -76,6 +78,8 @@ namespace sched
             ::arch::halt(true);
         }
     } // namespace
+
+    bool is_initialised() { return initialised; }
 
     std::shared_ptr<process> &proc_for(std::size_t pid)
     {

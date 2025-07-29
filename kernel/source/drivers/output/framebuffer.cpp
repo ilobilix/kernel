@@ -4,13 +4,13 @@ module;
 
 #include <limine.h>
 
-module drivers.framebuffer;
+module drivers.output.framebuffer;
 
 import boot;
 import lib;
 import cppstd;
 
-namespace frm
+namespace output::frm
 {
     void init()
     {
@@ -32,4 +32,4 @@ namespace frm
                 frm.modes[ii] = new limine_video_mode(*entry->modes[ii]);
         }
     }
-} // namespace frm
+} // namespace output::frm

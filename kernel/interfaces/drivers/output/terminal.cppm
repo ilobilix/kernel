@@ -4,13 +4,13 @@ module;
 
 #include <flanterm.h>
 
-export module drivers.terminal;
+export module drivers.output.terminal;
 
-import drivers.framebuffer;
+import drivers.output.framebuffer;
 import lib;
 import cppstd;
 
-export namespace term
+export namespace output::term
 {
     void write(flanterm_context *ctx, std::string_view str);
     void write(flanterm_context *ctx, char chr);
@@ -19,4 +19,4 @@ export namespace term
 
     void early_init();
     void init();
-} // export namespace term
+} // export namespace output::term

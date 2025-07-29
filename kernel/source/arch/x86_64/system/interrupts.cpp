@@ -52,7 +52,7 @@ namespace interrupts
     {
         lib::ensure(vector >= idt::irq(0) && vector < idt::num_ints);
 
-        if (apic::io::initialised)
+        if (apic::io::is_initialised())
             apic::io::mask(vector);
         else
             pic::mask(vector);
@@ -62,7 +62,7 @@ namespace interrupts
     {
         lib::ensure(vector >= idt::irq(0) && vector < idt::num_ints);
 
-        if (apic::io::initialised)
+        if (apic::io::is_initialised())
             apic::io::unmask(vector);
         else
             pic::unmask(vector);

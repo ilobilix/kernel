@@ -15,19 +15,12 @@ extern "C"
     void kmain()
     {
         arch::early_init();
-
-        serial::early_init();
-        term::early_init();
+        output::early_init();
 
         boot::check_requests();
 
         memory::init();
-
-        serial::init();
         cxxabi::construct();
-
-        frm::init();
-        term::init();
 
         initgraph::global_init_engine.run();
 

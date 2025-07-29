@@ -135,7 +135,7 @@ export namespace sched
 
     std::shared_ptr<process> &proc_for(std::size_t pid);
 
-    bool initialised = false;
+    bool is_initialised();
 
     std::shared_ptr<thread> this_thread();
     std::size_t yield();

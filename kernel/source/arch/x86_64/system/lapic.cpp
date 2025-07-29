@@ -39,6 +39,9 @@ namespace x86_64::apic
         bool x2apic = false;
         bool tsc_deadline = false;
 
+        lib::freqfrac freq;
+        bool is_calibrated = false;
+
         std::uint32_t to_x2apic(std::uint32_t reg)
         {
             return (reg >> 4) + 0x800;
@@ -60,15 +63,6 @@ namespace x86_64::apic
                 lib::mmio::out<32>(mmio + reg, val);
         }
     } // namespace
-
-    struct lapic_local
-    {
-        std::uint64_t n, p;
-        bool calibrated = false;
-    };
-
-    cpu_local<lapic_local> local;
-    cpu_local_init(local);
 
     std::pair<bool, bool> supported()
     {
@@ -108,25 +102,26 @@ namespace x86_64::apic
         return { lapic, x2apic && cached };
     }
 
+    // the frequency should be the same on all cores
+    // https://discord.com/channels/440442961147199490/734392369230643320/1398724196154216700
     void calibrate_timer()
     {
-        lib::ensure(!!supported().first && local->calibrated == false);
+        lib::ensure(!!supported().first);
+
+        if (cpu::self()->idx != cpu::bsp_idx())
+            return;
 
         if (tsc_deadline)
         {
             log::debug("lapic: using tsc deadline");
-            local->calibrated = true;
+            is_calibrated = true;
             return;
         }
 
-        std::uint64_t freq = 0;
+        std::uint64_t val = 0;
 
         std::uint32_t a, b, c, d;
-        if (cpu::id(0x15, 0, a, b, c, d) && c != 0)
-        {
-            freq = c;
-            local->calibrated = true;
-        }
+        if (cpu::id(0x15, 0, a, b, c, d) && c != 0) { val = c; }
         else
         {
             auto calibrator = ::timers::calibrator();
@@ -145,13 +140,14 @@ namespace x86_64::apic
                 auto count = read(reg::tcc);
                 write(reg::tic, 0);
 
-                freq += (0xFFFFFFFF - count) * 100;
+                val += (0xFFFFFFFF - count) * 100;
             }
-            freq /= times;
-            local->calibrated = true;
+            val /= times;
         }
-        log::debug("lapic: timer frequency: {} hz", freq);
-        std::tie(local->p, local->n) = lib::freq2nspn(freq);
+
+        log::debug("lapic: timer frequency: {} hz", val);
+        freq = (val);
+        is_calibrated = true;
     }
 
     void eoi() { write(0xB0, 0); }
@@ -168,7 +164,7 @@ namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
-        lib::ensure(local->calibrated);
+        lib::ensure(!!is_calibrated);
 
         if (ns == 0)
             ns = 1;
@@ -176,7 +172,7 @@ namespace x86_64::apic
         if (tsc_deadline)
         {
             auto val = timers::tsc::rdtsc();
-            auto ticks = lib::ns2ticks(ns, timers::tsc::local->p, timers::tsc::local->n);
+            auto ticks = timers::tsc::frequency().ticks(ns);
             write(reg::lvt, (0b10 << 17) | vector);
             asm volatile ("mfence" ::: "memory");
             cpu::msr::write(reg::deadline, val + ticks);
@@ -185,7 +181,7 @@ namespace x86_64::apic
         {
             write(reg::tic, 0);
             write(reg::lvt, vector);
-            auto ticks = lib::ns2ticks(ns, local->p, local->n);
+            auto ticks = freq.ticks(ns);
             write(reg::tic, ticks);
         }
     }
@@ -237,8 +233,5 @@ namespace x86_64::apic
         write(reg::tpr, 0x00);
         // Enable APIC and set spurious interrupt vector to 0xFF
         write(reg::siv, (1 << 8) | 0xFF);
-
-        if (!is_bsp)
-            calibrate_timer();
     }
 } // namespace x86_64::apic

@@ -125,7 +125,11 @@ namespace x86_64::apic::io
             }
             return std::nullopt;
         }
+
+        bool initialised = false;
     } // namespace
+
+    bool is_initialised() { return initialised; }
 
     void set_gsi(std::size_t gsi, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv)
     {

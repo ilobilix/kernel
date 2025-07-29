@@ -42,7 +42,7 @@ namespace x86_64::idt
 
         void eoi(std::uint8_t vector)
         {
-            if (apic::io::initialised)
+            if (apic::io::is_initialised())
                 apic::eoi();
             else
                 pic::eoi(vector);

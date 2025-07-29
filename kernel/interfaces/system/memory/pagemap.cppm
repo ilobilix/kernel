@@ -6,6 +6,11 @@ import frigg;
 import lib;
 import cppstd;
 
+namespace vmm
+{
+    struct arch_table;
+} // namespace vmm
+
 export namespace vmm
 {
     enum class caching
@@ -59,6 +64,7 @@ export namespace vmm
     class pagemap
     {
         friend class vspace;
+        friend struct vmm::arch_table;
 
         private:
         static std::uintptr_t pa_mask;

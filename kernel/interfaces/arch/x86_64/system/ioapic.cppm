@@ -26,7 +26,7 @@ export namespace x86_64::apic::io
     };
     using magic_enum::bitwise_operators::operator|;
 
-    bool initialised = false;
+    bool is_initialised();
 
     void set_gsi(std::size_t gsi, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv);
 

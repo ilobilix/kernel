@@ -12,7 +12,15 @@ import cppstd;
 
 namespace x86_64::timers::tsc
 {
-    cpu_local_init(local);
+    namespace
+    {
+        lib::freqfrac freq;
+
+        cpu_local<std::int64_t> offset;
+        cpu_local_init(offset, 0);
+
+        bool is_calibrated = false;
+    } // namespace
 
     bool supported()
     {
@@ -27,6 +35,8 @@ namespace x86_64::timers::tsc
         return cached;
     }
 
+    lib::freqfrac frequency() { return freq; }
+
     extern "C++" std::uint64_t rdtsc()
     {
         std::uint32_t a = 0, d = 0;
@@ -36,31 +46,29 @@ namespace x86_64::timers::tsc
 
     std::uint64_t time_ns()
     {
-        if (!local->calibrated) [[unlikely]]
-            lib::panic("TSC not calibrated");
+        if (!is_calibrated) [[unlikely]]
+            lib::panic("tsc not calibrated");
 
-        return lib::ticks2ns(rdtsc(), local->p, local->n) - local->offset;
+        return freq.nanos(rdtsc()) - offset.get();
     }
 
-    time::clock clock { "tsc", 75, time_ns };
-    bool is_calibrated = false;
-
-    namespace
+    void init()
     {
-        void calibrate()
+        if (!supported())
+            return;
+
+        if (cpu::self()->idx == cpu::bsp_idx())
         {
-            std::uint64_t freq = 0;
+            std::uint64_t val = 0;
 
             std::uint32_t a, b, c, d;
             if (cpu::id(0x15, 0, a, b, c, d) && a != 0 && b != 0 && c != 0)
             {
-                freq = c * b / a;
-                local->calibrated = true;
+                val = c * b / a;
             }
             else if (kvm::supported())
             {
-                freq = kvm::tsc_freq();
-                local->calibrated = true;
+                val = kvm::tsc_freq();
             }
             else if (auto calibrator = ::timers::calibrator())
             {
@@ -73,38 +81,28 @@ namespace x86_64::timers::tsc
                     calibrator(millis);
                     auto end = rdtsc();
 
-                    freq += (end - start) * (1'000 / millis);
+                    val += (end - start) * (1'000 / millis);
                 }
-                freq /= times;
-
-                local->calibrated = true;
+                val /= times;
             }
 
-            if (local->calibrated)
+            if (val != 0)
             {
-                std::tie(local->p, local->n) = lib::freq2nspn(freq);
-
-                if (const auto clock = time::main_clock())
-                    local->offset = time_ns() - clock->ns();
-
-                log::debug("tsc: frequency: {} hz", freq);
-
+                log::debug("tsc: frequency: {} hz", val);
+                freq = val;
                 is_calibrated = true;
             }
+            else log::debug("tsc: not calibrated");
         }
-    } // namespace
 
-    void init()
-    {
-        if (!supported())
-            return;
-
-        calibrate();
-
-        if (!local->calibrated)
-            log::debug("tsc: not calibrated");
+        if (is_calibrated)
+        {
+            if (const auto clock = time::main_clock())
+                offset = time_ns() - clock->ns();
+        }
     }
 
+    time::clock clock { "tsc", 75, time_ns };
     void finalise()
     {
         if (is_calibrated)

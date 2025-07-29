@@ -20,9 +20,9 @@ namespace timers::arch
     {
         if (kvm::supported())
             return use_timer<kvm::time_ns>;
-        else if (hpet::initialised)
+        else if (hpet::is_initialised())
             return hpet::calibrate;
-        else if (pit::initialised)
+        else if (pit::is_initialised())
             return use_timer<pit::time_ns>;
 
         return nullptr;

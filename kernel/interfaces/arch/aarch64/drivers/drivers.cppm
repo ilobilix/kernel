@@ -3,3 +3,4 @@
 export module arch.drivers;
 
 export import arch.drivers.timers;
+export import arch.drivers.output;

@@ -4,13 +4,13 @@ module;
 
 #include <limine.h>
 
-export module drivers.framebuffer;
+export module drivers.output.framebuffer;
 import cppstd;
 
-export namespace frm
+export namespace output::frm
 {
     using framebuffer = limine_framebuffer;
     std::vector<framebuffer> framebuffers;
 
     void init();
-} // export namespace frm
+} // export namespace output::frm

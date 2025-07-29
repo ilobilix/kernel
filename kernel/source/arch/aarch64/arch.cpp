@@ -4,6 +4,7 @@ module arch;
 
 import system.scheduler;
 import drivers.timers;
+import drivers.output;
 import system.cpu;
 import cppstd;
 
@@ -49,7 +50,7 @@ namespace arch
     initgraph::task bsp_task
     {
         "arch.init-bsp",
-        initgraph::require { },
+        initgraph::require { output::available_stage() },
         initgraph::entail { bsp_stage() },
         [] {
             cpu::init_bsp();

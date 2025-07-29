@@ -1,12 +1,13 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module drivers.serial;
+module x86_64.drivers.output.com;
 
+import drivers.output.serial;
 import arch;
 import lib;
 import cppstd;
 
-namespace serial
+namespace x86_64::output::com
 {
     namespace
     {
@@ -17,17 +18,13 @@ namespace serial
             COM3 = 0x3E8,
             COM4 = 0x2E8
         };
-        bool e9 = false;
 
-        void printc(char c, COM com)
+        void printc(char chr, COM com)
         {
-            if (e9)
-                lib::io::out<8>(0xE9, c);
-
             while (not (lib::io::in<8>(com + 5) & (1 << 5)))
                 arch::pause();
 
-            lib::io::out<8>(com, c);
+            lib::io::out<8>(com, chr);
         }
 
         void init_port(COM com)
@@ -42,13 +39,14 @@ namespace serial
         }
     } // namespace
 
-    void printc(char c) { printc(c, COM1); }
-    void early_init()
+    void printc(char chr)
     {
-        if (lib::io::in<8>(0xE9) == 0xE9)
-            e9 = true;
-
-        init_port(COM1);
+        printc(chr, COM1);
     }
-    void init() { }
-} // namespace serial
+
+    void init()
+    {
+        init_port(COM1);
+        ::output::serial::register_printer(printc);
+    }
+} // namespace x86_64::output::com
