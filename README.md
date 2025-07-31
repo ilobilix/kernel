@@ -9,6 +9,7 @@ Make sure you have recent versions of the following programs installed:
 * [xmake >=v3.0.0](https://xmake.io/#/getting_started?id=installation) or just use ``./xmake.sh`` instead
 * clang/clang++ (plus clang-scan-deps)
 * llvm/lld
+* nasm
 * xorriso
 * qemu (x86_64 and aarch64)
 
@@ -23,4 +24,5 @@ Make sure you have recent versions of the following programs installed:
 * Fully rebuild the kernel: ``xmake build -r --all -j$(nproc)``
 
 ## Known Bugs
-* threads sometimes do not execute after yielding in debug mode
+* aarch64 basically doesn't work
+* (unconfirmed) threads sometimes do not execute after yielding in debug mode

@@ -8,9 +8,9 @@ namespace output::serial
 {
     namespace
     {
-        // eeeeehhhhhhhhhhhhhhhhh
-        std::array<printer, 5> printers;
-        std::size_t idx = 0;
+        // TODO: eeehhhh come up with a better idea dumass
+        constinit std::array<printer, 2> printers { };
+        constinit std::size_t idx = 0;
     } // namespace
 
     void register_printer(printer prn)

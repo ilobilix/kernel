@@ -11,9 +11,6 @@ import cppstd;
 
 export namespace timers::acpipm
 {
-    constexpr std::size_t frequency = 3579545;
-    bool initialised = false;
-
     bool supported();
     void calibrate(std::size_t ms);
 

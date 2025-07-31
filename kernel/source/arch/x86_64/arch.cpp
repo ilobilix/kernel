@@ -79,6 +79,8 @@ namespace arch
         initgraph::require { acpi::tables_stage() },
         initgraph::entail { bsp_stage() },
         [] {
+            x86_64::apic::init_cpu();
+
             cpu::init_bsp();
             x86_64::pic::init();
             x86_64::apic::io::init();
@@ -99,16 +101,16 @@ namespace arch
 
     namespace core
     {
-        void entry(boot::limine_mp_info *cpu)
+        void entry(std::uintptr_t addr)
         {
-            auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
+            auto ptr = reinterpret_cast<cpu::processor *>(addr);
 
-            cpu::gs::write_user(cpu->extra_argument);
+            cpu::gs::write_user(addr);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
-            cpu::gs::write_user(cpu->extra_argument);
+            cpu::gs::write_user(addr);
             cpu::features::enable();
 
             x86_64::syscall::init_cpu();
@@ -122,20 +124,18 @@ namespace arch
             sched::start();
         }
 
-        void bsp(boot::limine_mp_info *cpu)
+        void bsp(std::uintptr_t addr)
         {
-            auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
-            cpu::gs::write_user(cpu->extra_argument);
+            auto ptr = reinterpret_cast<cpu::processor *>(addr);
+            cpu::gs::write_user(addr);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
-            cpu::gs::write_user(cpu->extra_argument);
+            cpu::gs::write_user(addr);
             cpu::features::enable();
-
             x86_64::syscall::init_cpu();
 
-            x86_64::apic::init_cpu();
             ptr->online = true;
         }
     } // namespace core

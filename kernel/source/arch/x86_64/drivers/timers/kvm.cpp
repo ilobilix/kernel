@@ -43,8 +43,8 @@ namespace x86_64::timers::kvm
             bool kvmclock = false;
             if (const auto base = cpu::kvm_base())
             {
-                std::uint32_t a, b, c, d;
-                kvmclock = cpu::id(base + 1, 0, a, b, c, d) && (a & (1 << 3));
+                cpu::id_res res;
+                kvmclock = cpu::id(base + 1, 0, res) && (res.a & (1 << 3));
             }
             log::info("kvmclock: supported: {}", kvmclock);
             return kvmclock;

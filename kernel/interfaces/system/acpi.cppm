@@ -13,6 +13,9 @@ export namespace acpi
 {
     namespace madt
     {
+        std::vector<acpi_madt_lapic> lapics;
+        std::vector<acpi_madt_x2apic> x2apics;
+
         std::vector<acpi_madt_ioapic> ioapics;
         std::vector<acpi_madt_interrupt_source_override> isos;
 

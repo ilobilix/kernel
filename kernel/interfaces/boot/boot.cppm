@@ -64,19 +64,6 @@ export namespace boot
         };
 
         [[gnu::used, gnu::section(".requests")]]
-        volatile limine_mp_request smp
-        {
-            .id = LIMINE_MP_REQUEST,
-            .revision = 0,
-            .response = nullptr,
-#if defined(__x86_64__)
-            .flags = LIMINE_MP_X2APIC
-#else
-            .flags = 0
-#endif
-        };
-
-        [[gnu::used, gnu::section(".requests")]]
         volatile limine_paging_mode_request paging_mode
         {
             .id = LIMINE_PAGING_MODE_REQUEST,
@@ -196,8 +183,6 @@ export namespace boot
             lib::panic("could not get a response to the kernel address request");
         if (requests::framebuffer.response == nullptr)
             lib::panic("could not get a response to the framebuffer request");
-        if (requests::smp.response == nullptr)
-            lib::panic("could not get a response to the smp request");
         if (requests::rsdp.response == nullptr)
             lib::panic("could not get a response to the rsdp request");
         if (requests::module_.response == nullptr)

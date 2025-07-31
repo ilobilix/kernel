@@ -69,7 +69,5 @@ export namespace cpu
                 initialise_base(self_addr(), args...);
             }
         };
-
-        extern "C++" std::uintptr_t init();
     } // namespace per
 } // export namespace cpu

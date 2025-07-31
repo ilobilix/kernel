@@ -69,14 +69,14 @@ namespace arch
 
     namespace core
     {
-        void entry(boot::limine_mp_info *cpu)
+        void entry(std::uintptr_t addr)
         {
-            cpu::write_el1_base(cpu->extra_argument);
+            cpu::write_el1_base(addr);
             sched::start();
         }
-        void bsp(boot::limine_mp_info *cpu)
+        void bsp(std::uintptr_t addr)
         {
-            cpu::write_el1_base(cpu->extra_argument);
+            cpu::write_el1_base(addr);
         }
     } // namespace core
 } // namespace arch

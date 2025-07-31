@@ -98,6 +98,7 @@ namespace sched::arch
     void load(std::shared_ptr<thread> &thread)
     {
         x86_64::gdt::tss::self().ist[0] = thread->pfstack_top;
+        x86_64::gdt::tss::self().rsp[0] = thread->kstack_top;
 
         if (thread->is_user)
         {

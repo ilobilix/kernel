@@ -53,11 +53,17 @@ namespace acpi
             {
                 switch (madt->type)
                 {
-                    case 1:
+                    case ACPI_MADT_ENTRY_TYPE_LAPIC:
+                        madt::lapics.push_back(*reinterpret_cast<acpi_madt_lapic *>(entry));
+                        break;
+                    case ACPI_MADT_ENTRY_TYPE_IOAPIC:
                         madt::ioapics.push_back(*reinterpret_cast<acpi_madt_ioapic *>(entry));
                         break;
-                    case 2:
+                    case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE:
                         madt::isos.push_back(*reinterpret_cast<acpi_madt_interrupt_source_override *>(entry));
+                        break;
+                    case ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC:
+                        madt::x2apics.push_back(*reinterpret_cast<acpi_madt_x2apic *>(entry));
                         break;
                 }
             }
