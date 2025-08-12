@@ -41,5 +41,5 @@ namespace bin::elf::mod
         status status;
     };
 
-    lib::map::flat_hash<std::string_view, entry> modules;
+    auto get_modules() -> const lib::map::flat_hash<std::string_view, entry> &;
 } // export namespace bin::elf::mod

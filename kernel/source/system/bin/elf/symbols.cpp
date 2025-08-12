@@ -213,7 +213,7 @@ namespace bin::elf::sym
         auto ret = kallsyms::lookup(addr, namebuf);
         if (!ret.has_value())
         {
-            for (const auto &[name, mod] : mod::modules)
+            for (const auto &[name, mod] : mod::get_modules())
             {
                 auto [sym, offset] = search_in(mod.symbols);
                 if (sym != empty)

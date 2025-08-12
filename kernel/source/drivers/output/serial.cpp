@@ -8,23 +8,31 @@ namespace output::serial
 {
     namespace
     {
-        // TODO: eeehhhh come up with a better idea dumass
-        constinit std::array<printer, 2> printers { };
-        constinit std::size_t idx = 0;
+        constinit printer *printers = nullptr;
     } // namespace
 
-    void register_printer(printer prn)
+    void register_printer(printer &prn)
     {
-        lib::ensure(idx < printers.size());
-        printers[idx++] = prn;
+        if (printers == nullptr)
+        {
+            printers = &prn;
+            prn.next = nullptr;
+            return;
+        }
+        else
+        {
+            prn.next = printers;
+            printers = &prn;
+        }
     }
 
     void printc(char chr)
     {
-        for (auto prn : printers)
+        auto current = printers;
+        while (current != nullptr)
         {
-            if (prn)
-                (*prn)(chr);
+            current->printc(chr);
+            current = current->next;
         }
     }
 } // namespace output::serial

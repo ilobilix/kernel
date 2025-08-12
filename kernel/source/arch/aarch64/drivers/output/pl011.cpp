@@ -42,6 +42,8 @@ namespace aarch64::output::pl011
         // Enable UART, TX and RX
         lib::mmio::out<16>(addr + 0x30, (1 << 0) | (1 << 8) | (1 << 9));
 
-        ::output::serial::register_printer(printc);
+        using namespace ::output::serial;
+        static constinit printer printer { printc };
+        register_printer(printer);
     }
 } // namespace aarch64::output::pl011

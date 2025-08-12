@@ -73,7 +73,7 @@ namespace cpu
             proc->idx = idx;
             proc->arch_id = aid;
 
-            const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
+            const auto stack = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
             if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
                 lib::panic("could not map cpu {} kernel stack: {}", idx, magic_enum::enum_name(ret.error()));
 

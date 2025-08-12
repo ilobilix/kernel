@@ -41,7 +41,7 @@ namespace pci::acpi
                 return mappings[paddr] + offset;
 
             static constexpr auto size = 1zu << 20;
-            const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, size);
+            const auto vaddr = vmm::alloc_vpages(vmm::space_type::pci, size);
 
             if (!vmm::kernel_pagemap->map(vaddr, paddr, size, vmm::flag::rw, vmm::pagemap::max_page_size(size), vmm::caching::mmio))
                 lib::panic("could not map ecam memory");
