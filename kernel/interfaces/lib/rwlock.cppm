@@ -2,68 +2,41 @@
 
 export module lib:rwlock;
 
+import :spinlock;
 import :mutex;
 import cppstd;
 
+namespace lib::lock
+{
+    std::uintptr_t current_thread();
+} // namespace lib::lock
+
 export namespace lib
 {
-    // TODO
-    struct rwlock
-    {
-        private:
-
-        public:
-        constexpr rwlock() { }
-
-        rwlock(const rwlock &) = delete;
-        rwlock(rwlock &&) = delete;
-
-        rwlock &operator=(const rwlock &) = delete;
-        rwlock &operator=(rwlock &&) = delete;
-
-        void read_lock()
-        {
-        }
-
-        void write_lock()
-        {
-        }
-
-        void read_unlock()
-        {
-        }
-
-        void write_unlock()
-        {
-        }
-
-        bool is_read_locked()
-        {
-            return false;
-        }
-
-        bool is_write_locked()
-        {
-            return false;
-        }
-    };
-
-    struct rwmutex
+    template<lock_type Type>
+    class rwlock_base
     {
         private:
         std::size_t counter;
-        mutex readers;
-        mutex global;
+
+        std::conditional_t<
+            Type == lock_type::block,
+            mutex, spinlock_base<lock_type::spin>
+        > readers;
+        std::conditional_t<
+            Type == lock_type::block,
+            mutex, spinlock_base<Type>
+        > global;
 
         public:
-        constexpr rwmutex()
+        constexpr rwlock_base()
             : counter { 0 }, readers { }, global { } { }
 
-        rwmutex(const rwmutex &) = delete;
-        rwmutex(rwmutex &&) = delete;
+        rwlock_base(const rwlock_base &) = delete;
+        rwlock_base(rwlock_base &&) = delete;
 
-        rwmutex &operator=(const rwmutex &) = delete;
-        rwmutex &operator=(rwmutex &&) = delete;
+        rwlock_base &operator=(const rwlock_base &) = delete;
+        rwlock_base &operator=(rwlock_base &&) = delete;
 
         void read_lock()
         {
@@ -104,4 +77,9 @@ export namespace lib
             return global.is_locked() && counter == 0;
         }
     };
+
+    using rwspinlock = rwlock_base<lock_type::spin>;
+    using rwspinlock_irq = rwlock_base<lock_type::irq>;
+    using rwspinlock_preempt = rwlock_base<lock_type::preempt>;
+    using rwmutex = rwlock_base<lock_type::block>;
 } // export namespace lib

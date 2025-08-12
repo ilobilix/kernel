@@ -46,9 +46,6 @@ namespace bin::elf::mod
 
     namespace
     {
-        lib::map::flat_hash<std::string_view, entry> modules;
-        lib::mutex lock;
-
         void log_entry(auto &entry)
         {
             auto ptr = entry.header;
@@ -100,9 +97,7 @@ namespace bin::elf::mod
                 const auto ndeps = ptr->dependencies.ndeps;
                 const auto deps = reinterpret_cast<const char *const *>(ptr->dependencies.list);
 
-                lock.lock();
-                auto &entry = modules[ptr->name];
-                lock.unlock();
+                auto &entry = modules.write_lock().value()[ptr->name];
 
                 entry.internal = internal;
                 entry.header = ptr;
@@ -439,11 +434,6 @@ namespace bin::elf::mod
             }
         }
     } // namespace
-
-    auto get_modules() -> const lib::map::flat_hash<std::string_view, entry> &
-    {
-        return modules;
-    }
 
     initgraph::stage *modules_loaded_stage()
     {

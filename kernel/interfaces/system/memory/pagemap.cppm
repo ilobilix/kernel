@@ -112,7 +112,7 @@ export namespace vmm
         };
 
         table *_table;
-        lib::spinlock_ints _lock;
+        lib::spinlock_irq _lock;
 
         static table *new_table();
 

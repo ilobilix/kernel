@@ -41,5 +41,5 @@ namespace bin::elf::mod
         status status;
     };
 
-    auto get_modules() -> const lib::map::flat_hash<std::string_view, entry> &;
+    lib::locker<lib::map::flat_hash<std::string_view, entry>, lib::rwspinlock> modules;
 } // export namespace bin::elf::mod
