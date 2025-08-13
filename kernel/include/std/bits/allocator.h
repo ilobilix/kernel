@@ -15,6 +15,9 @@ namespace std
         using size_type = std::size_t;
         using difference_type = std::ptrdiff_t;
 
+        template<typename U>
+        struct rebind { using other = allocator<U>;};
+
         constexpr allocator() noexcept = default;
 
         template<typename U>
