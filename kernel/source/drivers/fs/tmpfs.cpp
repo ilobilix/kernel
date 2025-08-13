@@ -149,12 +149,12 @@ namespace fs::tmpfs
         mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
         auto mount(std::optional<std::shared_ptr<vfs::dentry>>) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
-            auto instance = std::make_shared<fs::instance>();
+            auto instance = lib::make_locked<fs::instance, lib::mutex>();
             auto root = std::make_shared<vfs::dentry>();
             root->name = "tmpfs root";
-            root->inode = std::make_shared<inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
+            root->inode = std::make_shared<inode>(instance.lock()->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
 
-            auto mount = std::make_shared<struct vfs::mount>(instance, root);
+            auto mount = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
             mounts.push_back(mount);
             return mount;
         }
@@ -177,22 +177,23 @@ namespace fs::devtmpfs
 {
     struct fs : vfs::filesystem
     {
-        std::shared_ptr<tmpfs::fs::instance> instance;
+        lib::locked_ptr<tmpfs::fs::instance, lib::mutex> instance;
         std::shared_ptr<vfs::dentry> root;
         mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
 
         auto mount(std::optional<std::shared_ptr<vfs::dentry>>) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
-            auto mount = std::make_shared<struct vfs::mount>(instance, root);
+            auto mount = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
             mounts.push_back(mount);
             return mount;
         }
 
-        fs() : vfs::filesystem { "devtmpfs" }, instance { std::make_shared<tmpfs::fs::instance>() }
+        fs() : vfs::filesystem { "devtmpfs" }
         {
+            instance = lib::make_locked<tmpfs::fs::instance, lib::mutex>();
             root = std::make_shared<vfs::dentry>();
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
-            root->inode = std::make_shared<tmpfs::inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), tmpfs::ops::singleton());
+            root->inode = std::make_shared<tmpfs::inode>(instance.lock()->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), tmpfs::ops::singleton());
         }
     };
 
