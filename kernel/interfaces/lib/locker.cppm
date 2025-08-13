@@ -120,8 +120,8 @@ namespace lib
 
             constexpr void deallocate(AType *ptr, std::size_t count)
             {
-                // !NOTICE: assumes that rebinded type puts dummy at the start of the object (I think)
-                // tbh it's 3 am and I can't really think, so this could be perfectly valid (and it does work find)
+                // !NOTICE: assumes that the rebound type puts dummy at the start of the object (I think)
+                // tbh it's 3 am and I can't really think, so this could be perfectly valid (and it does work fine)
 
                 auto dummy_ptr = reinterpret_cast<dummy *>(ptr);
                 std::destroy_at(reinterpret_cast<Type *>(dummy_ptr->_buffer));
