@@ -12,6 +12,7 @@ namespace detail
     {
         { l.lock() };
         { l.unlock() };
+        { l.is_locked() } -> std::same_as<bool>;
     };
 
     template<typename Type>
@@ -21,6 +22,8 @@ namespace detail
         { l.write_lock() };
         { l.read_unlock() };
         { l.write_unlock() };
+        { l.is_read_locked() } -> std::same_as<bool>;
+        { l.is_write_locked() } -> std::same_as<bool>;
     };
 
     template<typename Type, typename Lock>
@@ -91,77 +94,64 @@ namespace detail
         friend class storage;
 
         private:
-        struct dummy { Lock _lock; alignas(alignof(Type)) std::byte _buffer[sizeof(Type)]; };
+        struct buffer
+        {
+            Lock _lock;
+            alignas(alignof(Type)) std::byte _buffer[sizeof(Type)];
+
+            Type *valueptr() { return std::launder(reinterpret_cast<Type *>(_buffer)); }
+
+            template<typename ...Args>
+            constexpr buffer(Args &&...args) : _lock { }
+            {
+                std::construct_at(reinterpret_cast<Type *>(_buffer), std::forward<Args>(args)...);
+            }
+            ~buffer() { std::destroy_at(valueptr()); }
+        };
 
         std::shared_ptr<void> _data;
         Type *_ptr;
 
-        template<typename AType>
-        struct allocator : std::allocator<AType>
+        template<typename Type1>
+        static consteval bool safety()
         {
-            using typename std::allocator<AType>::value_type;
-            using typename std::allocator<AType>::pointer;
-            using typename std::allocator<AType>::const_pointer;
-            using typename std::allocator<AType>::reference;
-            using typename std::allocator<AType>::const_reference;
-            using typename std::allocator<AType>::size_type;
-            using typename std::allocator<AType>::difference_type;
-
-            template<typename U>
-            struct rebind { using other = allocator<U>; };
-
-            [[nodiscard]] constexpr AType *allocate(std::size_t count)
-            {
-                return static_cast<AType *>(::operator new(count * sizeof(AType)));
-            }
-
-            constexpr void deallocate(AType *ptr, std::size_t count)
-            {
-                // !NOTICE: assumes that the rebound type puts dummy at the start of the object (I think)
-                // tbh it's 3 am and I can't really think, so this could be perfectly valid (and it does work fine)
-
-                auto dummy_ptr = reinterpret_cast<dummy *>(ptr);
-                std::destroy_at(reinterpret_cast<Type *>(dummy_ptr->_buffer));
-                std::destroy_at(std::addressof(dummy_ptr->_lock));
-                ::operator delete(ptr, count * sizeof(AType));
-            }
-        };
+            using Other = storage<Type1, Lock>;
+            static_assert(std::is_base_of_v<Type, Type1>);
+            static_assert(alignof(Type) == alignof(Type1));
+            static_assert(__builtin_offsetof(buffer, _lock) == __builtin_offsetof(Other::buffer, _lock));
+            static_assert(__builtin_offsetof(buffer, _buffer) == __builtin_offsetof(Other::buffer, _buffer));
+            return true;
+        }
 
         public:
-        constexpr storage() : _data { nullptr } { }
-        constexpr storage(std::nullptr_t) : storage { } { }
+        constexpr storage() : _data { } { }
 
-        template<typename Type1>
-            requires (std::is_base_of_v<Type, Type1> && alignof(Type) == alignof(Type1))
+        template<typename Type1> requires (safety<Type1>())
         constexpr storage(const storage<Type1, Lock> &rhs) : _data { rhs._data },
-            _ptr { static_cast<Type *>(rhs._ptr) }
-        {
-            // some safety checks. probably unnecessary. as I sad, 3 am
-            static_assert(__builtin_offsetof(dummy, _lock) == __builtin_offsetof(storage<Type1, Lock>::dummy, _lock));
-            static_assert(__builtin_offsetof(dummy, _buffer) == __builtin_offsetof(storage<Type1, Lock>::dummy, _buffer));
-        }
+            _ptr { static_cast<Type *>(rhs._ptr) } { }
 
-        template<typename Type1>
-            requires (std::is_base_of_v<Type, Type1> && alignof(Type) == alignof(Type1))
+        template<typename Type1> requires (safety<Type1>())
         constexpr storage(storage<Type1, Lock> &&rhs) : _data { std::move(rhs._data) },
-            _ptr { static_cast<Type *>(rhs._ptr) }
-        {
-            static_assert(__builtin_offsetof(dummy, _lock) == __builtin_offsetof(storage<Type1, Lock>::dummy, _lock));
-            static_assert(__builtin_offsetof(dummy, _buffer) == __builtin_offsetof(storage<Type1, Lock>::dummy, _buffer));
-        }
+            _ptr { static_cast<Type *>(rhs._ptr) } { }
 
         template<typename ...Args>
-        constexpr storage(make_locked_tag_t, Args &&...args) : _data { }
+        constexpr storage(make_locked_tag_t, Args &&...args)
+            : _data { std::make_shared<buffer>(std::forward<Args>(args)...) },
+              _ptr { static_cast<buffer *>(_data.get())->valueptr() } { }
+
+        void clear()
         {
-            _data = std::allocate_shared<dummy>(allocator<dummy> { });
+            const auto &lock = get_lock();
+            if constexpr (is_rwlock<Lock>)
+                lib::ensure(!lock.is_read_locked() && !lock.is_write_locked());
+            else
+                lib::ensure(!lock.is_locked());
 
-            auto ptr = reinterpret_cast<Type *>(static_cast<dummy *>(_data.get())->_buffer);
-            new(ptr) Type { std::forward<Args>(args)... };
-            _ptr = std::launder(ptr);
-
-            auto lock = std::addressof(static_cast<dummy *>(_data.get())->_lock);
-            new(lock) Lock { };
+            _data.reset();
+            _ptr = nullptr;
         }
+
+        std::size_t use_count() const { return _data.use_count(); }
 
         Type *get_data() const
         {
@@ -172,7 +162,7 @@ namespace detail
         Lock &get_lock() const
         {
             lib::ensure(_data != nullptr);
-            return std::launder(reinterpret_cast<dummy *>(_data.get()))->_lock;
+            return static_cast<buffer *>(_data.get())->_lock;
         }
     };
 } // namespace detail
@@ -198,6 +188,12 @@ export namespace lib
         public:
         constexpr locked_ptr() : _storage { } { }
 
+        constexpr locked_ptr(const locked_ptr &rhs)
+            : _storage { rhs._storage } { }
+
+        constexpr locked_ptr(locked_ptr &&rhs)
+            : _storage { std::move(rhs._storage) } { }
+
         // type checks in storage::storage()
         template<typename Type1>
         constexpr locked_ptr(const locked_ptr<Type1, Lock> &rhs)
@@ -209,17 +205,14 @@ export namespace lib
 
         ~locked_ptr() = default;
 
-        locked_ptr &operator=(const locked_ptr &rhs)
-        {
-            _storage = rhs._storage;
-            return *this;
-        }
+        locked_ptr &operator=(const locked_ptr &rhs) = default;
+        locked_ptr &operator=(locked_ptr &&rhs) = default;
 
-        locked_ptr &operator=(locked_ptr &&rhs)
-        {
-            _storage = std::move(rhs._storage);
-            return *this;
-        }
+        void clear() { return _storage.clear(); }
+        void reset() { return clear(); }
+
+        std::size_t use_count() const { return _storage.use_count(); }
+        bool unique() const { return use_count() == 1; }
 
         template<typename Self> requires detail::is_lock<Lock>
         [[nodiscard]] auto lock(this Self &&self)
@@ -267,16 +260,18 @@ export namespace lib
         alignas(alignof(Type)) std::byte _buffer[sizeof(Type)];
         Lock _lock;
 
+        Type *valueptr() { return std::launder(reinterpret_cast<Type *>(_buffer)); }
+
         public:
         template<typename ...Args>
         constexpr locker(Args &&...args) : _lock { }
         {
-            new(_buffer) Type { std::forward<Args>(args)... };
+            std::construct_at(reinterpret_cast<Type *>(_buffer), std::forward<Args>(args)... );
         }
 
         ~locker()
         {
-            std::launder(reinterpret_cast<Type *>(_buffer))->~Type();
+            std::destroy_at(valueptr());
         }
 
         locker(const locker &) = delete;
@@ -289,7 +284,7 @@ export namespace lib
         [[nodiscard]] auto lock(this Self &&self)
         {
             return detail::locked<Type, Lock, true> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self).valueptr(),
                 std::forward<Self>(self)._lock
             };
         }
@@ -298,7 +293,7 @@ export namespace lib
         [[nodiscard]] auto read_lock(this Self &&self)
         {
             return detail::locked<Type, Lock, false> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self).valueptr(),
                 std::forward<Self>(self)._lock
             };
         }
@@ -307,7 +302,7 @@ export namespace lib
         [[nodiscard]] auto write_lock(this Self &&self)
         {
             return detail::locked<Type, Lock, true> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self).valueptr(),
                 std::forward<Self>(self)._lock
             };
         }
