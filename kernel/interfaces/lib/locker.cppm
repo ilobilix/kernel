@@ -5,7 +5,7 @@ export module lib:locker;
 import :ensure;
 import cppstd;
 
-namespace util
+namespace detail
 {
     template<typename Type>
     concept is_lock = requires(Type l)
@@ -27,7 +27,7 @@ namespace util
     class locked_ptr;
 
     template<typename Type, typename Lock, bool Write>
-        requires (util::is_lock<Lock> || util::is_rwlock<Lock>)
+        requires (is_lock<Lock> || is_rwlock<Lock>)
     class locked
     {
         private:
@@ -39,7 +39,7 @@ namespace util
         public:
         locked(Type *ptr, Lock &lock) : _ptr { ptr }, _lock { lock }
         {
-            if constexpr (util::is_rwlock<Lock>)
+            if constexpr (is_rwlock<Lock>)
             {
                 if constexpr (Write)
                     _lock.write_lock();
@@ -51,7 +51,7 @@ namespace util
 
         ~locked()
         {
-            if constexpr (util::is_rwlock<Lock>)
+            if constexpr (is_rwlock<Lock>)
             {
                 if constexpr (Write)
                     _lock.write_unlock();
@@ -83,10 +83,7 @@ namespace util
 
     enum class make_locked_tag_t { };
     inline constexpr make_locked_tag_t make_locked_tag { };
-} // namespace util
 
-namespace lib
-{
     template<typename Type, typename Lock>
     class storage
     {
@@ -154,7 +151,7 @@ namespace lib
         }
 
         template<typename ...Args>
-        constexpr storage(util::make_locked_tag_t, Args &&...args) : _data { }
+        constexpr storage(make_locked_tag_t, Args &&...args) : _data { }
         {
             _data = std::allocate_shared<dummy>(allocator<dummy> { });
 
@@ -178,7 +175,7 @@ namespace lib
             return std::launder(reinterpret_cast<dummy *>(_data.get()))->_lock;
         }
     };
-} // namespace lib
+} // namespace detail
 
 export namespace lib
 {
@@ -192,11 +189,11 @@ export namespace lib
         friend locked_ptr<Type1, Lock1> make_locked(Args &&...args);
 
         private:
-        lib::storage<Type, Lock> _storage;
+        detail::storage<Type, Lock> _storage;
 
         template<typename ...Args>
-        constexpr locked_ptr(util::make_locked_tag_t, Args &&...args)
-            : _storage { util::make_locked_tag, std::forward<Args>(args)... } { }
+        constexpr locked_ptr(detail::make_locked_tag_t, Args &&...args)
+            : _storage { detail::make_locked_tag, std::forward<Args>(args)... } { }
 
         public:
         constexpr locked_ptr() : _storage { } { }
@@ -224,28 +221,28 @@ export namespace lib
             return *this;
         }
 
-        template<typename Self> requires util::is_lock<Lock>
+        template<typename Self> requires detail::is_lock<Lock>
         [[nodiscard]] auto lock(this Self &&self)
         {
-            return util::locked<Type, Lock, true> {
+            return detail::locked<Type, Lock, true> {
                 std::forward<Self>(self)._storage.get_data(),
                 std::forward<Self>(self)._storage.get_lock()
             };
         }
 
-        template<typename Self> requires util::is_rwlock<Lock>
+        template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto read_lock(this Self &&self)
         {
-            return util::locked<Type, Lock, false> {
+            return detail::locked<Type, Lock, false> {
                 std::forward<Self>(self)._storage.get_data(),
                 std::forward<Self>(self)._storage.get_lock()
             };
         }
 
-        template<typename Self> requires util::is_rwlock<Lock>
+        template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto write_lock(this Self &&self)
         {
-            return util::locked<Type, Lock, true> {
+            return detail::locked<Type, Lock, true> {
                 std::forward<Self>(self)._storage.get_data(),
                 std::forward<Self>(self)._storage.get_lock()
             };
@@ -256,7 +253,7 @@ export namespace lib
     inline locked_ptr<Type, Lock> make_locked(Args &&...args)
     {
         return locked_ptr<Type, Lock> {
-            util::make_locked_tag, std::forward<Args>(args)...
+            detail::make_locked_tag, std::forward<Args>(args)...
         };
     }
 
@@ -288,28 +285,28 @@ export namespace lib
         locker &operator=(const locker &) = delete;
         locker &operator=(locker &&) = delete;
 
-        template<typename Self> requires util::is_lock<Lock>
+        template<typename Self> requires detail::is_lock<Lock>
         [[nodiscard]] auto lock(this Self &&self)
         {
-            return util::locked<Type, Lock, true> {
+            return detail::locked<Type, Lock, true> {
                 std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
                 std::forward<Self>(self)._lock
             };
         }
 
-        template<typename Self> requires util::is_rwlock<Lock>
+        template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto read_lock(this Self &&self)
         {
-            return util::locked<Type, Lock, false> {
+            return detail::locked<Type, Lock, false> {
                 std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
                 std::forward<Self>(self)._lock
             };
         }
 
-        template<typename Self> requires util::is_rwlock<Lock>
+        template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto write_lock(this Self &&self)
         {
-            return util::locked<Type, Lock, true> {
+            return detail::locked<Type, Lock, true> {
                 std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
                 std::forward<Self>(self)._lock
             };

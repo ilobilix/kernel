@@ -5,7 +5,7 @@ import cppstd;
 
 extern "C++" std::uintptr_t (*get_hhdm_offset)();
 
-namespace util
+namespace detail
 {
     template<typename Type>
     using get_ret_type =
@@ -16,7 +16,7 @@ namespace util
                 std::uintptr_t, std::intptr_t
             >, Type
         >;
-} // namespace util
+} // namespace detail
 
 export using uint128_t = unsigned _BitInt(128);
 export using int128_t = _BitInt(128);
@@ -39,13 +39,13 @@ export namespace lib
         return std::uintptr_t(val) >= get_hhdm_offset();
     }
 
-    template<typename Type, typename Ret = util::get_ret_type<Type>>
+    template<typename Type, typename Ret = detail::get_ret_type<Type>>
     inline constexpr Ret tohh(Type val)
     {
         return ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) + get_hhdm_offset());
     }
 
-    template<typename Type, typename Ret = util::get_ret_type<Type>>
+    template<typename Type, typename Ret = detail::get_ret_type<Type>>
     inline constexpr Ret fromhh(Type val)
     {
         return !ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) - get_hhdm_offset());
