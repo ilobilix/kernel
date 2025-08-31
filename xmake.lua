@@ -5,7 +5,7 @@ set_version("v0.2")
 
 set_license("EUPL-1.2")
 
-add_rules("plugin.compile_commands.autoupdate", { outputdir = "build" })
+add_rules("plugin.compile_commands.autoupdate", { outputdir = "build", lsp = "clangd" })
 
 set_policy("run.autobuild", true)
 set_policy("package.install_locally", true)
@@ -169,7 +169,12 @@ toolchain("ilobilix-clang")
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
 
     add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage")
-    add_defines("cpu_local_init(name, ...)=void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); }; [[gnu::section(\".percpu_init\"), gnu::used]] const auto name ## _init_ptr__ = name ## _init_func__")
+    add_defines("cpu_local_init(name, ...)=" ..
+        "void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base)" ..
+            "{ name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); };" ..
+        "[[gnu::section(\".percpu_init\"), gnu::used]]" ..
+        "const auto name ## _init_ptr__ = name ## _init_func__"
+    )
 
     on_load(function (toolchain)
         local cx_args = {

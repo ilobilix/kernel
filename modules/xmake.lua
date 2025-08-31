@@ -7,8 +7,11 @@ target("modules.dependencies")
     add_deps("ilobilix.dependencies.nolink")
     add_deps("ilobilix.modules", { inherit = false })
 
-    add_defines(
-        "define_module(name)=[[gnu::used, gnu::section(\".modules\"), gnu::aligned(8)]] constexpr mod::declare name",
+    add_defines("__CONCAT_(x, y)=x ## y", { public = true });
+    add_defines("__CONCAT(x, y)=__CONCAT_(x, y)", { public = true })
+    add_defines("define_module=" ..
+        "[[gnu::used, gnu::section(\".modules\"), gnu::aligned(8)]]" ..
+        "constexpr mod::declare __CONCAT(__CONCAT(__MODULE_NAME__, __COUNTER__), __LINE__)",
         { public = true }
     )
 
@@ -55,11 +58,13 @@ target("modules")
                 local values = child:get("values")
                 local is_external = values ~= nil and values["is_external"]
 
+                table.remove(split, 1)
+                table.remove(split, 1)
+
+                child:add("defines", "__MODULE_NAME__=" .. table.concat(split, "."))
+
                 child:add("deps", "modules.dependencies")
                 child:set("default", false)
-
-                table.remove(split, 1)
-                table.remove(split, 1)
 
                 if is_external then
                     child:set("kind", "shared")

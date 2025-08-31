@@ -321,7 +321,9 @@ namespace sched
 
         // tmpqueue.clear();
 
+        next->running_on = self->self;
         percpu->running_thread = next;
+
         next->schedule_time = time;
         next->status = status::running;
 

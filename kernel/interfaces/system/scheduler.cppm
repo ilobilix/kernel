@@ -10,7 +10,11 @@ import system.vfs;
 import lib;
 import cppstd;
 
-extern "C++" struct processor;
+namespace cpu
+{
+    extern "C++" struct processor;
+} // namespace cpu
+
 export namespace sched
 {
     constexpr std::size_t timeslice = 6;
@@ -34,6 +38,8 @@ export namespace sched
     struct process;
     struct thread : thread_base
     {
+        // do not move
+        cpu::processor *running_on;
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
 

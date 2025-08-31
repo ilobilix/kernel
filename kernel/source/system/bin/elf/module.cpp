@@ -49,7 +49,6 @@ namespace bin::elf::mod
         void log_entry(auto &entry)
         {
             auto ptr = entry.header;
-            log::info("elf: {}ternal module: '{}'", entry.internal ? "in" : "ex", ptr->name);
             log::info("elf: - description: '{}'", ptr->description);
 
             std::visit(
@@ -97,7 +96,17 @@ namespace bin::elf::mod
                 const auto ndeps = ptr->dependencies.ndeps;
                 const auto deps = reinterpret_cast<const char *const *>(ptr->dependencies.list);
 
-                auto &entry = modules.write_lock().value()[ptr->name];
+                log::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", ptr->name);
+
+                entry *entryptr;
+                {
+                    auto locked = modules.write_lock();
+                    if (locked->contains(ptr->name))
+                        lib::panic("a module with the same name already exists");
+
+                    entryptr = std::addressof(locked.value()[ptr->name]);
+                }
+                auto &entry = *entryptr;
 
                 entry.internal = internal;
                 entry.header = ptr;
