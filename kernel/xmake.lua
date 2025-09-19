@@ -189,7 +189,7 @@ target("ilobilix.elf")
             local tmp_ilobilix0 = path.join(tmpdir, ".tmp_ilobilix0")
             local tmp_ilobilix1 = path.join(tmpdir, ".tmp_ilobilix1")
             local tmp_ilobilix2 = path.join(tmpdir, ".tmp_ilobilix2")
-            local tmp_ilobilix3 = path.join(tmpdir, ".tmp_ilobilix3")
+            -- local tmp_ilobilix3 = path.join(tmpdir, ".tmp_ilobilix3")
 
             local tmp_ilobilix0_syms = tmp_ilobilix0 .. ".syms"
             local file = io.open(tmp_ilobilix0_syms, "w")
@@ -206,10 +206,10 @@ target("ilobilix.elf")
 
             print(" => kallsyms step 2...")
             sysmap_and_kallsyms(tmp_ilobilix2)
-            link(tmp_ilobilix3)
+            -- link(tmp_ilobilix3)
 
-            print(" => kallsyms step 3...")
-            sysmap_and_kallsyms(tmp_ilobilix3)
+            -- print(" => kallsyms step 3...")
+            -- sysmap_and_kallsyms(tmp_ilobilix3)
             link(targetelf)
 
             os.rm(tmpdir)

@@ -6,23 +6,29 @@ Hobby OS in modern C++
 ## Dependencies
 
 Make sure you have recent versions of the following programs installed:
-* [xmake >=v3.0.0](https://xmake.io/#/getting_started?id=installation) or just use ``./xmake.sh`` instead
 * clang/clang++
 * lld
 * llvm
 * sed
-* xorriso
+* tar
+* mtools
+* sgdisk
+* xorriso (if you want to build an iso)
 * qemu (x86_64 and aarch64)
 
 ## Building and Running
 
 * Clone this repository: ``git clone --depth=1 --recursive https://github.com/ilobilo/ilobilix``
-* (Optional) Interactively configure the kernel: ``xmake f --menu``
-  * Change architecture: ``xmake f --arch=<x86_64|aarch64>``
-  * Change build mode: ``xmake f --mode=<release|releasedbg|debug>``
-* Build and run the kernel: ``xmake run``
-* Default run target is ``uefi``. Other possible values are: ``bios``, ``bios-debug`` and ``uefi-debug``. For example: ``xmake run bios-debug``
-* Fully rebuild the kernel: ``xmake build -r --all -j$(nproc)``
+* (Optional) Configure the kernel: ``./xmake.sh f --option=value``
+  * Change architecture: ``./xmake.sh f --arch=[x86_64|aarch64]``
+  * Change build mode: ``./xmake.sh f --mode=[release|releasedbg|debug]``
+  * For all options see: ``./xmake.sh f --help``
+* Build and run the kernel: ``./xmake.sh run``
+* Run targets are ``[bios|uefi](-[debug|gdb])``. For example: ``bios-debug`` or ``uefi-gdb``
+  * Default run target is ``uefi``. (same as ``./xmake.sh run uefi``)
+* Fully rebuild the kernel: ``./xmake.sh build -r --all``
+* To build an iso (available in ``build/ilobilix/[arch]/[mode]/image.iso``):
+  * ``./xmake.sh build iso``
 
 ## Known Bugs
 * aarch64 basically doesn't work

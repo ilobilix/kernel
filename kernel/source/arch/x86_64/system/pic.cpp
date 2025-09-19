@@ -34,7 +34,7 @@ namespace x86_64::pic
 
     void eoi(std::uint8_t vector)
     {
-        lib::ensure(vector >= 0x20);
+        lib::bug_if_not(vector >= 0x20);
         if (vector >= 40)
             lib::io::out<8>(port::slave_command, cmd::eoi);
         lib::io::out<8>(port::master_command, cmd::eoi);
@@ -42,7 +42,7 @@ namespace x86_64::pic
 
     void mask(std::uint8_t vector)
     {
-        lib::ensure(vector >= 0x20);
+        lib::bug_if_not(vector >= 0x20);
         log::debug("pic: masking vector 0x{:X}", vector);
 
         auto port = port::master_data;
@@ -57,7 +57,7 @@ namespace x86_64::pic
 
     void unmask(std::uint8_t vector)
     {
-        lib::ensure(vector >= 0x20);
+        lib::bug_if_not(vector >= 0x20);
         log::debug("pic: unmasking vector 0x{:X}", vector);
 
         auto port = port::master_data;

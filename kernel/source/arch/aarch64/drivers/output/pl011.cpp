@@ -30,7 +30,7 @@ namespace aarch64::output::pl011
 
     void init()
     {\
-        if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio); !ret)
+        if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, pmm::page_size, vmm::pflag::rw, vmm::page_size::small, vmm::caching::mmio); !ret)
             lib::panic("could not map uart: {}", magic_enum::enum_name(ret.error()));
 
         // Disable the UART.

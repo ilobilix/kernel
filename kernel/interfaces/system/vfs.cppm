@@ -82,25 +82,25 @@ export namespace vfs
     {
         std::ssize_t read(std::size_t offset, std::span<std::byte> buffer)
         {
-            lib::ensure(op != nullptr);
+            lib::bug_if_not(op != nullptr);
             return op->read(shared_from_this(), offset, buffer);
         }
 
         std::ssize_t write(std::size_t offset, std::span<std::byte> buffer)
         {
-            lib::ensure(op != nullptr);
+            lib::bug_if_not(op != nullptr);
             return op->write(shared_from_this(), offset, buffer);
         }
 
         std::uintptr_t mmap(std::uintptr_t page, int flags)
         {
-            lib::ensure(op != nullptr);
+            lib::bug_if_not(op != nullptr);
             return op->mmap(shared_from_this(), page, flags);
         }
 
         bool munmap(std::uintptr_t page)
         {
-            lib::ensure(op != nullptr);
+            lib::bug_if_not(op != nullptr);
             return op->munmap(shared_from_this(), page);
         }
 

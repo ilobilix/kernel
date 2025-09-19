@@ -20,18 +20,20 @@ namespace sched
 
 namespace sched::arch
 {
+    static constexpr std::size_t sched_vector = 0xFE;
+
     void init()
     {
-        auto [handler, _] = interrupts::allocate(cpu::self()->idx, 0xFF).value();
+        auto [handler, _] = interrupts::allocate(cpu::self()->idx, sched_vector).value();
         handler.set(schedule);
     }
 
     void reschedule(std::size_t ms)
     {
         if (ms == 0)
-            x86_64::apic::ipi(0, x86_64::apic::dest::self, 0xFF);
+            x86_64::apic::ipi(x86_64::apic::shorthand::self, x86_64::apic::delivery::fixed, sched_vector);
         else
-            x86_64::apic::arm(ms * 1'000'000, 0xFF);
+            x86_64::apic::arm(ms * 1'000'000, sched_vector);
     }
 
     void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg)
@@ -45,7 +47,7 @@ namespace sched::arch
         const auto pages = lib::div_roundup(fpu.size, pmm::page_size);
         const auto vfpu = vmm::alloc_vpages(vmm::space_type::other, pages);
 
-        if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::flag::rw, vmm::page_size::small); !ret)
+        if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));
         thread->fpu = reinterpret_cast<std::byte *>(vfpu);
 

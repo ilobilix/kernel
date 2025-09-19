@@ -43,7 +43,7 @@ namespace cpu
                 reinterpret_cast<std::uintptr_t>(__end_percpu) -
                 reinterpret_cast<std::uintptr_t>(__start_percpu);
 
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, vmm::flag::rw, vmm::page_size::small); !ret)
+            if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, vmm::pflag::rw, vmm::page_size::small); !ret)
                 lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
 
             for (auto func = __start_percpu_init; func < __end_percpu_init; func++)
@@ -67,14 +67,14 @@ namespace cpu
             me.initialise_base(bases[idx] = base);
 
             auto proc = nth(idx);
-            lib::ensure(base == reinterpret_cast<std::uintptr_t>(proc));
+            lib::bug_if_not(base == reinterpret_cast<std::uintptr_t>(proc));
 
             proc->self = proc;
             proc->idx = idx;
             proc->arch_id = aid;
 
             const auto stack = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
+            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::pflag::rw, vmm::page_size::small); !ret)
                 lib::panic("could not map cpu {} kernel stack: {}", idx, magic_enum::enum_name(ret.error()));
 
             proc->stack_top = stack + boot::kstack_size;

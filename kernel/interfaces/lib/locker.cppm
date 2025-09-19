@@ -2,7 +2,7 @@
 
 export module lib:locker;
 
-import :ensure;
+import :bug_if_not;
 import cppstd;
 
 namespace detail
@@ -24,6 +24,7 @@ namespace detail
         { l.write_unlock() };
         { l.is_read_locked() } -> std::same_as<bool>;
         { l.is_write_locked() } -> std::same_as<bool>;
+        // { l.upgrade() };
     };
 
     template<typename Type, typename Lock>
@@ -33,11 +34,18 @@ namespace detail
         requires (is_lock<Lock> || is_rwlock<Lock>)
     class locked
     {
+        // template<typename, typename ULock, bool>
+        //     requires (is_lock<ULock> || is_rwlock<ULock>)
+        // friend class locked;
+
         private:
         Type *_ptr;
         Lock &_lock;
 
         using ret_type = std::conditional_t<Write, Type, const Type>;
+
+        // locked(Type *ptr, Lock &lock, bool) requires detail::is_rwlock<Lock>
+        //     : _ptr { ptr }, _lock { lock } { _lock.upgrade(); }
 
         public:
         locked(Type *ptr, Lock &lock) : _ptr { ptr }, _lock { lock }
@@ -54,6 +62,9 @@ namespace detail
 
         ~locked()
         {
+            // if (_ptr == nullptr)
+            //     return;
+
             if constexpr (is_rwlock<Lock>)
             {
                 if constexpr (Write)
@@ -82,6 +93,13 @@ namespace detail
         [[nodiscard]] ret_type &value() const & { return *_ptr; }
         [[nodiscard]] ret_type &operator*() const & { return *_ptr; }
         [[nodiscard]] ret_type *operator->() const & { return _ptr; }
+
+        // auto upgrade() & requires (detail::is_rwlock<Lock> && Write == false)
+        // {
+        //     const auto ptr = _ptr;
+        //     _ptr = nullptr;
+        //     return locked<Type, Lock, true> { ptr, _lock, true };
+        // }
     };
 
     enum class make_locked_tag_t { };
@@ -143,9 +161,9 @@ namespace detail
         {
             const auto &lock = get_lock();
             if constexpr (is_rwlock<Lock>)
-                lib::ensure(!lock.is_read_locked() && !lock.is_write_locked());
+                lib::bug_if_not(!lock.is_read_locked() && !lock.is_write_locked());
             else
-                lib::ensure(!lock.is_locked());
+                lib::bug_if_not(!lock.is_locked());
 
             _data.reset();
             _ptr = nullptr;
@@ -155,13 +173,13 @@ namespace detail
 
         Type *get_data() const
         {
-            lib::ensure(_data != nullptr);
+            lib::bug_if_not(_data != nullptr);
             return _ptr;
         }
 
         Lock &get_lock() const
         {
-            lib::ensure(_data != nullptr);
+            lib::bug_if_not(_data != nullptr);
             return static_cast<buffer *>(_data.get())->_lock;
         }
     };

@@ -67,17 +67,17 @@ namespace cpu::mp
         if (num_cores() <= 1)
             return;
 
-        lib::ensure(smp_trampoline_size <= pmm::page_size);
-        lib::ensure(trampoline_pages != 0);
+        lib::bug_if_not(smp_trampoline_size <= pmm::page_size);
+        lib::bug_if_not(trampoline_pages != 0);
 
         log::debug("cpu: trampoline address 0x{:X}", trampoline_pages);
-        if (const auto ret = vmm::kernel_pagemap->map(trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::flag::rwx); !ret)
+        if (const auto ret = vmm::kernel_pagemap->map(trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::pflag::rwx); !ret)
             lib::panic("could not map trampoline address: {}", magic_enum::enum_name(ret.error()));
         std::memcpy(reinterpret_cast<void *>(trampoline_pages), smp_trampoline_start, smp_trampoline_size);
 
         const auto temp_stack = trampoline_pages + pmm::page_size;
         log::debug("cpu: temporary stack address 0x{:X}", temp_stack);
-        if (const auto ret = vmm::kernel_pagemap->map(temp_stack, temp_stack, pmm::page_size, vmm::flag::rwx); !ret)
+        if (const auto ret = vmm::kernel_pagemap->map(temp_stack, temp_stack, pmm::page_size, vmm::pflag::rwx); !ret)
             lib::panic("could not map temporary stack: {}", magic_enum::enum_name(ret.error()));
 
         const bool x2apic = x86_64::apic::supported().second;
@@ -112,10 +112,13 @@ namespace cpu::mp
                 .jump_addr = reinterpret_cast<std::uint64_t>(arch::core::entry)
             };
 
-            apic::ipi(lapic_id, apic::dest::id, 0x4500);
-
+            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::init, 0);
             time::stall_ns(10'000'000);
-            apic::ipi(lapic_id, apic::dest::id, 0x4600 | (trampoline_pages >> 12));
+
+            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_pages >> 12));
+            time::stall_ns(200'000);
+            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_pages >> 12));
+            time::stall_ns(200'000);
 
             for (std::size_t i = 0; i < 1000; i++)
             {
@@ -143,6 +146,31 @@ namespace cpu::mp
                 start_ap(entry.id);
             }
         }
+
+        [] {
+            lib::bitmap bmap { cpu_count() - 1 };
+            bmap.clear();
+
+            const auto check = [&bmap] {
+                bool ret = true;
+                for (std::size_t i = 1; i < cpu_count(); i++)
+                {
+                    if (nth(i)->online == false)
+                        ret = false;
+                    else if (bmap.get(i - 1) == false)
+                        bmap.set(i - 1, true);
+                }
+                return ret;
+            };
+
+            for (std::size_t i = 0; i < 100'000; i++)
+            {
+                if (check())
+                    return;
+                time::stall_ns(300'000);
+            }
+            lib::panic("could not boot up cores");
+        } ();
 
         if (const auto ret = vmm::kernel_pagemap->unmap(trampoline_pages, smp_trampoline_size); !ret)
             lib::panic("could not unmap trampoline address: {}", magic_enum::enum_name(ret.error()));

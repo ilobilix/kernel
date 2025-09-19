@@ -19,7 +19,7 @@ namespace interrupts
 
     std::optional<std::pair<handler &, std::size_t>> allocate(std::size_t cpuidx, std::size_t hint)
     {
-        lib::ensure(hint < idt::num_ints);
+        lib::bug_if_not(hint < idt::num_ints && cpuidx < cpu::cpu_count());
 
         if (hint < idt::irq(0))
             hint += idt::irq(0);
@@ -45,12 +45,13 @@ namespace interrupts
 
     std::optional<std::reference_wrapper<handler>> get(std::size_t cpuidx, std::size_t vector)
     {
+        lib::bug_if_not(vector < idt::num_ints && cpuidx < cpu::cpu_count());
         return idt::handler_at(cpuidx, vector);
     }
 
     void mask(std::size_t vector)
     {
-        lib::ensure(vector >= idt::irq(0) && vector < idt::num_ints);
+        lib::bug_if_not(vector >= idt::irq(0) && vector < idt::num_ints);
 
         if (apic::io::is_initialised())
             apic::io::mask(vector);
@@ -60,7 +61,7 @@ namespace interrupts
 
     void unmask(std::size_t vector)
     {
-        lib::ensure(vector >= idt::irq(0) && vector < idt::num_ints);
+        lib::bug_if_not(vector >= idt::irq(0) && vector < idt::num_ints);
 
         if (apic::io::is_initialised())
             apic::io::unmask(vector);

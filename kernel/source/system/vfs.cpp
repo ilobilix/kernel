@@ -95,12 +95,12 @@ namespace vfs
             if (!root->child_mounts.empty())
                 parent->mnt = root->child_mounts.front().lock();
         }
-        lib::ensure(parent.has_value());
+        lib::bug_if_not(parent.has_value());
 
         if (_path == "/" || _path.empty() || _path == ".")
             return resolve_res { parent.value(), parent.value() };
 
-        lib::ensure(parent->mnt != nullptr);
+        lib::bug_if_not(parent->mnt != nullptr);
 
         auto current = parent.value();
 
@@ -345,11 +345,11 @@ namespace vfs
         initgraph::require { fs::filesystems_registered_stage() },
         initgraph::entail { root_mounted_stage() },
         [] {
-            lib::ensure(mount("", "/", "tmpfs", 0));
+            lib::bug_if_not(mount("", "/", "tmpfs", 0));
 
             auto err = create(std::nullopt, "/dev", stat::type::s_ifdir);
-            lib::ensure(err.has_value() || err.error() == error::already_exists);
-            lib::ensure(mount("", "/dev", "devtmpfs", 0));
+            lib::bug_if_not(err.has_value() || err.error() == error::already_exists);
+            lib::bug_if_not(mount("", "/dev", "devtmpfs", 0));
         }
     };
 } // namespace vfs

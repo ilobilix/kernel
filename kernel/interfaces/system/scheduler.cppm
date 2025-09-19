@@ -84,8 +84,8 @@ export namespace sched
 
     struct process
     {
-        static constexpr std::uintptr_t initial_stck_top = 0x70000000000;
-        static constexpr std::uintptr_t initial_mmap_anon = 0x80000000000;
+        static constexpr std::uintptr_t initial_stck_top = 0x70'000'000'000; // 0x7FF'FFF'FFF'000
+        static constexpr std::uintptr_t initial_mmap_anon = 0x80'000'000'000;
 
         std::size_t pid;
         // std::size_t pgid;

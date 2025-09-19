@@ -83,9 +83,9 @@ namespace fs::tmpfs
             auto back = reinterpret_cast<inode *>(self.get());
             const std::unique_lock _ { back->lock };
 
-            lib::ensure(page * pmm::page_size < back->data.size());
+            lib::bug_if_not(page * pmm::page_size < back->data.size());
 
-            if (flags & vmm::map_flag::shared)
+            if (flags & vmm::flag::shared)
                 return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
 
             auto copy = pmm::alloc();

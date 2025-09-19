@@ -72,6 +72,8 @@ namespace acpi
         // TODO
         void shutdown()
         {
+            log::info("acpi: trying to enter s5...");
+
             uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
             uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
         }
