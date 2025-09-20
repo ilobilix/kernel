@@ -17,6 +17,28 @@ namespace cpu
 
 namespace sched
 {
+    constexpr std::size_t timeslice = 6;
+
+    using prio_t = lib::ranged<std::int8_t, -20, 19>;
+    constexpr prio_t default_prio = -20;
+    constexpr std::size_t weight0 = 1024;
+
+    inline constexpr std::size_t prio_to_weight(prio_t prio)
+    {
+        static constexpr std::size_t table[40]
+        {
+            88761, 71755, 56483, 46273, 36291,
+            29154, 23254, 18705, 14949, 11916,
+            9548,  7620,  6100,  4904,  3906,
+            3121,  2501,  1991,  1586,  1277,
+            1024,  820,   655,   526,   423,
+            335,   272,   215,   172,   137,
+            110,   87,    70,    56,    45,
+            36,    29,    23,    18,    15,
+        };
+        return table[prio + 20];
+    }
+
     struct friends
     {
         static void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
@@ -28,8 +50,6 @@ namespace sched
 
 export namespace sched
 {
-    constexpr std::size_t timeslice = 6;
-
     enum class status
     {
         not_ready,
@@ -60,6 +80,8 @@ export namespace sched
         bool is_user;
 
         cpu::registers regs;
+
+        prio_t priority;
 
         std::uint64_t vruntime;
         std::uint64_t schedule_time;
