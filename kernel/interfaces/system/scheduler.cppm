@@ -20,7 +20,7 @@ namespace sched
     constexpr std::size_t timeslice = 6;
 
     using prio_t = lib::ranged<std::int8_t, -20, 19>;
-    constexpr prio_t default_prio = -20;
+    constexpr prio_t default_prio = 0;
     constexpr std::size_t weight0 = 1024;
 
     inline constexpr std::size_t prio_to_weight(prio_t prio)

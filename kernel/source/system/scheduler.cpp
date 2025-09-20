@@ -366,6 +366,7 @@ namespace sched
                 switch (thread->status)
                 {
                     case status::sleeping:
+                        // TODO: handle wake up on a worker thread
                         if (!thread->sleep_until.has_value() || time < thread->sleep_until.value())
                             break;
                         thread->status = status::ready;
@@ -446,7 +447,6 @@ namespace sched
         }
 
         if (!is_current_idle) [[likely]]
-            // don't use `time` as some time might have passed since
             next->schedule_time = clock->ns();
 
         arch::reschedule(timeslice);
