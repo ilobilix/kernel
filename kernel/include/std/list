@@ -191,52 +191,60 @@ namespace std
         }
 
         public:
-        list() : list(allocator_type()) { }
+        list() : list { allocator_type { } } { }
 
         explicit list(const allocator_type &alloc)
             : _allocator { alloc }, _node_allocator { }, _begin { nullptr }, _end { _begin } { }
 
-        list(size_type count, const value_type &value, const allocator_type &alloc = allocator_type()) : list(alloc)
+        list(size_type count, const value_type &value, const allocator_type &alloc = allocator_type { }) : list { alloc }
         {
             insert(begin(), count, value);
         }
 
-        explicit list(size_type count, const allocator_type &alloc = allocator_type()) : list(alloc)
+        explicit list(size_type count, const allocator_type &alloc = allocator_type { }) : list { alloc }
         {
             insert(begin(), count, value_type { });
         }
 
         template<typename InputIt>
-        list(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) : list(alloc)
+        list(InputIt first, InputIt last, const allocator_type &alloc = allocator_type { }) : list { alloc }
         {
             insert(begin(), first, last);
         }
 
-        list(const list &other) : list()
+        list(const list &other) : list { }
         {
             insert(begin(), other.begin(), other.end());
         }
 
-        list(const list &other, const allocator_type &alloc) : list(alloc)
+        list(const list &other, const allocator_type &alloc) : list { alloc }
         {
             insert(begin(), other.begin(), other.end());
         }
 
         list(list &&other)
             : _allocator { std::move(other._allocator) }, _node_allocator { std::move(other._node_allocator) },
-              _begin { std::move(other._begin) }, _end { std::move(other._end) } { }
+              _begin { std::move(other._begin) }, _end { std::move(other._end) }
+        {
+            other._begin = nullptr;
+            other._end = nullptr;
+        }
 
         list(list &&other, const allocator_type &alloc)
             : _allocator { alloc }, _node_allocator { std::move(other._node_allocator) },
-              _begin { std::move(other._begin) }, _end { std::move(other._end) } { }
+              _begin { std::move(other._begin) }, _end { std::move(other._end) }
+        {
+            other._begin = nullptr;
+            other._end = nullptr;
+        }
 
-        list(initializer_list<value_type> ilist, const allocator_type &alloc = allocator_type()) : list(alloc)
+        list(initializer_list<value_type> ilist, const allocator_type &alloc = allocator_type()) : list { alloc }
         {
             insert(begin(), ilist);
         }
 
         template<detail::container_compatible_range<value_type> Range>
-        list(from_range_t, Range &&rg, const allocator_type &alloc = allocator_type()) : list(alloc)
+        list(from_range_t, Range &&rg, const allocator_type &alloc = allocator_type()) : list { alloc }
         {
             insert_range(begin(), forward<Range>(rg));
         }
@@ -247,8 +255,35 @@ namespace std
                 erase_internal(begin(), end());
         }
 
-        list &operator=(const list &other);
-        list &operator=(list &&other) noexcept(allocator_traits<allocator_type>::is_always_equal::value);
+        list &operator=(const list &other)
+        {
+            if (!empty())
+                erase_internal(begin(), end());
+
+            _allocator = other._allocator;
+            _node_allocator = other._node_allocator;
+
+            insert(begin(), other.begin(), other.end());
+            return *this;
+        }
+
+        list &operator=(list &&other) noexcept(allocator_traits<allocator_type>::is_always_equal::value)
+        {
+            if (!empty())
+                erase_internal(begin(), end());
+
+            _allocator = std::move(other._allocator);
+            _node_allocator = std::move(other._node_allocator);
+
+            _begin = std::move(other._begin);
+            _end = std::move(other._end);
+
+            other._begin = nullptr;
+            other._end = nullptr;
+
+            return *this;
+        }
+
         list &operator=(initializer_list<value_type> ilist);
 
         void assign(size_type count, const value_type &value);
@@ -379,7 +414,7 @@ namespace std
         void push_front(value_type &&value) { insert(begin(), move(value)); }
 
         void pop_back() { erase(prev(end())); }
-        void pop_front() { erase(begin(), next(begin())); }
+        void pop_front() { erase(begin()); }
 
         template<typename ...Args>
         reference emplace_back(Args &&...args);

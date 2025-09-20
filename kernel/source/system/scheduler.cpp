@@ -15,6 +15,37 @@ import cppstd;
 
 namespace sched
 {
+    struct percpu
+    {
+        struct compare
+        {
+            constexpr bool operator()(const std::shared_ptr<thread> &lhs, const std::shared_ptr<thread> &rhs) const
+            {
+                return lhs->vruntime < rhs->vruntime;
+            }
+        };
+
+        lib::locker<
+            lib::btree::multiset<
+                std::shared_ptr<thread>,
+                compare
+            >, lib::rwspinlock_preempt
+        > queue;
+        std::shared_ptr<thread> running_thread;
+
+        std::shared_ptr<process> idle_proc;
+        std::shared_ptr<thread> idle_thread;
+
+        lib::locker<
+            std::list<
+                std::shared_ptr<thread>
+            >, lib::spinlock_preempt
+        > dead_threads;
+        lib::semaphore reap;
+    };
+
+    cpu_local<percpu> percpu;
+
     cpu_local<bool> preemption;
     cpu_local_init(preemption, true);
 
@@ -28,26 +59,28 @@ namespace sched
         void init();
         void reschedule(std::size_t ms);
 
-        void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg);
-        void deinitialise(std::shared_ptr<process> &proc, thread *thread);
+        void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg);
+        void deinitialise(process *proc, thread *thread);
 
-        void save(std::shared_ptr<thread> &thread);
-        void load(std::shared_ptr<thread> &thread);
+        void save(const std::shared_ptr<thread> &thread);
+        void load(const std::shared_ptr<thread> &thread);
     } // namespace arch
 
     namespace
     {
-        lib::map::flat_hash<std::size_t, std::shared_ptr<process>> processes;
-        lib::spinlock process_lock;
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t, std::shared_ptr<process>
+            >, lib::rwspinlock
+        > processes;
 
         bool initialised = false;
 
         std::size_t alloc_pid(std::shared_ptr<process> proc)
         {
             static std::atomic_size_t next_pid = 0;
-            const std::unique_lock _ { process_lock };
-            auto pid = next_pid++;
-            processes[pid] = proc;
+            const auto pid = next_pid++;
+            processes.write_lock().value()[pid] = proc;
             return pid;
         }
 
@@ -73,15 +106,14 @@ namespace sched
 
     bool is_initialised() { return initialised; }
 
-    std::shared_ptr<process> &proc_for(std::size_t pid)
+    process *proc_for(std::size_t pid)
     {
         if (pid == static_cast<std::size_t>(-1))
-            return percpu->idle_proc;
-        const std::unique_lock _ { process_lock };
-        return processes.at(pid);
+            return percpu->idle_proc.get();
+        return processes.read_lock()->at(pid).get();
     }
 
-    std::uintptr_t thread::allocate_ustack(std::shared_ptr<process> &proc)
+    std::uintptr_t thread::allocate_ustack(const std::shared_ptr<process> &proc)
     {
         // TODO: mmap
         auto &pmap = proc->vmspace->pmap;
@@ -92,7 +124,7 @@ namespace sched
         return vaddr + boot::ustack_size;
     }
 
-    std::uintptr_t thread::allocate_kstack(std::shared_ptr<process> &proc)
+    std::uintptr_t thread::allocate_kstack(const std::shared_ptr<process> &proc)
     {
         auto &pmap = proc->vmspace->pmap;
         auto vaddr = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
@@ -100,27 +132,6 @@ namespace sched
             lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::kstack_size;
-    }
-
-    std::shared_ptr<thread> thread::create(std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg)
-    {
-        auto thread = std::make_shared<sched::thread>();
-
-        thread->tid = parent->next_tid++;
-        thread->pid = parent->pid;
-        thread->status = status::not_ready;
-        thread->is_user = false;
-        thread->vruntime = 0;
-
-        auto stack = thread::allocate_kstack(parent);
-        thread->kstack_top = thread->ustack_top = stack;
-        arch::finalise(parent, thread, ip, arg);
-
-        const std::unique_lock _ { parent->lock };
-        parent->threads[thread->tid] = thread;
-        // enqueued manually
-
-        return thread;
     }
 
     void thread::prepare_sleep(std::size_t ms)
@@ -164,8 +175,8 @@ namespace sched
                 lib::panic("could not unmap stack: {}", magic_enum::enum_name(ret.error()));
         };
 
-        auto &proc = proc_for(pid);
-        auto &pmap = proc->vmspace->pmap;
+        const auto &proc = proc_for(pid);
+        const auto &pmap = proc->vmspace->pmap;
         if (is_user)
             unmap_stack(pmap, ustack_top, boot::ustack_size);
         unmap_stack(pmap, kstack_top, boot::kstack_size);
@@ -173,6 +184,31 @@ namespace sched
         arch::deinitialise(proc, this);
 
         lib::panic("TODO: thread {} deconstructor", tid);
+    }
+
+    std::shared_ptr<thread> thread::create(const std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg)
+    {
+        auto thread = std::make_shared<sched::thread>();
+
+        thread->tid = parent->next_tid++;
+        thread->pid = parent->pid;
+        thread->status = status::not_ready;
+        thread->is_user = false;
+        thread->vruntime = 0;
+
+        auto stack = thread::allocate_kstack(parent);
+        thread->kstack_top = thread->ustack_top = stack;
+        arch::finalise(parent, thread, ip, arg);
+
+        const std::unique_lock _ { parent->lock };
+        parent->threads[thread->tid] = thread;
+
+        return thread;
+    }
+
+    process::~process()
+    {
+        lib::panic("TODO: process {} deconstructor", pid);
     }
 
     std::shared_ptr<process> process::create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap)
@@ -195,14 +231,9 @@ namespace sched
         return proc;
     }
 
-    process::~process()
+    thread *this_thread()
     {
-        lib::panic("TODO: process {} deconstructor", pid);
-    }
-
-    std::shared_ptr<thread> this_thread()
-    {
-        return percpu->running_thread;
+        return percpu->running_thread.get();
     }
 
     std::size_t yield()
@@ -242,13 +273,70 @@ namespace sched
         return idx;
     }
 
-    void enqueue(std::shared_ptr<thread> &thread, std::size_t cpu_idx)
+    void enqueue(const std::shared_ptr<thread> &thread, std::size_t cpu_idx)
     {
-        if (thread->status == status::running)
-            thread->status = status::ready;
+        switch (thread->status)
+        {
+            [[likely]] case status::running:
+                thread->status = status::ready;
+                break;
+            [[unlikely]] case status::killed:
+            [[unlikely]] case status::not_ready:
+                lib::panic(
+                    "can't enqueue a thread that is {}",
+                    magic_enum::enum_name(thread->status)
+                );
+                std::unreachable();
+            case status::sleeping:
+            case status::ready:
+                break;
+        }
 
         auto &obj = percpu.get(cpu::nth_base(cpu_idx));
         obj.queue.write_lock()->insert(thread);
+    }
+
+    void friends::spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    {
+        const auto thread = thread::create(processes.read_lock()->at(pid), ip, arg);
+        thread->status = status::ready;
+        enqueue(thread, cpu);
+    }
+
+    void spawn(std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    {
+        spawn_on(allocate_cpu(), pid, ip, arg);
+    }
+
+    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    {
+        friends::spawn_on(cpu, pid, ip, arg);
+    }
+
+    void reaper()
+    {
+        while (true)
+        {
+            percpu->reap.wait();
+
+            // move dead_threads so it's not locked for a long time
+            decltype(percpu::dead_threads)::value_type list;
+            {
+                auto locked = percpu->dead_threads.lock();
+                list = std::move(locked.value());
+                locked->clear();
+            }
+            while (!list.empty())
+            {
+                // TODO
+                const auto thread = std::move(list.front());
+                list.pop_front();
+                lib::bug_if_not(thread.use_count() == 2);
+                lib::bug_if_not(proc_for(thread->pid)->threads.erase(thread->tid) == 1);
+                // thread deconstructor is called
+            }
+        }
+        std::unreachable();
     }
 
     void schedule(cpu::registers *regs)
@@ -266,6 +354,8 @@ namespace sched
 
         const auto self = cpu::self();
 
+        bool found_dead = false;
+
         std::shared_ptr<thread> next;
         {
             auto locked = percpu->queue.write_lock();
@@ -279,45 +369,51 @@ namespace sched
                             break;
                         thread->status = status::ready;
                         thread->wake_reason = wake_reason::success;
+                        // do not starve out other threads
+                        // if the woken one has been sleeping for too long
+                        thread->vruntime = (*locked->begin())->vruntime;
                         [[fallthrough]];
                     case status::ready:
                         next = std::move(locked->extract(it).value());
                         goto found;
-                    case status::running:
+                    [[unlikely]] case status::running:
                         lib::panic("found a running thread in scheduler queue");
                         std::unreachable();
                     case status::killed:
-                        // TODO
+                        percpu->dead_threads.lock()->push_back(thread);
+                        locked->erase(it);
+                        found_dead = true;
                         break;
-                    case status::blocked:
-                    case status::not_ready:
+                    [[unlikely]] case status::not_ready:
                         break;
                 }
             }
             found:
         }
 
-        auto current = percpu->running_thread;
+        const auto current = percpu->running_thread;
+        const bool is_current_idle = (current == percpu->idle_thread);
+
         std::optional<std::size_t> prev_pid { };
-        if (current)
+        if (current) [[likely]]
         {
             if (current->status == status::killed)
             {
-                // TODO
+                percpu->dead_threads.lock()->push_back(current);
+                found_dead = true;
             }
             else
             {
                 prev_pid = current->pid;
-                const bool is_idle = (current == percpu->idle_thread);
-                if (!is_idle)
+                if (!is_current_idle) [[likely]]
                 {
-                    if (next == nullptr && current->status == status::running)
+                    if (next == nullptr && current->status == status::running) [[unlikely]]
                         next = current;
                     else if (current->status == status::sleeping)
                         current->sleep_lock.unlock();
 
                     current->vruntime += time - current->schedule_time;
-                    if (next != current)
+                    if (next != current) [[likely]]
                     {
                         save(current, regs);
                         enqueue(current, self->idx);
@@ -328,12 +424,13 @@ namespace sched
             }
         }
 
-        if (next == nullptr)
-            next = percpu->idle_thread;
-        else
-            next->schedule_time = time;
+        if (found_dead)
+            percpu->reap.signal();
 
-        if (next != current)
+        if (next == nullptr) [[unlikely]]
+            next = percpu->idle_thread;
+
+        if (next != current) [[likely]]
         {
             next->running_on = self->self;
             next->status = status::running;
@@ -342,6 +439,10 @@ namespace sched
             const bool same_pid = (prev_pid.has_value() && prev_pid.value() == next->pid);
             load(same_pid, next, regs);
         }
+
+        if (!is_current_idle) [[likely]]
+            // don't use `time` as some time might have passed since
+            next->schedule_time = clock->ns();
 
         arch::reschedule(timeslice);
         in_scheduler = false;
@@ -353,18 +454,21 @@ namespace sched
         return &stage;
     }
 
+    void friends::create_pid0()
+    {
+        auto proc = process::create(
+            nullptr,
+            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+        );
+        lib::bug_if_not(proc->pid == 0);
+    }
+
     initgraph::task scheduler_task
     {
         "init-pid0",
         initgraph::require { ::arch::cpus_stage(), timers::available_stage() },
         initgraph::entail { available_stage() },
-        [] {
-            auto proc = process::create(
-                nullptr,
-                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-            );
-            lib::bug_if_not(proc->pid == 0);
-        }
+        friends::create_pid0
     };
 
     void enable()
@@ -388,7 +492,7 @@ namespace sched
         return initialised && preemption.get();
     }
 
-    [[noreturn]] void start()
+    void friends::start()
     {
         static std::atomic_bool should_start = false;
 
@@ -396,11 +500,13 @@ namespace sched
             std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
         );
 
-        auto idle_proc = std::make_shared<process>();
+        const auto self = cpu::self();
+
+        const auto idle_proc = std::make_shared<process>();
         idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = static_cast<std::size_t>(-1);
 
-        auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
+        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), 0);
         idle_thread->status = status::ready;
 
         percpu->idle_proc = idle_proc;
@@ -409,16 +515,24 @@ namespace sched
         arch::init();
         ::arch::int_switch(true);
 
-        if (cpu::self()->idx == cpu::bsp_idx())
+        if (self->idx == cpu::bsp_idx())
         {
-            should_start = true;
+            for (std::size_t idx = 0; idx < cpu::cpu_count(); idx++)
+                spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper));
+
             initialised = true;
+            should_start = true;
         }
 
         while (!should_start)
             ::arch::pause();
 
         arch::reschedule(0);
+    }
+
+    [[noreturn]] void start()
+    {
+        friends::start();
         ::arch::halt(true);
     }
 } // namespace sched

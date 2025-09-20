@@ -96,7 +96,7 @@ namespace lib
             {
                 auto thread = threads.front();
                 threads.pop_front();
-                reinterpret_cast<sched::thread *>(thread.get())->wake_up(0);
+                static_cast<sched::thread *>(thread)->wake_up(0);
             }
         }
 

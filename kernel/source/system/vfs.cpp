@@ -46,7 +46,7 @@ namespace vfs
     std::shared_ptr<dentry> dentry::root(bool from_sched)
     {
         if (!from_sched && sched::is_initialised())
-            return sched::proc_for(sched::percpu->running_thread->pid)->root;
+            return sched::proc_for(sched::this_thread()->pid)->root;
         return vfs::root;
     }
 
