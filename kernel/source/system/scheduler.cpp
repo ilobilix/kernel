@@ -414,6 +414,7 @@ namespace sched
                     else if (current->status == status::sleeping)
                         current->sleep_lock.unlock();
 
+                    static constexpr std::size_t weight0 = prio_to_weight(0);
                     const std::size_t exec_time = time - current->schedule_time;
                     const std::size_t weight = prio_to_weight(current->priority);
                     const std::size_t vtime = (exec_time * weight0) / weight;

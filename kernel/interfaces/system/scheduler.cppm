@@ -21,7 +21,6 @@ namespace sched
 
     using prio_t = lib::ranged<std::int8_t, -20, 19>;
     constexpr prio_t default_prio = 0;
-    constexpr std::size_t weight0 = 1024;
 
     inline constexpr std::size_t prio_to_weight(prio_t prio)
     {
@@ -93,7 +92,7 @@ export namespace sched
         std::optional<std::size_t> sleep_until;
 
 #if defined(__x86_64__)
-        std::uintptr_t pfstack_top;
+        // std::uintptr_t pfstack_top;
 
         std::uintptr_t gs_base;
         std::uintptr_t fs_base;
