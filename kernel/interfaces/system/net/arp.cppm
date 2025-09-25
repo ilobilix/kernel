@@ -58,10 +58,10 @@ namespace net::arp
                 prosize = bytes[5];
                 op = (static_cast<std::uint16_t>(bytes[6]) << 8) | bytes[7];
 
-                lib::bug_if_not(hwtype == std::to_underlying(hwtype::ethernet));
-                lib::bug_if_not(protype == std::to_underlying(protocol::ipv4));
-                lib::bug_if_not(hwsize == 6);
-                lib::bug_if_not(prosize == 4);
+                lib::bug_on(hwtype != std::to_underlying(hwtype::ethernet));
+                lib::bug_on(protype != std::to_underlying(protocol::ipv4));
+                lib::bug_on(hwsize != 6);
+                lib::bug_on(prosize != 4);
 
                 smac = addr::mac { bytes + 8 };
                 sip = addr::ip::v4 { bytes + 14 };
@@ -72,10 +72,10 @@ namespace net::arp
 
         std::byte *to_bytes(std::byte *ptr) const
         {
-            lib::bug_if_not(hwtype == std::to_underlying(hwtype::ethernet));
-            lib::bug_if_not(protype == std::to_underlying(protocol::ipv4));
-            lib::bug_if_not(hwsize == 6);
-            lib::bug_if_not(prosize == 4);
+            lib::bug_on(hwtype != std::to_underlying(hwtype::ethernet));
+            lib::bug_on(protype != std::to_underlying(protocol::ipv4));
+            lib::bug_on(hwsize != 6);
+            lib::bug_on(prosize != 4);
 
             auto bytes = reinterpret_cast<std::uint8_t *>(ptr);
 
@@ -190,7 +190,7 @@ namespace net::arp
                     continue;
 
                 // route->doorbell.await();
-                lib::bug_if_not(route->resolved == true);
+                lib::bug_on(route->resolved == false);
                 return route->mac;
             }
 
@@ -198,7 +198,7 @@ namespace net::arp
             submit_query(ipv4);
 
             // route->doorbell.await();
-            lib::bug_if_not(route->resolved == true);
+            lib::bug_on(route->resolved == false);
             return route->mac;
         }
 

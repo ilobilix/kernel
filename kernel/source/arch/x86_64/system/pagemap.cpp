@@ -67,8 +67,8 @@ namespace vmm
 
     std::uintptr_t pagemap::to_arch(pflag flags, caching cache, page_size psize)
     {
-        lib::bug_if_not(magic_enum::enum_contains(cache));
-        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(cache));
+        lib::bug_on(!magic_enum::enum_contains(psize));
 
         std::uintptr_t ret = 0;
 
@@ -171,7 +171,7 @@ namespace vmm
 
     [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(psize));
         return arch::page_sizes[std::to_underlying(psize)];
     }
 

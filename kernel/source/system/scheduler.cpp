@@ -332,8 +332,9 @@ namespace sched
                 // TODO
                 const auto thread = std::move(list.front());
                 list.pop_front();
-                lib::bug_if_not(thread.use_count() == 2);
-                lib::bug_if_not(proc_for(thread->pid)->threads.erase(thread->tid) == 1);
+                lib::bug_on(thread.use_count() != 2);
+                lib::bug_on(proc_for(thread->pid)->threads.erase(thread->tid) != 1);
+                lib::bug_on(thread.use_count() != 1);
                 // thread deconstructor is called
             }
         }
@@ -466,7 +467,7 @@ namespace sched
             nullptr,
             std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
         );
-        lib::bug_if_not(proc->pid == 0);
+        lib::bug_on(proc->pid != 0);
     }
 
     initgraph::task scheduler_task

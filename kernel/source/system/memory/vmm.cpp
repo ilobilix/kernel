@@ -95,7 +95,7 @@ namespace vmm
             std::shared_ptr<object> obj, off_t offset
         )
     {
-        lib::bug_if_not(obj != nullptr);
+        lib::bug_on(obj == nullptr);
 
         const auto psize = pagemap::from_page_size(page_size::small);
         if (address % psize)
@@ -118,13 +118,13 @@ namespace vmm
             {
                 const auto addr = entry.startp * psize;
                 const auto sz = entry.endp * psize - addr;
-                lib::bug_if_not(pmap->unmap(addr, sz, page_size::small));
+                lib::bug_on(!pmap->unmap(addr, sz, page_size::small));
             }
             else
             {
                 const auto addr = std::max(startp, entry.startp) * psize;
                 const auto sz = std::min(endp, entry.endp) * psize - addr;
-                lib::bug_if_not(pmap->unmap(addr, sz, page_size::small));
+                lib::bug_on(!pmap->unmap(addr, sz, page_size::small));
 
                 const auto headp = startp < entry.startp ? 0 : startp - entry.startp;
                 const auto tailp = endp >= entry.endp ? 0 : entry.endp - endp;

@@ -2,7 +2,7 @@
 
 export module lib:locker;
 
-import :bug_if_not;
+import :bug_on;
 import cppstd;
 
 namespace detail
@@ -161,9 +161,9 @@ namespace detail
         {
             const auto &lock = get_lock();
             if constexpr (is_rwlock<Lock>)
-                lib::bug_if_not(!lock.is_read_locked() && !lock.is_write_locked());
+                lib::bug_on(lock.is_read_locked() || lock.is_write_locked());
             else
-                lib::bug_if_not(!lock.is_locked());
+                lib::bug_on(lock.is_locked());
 
             _data.reset();
             _ptr = nullptr;
@@ -173,13 +173,13 @@ namespace detail
 
         Type *get_data() const
         {
-            lib::bug_if_not(_data != nullptr);
+            lib::bug_on(_data == nullptr);
             return _ptr;
         }
 
         Lock &get_lock() const
         {
-            lib::bug_if_not(_data != nullptr);
+            lib::bug_on(_data == nullptr);
             return static_cast<buffer *>(_data.get())->_lock;
         }
     };

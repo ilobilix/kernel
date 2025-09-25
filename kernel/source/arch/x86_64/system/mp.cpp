@@ -67,8 +67,8 @@ namespace cpu::mp
         if (num_cores() <= 1)
             return;
 
-        lib::bug_if_not(smp_trampoline_size <= pmm::page_size);
-        lib::bug_if_not(trampoline_pages != 0);
+        lib::bug_on(smp_trampoline_size > pmm::page_size);
+        lib::bug_on(trampoline_pages == 0);
 
         log::debug("cpu: trampoline address 0x{:X}", trampoline_pages);
         if (const auto ret = vmm::kernel_pagemap->map(trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::pflag::rwx); !ret)

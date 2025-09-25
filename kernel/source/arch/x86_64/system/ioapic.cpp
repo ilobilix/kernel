@@ -155,7 +155,7 @@ namespace x86_64::apic::io
 
     void mask(std::uint8_t vector)
     {
-        lib::bug_if_not(vector >= 0x20);
+        lib::bug_on(vector < 0x20);
 
         log::debug("ioapic: masking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);
@@ -167,7 +167,7 @@ namespace x86_64::apic::io
 
     void unmask(std::uint8_t vector)
     {
-        lib::bug_if_not(vector >= 0x20);
+        lib::bug_on(vector < 0x20);
 
         log::debug("ioapic: unmasking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);

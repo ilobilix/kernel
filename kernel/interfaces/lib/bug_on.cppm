@@ -1,13 +1,13 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module lib:bug_if_not;
+export module lib:bug_on;
 import :panic;
 import cppstd;
 
 export namespace lib
 {
     template<typename ...Args>
-    class bug_if_not
+    class bug_on
     {
 #if ILOBILIX_DEBUG
         private:
@@ -28,27 +28,27 @@ export namespace lib
         };
 
         public:
-        constexpr bug_if_not(
+        constexpr bug_on(
             value condition,
             std::source_location location = std::source_location::current()
         ) {
-            if (!condition)
-                vpanic("assertion failed", std::make_format_args(), nullptr, location);
+            if (condition)
+                vpanic("BUG BUG BUG!!!!!", std::make_format_args(), nullptr, location);
         }
 
-        constexpr bug_if_not(
+        constexpr bug_on(
             value condition, std::string_view message, Args &&...args,
             std::source_location location = std::source_location::current()
         ) {
-            if (!condition)
+            if (condition)
                 vpanic(message, std::make_format_args(args...), nullptr, location);
         }
 #else
         public:
-        constexpr bug_if_not(auto &&...) { }
+        constexpr bug_on(auto &&...) { }
 #endif
     };
 
     template<typename ...Args>
-    bug_if_not(std::convertible_to<bool> auto, std::string_view, Args &&...) -> bug_if_not<Args...>;
+    bug_on(std::convertible_to<bool> auto, std::string_view, Args &&...) -> bug_on<Args...>;
 } // export namespace lib

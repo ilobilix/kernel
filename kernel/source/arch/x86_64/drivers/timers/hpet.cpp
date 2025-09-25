@@ -99,7 +99,7 @@ namespace x86_64::timers::hpet
 
     std::uint64_t time_ns()
     {
-        lib::bug_if_not(!!initialised);
+        lib::bug_on(!initialised);
         return freq.nanos(read()) - offset;
     }
 

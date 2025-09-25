@@ -107,7 +107,7 @@ namespace x86_64::apic
     // https://discord.com/channels/440442961147199490/734392369230643320/1398724196154216700
     void calibrate_timer()
     {
-        lib::bug_if_not(!!supported().first);
+        lib::bug_on(!supported().first);
 
         if (cpu::self()->idx != cpu::bsp_idx())
             return;
@@ -180,7 +180,7 @@ namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
-        lib::bug_if_not(!!is_calibrated);
+        lib::bug_on(!is_calibrated);
 
         if (ns == 0)
             ns = 1;
@@ -217,7 +217,7 @@ namespace x86_64::apic
         const auto phys_mmio = val & 0xFFFFF000;
 
         if (!is_bsp)
-            lib::bug_if_not(x2apic == _x2apic, "x2apic support differs from the BSP");
+            lib::bug_on(x2apic != _x2apic, "x2apic support differs from the bsp");
         else
             x2apic = _x2apic;
 
@@ -248,7 +248,7 @@ namespace x86_64::apic
                 if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
                     lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
             }
-            else lib::bug_if_not(phys_mmio == pmmio, "APIC mmio address differs from the BSP");
+            else lib::bug_on(phys_mmio != pmmio, "lapic mmio address differs from the bsp");
         }
 
         // Enable all external interrupts

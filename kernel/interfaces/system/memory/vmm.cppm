@@ -37,6 +37,7 @@ export namespace vmm
 
         private:
         virtual std::uintptr_t get_page_internal(std::size_t idx) = 0;
+        // TODO: sync
 
         public:
         object() = default;
