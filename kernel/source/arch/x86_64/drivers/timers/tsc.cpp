@@ -76,10 +76,10 @@ namespace x86_64::timers::tsc
                 for (std::size_t i = 0; i < times; i++)
                 {
                     const auto start = rdtsc();
-                    calibrator(millis);
+                    const auto slept_for = calibrator(millis);
                     const auto end = rdtsc();
 
-                    val += (end - start) * (1'000 / millis);
+                    val += ((end - start) * 1'000'000'000) / slept_for;
                 }
                 val /= times;
             }

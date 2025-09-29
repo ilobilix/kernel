@@ -148,20 +148,20 @@ export namespace lib
             return *this = init(freq);
         }
 
-        constexpr std::uint64_t nanos(uint128_t ticks)
+        constexpr std::uint64_t nanos(uint128_t ticks) const
         {
-            auto res = (ticks * n) >> p;
+            const auto res = (ticks * n) >> p;
             if (res >> 64)
                 return std::numeric_limits<std::uint64_t>::max();
             return res;
         }
 
-        constexpr std::uint64_t ticks(std::uint64_t nanos)
+        constexpr std::uint64_t ticks(std::uint64_t nanos) const
         {
             return (nanos << p) / n;
         }
 
-        constexpr std::uint64_t frequency() { return freq; }
+        constexpr std::uint64_t frequency() const { return freq; }
     };
 
     inline constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)

@@ -103,15 +103,17 @@ namespace x86_64::timers::hpet
         return freq.nanos(read()) - offset;
     }
 
-    void calibrate(std::size_t ms)
+    std::size_t calibrate(std::size_t ms)
     {
-        const auto ticks = (ms * freq.frequency()) / 1'000;
+        const auto ticks = freq.ticks(ms * 1'000'000);
 
         const auto start = read();
         auto current = start;
 
         while (current < start + ticks)
             current = read();
+
+        return freq.nanos(current - start);
     }
 
     time::clock clock { "hpet", 25, time_ns };

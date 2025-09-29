@@ -9,7 +9,7 @@ export namespace x86_64::timers::hpet
     bool is_initialised();
 
     std::uint64_t time_ns();
-    void calibrate(std::size_t ms);
+    std::size_t calibrate(std::size_t ms);
 
     void init();
 } // export namespace x86_64::timers::hpet

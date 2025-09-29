@@ -6,15 +6,17 @@ export import drivers.timers.acpipm;
 export import arch.drivers.timers;
 
 import lib;
+import cppstd;
 
 export namespace timers
 {
-    auto calibrator()
+    auto calibrator() -> std::size_t (*)(std::size_t ms)
     {
-        if (timers::acpipm::supported())
+        if (const auto ret = timers::arch::calibrator())
+            return ret;
+        else if (timers::acpipm::supported())
             return timers::acpipm::calibrate;
-
-        return timers::arch::calibrator();
+        return nullptr;
     }
 
     initgraph::stage *available_stage();
