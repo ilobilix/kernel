@@ -669,7 +669,7 @@ target("hdd")
                     create_hdd()
                 end
 
-                depend.on_changed(handle_size, { files = { old_esp_size, old_root_size }  })
+                depend.on_changed(handle_size, { files = { old_esp_size, old_root_size, targetfile }  })
                 depend.on_changed(create_esp, { files = { kernelfile, initramfsfile, limine_conf, old_esp_size } })
                 depend.on_changed(create_root, { files = { sysroot_updatefile, old_root_size } })
 

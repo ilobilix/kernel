@@ -157,6 +157,9 @@ namespace cpu
 
         void enable()
         {
+            // clear MISC_ENABLE.LCMV
+            msr::write(0x1A0, msr::read(0x1A0) & ~(1 << 22));
+
             // SSE
             {
                 auto cr0 = rdreg(cr0);

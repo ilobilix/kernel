@@ -44,6 +44,7 @@ namespace x86_64::timers::pit
         using magic_enum::bitwise_operators::operator|;
 
         std::size_t tick = 0;
+        std::int64_t offset = 0;
         bool initialised = false;
     } // namespace
 
@@ -51,7 +52,7 @@ namespace x86_64::timers::pit
 
     std::uint64_t time_ns()
     {
-        return ((tick * 1'000) / frequency) * 1'000'000ul;
+        return (((tick * 1'000) / frequency) * 1'000'000ul) - offset;
     }
 
     time::clock clock { "pit", 0, time_ns };
@@ -70,6 +71,9 @@ namespace x86_64::timers::pit
         auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x20).value();
         handler.set([](auto) { tick++; });
         interrupts::unmask(vector);
+
+        if (const auto clock = time::main_clock())
+            offset = time_ns() - clock->ns();
 
         time::register_clock(clock);
         initialised = true;

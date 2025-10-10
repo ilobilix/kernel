@@ -96,6 +96,8 @@ namespace x86_64::timers::kvm
         {
             if (const auto clock = time::main_clock())
                 offset = time_ns() - clock->ns();
+            else
+                offset = time_ns();
 
             time::register_clock(clock);
             return true;

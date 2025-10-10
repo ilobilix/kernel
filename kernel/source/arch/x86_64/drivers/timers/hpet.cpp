@@ -7,6 +7,7 @@ module;
 
 module x86_64.drivers.timers.hpet;
 
+import system.scheduler;
 import system.memory;
 import system.time;
 import magic_enum;
@@ -71,6 +72,16 @@ namespace x86_64::timers::hpet
 
             return value;
         }
+
+        void handle_overflow()
+        {
+            while (true)
+            {
+                read();
+                sched::this_thread()->prepare_sleep(1'000);
+                sched::yield();
+            }
+        }
     } // namespace
 
     bool supported()
@@ -116,7 +127,7 @@ namespace x86_64::timers::hpet
         return freq.nanos(current - start);
     }
 
-    time::clock clock { "hpet", 25, time_ns };
+    time::clock clock { "hpet", 50, time_ns };
     void init()
     {
         log::info("hpet: supported: {}", supported());
@@ -145,7 +156,19 @@ namespace x86_64::timers::hpet
         initialised = true;
         if (const auto clock = time::main_clock())
             offset = time_ns() - clock->ns();
+        else
+            offset = time_ns();
 
         time::register_clock(clock);
     }
+
+    initgraph::task hpet_task
+    {
+        "timers.create-hpet-overflow-thread",
+        initgraph::require { sched::available_stage() },
+        [] {
+            if (!is_64bit)
+                sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));
+        }
+    };
 } // namespace x86_64::timers::hpet

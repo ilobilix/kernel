@@ -12,7 +12,11 @@ import cppstd;
 
 export namespace initgraph
 {
+#if ILOBILIX_DEBUG
+    constexpr bool debug = true;
+#else
     constexpr bool debug = false;
+#endif
 
     enum class node_type { none, stage, task };
 

@@ -8,6 +8,7 @@ module;
 
 module drivers.timers.acpipm;
 
+import system.scheduler;
 import system.acpi;
 import system.time;
 import lib;
@@ -23,7 +24,9 @@ namespace timers::acpipm
         uacpi_mapped_gas *mapped;
         std::size_t mask;
 
-        std::uint64_t read()
+        std::int64_t offset = 0;
+
+        std::uint64_t read(bool fast = false)
         {
             const auto read_internal = [] {
                 std::uint64_t value;
@@ -31,14 +34,29 @@ namespace timers::acpipm
                 return value;
             };
 
-            // std::uint32_t v1 = 0, v2 = 0, v3 = 0;
-            // do {
-            //     v1 = read_internal();
-            //     v2 = read_internal();
-            //     v3 = read_internal();
-            // } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
+            if (!fast)
+            {
+                std::uint32_t v1 = 0, v2 = 0, v3 = 0;
+                do {
+                    v1 = read_internal();
+                    v2 = read_internal();
+                    v3 = read_internal();
+                } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
+
+                return v2;
+            }
 
             return read_internal();
+        }
+
+        void handle_overflow()
+        {
+            while (true)
+            {
+                time_ns();
+                sched::this_thread()->prepare_sleep(1'000);
+                sched::yield();
+            }
         }
     } // namespace
 
@@ -62,6 +80,31 @@ namespace timers::acpipm
         return cached;
     }
 
+    std::uint64_t time_ns()
+    {
+        lib::bug_on(!supported());
+
+        static std::atomic<std::uint64_t> last = 0;
+
+        auto value = read();
+
+        auto last_val = last.load(std::memory_order_relaxed);
+        value &= mask;
+        value |= last_val & ~mask;
+
+        if (value < last_val)
+            value += mask + 1;
+
+        if (last_val - value > (mask >> 1))
+            last.compare_exchange_strong(
+                last_val, value,
+                std::memory_order_relaxed,
+                std::memory_order_relaxed
+            );
+
+        return freq.nanos(value) - offset;
+    }
+
     std::size_t calibrate(std::size_t ms)
     {
         lib::bug_on(!supported());
@@ -69,14 +112,14 @@ namespace timers::acpipm
         const auto ticks = freq.ticks(ms * 1'000'000);
         lib::bug_on(ticks > mask);
 
-        const auto start = read();
+        const auto start = read(true);
         auto current = start;
 
         while (current < start + ticks)
         {
-            current = read();
+            current = read(true);
             if (current < start)
-                current += mask;
+                current += mask + 1;
         }
         return freq.nanos(current - start);
     }
@@ -87,6 +130,7 @@ namespace timers::acpipm
         return &stage;
     }
 
+    time::clock clock { "acpipm", 25, time_ns };
     initgraph::task acpipm_task
     {
         "timers.init-acpipm",
@@ -95,6 +139,22 @@ namespace timers::acpipm
         [] {
             auto pmtimer = supported();
             log::info("acpipm: timer supported: {}", pmtimer);
+
+            if (const auto clock = time::main_clock())
+                offset = time_ns() - clock->ns();
+            else
+                offset = time_ns();
+
+            time::register_clock(clock);
+        }
+    };
+
+    initgraph::task acpipm_overflow_task
+    {
+        "timers.create-acpipm-overflow-thread",
+        initgraph::require { sched::available_stage() },
+        [] {
+            sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));
         }
     };
 } // namespace timers::acpipm

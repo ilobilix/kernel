@@ -21,9 +21,9 @@ namespace sched::arch
         lib::unused(ms);
     }
 
-    void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg)
+    void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip)
     {
-        lib::unused(proc, thread, ip, arg);
+        lib::unused(proc, thread, ip);
     }
 
     void deinitialise(process *proc, thread *thread)
