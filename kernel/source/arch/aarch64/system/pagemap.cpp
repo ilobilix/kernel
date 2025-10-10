@@ -72,20 +72,20 @@ namespace vmm
         cpu::invlpg(vaddr);
     }
 
-    std::uintptr_t pagemap::to_arch(flag flags, caching cache, page_size psize)
+    std::uintptr_t pagemap::to_arch(pflag flags, caching cache, page_size psize)
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
         lib::bug_on(!magic_enum::enum_contains(psize));
 
         std::uintptr_t ret = arch::flag::valid | arch::flag::access | arch::flag::in_share;
 
-        if ((flags & flag::write) == flag::none)
+        if ((flags & pflag::write) == pflag::none)
             ret |= arch::flag::read_only;
-        if ((flags & flag::user) != flag::none)
+        if ((flags & pflag::user) != pflag::none)
             ret |= arch::flag::user;
-        if ((flags & flag::global) == flag::none)
+        if ((flags & pflag::global) == pflag::none)
             ret |= arch::flag::not_global;
-        if ((flags & flag::exec) == flag::none)
+        if ((flags & pflag::exec) == pflag::none)
             ret |= arch::flag::exec_never;
 
         if (psize == page_size::small)
@@ -106,22 +106,22 @@ namespace vmm
         return ret;
     }
 
-    auto pagemap::from_arch(std::uintptr_t flags, page_size psize) -> std::pair<flag, caching>
+    auto pagemap::from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>
     {
         lib::unused(psize);
 
-        auto ret = flag::none;
+        auto ret = pflag::none;
         {
             if ((flags & arch::flag::access) != 0)
-                ret |= flag::read;
+                ret |= pflag::read;
             if ((flags & arch::flag::read_only) == 0)
-                ret |= flag::write;
+                ret |= pflag::write;
             if ((flags & arch::flag::user) != 0)
-                ret |= flag::read;
+                ret |= pflag::read;
             if ((flags & arch::flag::not_global) == 0)
-                ret |= flag::global;
+                ret |= pflag::global;
             if ((flags & arch::flag::exec_never) == 0)
-                ret |= flag::exec;
+                ret |= pflag::exec;
         }
 
         auto cache = caching::normal;

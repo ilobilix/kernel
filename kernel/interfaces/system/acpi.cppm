@@ -11,6 +11,7 @@ import cppstd;
 
 export namespace acpi
 {
+#if defined(__x86_64__)
     namespace madt
     {
         std::vector<acpi_madt_lapic> lapics;
@@ -21,6 +22,7 @@ export namespace acpi
 
         acpi_madt *hdr = nullptr;
     } // namespace madt
+#endif
 
     acpi_fadt *fadt = nullptr;
 

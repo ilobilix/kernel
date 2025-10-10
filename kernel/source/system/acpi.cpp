@@ -33,6 +33,7 @@ namespace acpi
         constexpr std::size_t early_table_buffer_size = 1024;
         std::uint8_t *early_table_buffer;
 
+#if defined(__x86_64__)
         void parse_madt()
         {
             uacpi_table out_table;
@@ -68,6 +69,7 @@ namespace acpi
                 }
             }
         }
+#endif
 
         // TODO
         void shutdown()
@@ -181,7 +183,9 @@ namespace acpi
 
             uacpi_table_fadt(&fadt);
 
+#if defined(__x86_64__)
             parse_madt();
+#endif
         }
     };
 } // namespace acpi
