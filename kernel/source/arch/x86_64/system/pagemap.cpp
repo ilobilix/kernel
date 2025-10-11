@@ -169,6 +169,11 @@ namespace vmm
         return _table;
     }
 
+    bool pagemap::is_canonical(std::uintptr_t addr)
+    {
+        return (addr < 0x0000800000000000) || (addr >= 0xFFFF800000000000);
+    }
+
     [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
         lib::bug_on(!magic_enum::enum_contains(psize));
@@ -189,6 +194,13 @@ namespace vmm
     {
         const auto addr = reinterpret_cast<std::uintptr_t>(_table);
         asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
+    }
+
+    void pagemap::save()
+    {
+        std::uintptr_t addr;
+        asm volatile ("mov %0, cr3" : "=r"(addr) :: "memory");
+        _table = reinterpret_cast<table *>(addr);
     }
 
     pagemap::pagemap() : _table { new_table() }

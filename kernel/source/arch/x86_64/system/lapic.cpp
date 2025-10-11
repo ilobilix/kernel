@@ -153,6 +153,8 @@ namespace x86_64::apic
 
     void eoi() { write(0xB0, 0); }
 
+    // ! TODO: xapic sipi doesn't work
+
     void ipi(shorthand dest, delivery del, std::uint8_t vec)
     {
         const auto val =
@@ -207,10 +209,6 @@ namespace x86_64::apic
         auto [lapic, _x2apic] = supported();
         if (!lapic)
             lib::panic("CPU does not support lapic");
-
-        // ! TODO: xapic sipi doesn't work
-        if (!_x2apic)
-            lib::panic("TODO: xapic sipi does not work");
 
         auto val = cpu::msr::read(reg::apic_base);
         const bool is_bsp = (val & (1 << 8));

@@ -150,6 +150,7 @@ export namespace vmm
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
+        static bool is_canonical(std::uintptr_t addr);
 
         [[gnu::pure]] static std::size_t from_page_size(page_size psize);
         [[gnu::pure]] static page_size max_page_size(std::size_t size);
@@ -164,13 +165,17 @@ export namespace vmm
         std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::small);
 
         void load() const;
+        void save();
 
         pagemap();
         pagemap(pagemap *ref) : _table { ref->_table } { }
         pagemap(table *ref) : _table { ref } { }
 
+        pagemap(std::nullptr_t) : _table { nullptr } { }
+
         ~pagemap();
     };
 
+    inline frg::manual_box<pagemap> limine_pagemap;
     inline frg::manual_box<pagemap> kernel_pagemap;
 } // export namespace vmm

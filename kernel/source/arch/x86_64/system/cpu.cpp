@@ -157,8 +157,10 @@ namespace cpu
 
         void enable()
         {
-            // clear MISC_ENABLE.LCMV
-            msr::write(0x1A0, msr::read(0x1A0) & ~(1 << 22));
+            // // clear MISC_ENABLE.LCMV
+            // // static const auto cached0 = (cpu::id(0, 0)->a > 2 && (cpu::id(0x07, 1)->b & (1 << 3)) == 0);
+            // // if (cached0)
+            //     msr::write(0x1A0, msr::read(0x1A0) & ~(1 << 22));
 
             // SSE
             {
@@ -172,10 +174,10 @@ namespace cpu
             }
 
             static cpu::id_res res1;
-            static const auto cached1 = [] { return cpu::id(0x01, 0, res1); } ();
+            static const auto cached1 = cpu::id(0x01, 0, res1);
 
             static cpu::id_res res7;
-            static const auto cached7 = [] { return cpu::id(0x07, 0, res7); } ();
+            static const auto cached7 = cpu::id(0x07, 0, res7);
 
             // UMIP SMEP SMAP INVPCID
             if (cached7)

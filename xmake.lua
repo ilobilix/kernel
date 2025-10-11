@@ -102,6 +102,11 @@ option("part_root_size")
     set_showmenu(true)
     set_description("ROOT partition size on hdd in MiB")
 
+option("limine_mp")
+    set_default(true)
+    set_showmenu(true)
+    set_description("use limine mp request")
+
 -- <-- options
 
 -- variables -->
@@ -169,6 +174,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
     add_defines("ILOBILIX_MAX_UACPI_POINTS=" .. (get_config("max_uacpi_points") and "1" or "0"))
+    add_defines("ILOBILIX_LIMINE_MP=" .. (get_config("limine_mp") and "1" or "0"))
 
     add_defines("LIMINE_API_REVISION=2")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")

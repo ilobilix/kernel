@@ -27,7 +27,9 @@ namespace vmm
         table *ret = nullptr;
 
         auto accessor = entry.access();
-        if (!accessor.getflags(valid_table_flags))
+        if (const auto addr = accessor.getaddr(); accessor.getflags(valid_table_flags) && is_canonical(addr))
+            ret = reinterpret_cast<table *>(addr);
+        else
         {
             if (allocate == false)
                 return nullptr;
@@ -37,7 +39,6 @@ namespace vmm
                 .setflags(new_table_flags, true)
                 .write();
         }
-        else ret = reinterpret_cast<table *>(accessor.getaddr());
 
         return lib::tohh(ret);
     }
@@ -273,6 +274,9 @@ namespace vmm
     {
         log::info("vmm: setting up the kernel pagemap");
         log::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
+
+        limine_pagemap.initialize(nullptr);
+        limine_pagemap->save();
 
         kernel_pagemap.initialize();
 
