@@ -110,4 +110,5 @@ export namespace vmm
     std::uintptr_t alloc_vpages(space_type type, std::size_t pages = 1);
 
     void init();
+    void init_vspaces();
 } // export namespace vmm
