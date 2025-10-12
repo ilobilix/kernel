@@ -66,10 +66,7 @@ namespace lib
             ms -= eep;
 
             if (eep)
-            {
-                sched::this_thread()->prepare_sleep(eep);
-                sched::yield();
-            }
+                sched::sleep_for(eep);
         } while (ms);
 
         return false;

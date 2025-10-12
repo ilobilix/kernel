@@ -325,11 +325,9 @@ extern "C"
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
         if (sched::is_initialised())
-        {
-            sched::this_thread()->prepare_sleep(msec);
-            sched::yield();
-        }
-        else uacpi_kernel_stall(msec * 1'000);
+            sched::sleep_for(msec);
+        else
+            uacpi_kernel_stall(msec * 1'000);
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
@@ -473,6 +471,8 @@ extern "C"
         interrupts::unmask(vector);
 
         *reinterpret_cast<std::size_t *>(out_irq_handle) = vector;
+
+        log::debug("uacpi: installed interrupt handler for irq {} (vector {})", irq, vector);
         return UACPI_STATUS_OK;
     }
 

@@ -54,8 +54,7 @@ namespace timers::acpipm
             while (true)
             {
                 time_ns();
-                sched::this_thread()->prepare_sleep(1'000);
-                sched::yield();
+                sched::sleep_for(1'000);
             }
         }
     } // namespace
