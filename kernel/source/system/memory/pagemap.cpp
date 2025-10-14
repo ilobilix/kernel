@@ -333,7 +333,7 @@ namespace vmm
                 if (len == 0)
                     continue;
 
-                log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
+                log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, memmap->base, vaddr);
 
                 if (const auto ret = kernel_pagemap->map(vaddr, base, len, pflag::rw, psize, cache); !ret)
                     lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));

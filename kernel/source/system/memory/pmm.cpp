@@ -316,8 +316,11 @@ namespace pmm
         {
             lib::bug_on(npages != 1);
 
+            // first called when allocating the pagemap
             [[maybe_unused]]
             static const auto once = [] {
+                log::info("pmm: setting up bootstrap allocator");
+
                 const auto memmaps = boot::requests::memmap.response->entries;
                 const std::size_t num = boot::requests::memmap.response->entry_count;
 
@@ -358,58 +361,30 @@ namespace pmm
             return reinterpret_cast<void *>(lib::tohh(ret));
         }
 
-        void init_pfndb()
+        void pfndb_add(const auto memmap, bool check = false)
         {
-            mem.pfndb_base = lib::tohh(lib::align_up(mem.top, lib::gib(1)));
-            log::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
-
-            const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
-            mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(page);
-
             const auto memmaps = boot::requests::memmap.response->entries;
-            const std::size_t num = boot::requests::memmap.response->entry_count;
 
-            const auto start = mem.used;
+            const auto pg = reinterpret_cast<std::uintptr_t>(page_for(memmap->base));
+            const auto vstart = lib::align_down(pg, page_size);
+            const auto length = lib::align_up(memmap->length / page_size * sizeof(page), page_size);
 
-            const auto add_memmap = [&memmaps](auto memmap, bool check = false)
+            for (std::size_t vaddr = vstart; vaddr <= vstart + length; vaddr += page_size)
             {
-                const auto pg = reinterpret_cast<std::uintptr_t>(page_for(memmap->base));
-                const auto vstart = lib::align_down(pg, page_size);
-                const auto length = lib::align_up(memmap->length / page_size * sizeof(page), page_size);
-
-                for (std::size_t vaddr = vstart; vaddr <= vstart + length; vaddr += page_size)
+                if (check && memmaps[bootstrap_memmap_idx]->length < page_size * 5 /* 5? */) [[unlikely]]
                 {
-                    if (check && memmaps[bootstrap_memmap_idx]->length < page_size * 5 /* 5? */) [[unlikely]]
-                    {
-                        memmaps[bootstrap_memmap_idx]->length = 0;
-                        break;
-                    }
-
-                    const auto psize = vmm::page_size::small;
-                    const auto flags = vmm::pflag::rw;
-
-                    const auto paddr = alloc<std::uintptr_t>(1, true);
-                    if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, page_size, flags, psize); !ret)
-                        lib::panic("could not map pfndb: {}", magic_enum::enum_name(ret.error()));
+                    memmaps[bootstrap_memmap_idx]->length = 0;
+                    break;
                 }
-            };
 
-            for (std::size_t i = 0; i < num; i++)
-            {
-                const auto memmap = memmaps[i];
-                const auto type = static_cast<boot::memmap>(memmap->type);
-                if (type != boot::memmap::usable && type != boot::memmap::bootloader)
-                    continue;
+                const auto psize = vmm::page_size::small;
+                const auto flags = vmm::pflag::rw;
 
-                if (i == bootstrap_memmap_idx)
-                    continue;
-
-                add_memmap(memmap);
+                const auto paddr = alloc<std::uintptr_t>(1, true);
+                if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, page_size, flags, psize); !ret)
+                    lib::panic("could not map pfndb: {}", magic_enum::enum_name(ret.error()));
             }
-            add_memmap(memmaps[bootstrap_memmap_idx], true);
-
-            log::debug("pmm: pfndb using {} kib", (mem.used - start) / 1024);
-        }
+        };
     } // namespace
 
     memory info()
@@ -425,6 +400,7 @@ namespace pmm
         return pg;
     }
 
+    [[nodiscard]]
     void *alloc(std::size_t npages, bool clear, bool low_mem)
     {
         if (npages == 0)
@@ -519,31 +495,45 @@ namespace pmm
                 mem.usable_top = std::max(mem.usable_top, end);
         }
 
-        log::info("pmm: setting up pfndb");
-        init_pfndb();
+        {
+            log::info("pmm: setting up pfndb");
+
+            mem.pfndb_base = lib::tohh(lib::align_up(mem.top, lib::gib(1)));
+            log::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
+
+            const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
+            mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(page);
+
+            for (std::size_t i = 0; i < num; i++)
+            {
+                const auto memmap = memmaps[i];
+                const auto type = static_cast<boot::memmap>(memmap->type);
+                if (type != boot::memmap::usable && type != boot::memmap::bootloader)
+                    continue;
+
+                if (i == bootstrap_memmap_idx)
+                    continue;
+
+                pfndb_add(memmap);
+            }
+        }
 
         log::info("pmm: initialising the physical memory allocator");
 
         if (bootstrap_memmap_idx != static_cast<std::size_t>(-1)) [[likely]]
         {
-            auto memmap = memmaps[bootstrap_memmap_idx];
+            const auto memmap = memmaps[bootstrap_memmap_idx];
             mem.usable += memmap->length - bootstrap_memmap.length;
             *memmap = bootstrap_memmap;
         }
 
-        for (std::size_t i = 0; i < num; i++)
+        const auto add_memmap = [](const auto memmap)
         {
-            auto memmap = memmaps[i];
-
-            const auto type = static_cast<boot::memmap>(memmap->type);
-            if (type != boot::memmap::usable)
+            if (memmap->length < page_size)
             {
-                if (type == boot::memmap::kernel_and_modules || type == boot::memmap::bootloader)
-                {
-                    mem.used += memmap->length;
-                    mem.usable += memmap->length;
-                }
-                continue;
+                mem.used += memmap->length;
+                mem.usable += memmap->length;
+                return;
             }
 
             // usable and bootloader reclaimable entries are page aligned
@@ -558,7 +548,7 @@ namespace pmm
                 {
                     mem.used += memmap->length;
                     mem.usable += memmap->length;
-                    continue;
+                    return;
                 }
             }
 
@@ -582,16 +572,39 @@ namespace pmm
 
                 mem.used += rend - rstart;
                 mem.usable -= rend - rstart;
-                continue;
+                return;
             }
 #endif
             add_range(memmap->base, memmap->length, false);
+        };
+
+        for (std::size_t i = 0; i < num; i++)
+        {
+            if (i == bootstrap_memmap_idx)
+                continue;
+
+            auto memmap = memmaps[i];
+
+            const auto type = static_cast<boot::memmap>(memmap->type);
+            if (type != boot::memmap::usable)
+            {
+                if (type == boot::memmap::kernel_and_modules || type == boot::memmap::bootloader)
+                {
+                    mem.used += memmap->length;
+                    mem.usable += memmap->length;
+                }
+                continue;
+            }
+
+            add_memmap(memmap);
         }
 
-        // uacpi points or something idk
-        for (std::size_t i = 0; i < 50; i++)
-            general.split_to(0);
-
         initialised = true;
+
+        log::debug("pmm: adding bootstrap memory to pfndb");
+        pfndb_add(memmaps[bootstrap_memmap_idx], true);
+
+        log::debug("pmm: adding bootstrap memory to allocator");
+        add_memmap(memmaps[bootstrap_memmap_idx]);
     }
 } // namespace pmm
