@@ -34,6 +34,8 @@ export namespace lib
         rwlock_base &operator=(const rwlock_base &) = delete;
         rwlock_base &operator=(rwlock_base &&) = delete;
 
+        // TODO: broken. fix and improve it
+
         void read_lock()
         {
             readers.lock();

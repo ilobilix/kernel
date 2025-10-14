@@ -270,13 +270,31 @@ namespace vmm
         return ret->get().access().getaddr();
     }
 
+    pagemap::~pagemap()
+    {
+        log::warn("vmm: destroying a pagemap");
+
+        [](this auto self, table *ptr, std::size_t start, std::size_t end, std::size_t level)
+        {
+            if (level == 0)
+                return;
+
+            for (std::size_t i = start; i < end; i++)
+            {
+                auto lvl = getlvl(ptr->entries[i], false);
+                if (lvl == nullptr)
+                    continue;
+
+                self(lvl, 0, 512, level - 1);
+            }
+            free_table(lib::fromhh(ptr));
+        } (lib::tohh(_table), 0, 256, 4);
+    }
+
     void init()
     {
         log::info("vmm: setting up the kernel pagemap");
         log::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
-
-        limine_pagemap.initialize(nullptr);
-        limine_pagemap->save();
 
         kernel_pagemap.initialize();
 

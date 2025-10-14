@@ -140,10 +140,13 @@ smp_trampoline_start:
 
     mov ebx, ebx
 
+    mov rax, qword ptr [rbx + .Lpassed_info.pagemap]
+    mov cr3, rax
+
     # synchronise MTRRs with BSP
     call [rbx + .Lpassed_info.mtrr_restore]
 
-    mov rax, qword ptr [rbx + .Lpassed_info.pagemap]
+    mov rax, cr3
     mov cr3, rax
 
     mov rdi, qword ptr [rbx + .Lpassed_info.proc]

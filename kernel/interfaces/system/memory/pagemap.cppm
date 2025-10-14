@@ -137,6 +137,7 @@ export namespace vmm
         lib::spinlock_irq _lock;
 
         static table *new_table();
+        static void free_table(table *ptr);
 
         static page_size fixpsize(page_size psize);
         static void invalidate(std::uintptr_t vaddr);
@@ -165,17 +166,13 @@ export namespace vmm
         std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::small);
 
         void load() const;
-        void save();
 
         pagemap();
         pagemap(pagemap *ref) : _table { ref->_table } { }
         pagemap(table *ref) : _table { ref } { }
 
-        pagemap(std::nullptr_t) : _table { nullptr } { }
-
         ~pagemap();
     };
 
-    inline frg::manual_box<pagemap> limine_pagemap;
     inline frg::manual_box<pagemap> kernel_pagemap;
 } // export namespace vmm

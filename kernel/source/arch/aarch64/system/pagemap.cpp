@@ -66,6 +66,11 @@ namespace vmm
         return pmm::alloc<table *>(1, true);
     }
 
+    void pagemap::free_table(table *ptr)
+    {
+        pmm::free(ptr, 1);
+    }
+
     page_size pagemap::fixpsize(page_size psize) { return psize; }
     void pagemap::invalidate(std::uintptr_t vaddr)
     {
@@ -209,16 +214,6 @@ namespace vmm
         asm volatile ("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
     }
 
-    void pagemap::save()
-    {
-        std::uintptr_t addr;
-        asm volatile ("mrs %0, ttbr0_el1" : "=r" (addr) :: "memory");
-        _table = reinterpret_cast<table *>(addr);
-
-        asm volatile ("mrs %0, ttbr1_el1" : "=r" (addr) :: "memory");
-        accessor.ttbr1 = reinterpret_cast<table *>(addr);
-    }
-
     pagemap::pagemap() : _table { new_table() }
     {
         if (!kernel_pagemap.valid())
@@ -261,6 +256,4 @@ namespace vmm
             //     getlvl(ttbr1->entries[i], true);
         }
     }
-
-    pagemap::~pagemap() { lib::panic("TODO"); }
 } // namespace vmm

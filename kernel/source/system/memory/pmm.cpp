@@ -23,215 +23,290 @@ namespace pmm
         constinit memory mem;
         constinit bool initialised = false;
 
-        struct list { list *prev = nullptr; list *next = nullptr; };
-        constinit list lists[max_order + 1] { };
-
 #if defined(__x86_64__)
-        constexpr std::size_t reserved_range_start = 0x1000;
-        constexpr std::size_t reserved_range_end = 0x100000;
+        constexpr std::size_t reserved_range_start = page_size;
+        constexpr std::size_t reserved_range_end = lib::mib(1);
         // one page for trampoline and the other for temporary stack
         constexpr std::size_t requested_size = page_size * 2;
 #endif
 
-        inline std::ptrdiff_t prev_order_from(std::size_t size)
+        void *bootstrap_alloc(std::size_t npages);
+
+        struct allocator
         {
-            if (size < page_size)
-                return -1;
-            return lib::log2(lib::pre_pow2(size)) - 12;
-        }
+            struct list { list *prev = nullptr; list *next = nullptr; };
+            list lists[max_order + 1];
 
-        inline std::ptrdiff_t next_order_from(std::size_t size)
-        {
-            if (size < page_size)
-                return -1;
-            return lib::log2(lib::next_pow2(size)) - 12;
-        }
+            constexpr allocator() : lists { } { }
 
-        inline void put(std::size_t order, list *pg)
-        {
-            pg->next = lists[order].next;
-            pg->prev = nullptr;
-            if (lists[order].next)
-                lists[order].next->prev = pg;
-            lists[order].next = pg;
-        }
-
-        inline void *rem(std::size_t order)
-        {
-            const auto ret = lists[order].next;
-            lists[order].next = lists[order].next->next;
-            if (lists[order].next)
-                lists[order].next->prev = nullptr;
-            return ret;
-        }
-
-        inline bool has_pages(std::size_t order)
-        {
-            return lists[order].next != nullptr;
-        }
-
-        void add_range(std::uintptr_t base, std::size_t size)
-        {
-            base = lib::tohh(base);
-            mem.usable += size;
-
-            // const auto old = base;
-            // base = lib::align_up(base, page_size);
-            // size -= base - old;
-            // mem.used += base - old;
-
-            while (size >= page_size)
+            inline std::ptrdiff_t prev_order_from(std::size_t size)
             {
-                const auto pg = std::construct_at<list>(reinterpret_cast<list *>(base));
-                auto sorder = prev_order_from(size);
-                if (sorder < 0)
-                    break;
+                if (size < page_size)
+                    return -1;
+                return lib::log2(lib::pre_pow2(size)) - 12;
+            }
 
-                auto order = std::min(static_cast<std::size_t>(sorder), max_order);
-                while (base % (page_size * lib::pow2(order)))
+            inline std::ptrdiff_t next_order_from(std::size_t size)
+            {
+                if (size < page_size)
+                    return -1;
+                return lib::log2(lib::next_pow2(size)) - 12;
+            }
+
+            inline void put(std::size_t order, list *pg)
+            {
+                pg->next = lists[order].next;
+                pg->prev = nullptr;
+                if (lists[order].next)
+                    lists[order].next->prev = pg;
+                lists[order].next = pg;
+            }
+
+            inline void *rem(std::size_t order)
+            {
+                const auto ret = lists[order].next;
+                lists[order].next = lists[order].next->next;
+                if (lists[order].next)
+                    lists[order].next->prev = nullptr;
+                return ret;
+            }
+
+            inline bool has_pages(std::size_t order)
+            {
+                return lists[order].next != nullptr;
+            }
+
+            std::size_t add_range(std::uintptr_t base, std::size_t size)
+            {
+                base = lib::tohh(base);
+
+                while (size >= page_size)
                 {
-                    order--;
+                    const auto pg = std::construct_at<list>(reinterpret_cast<list *>(base));
+                    auto sorder = prev_order_from(size);
+                    if (sorder < 0)
+                        break;
+
+                    auto order = std::min(static_cast<std::size_t>(sorder), max_order);
+                    while (base % (page_size * lib::pow2(order)))
+                    {
+                        order--;
+                        if (order == static_cast<std::size_t>(-1))
+                            break;
+                    }
+
                     if (order == static_cast<std::size_t>(-1))
                         break;
+
+                    const auto pg_page = page_for(base);
+                    pg_page->order = order;
+
+                    put(order, pg);
+
+                    const auto offset = page_size * lib::pow2(order);
+                    size -= offset;
+                    base += offset;
                 }
 
-                if (order == static_cast<std::size_t>(-1))
-                    break;
-
-                const auto pg_page = page_for(base);
-                pg_page->order = order;
-
-                put(order, pg);
-
-                const auto offset = page_size * lib::pow2(order);
-                size -= offset;
-                base += offset;
+                return size;
             }
 
-            // wasted
-            mem.used += size;
-        }
-
-        void split_to(std::size_t target)
-        {
-            auto current = target + 1;
-            while (lists[current].next == nullptr)
+            void split_to(std::size_t target)
             {
-                current++;
-                if (current > max_order)
-                    return;
-            }
-
-            while (current > target)
-            {
-                const auto pg = reinterpret_cast<list *>(rem(current));
-                const auto pgaddr = reinterpret_cast<std::uintptr_t>(pg);
-
-                current--;
-
-                const auto buddy = reinterpret_cast<list *>(pgaddr + page_size * lib::pow2(current));
-
-                const auto pg_page = page_for(pgaddr);
-                const auto buddy_page = page_for(reinterpret_cast<std::uintptr_t>(buddy));
-
-                lib::bug_on(pg_page->allocated != 0);
-                lib::bug_on(buddy_page->allocated != 0);
-
-                pg_page->order = current;
-                buddy_page->order = current;
-
-                buddy_page->next_paddr = pg_page->next_paddr;
-                pg_page->next_paddr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buddy)) >> page_bits;
-
-                put(current, pg);
-                put(current, buddy);
-            }
-        }
-
-        void coalesce_to(std::size_t target)
-        {
-            if (target == 0)
-                return;
-
-            if (target > max_order)
-                target = max_order;
-
-            for (std::size_t order = 0; order < target; order++)
-            {
-                const auto next_block_size = page_size * lib::pow2(order + 1);
-                auto curr = lists[order].next;
-
-                while (has_pages(order))
+                auto current = target + 1;
+                while (lists[current].next == nullptr)
                 {
-                    while (!page_for(curr)->next_paddr || reinterpret_cast<std::uintptr_t>(curr) % next_block_size)
-                    {
-                        curr = curr->next;
-                        if (!curr)
-                            goto end;
-                    }
-
-                    const auto curr_page = page_for(curr);
-                    lib::bug_on(curr_page->allocated != 0);
-                    lib::bug_on(curr_page->order != order);
-
-                    const auto buddy_addr = lib::tohh(curr_page->next_paddr << page_bits);
-                    const auto buddy_page = page_for(buddy_addr);
-
-                    if (buddy_page->allocated || buddy_page->order != order)
-                    {
-                        // cannot coalesce :(
-                        curr = curr->next;
-                        if (!curr)
-                            goto end;
-                        continue;
-                    }
-
-                    auto remove = [&order](auto pg)
-                    {
-                        if (pg->prev)
-                            pg->prev->next = pg->next;
-                        else
-                            lists[order].next = pg->next;
-
-                        if (pg->next)
-                            pg->next->prev = pg->prev;
-                    };
-
-                    remove(curr);
-                    remove(reinterpret_cast<list *>(buddy_addr));
-
-                    const auto merged = reinterpret_cast<list *>(curr);
-                    const auto merged_page = page_for(reinterpret_cast<std::uintptr_t>(merged));
-                    merged_page->order = order + 1;
-                    merged_page->next_paddr = buddy_page->next_paddr;
-
-                    put(order + 1, merged);
-
-                    curr = lists[order].next;
+                    current++;
+                    if (current > max_order)
+                        return;
                 }
-                end:
+
+                while (current > target)
+                {
+                    const auto pg = reinterpret_cast<list *>(rem(current));
+                    const auto pgaddr = reinterpret_cast<std::uintptr_t>(pg);
+
+                    current--;
+
+                    const auto buddy = reinterpret_cast<list *>(pgaddr + page_size * lib::pow2(current));
+
+                    const auto pg_page = page_for(pgaddr);
+                    const auto buddy_page = page_for(reinterpret_cast<std::uintptr_t>(buddy));
+
+                    lib::bug_on(pg_page->allocated != 0);
+                    lib::bug_on(buddy_page->allocated != 0);
+
+                    pg_page->order = current;
+                    buddy_page->order = current;
+
+                    buddy_page->next_paddr = pg_page->next_paddr;
+                    pg_page->next_paddr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buddy)) >> page_bits;
+
+                    put(current, pg);
+                    put(current, buddy);
+                }
             }
-        }
 
-        void free(void *ptr, std::size_t npages, bool min)
+            void coalesce_to(std::size_t target)
+            {
+                if (target == 0)
+                    return;
+
+                if (target > max_order)
+                    target = max_order;
+
+                for (std::size_t order = 0; order < target; order++)
+                {
+                    const auto next_block_size = page_size * lib::pow2(order + 1);
+                    auto curr = lists[order].next;
+
+                    while (has_pages(order))
+                    {
+                        while (!page_for(curr)->next_paddr || reinterpret_cast<std::uintptr_t>(curr) % next_block_size)
+                        {
+                            curr = curr->next;
+                            if (!curr)
+                                goto end;
+                        }
+
+                        const auto curr_page = page_for(curr);
+                        lib::bug_on(curr_page->allocated != 0);
+                        lib::bug_on(curr_page->order != order);
+
+                        const auto buddy_addr = lib::tohh(curr_page->next_paddr << page_bits);
+                        const auto buddy_page = page_for(buddy_addr);
+
+                        if (buddy_page->allocated || buddy_page->order != order)
+                        {
+                            // cannot coalesce :(
+                            curr = curr->next;
+                            if (!curr)
+                                goto end;
+                            continue;
+                        }
+
+                        auto remove = [this, &order](auto pg)
+                        {
+                            if (pg->prev)
+                                pg->prev->next = pg->next;
+                            else
+                                lists[order].next = pg->next;
+
+                            if (pg->next)
+                                pg->next->prev = pg->prev;
+                        };
+
+                        remove(curr);
+                        remove(reinterpret_cast<list *>(buddy_addr));
+
+                        const auto merged = reinterpret_cast<list *>(curr);
+                        const auto merged_page = page_for(reinterpret_cast<std::uintptr_t>(merged));
+                        merged_page->order = order + 1;
+                        merged_page->next_paddr = buddy_page->next_paddr;
+
+                        put(order + 1, merged);
+
+                        curr = lists[order].next;
+                    }
+                    end:
+                }
+            }
+
+            std::size_t free(void *ptr, std::size_t npages)
+            {
+                const auto size = npages * page_size;
+                const auto order = next_order_from(size);
+                if (order < 0 || static_cast<std::size_t>(order) > max_order)
+                    return 0;
+
+                const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ptr));
+                lib::bug_on(pg->allocated == 0);
+                lib::bug_on(pg->order != order);
+                pg->allocated = 0;
+
+                put(order, static_cast<list *>(lib::tohh(ptr)));
+                return size;
+            }
+
+            std::pair<void *, std::size_t> alloc(std::size_t npages)
+            {
+                const auto size = npages * page_size;
+                const auto order = next_order_from(size);
+                const auto real_size = page_size * lib::pow2(order);
+
+                if (order < 0 || static_cast<std::size_t>(order) > max_order)
+                    return { nullptr, 0 };
+
+                if (!has_pages(order))
+                {
+                    if (order == max_order)
+                    {
+                        coalesce_to(max_order);
+                        if (!has_pages(order))
+                            return { nullptr, 0 };
+                        goto found;
+                    }
+                    split_to(order);
+                    if (!has_pages(order))
+                    {
+                        if (order != 0)
+                        {
+                            coalesce_to(order);
+                            if (!has_pages(order))
+                                return { nullptr, 0 };
+                            goto found;
+                        }
+                        return { nullptr, 0 };
+                    }
+                }
+                found:
+                const auto ret = rem(order);
+
+                const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ret));
+                lib::bug_on(pg->allocated == 1);
+                lib::bug_on(pg->order != order);
+                pg->allocated = 1;
+
+                return { ret, real_size };
+            }
+        };
+
+        constinit allocator general { };
+
+#if defined(__x86_64__)
+        constinit allocator lowmem { };
+        constexpr std::uintptr_t lowmem_end = lib::gib(4);
+
+        inline bool is_lowmem(const auto ptr)
         {
-            if (npages == 0)
-                return;
+            return lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr)) < lowmem_end;
+        }
+#endif
 
-            const std::unique_lock _ { lock };
+        void add_range(std::uintptr_t base, std::size_t size, bool freeing)
+        {
+            if (!freeing)
+                mem.usable += size;
 
-            const auto size = npages * page_size;
-            const auto order = (min ? prev_order_from : next_order_from)(size);
-            if (order < 0 || static_cast<std::size_t>(order) > max_order)
-                return;
+            std::size_t wasted = 0;
 
-            const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ptr));
-            lib::bug_on(pg->allocated == 0);
-            lib::bug_on(pg->order != order);
-            pg->allocated = 0;
+#if defined(__x86_64__)
+            if (is_lowmem(base))
+            {
+                const auto diff = lowmem_end - base;
+                wasted = lowmem.add_range(base, std::min(size, diff));
+                if (size > diff)
+                    wasted += general.add_range(lowmem_end, size - diff);
+            }
+            else
+#endif
+                wasted = general.add_range(base, size);
 
-            put(order, static_cast<list *>(lib::tohh(ptr)));
-            mem.used -= size;
+            if (!freeing)
+                mem.used += wasted;
+            else
+                mem.used -= size - wasted;
+            return;
         }
 
         std::size_t bootstrap_memmap_idx = -1;
@@ -241,10 +316,9 @@ namespace pmm
         {
             lib::bug_on(npages != 1);
 
-            const auto memmaps = boot::requests::memmap.response->entries;
-
             [[maybe_unused]]
-            static const auto once = [&memmaps] {
+            static const auto once = [] {
+                const auto memmaps = boot::requests::memmap.response->entries;
                 const std::size_t num = boot::requests::memmap.response->entry_count;
 
                 std::size_t max_size = 0, idx = -1;
@@ -351,7 +425,7 @@ namespace pmm
         return pg;
     }
 
-    void *alloc(std::size_t npages, bool clear)
+    void *alloc(std::size_t npages, bool clear, bool low_mem)
     {
         if (npages == 0)
             return nullptr;
@@ -359,63 +433,52 @@ namespace pmm
         const std::unique_lock _ { lock };
         const auto size = npages * page_size;
 
-        void *ret = nullptr;
-
+        std::pair<void *, std::size_t> ret { nullptr, 0 };
         if (initialised)
         {
-            const auto order = next_order_from(size);
-
-            if (order < 0 || static_cast<std::size_t>(order) > max_order)
-                return nullptr;
-
-            if (!has_pages(order))
-            {
-                if (order == max_order)
-                {
-                    coalesce_to(max_order);
-                    if (!has_pages(order))
-                        return nullptr;
-                    goto found;
-                }
-                split_to(order);
-                if (!has_pages(order))
-                {
-                    if (order != 0)
-                    {
-                        coalesce_to(order);
-                        if (!has_pages(order))
-                            return nullptr;
-                        goto found;
-                    }
-                    return nullptr;
-                }
-            }
-            found:
-            ret = rem(order);
-
-            const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ret));
-            lib::bug_on(pg->allocated == 1);
-            lib::bug_on(pg->order != order);
-            pg->allocated = 1;
+#if defined(__x86_64__)
+            if (low_mem)
+                ret = lowmem.alloc(npages);
+            else
+#endif
+                ret = general.alloc(npages);
+#if defined(__x86_64__)
+            if (!ret.first && !low_mem)
+                ret = lowmem.alloc(npages);
+#else
+            lib::unused(low_mem);
+#endif
         }
-        else
-        {
-            ret = bootstrap_alloc(npages);
-            if (ret == nullptr)
-                return nullptr;
-        }
+        else ret = { bootstrap_alloc(npages), size };
+
+        if (!ret.first)
+            lib::panic("pmm: out of memory");
 
         if (clear)
-            std::memset(ret, 0, size);
+            std::memset(ret.first, 0, size);
 
-        mem.used += size;
-        return lib::fromhh(ret);
+        mem.used += ret.second;
+        return lib::fromhh(ret.first);
     }
 
     void free(void *ptr, std::size_t npages)
     {
+        if (npages == 0)
+            return;
+
         if (initialised)
-            free(ptr, npages, false);
+        {
+            const std::unique_lock _ { lock };
+#if defined(__x86_64__)
+            if (is_lowmem(ptr))
+            {
+                mem.used -= lowmem.free(ptr, npages);
+                return;
+            }
+#endif
+            mem.used -= general.free(ptr, npages);
+        }
+        else lib::panic("attempted to free bootstrap memory");
     }
 
     initgraph::task reclaim_task
@@ -434,7 +497,7 @@ namespace pmm
                 if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
                     continue;
 
-                add_range(memmap->base, memmap->length);
+                add_range(memmap->base, memmap->length, true);
             }
         }
     };
@@ -471,17 +534,15 @@ namespace pmm
         for (std::size_t i = 0; i < num; i++)
         {
             auto memmap = memmaps[i];
-            auto add_used = [&memmap]
-            {
-                mem.used += memmap->length;
-                mem.usable += memmap->length;
-            };
 
             const auto type = static_cast<boot::memmap>(memmap->type);
             if (type != boot::memmap::usable)
             {
                 if (type == boot::memmap::kernel_and_modules || type == boot::memmap::bootloader)
-                    add_used();
+                {
+                    mem.used += memmap->length;
+                    mem.usable += memmap->length;
+                }
                 continue;
             }
 
@@ -495,7 +556,8 @@ namespace pmm
                 }
                 else
                 {
-                    add_used();
+                    mem.used += memmap->length;
+                    mem.usable += memmap->length;
                     continue;
                 }
             }
@@ -508,9 +570,9 @@ namespace pmm
             if (reserved_range_start < end && memmap->base < reserved_range_end)
             {
                 if (memmap->base < reserved_range_start)
-                    add_range(memmap->base, reserved_range_start - memmap->base);
+                    add_range(memmap->base, reserved_range_start - memmap->base, false);
                 if (end > reserved_range_end)
-                    add_range(reserved_range_end, end - reserved_range_end);
+                    add_range(reserved_range_end, end - reserved_range_end, false);
 
                 if (trampoline_pages == 0 && (rend - rstart) >= requested_size)
                 {
@@ -523,12 +585,12 @@ namespace pmm
                 continue;
             }
 #endif
-            add_range(memmap->base, memmap->length);
+            add_range(memmap->base, memmap->length, false);
         }
 
         // uacpi points or something idk
         for (std::size_t i = 0; i < 50; i++)
-            split_to(0);
+            general.split_to(0);
 
         initialised = true;
     }

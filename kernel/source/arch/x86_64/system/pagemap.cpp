@@ -47,10 +47,16 @@ namespace vmm
     const std::uintptr_t pagemap::valid_table_flags = arch::flag::present;
     const std::uintptr_t pagemap::new_table_flags = arch::flag::present | arch::flag::write | arch::flag::user;
 
+    extern "C" constinit bool pagemap_use_lowmem = false;
     auto pagemap::new_table() -> table *
     {
         static_assert(sizeof(table) == pmm::page_size);
-        return pmm::alloc<table *>(1, true);
+        return pmm::alloc<table *>(1, true, pagemap_use_lowmem);
+    }
+
+    void pagemap::free_table(table *ptr)
+    {
+        pmm::free(ptr, 1);
     }
 
     page_size pagemap::fixpsize(page_size psize)
@@ -196,13 +202,6 @@ namespace vmm
         asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
     }
 
-    void pagemap::save()
-    {
-        std::uintptr_t addr;
-        asm volatile ("mov %0, cr3" : "=r"(addr) :: "memory");
-        _table = reinterpret_cast<table *>(addr);
-    }
-
     pagemap::pagemap() : _table { new_table() }
     {
         if (!kernel_pagemap.valid())
@@ -223,6 +222,4 @@ namespace vmm
             std::memcpy(table->entries + 256, ktable->entries + 256, 256 * sizeof(entry));
         }
     }
-
-    pagemap::~pagemap() { lib::panic("TODO"); }
 } // namespace vmm
