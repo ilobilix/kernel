@@ -310,6 +310,11 @@ export namespace lib
             };
         }
 
+        bool is_locked() const requires detail::is_lock<Lock>
+        {
+            return _lock.is_locked();
+        }
+
         template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto read_lock(this Self &&self)
         {
@@ -319,6 +324,11 @@ export namespace lib
             };
         }
 
+        bool is_read_locked() const requires detail::is_rwlock<Lock>
+        {
+            return _lock.is_read_locked();
+        }
+
         template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto write_lock(this Self &&self)
         {
@@ -326,6 +336,11 @@ export namespace lib
                 std::forward<Self>(self).valueptr(),
                 std::forward<Self>(self)._lock
             };
+        }
+
+        bool is_write_locked() const requires detail::is_rwlock<Lock>
+        {
+            return _lock.is_write_locked();
         }
     };
 } // export namespace lib

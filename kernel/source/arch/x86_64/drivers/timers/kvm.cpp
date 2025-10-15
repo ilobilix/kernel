@@ -3,9 +3,12 @@
 module x86_64.drivers.timers.kvm;
 
 import drivers.timers.acpipm;
+import system.memory.phys;
+import system.memory.virt;
 import system.cpu.self;
 import system.time;
 import system.cpu;
+import magic_enum;
 import arch;
 import lib;
 import cppstd;
@@ -88,8 +91,20 @@ namespace x86_64::timers::kvm
         if (!supported())
             return;
 
-        clockptr = reinterpret_cast<void *>(new kvmclock_info);
-        cpu::msr::write(0x4B564D01, reinterpret_cast<std::uint64_t>(lib::fromhh(clockptr.get())) | 1);
+        const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
+        const auto paddr = pmm::alloc<std::uintptr_t>(1, true);
+        const auto length = sizeof(kvmclock_info);
+        const auto psize = vmm::page_size::small;
+        const auto flags = vmm::pflag::rw;
+        const auto cache = vmm::caching::mmio;
+
+        if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache); !ret)
+            lib::panic("pmm: could not map kvmclock: {}", magic_enum::enum_name(ret.error()));
+
+        const auto obj = std::construct_at<kvmclock_info>(reinterpret_cast<kvmclock_info *>(vaddr));
+        clockptr = reinterpret_cast<void *>(obj);
+
+        cpu::msr::write(0x4B564D01, paddr | 1);
 
         [[maybe_unused]]
         static const auto cached = []

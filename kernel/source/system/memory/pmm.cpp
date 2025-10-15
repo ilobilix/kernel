@@ -13,27 +13,20 @@ import cppstd;
 
 namespace pmm
 {
-#if defined(__x86_64__)
-    extern "C" constinit std::uintptr_t trampoline_pages = 0;
-#endif
-
     namespace
     {
         constinit lib::spinlock lock;
         constinit memory mem;
         constinit bool initialised = false;
 
-#if defined(__x86_64__)
-        constexpr std::size_t reserved_range_start = page_size;
-        constexpr std::size_t reserved_range_end = lib::mib(1);
-        // one page for trampoline and the other for temporary stack
-        constexpr std::size_t requested_size = page_size * 2;
-#endif
-
         void *bootstrap_alloc(std::size_t npages);
 
+        template<std::uintptr_t Start, std::uintptr_t End>
         struct allocator
         {
+            static inline constexpr std::uintptr_t start = Start;
+            static inline constexpr std::uintptr_t end = End;
+
             struct list { list *prev = nullptr; list *next = nullptr; };
             list lists[max_order + 1];
 
@@ -76,8 +69,27 @@ namespace pmm
                 return lists[order].next != nullptr;
             }
 
+            inline bool in_range(const auto ptr)
+            {
+                const auto addr = lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr));
+                return addr >= start && addr < end;
+            }
+
+            inline bool in_range(std::uintptr_t rstart, std::uintptr_t rend)
+            {
+                return lib::range_overlaps(rstart, rend, start, end);
+            }
+
+            inline std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t rstart, std::uintptr_t rend)
+            {
+                return lib::range_intersection(rstart, rend, start, end);
+            }
+
             std::size_t add_range(std::uintptr_t base, std::size_t size)
             {
+                if (base < start || base + size > end)
+                    return size;
+
                 base = lib::tohh(base);
 
                 while (size >= page_size)
@@ -271,36 +283,56 @@ namespace pmm
             }
         };
 
-        constinit allocator general { };
-
-#if defined(__x86_64__)
-        constinit allocator lowmem { };
-        constexpr std::uintptr_t lowmem_end = lib::gib(4);
-
-        inline bool is_lowmem(const auto ptr)
-        {
-            return lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr)) < lowmem_end;
-        }
-#endif
+        constinit allocator<page_size, lib::mib(1)> sub1mib { };
+        constinit allocator<lib::mib(1), lib::gib(4)> sub4gib { };
+        constinit allocator<lib::gib(4), std::numeric_limits<std::uintptr_t>::max()> normal { };
 
         void add_range(std::uintptr_t base, std::size_t size, bool freeing)
         {
+            if (size == 0)
+                return;
+
             if (!freeing)
+            {
                 mem.usable += size;
+                if (size < page_size)
+                {
+                    mem.used += size;
+                    return;
+                }
+
+                if (base == 0)
+                {
+                    if (size < page_size * 2)
+                        return;
+                    base += page_size;
+                    size -= page_size;
+                    mem.used += page_size;
+                }
+            }
+            else if (base == 0)
+            {
+                if (size < page_size * 2)
+                    return;
+                base += page_size;
+                size -= page_size;
+            }
 
             std::size_t wasted = 0;
-
-#if defined(__x86_64__)
-            if (is_lowmem(base))
+            const auto check_and_add = [=, &wasted](auto &alloc)
             {
-                const auto diff = lowmem_end - base;
-                wasted = lowmem.add_range(base, std::min(size, diff));
-                if (size > diff)
-                    wasted += general.add_range(lowmem_end, size - diff);
-            }
-            else
-#endif
-                wasted = general.add_range(base, size);
+                if (const auto [s, e] = alloc.range_intersection(base, base + size); s < e)
+                {
+                    const auto ret = alloc.add_range(s, e - s);
+                    lib::bug_on(ret == e - s);
+                    wasted += ret;
+                }
+            };
+
+            check_and_add(sub1mib);
+            check_and_add(sub4gib);
+            check_and_add(normal);
+
 
             if (!freeing)
                 mem.used += wasted;
@@ -331,12 +363,6 @@ namespace pmm
                     if (static_cast<boot::memmap>(memmap->type) != boot::memmap::usable)
                         continue;
 
-#if defined(__x86_64__)
-                    const auto end = memmap->base + memmap->length;
-                    if (reserved_range_start < end && memmap->base < reserved_range_end)
-                        continue;
-#endif
-
                     if (memmap->length > max_size)
                     {
                         max_size = memmap->length;
@@ -356,33 +382,40 @@ namespace pmm
                 lib::panic("pmm: bootstrap allocator is out of memory");
 
             const auto ret = bootstrap_memmap.base + bootstrap_memmap.length - npages * page_size;
+#if defined(__x86_64__)
+            if (ret < lib::mib(1))
+                lib::panic("pmm: bootstrap allocator tried to allocate memory below 1 MiB");
+#endif
             bootstrap_memmap.length -= npages * page_size;
 
             return reinterpret_cast<void *>(lib::tohh(ret));
         }
 
-        void pfndb_add(const auto memmap, bool check = false)
+        void pfndb_add(std::size_t idx)
         {
             const auto memmaps = boot::requests::memmap.response->entries;
+            const auto memmap = memmaps[idx];
 
             const auto pg = reinterpret_cast<std::uintptr_t>(page_for(memmap->base));
             const auto vstart = lib::align_down(pg, page_size);
-            const auto length = lib::align_up(memmap->length / page_size * sizeof(page), page_size);
 
-            for (std::size_t vaddr = vstart; vaddr <= vstart + length; vaddr += page_size)
+            // why doesn't this map enough memory without + page_size if struct page size is a multiple of 16 bytes?
+            const auto max_length = lib::align_up(memmap->length / page_size * sizeof(page), page_size) + page_size;
+
+            const auto psize = vmm::page_size::small;
+            const auto flags = vmm::pflag::rw;
+
+            for (std::size_t vaddr = vstart; vaddr < vstart + max_length; vaddr += page_size)
             {
-                if (check && memmaps[bootstrap_memmap_idx]->length < page_size * 5 /* 5? */) [[unlikely]]
-                {
-                    memmaps[bootstrap_memmap_idx]->length = 0;
-                    break;
-                }
+                if (idx == bootstrap_memmap_idx && bootstrap_memmap.length < page_size * 5 /* 5? */)
+                    lib::panic("pmm: could not map pfndb: out of memory");
 
-                const auto psize = vmm::page_size::small;
-                const auto flags = vmm::pflag::rw;
+                if (const auto ret = vmm::kernel_pagemap->translate(vaddr, psize); ret && ret.value() != 0)
+                    continue;
 
                 const auto paddr = alloc<std::uintptr_t>(1, true);
                 if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, page_size, flags, psize); !ret)
-                    lib::panic("could not map pfndb: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("pmm: could not map pfndb: {}", magic_enum::enum_name(ret.error()));
             }
         };
     } // namespace
@@ -401,7 +434,7 @@ namespace pmm
     }
 
     [[nodiscard]]
-    void *alloc(std::size_t npages, bool clear, bool low_mem)
+    void *alloc(std::size_t npages, bool clear, type tp)
     {
         if (npages == 0)
             return nullptr;
@@ -412,23 +445,38 @@ namespace pmm
         std::pair<void *, std::size_t> ret { nullptr, 0 };
         if (initialised)
         {
-#if defined(__x86_64__)
-            if (low_mem)
-                ret = lowmem.alloc(npages);
-            else
+            switch (tp)
+            {
+                case type::normal:
+                    ret = normal.alloc(npages);
+                    if (!ret.first && bootstrap_memmap_idx != static_cast<std::size_t>(-1))
+                        ret = { bootstrap_alloc(npages), size };
+                    if (!ret.first)
+                        ret = sub4gib.alloc(npages);
+#if !defined(__x86_64__)
+                    if (!ret.first)
+                        ret = sub1mib.alloc(npages);
 #endif
-                ret = general.alloc(npages);
-#if defined(__x86_64__)
-            if (!ret.first && !low_mem)
-                ret = lowmem.alloc(npages);
-#else
-            lib::unused(low_mem);
-#endif
+                    break;
+                case type::sub4gib:
+                    ret = sub4gib.alloc(npages);
+                    break;
+                case type::sub1mib:
+                    ret = sub1mib.alloc(npages);
+                    break;
+                default:
+                    lib::panic("pmm: unknown allocation type {}", magic_enum::enum_name(tp));
+            }
         }
         else ret = { bootstrap_alloc(npages), size };
 
         if (!ret.first)
-            lib::panic("pmm: out of memory");
+        {
+            lib::panic(
+                "pmm: could not allocate {} page{}. type: {}",
+                npages, npages == 1 ? "" : "s", magic_enum::enum_name(tp)
+            );
+        }
 
         if (clear)
             std::memset(ret.first, 0, size);
@@ -445,16 +493,17 @@ namespace pmm
         if (initialised)
         {
             const std::unique_lock _ { lock };
-#if defined(__x86_64__)
-            if (is_lowmem(ptr))
-            {
-                mem.used -= lowmem.free(ptr, npages);
-                return;
-            }
-#endif
-            mem.used -= general.free(ptr, npages);
+
+            if (sub1mib.in_range(ptr))
+                mem.used -= sub1mib.free(ptr, npages);
+            else if (sub4gib.in_range(ptr))
+                mem.used -= sub4gib.free(ptr, npages);
+            else if (normal.in_range(ptr))
+                mem.used -= normal.free(ptr, npages);
+            else
+                lib::panic("pmm: attempted to free memory outside managed ranges");
         }
-        else lib::panic("attempted to free bootstrap memory");
+        else lib::panic("pmm: attempted to free bootstrap memory");
     }
 
     initgraph::task reclaim_task
@@ -495,6 +544,7 @@ namespace pmm
                 mem.usable_top = std::max(mem.usable_top, end);
         }
 
+        std::size_t pfndb_used_total = 0;
         {
             log::info("pmm: setting up pfndb");
 
@@ -504,86 +554,32 @@ namespace pmm
             const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
             mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(page);
 
+            std::size_t start = mem.used;
+
             for (std::size_t i = 0; i < num; i++)
             {
-                const auto memmap = memmaps[i];
-                const auto type = static_cast<boot::memmap>(memmap->type);
-                if (type != boot::memmap::usable && type != boot::memmap::bootloader)
-                    continue;
-
                 if (i == bootstrap_memmap_idx)
                     continue;
 
-                pfndb_add(memmap);
+                const auto memmap = memmaps[i];
+                const auto type = static_cast<boot::memmap>(memmap->type);
+
+                if (type != boot::memmap::usable && type != boot::memmap::bootloader)
+                    continue;
+
+                pfndb_add(i);
             }
+            pfndb_used_total += mem.used - start;
         }
 
         log::info("pmm: initialising the physical memory allocator");
-
-        if (bootstrap_memmap_idx != static_cast<std::size_t>(-1)) [[likely]]
-        {
-            const auto memmap = memmaps[bootstrap_memmap_idx];
-            mem.usable += memmap->length - bootstrap_memmap.length;
-            *memmap = bootstrap_memmap;
-        }
-
-        const auto add_memmap = [](const auto memmap)
-        {
-            if (memmap->length < page_size)
-            {
-                mem.used += memmap->length;
-                mem.usable += memmap->length;
-                return;
-            }
-
-            // usable and bootloader reclaimable entries are page aligned
-            if (memmap->base == 0)
-            {
-                if (memmap->length >= page_size * 2)
-                {
-                    memmap->base += page_size;
-                    memmap->length -= page_size;
-                }
-                else
-                {
-                    mem.used += memmap->length;
-                    mem.usable += memmap->length;
-                    return;
-                }
-            }
-
-#if defined(__x86_64__)
-            auto rstart = std::max(memmap->base, reserved_range_start);
-            const std::uintptr_t end = memmap->base + memmap->length;
-            const auto rend = std::min(end, reserved_range_end);
-
-            if (reserved_range_start < end && memmap->base < reserved_range_end)
-            {
-                if (memmap->base < reserved_range_start)
-                    add_range(memmap->base, reserved_range_start - memmap->base, false);
-                if (end > reserved_range_end)
-                    add_range(reserved_range_end, end - reserved_range_end, false);
-
-                if (trampoline_pages == 0 && (rend - rstart) >= requested_size)
-                {
-                    trampoline_pages = rstart;
-                    rstart += requested_size;
-                }
-
-                mem.used += rend - rstart;
-                mem.usable -= rend - rstart;
-                return;
-            }
-#endif
-            add_range(memmap->base, memmap->length, false);
-        };
 
         for (std::size_t i = 0; i < num; i++)
         {
             if (i == bootstrap_memmap_idx)
                 continue;
 
-            auto memmap = memmaps[i];
+            const auto memmap = memmaps[i];
 
             const auto type = static_cast<boot::memmap>(memmap->type);
             if (type != boot::memmap::usable)
@@ -596,15 +592,24 @@ namespace pmm
                 continue;
             }
 
-            add_memmap(memmap);
+            add_range(memmap->base, memmap->length, false);
         }
-
         initialised = true;
 
-        log::debug("pmm: adding bootstrap memory to pfndb");
-        pfndb_add(memmaps[bootstrap_memmap_idx], true);
+        {
+            log::debug("pmm: adding bootstrap memory to pfndb");
+
+            std::size_t start = mem.used;
+            *memmaps[bootstrap_memmap_idx] = bootstrap_memmap;
+            pfndb_add(bootstrap_memmap_idx);
+            pfndb_used_total += mem.used - start;
+
+            log::debug("pmm: total memory used for pfndb: {} KiB", pfndb_used_total / lib::kib(1));
+        }
 
         log::debug("pmm: adding bootstrap memory to allocator");
-        add_memmap(memmaps[bootstrap_memmap_idx]);
+        add_range(bootstrap_memmap.base, bootstrap_memmap.length, false);
+
+        bootstrap_memmap_idx = -1;
     }
 } // namespace pmm

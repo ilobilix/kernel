@@ -83,6 +83,18 @@ export namespace lib
         return szudzik(a, unique_from(std::forward<Args>(args)...));
     }
 
+    inline constexpr bool range_overlaps(std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2)
+    {
+        return start1 < end2 && start2 < end1;
+    }
+
+    inline constexpr std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2)
+    {
+        if (!range_overlaps(start1, end1, start2, end2))
+            return { 0, 0 };
+        return { std::max(start1, start2), std::min(end1, end2) };
+    }
+
     template<std::unsigned_integral Type>
     inline constexpr Type log2(Type val)
     {

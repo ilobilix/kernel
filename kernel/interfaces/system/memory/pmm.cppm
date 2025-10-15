@@ -24,8 +24,16 @@ export namespace pmm
             };
             std::uint64_t raw;
         };
+        std::uint64_t raw2;
     };
-    static_assert(sizeof(page) == 8);
+    static_assert(sizeof(page) == 16);
+
+    enum class type
+    {
+        sub1mib,
+        sub4gib,
+        normal
+    };
 
     struct memory
     {
@@ -49,14 +57,14 @@ export namespace pmm
     }
 
     [[nodiscard]]
-    void *alloc(std::size_t count = 1, bool clear = false, bool low_mem = false);
+    void *alloc(std::size_t count = 1, bool clear = false, type tp = type::normal);
     void free(void *ptr, std::size_t count = 1);
 
     template<typename Type = void *>
     [[nodiscard]]
-    inline Type alloc(std::size_t count = 1, bool clear = false, bool low_mem = false)
+    inline Type alloc(std::size_t count = 1, bool clear = false, type tp = type::normal)
     {
-        return reinterpret_cast<Type>(alloc(count, clear, low_mem));
+        return reinterpret_cast<Type>(alloc(count, clear, tp));
     }
 
     inline void free(auto ptr, std::size_t count = 1)

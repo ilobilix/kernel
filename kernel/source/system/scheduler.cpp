@@ -370,8 +370,12 @@ namespace sched
     {
         while (true)
         {
-            if (percpu->sleep_queue.lock()->empty())
+            while (true)
+            {
+                if (!percpu->sleep_queue.lock()->empty())
+                    break;
                 yield();
+            }
 
             const auto clock = time::main_clock();
             const auto time = clock->ns();
@@ -438,6 +442,8 @@ namespace sched
             arch::reschedule(timeslice);
             return;
         }
+        lib::bug_on(percpu->dead_threads.is_locked());
+        lib::bug_on(percpu->sleep_queue.is_locked());
 
         in_scheduler = true;
 
