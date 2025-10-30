@@ -93,12 +93,12 @@ option("qemu_vnc")
     set_description("Start headless QEMU VNC server on localhost:5901")
 
 option("part_esp_size")
-    set_default("32")
+    set_default("512")
     set_showmenu(true)
     set_description("ESP partition size on hdd in MiB")
 
 option("part_root_size")
-    set_default("128")
+    set_default("512")
     set_showmenu(true)
     set_description("ROOT partition size on hdd in MiB")
 
@@ -106,6 +106,11 @@ option("limine_mp")
     set_default(true)
     set_showmenu(true)
     set_description("use limine mp request")
+
+option("initramfs_sysroot")
+    set_default(true)
+    set_showmenu(true)
+    set_description("install sysroot into initramfs")
 
 -- <-- options
 
@@ -128,6 +133,18 @@ end
 
 local function userspace_dir()
     return path.join(os.projectdir(), "userspace/" .. get_arch())
+end
+
+local function initramfs_dir()
+    return path.join(userspace_dir(), "initramfs")
+end
+
+local function sysroot_dir()
+    return path.join(userspace_dir(), "sysroot")
+end
+
+local function sysroot_build_dir()
+    return path.join(userspace_dir(), "sysroot-build")
 end
 
 local logfile = os.projectdir() .. "/log.txt"
@@ -329,6 +346,11 @@ target("initramfs")
     set_kind("phony")
     add_deps("modules")
 
+    after_config(function (target)
+        targetfile = path.join(target:targetdir(), "initramfs.tar")
+        target:set("values", "targetfile", targetfile)
+    end)
+
     on_clean(function (target)
         os.tryrm(path.join(target:targetdir(), "initramfs.tar"))
     end)
@@ -343,8 +365,7 @@ target("initramfs")
         targetfile = path.join(target:targetdir(), "initramfs.tar")
         target:set("values", "targetfile", targetfile)
 
-        local initramfs_dir = path.join(userspace_dir(), "initramfs")
-        local modules_dir = path.join(initramfs_dir, "usr/lib/modules")
+        local modules_dir = path.join(initramfs_dir(), "usr/lib/modules")
 
         local modules = project.target("modules")
         local extmods = modules:values("modules.external_modules")
@@ -374,7 +395,7 @@ target("initramfs")
             end
 
             print(" => building the initramfs...")
-            os.execv(tar, { "--format", "posix", "-cf", targetfile, "-C", initramfs_dir, "./" })
+            os.execv(tar, { "--format", "posix", "-cf", targetfile, "-C", initramfs_dir(), "./" })
 
             created = true
         end
@@ -393,11 +414,27 @@ target("sysroot")
     set_kind("phony")
 
     on_build(function (target)
+        import("core.project.project")
+
         os.mkdir(target:targetdir())
 
         io.writefile(path.join(target:targetdir(), "sysroot_updated"), os.time(os.date("!*t")))
 
-        -- TODO: build the sysroot
+        local build_script = path.join(os.projectdir(), "misc/build_sysroot.sh")
+        local jinx = path.join(os.projectdir(), "dependencies/jinx/jinx")
+        local jinx_dir = path.join(os.projectdir(), "userspace/jinx")
+
+        local dest = sysroot_dir()
+
+        if get_config("initramfs_sysroot") then
+            local initramfs = project.target("initramfs")
+            local initramfsfile = initramfs:get("values", "targetfile")["targetfile"]
+            os.rm(initramfsfile)
+
+            dest = initramfs_dir()
+        end
+
+        os.execv(build_script, { jinx, jinx_dir, get_arch(), sysroot_build_dir(), dest })
     end)
 
 target("iso")
@@ -543,8 +580,7 @@ target("hdd")
             io.writefile(sysroot_updatefile, os.time(os.date("!*t")))
         end
 
-        local sysroot_dir = path.join(userspace_dir(), "sysroot")
-        os.mkdir(sysroot_dir)
+        os.mkdir(sysroot_dir())
 
         local limine_dep = target:deps()["limine"]
         local limine_exec = limine_dep:targetfile()
@@ -660,7 +696,7 @@ target("hdd")
                     os.execv(truncate, { "-s" .. root_size .. "M", root_img })
 
                     print(" => partitioning root.img and copying sysroot...")
-                    os.execv(mkfs_ext4, { "-d", sysroot_dir, root_img })
+                    os.execv(mkfs_ext4, { "-d", sysroot_dir(), root_img })
 
                     needs_root_update = true
                 end

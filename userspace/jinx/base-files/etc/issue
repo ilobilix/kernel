@@ -1,0 +1,2 @@
+Available users for login in this image are `ilobilix` and `root`, both have no
+passwords, and can be configured to do so under /etc/passwd

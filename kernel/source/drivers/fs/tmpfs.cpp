@@ -116,8 +116,8 @@ namespace fs::tmpfs
 
             auto symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::inode>> override
             {
-                lib::unused(parent, name, target);
-                return std::unexpected(vfs::error::todo);
+                lib::unused(target);
+                return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), nullptr);
             }
 
             auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>> override
