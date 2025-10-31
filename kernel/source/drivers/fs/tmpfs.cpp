@@ -122,14 +122,15 @@ namespace fs::tmpfs
 
             auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>> override
             {
-                lib::unused(parent, name, target);
-                return std::unexpected(vfs::error::todo);
+                lib::unused(parent, name);
+                target->stat.st_nlink++;
+                return target;
             }
 
             auto unlink(std::shared_ptr<vfs::inode> &node) -> vfs::expect<void> override
             {
-                lib::unused(node);
-                return std::unexpected(vfs::error::todo);
+                node->stat.st_nlink--;
+                return { };
             }
 
             auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override
