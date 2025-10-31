@@ -50,34 +50,6 @@ namespace vfs
         return vfs::root;
     }
 
-    auto dentry::reduce(std::size_t symlink_depth) -> expect<std::shared_ptr<dentry>>
-    {
-        auto current = shared_from_this();
-
-        // TODO
-        lib::unused(symlink_depth);
-
-        // if (symlinked_to.empty())
-        //     return current;
-
-        // auto og = symlink_depth;
-        // while (symlink_depth > 0)
-        // {
-        //     auto parent = current->parent.lock();
-        //     auto ret = resolve(nullptr, parent, current->symlinked_to);
-        //     if (!ret || ret->target == current)
-        //         return std::unexpected(error::invalid_symlink);
-
-        //     current = ret->target;
-        //     symlink_depth--;
-        // }
-
-        // if (og && symlink_depth == 0 && !current->symlinked_to.empty())
-        //     return std::unexpected(error::symloop_max);
-
-        return current;
-    }
-
     auto path_for(lib::path _path) -> expect<path>
     {
         auto res = resolve(std::nullopt, _path);
@@ -89,7 +61,7 @@ namespace vfs
     {
         auto root = dentry::root();
 
-        if (!parent)
+        if (!parent || _path.is_absolute())
         {
             parent = path { .mnt = nullptr, .dentry = root };
             if (!root->child_mounts.empty())
@@ -163,6 +135,15 @@ namespace vfs
                     return resolve_res { current, next };
 
                 current = next;
+
+                if (current.dentry->inode->stat.type() == stat::type::s_iflnk)
+                {
+                    const auto reduced = reduce(current);
+                    if (!reduced)
+                        return std::unexpected(reduced.error());
+                    current = reduced.value();
+                }
+
                 if (current.dentry->inode->stat.type() != stat::type::s_ifdir)
                     return std::unexpected(error::not_a_dir);
 
@@ -175,6 +156,36 @@ namespace vfs
             break;
         }
         return std::unexpected(error::not_found);
+    }
+
+    auto reduce(path src, std::size_t symlink_depth) -> expect<path>
+    {
+        const auto is_symlink = [&src]
+        {
+            const auto &dentry = src.dentry;
+            return
+                dentry->inode->stat.type() == stat::type::s_iflnk &&
+                !dentry->symlinked_to.empty();
+        };
+
+        const auto og = symlink_depth;
+        while (symlink_depth > 0)
+        {
+            if (!is_symlink())
+                return src;
+
+            const auto ret = resolve(src, src.dentry->symlinked_to);
+            if (!ret || ret->target.dentry == src.dentry)
+                return std::unexpected(error::invalid_symlink);
+
+            src = ret->target;
+            symlink_depth--;
+        }
+
+        if (og && symlink_depth == 0 && is_symlink())
+            return std::unexpected(error::symloop_max);
+
+        return src;
     }
 
     auto mount(lib::path source_path, lib::path target_path, std::string_view fstype, int flags) -> expect<void>
@@ -287,7 +298,7 @@ namespace vfs
         return std::unexpected(ret.error());
     }
 
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target) -> expect<path>
+    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links) -> expect<path>
     {
         const std::unique_lock _ { lock };
 
@@ -307,6 +318,15 @@ namespace vfs
             return std::unexpected(res.error());
 
         const auto tgt = res->target;
+        const auto type = tgt.dentry->inode->stat.type();
+        if (follow_links && type == stat::s_iflnk)
+        {
+            const auto reduced = reduce(res->target);
+            if (!reduced)
+                return std::unexpected(reduced.error());
+            res->target = reduced.value();
+        }
+
         if (tgt.dentry->inode->stat.type() == stat::type::s_ifdir)
             return std::unexpected(error::target_is_a_dir);
 

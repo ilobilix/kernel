@@ -6,6 +6,7 @@ import cppstd;
 
 export namespace lib::hash
 {
+    [[clang::no_sanitize("undefined")]]
     constexpr uint128_t murmur3_128(const void *key, std::uint64_t len, std::uint64_t seed, std::uint64_t *out = nullptr)
     {
         auto rotl64 = [](std::uint64_t x, std::int8_t r)
