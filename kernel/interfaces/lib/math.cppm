@@ -67,6 +67,11 @@ export namespace lib
         return align_down(n + a - 1, a) / a;
     }
 
+    inline constexpr auto div_rounddown(std::unsigned_integral auto n, std::size_t a)
+    {
+        return align_down(n, a) / a;
+    }
+
     inline constexpr auto unique_from(std::unsigned_integral auto a) { return a; }
 
     template<typename ...Args>

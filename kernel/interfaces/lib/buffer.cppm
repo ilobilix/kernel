@@ -59,6 +59,15 @@ export namespace lib
         }
 
         template<typename Self>
+        auto span(this Self &&self)
+        {
+            return std::span<Type> {
+                std::forward<Self>(self)._ptr,
+                std::forward<Self>(self)._count
+            };
+        }
+
+        template<typename Self>
         auto virt_data(this Self &&self) { return std::forward<Self>(self)._ptr; }
 
         template<typename Self>
