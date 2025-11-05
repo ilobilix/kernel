@@ -29,8 +29,7 @@ export namespace vfs
 
         invalid_filesystem,
         invalid_mount,
-        invalid_symlink,
-        invalid_arguments
+        invalid_symlink
     };
 
     template<typename Type>

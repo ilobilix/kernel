@@ -7,6 +7,7 @@ import system.memory.virt;
 import system.cpu.self;
 import system.cpu;
 import system.vfs;
+import frigg;
 import lib;
 import cppstd;
 
@@ -101,8 +102,11 @@ export namespace sched
 #elif defined(__aarch64__)
 #endif
 
-        static std::uintptr_t allocate_ustack(const std::shared_ptr<process> &proc);
-        static std::uintptr_t allocate_kstack(const std::shared_ptr<process> &proc);
+        lib::rbtree_hook rbtree_hook;
+        frg::default_list_hook<thread> list_hook;
+
+        static std::uintptr_t allocate_ustack(process *proc);
+        static std::uintptr_t allocate_kstack(process *proc);
 
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
@@ -111,7 +115,7 @@ export namespace sched
         ~thread();
 
         private:
-        static std::shared_ptr<thread> create(const std::shared_ptr<process> &parent, std::uintptr_t ip);
+        static thread *create(process *parent, std::uintptr_t ip);
 
         friend struct friends;
     };
@@ -137,9 +141,9 @@ export namespace sched
 
         lib::spinlock lock;
 
-        std::weak_ptr<process> parent;
-        lib::map::flat_hash<std::size_t, std::shared_ptr<process>> children;
-        lib::map::flat_hash<std::size_t, std::shared_ptr<thread>> threads;
+        process *parent;
+        lib::map::flat_hash<std::size_t, process *> children;
+        lib::map::flat_hash<std::size_t, thread *> threads;
 
         std::atomic<std::size_t> next_tid = 1;
         std::uintptr_t next_stack_top = initial_stck_top;
@@ -149,7 +153,7 @@ export namespace sched
         ~process();
 
         private:
-        static std::shared_ptr<process> create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap);
+        static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
 
         friend struct friends;
     };

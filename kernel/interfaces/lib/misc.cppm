@@ -9,9 +9,6 @@ import cppstd;
 
 export namespace lib
 {
-    // should get optimised out in release mode
-    inline constexpr void unused([[maybe_unused]] auto &&...) { }
-
     template<typename Ret>
     constexpr Ret str2int(const char *nptr, char **endptr, int _base)
     {

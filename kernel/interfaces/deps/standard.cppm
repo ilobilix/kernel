@@ -344,6 +344,8 @@ export namespace std
         using std::ranges::next_permutation_result;
         using std::ranges::prev_permutation;
         using std::ranges::prev_permutation_result;
+
+        using std::ranges::contains;
     } // namespace ranges
 
     using std::array;

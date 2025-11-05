@@ -44,7 +44,7 @@ export namespace cpu
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
                 const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
-                const auto offset =  addr - peraddr;
+                const auto offset = addr - peraddr;
                 return *const_cast<Type *>(std::launder(reinterpret_cast<volatile Type *>(reinterpret_cast<std::uintptr_t>(base) + offset)));
             }
 
@@ -57,7 +57,7 @@ export namespace cpu
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
                 const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
-                const auto offset =  addr - peraddr;
+                const auto offset = addr - peraddr;
 
                 auto ptr = reinterpret_cast<void *>(base + offset);
                 new(ptr) Type { std::forward<Args>(args)... };

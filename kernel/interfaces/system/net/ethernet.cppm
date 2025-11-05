@@ -103,7 +103,7 @@ export namespace net::ether
             // swap(lhs.event, rhs.event);
         }
 
-        dispatcher(nic *_nic) : processors { }, _nic(_nic) { attach_senders(); }
+        dispatcher(nic *_nic) : processors { }, _nic { _nic } { attach_senders(); }
         dispatcher(dispatcher &&other) noexcept { swap(*this, other); }
 
         void runner(this dispatcher &self)
