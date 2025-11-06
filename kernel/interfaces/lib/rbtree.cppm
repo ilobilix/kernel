@@ -7,10 +7,7 @@ import cppstd;
 
 namespace lib
 {
-    enum class colour
-    {
-        red, black
-    };
+    enum class colour { red, black };
 } // namespace lib
 
 export namespace lib
@@ -28,151 +25,148 @@ export namespace lib
         void *predecessor;
         colour colour;
 
-        constexpr rbtree_hook(auto ptr) : parent { ptr },
-            left { ptr }, right { ptr },
-            successor { ptr }, predecessor { ptr },
-            colour { colour::black } { }
-
         public:
-        constexpr rbtree_hook() : rbtree_hook { nullptr } { }
+        constexpr rbtree_hook() : parent { nullptr },
+            left { nullptr }, right { nullptr },
+            successor { nullptr }, predecessor { nullptr },
+            colour { colour::black } { }
     };
 
     template<typename Type, rbtree_hook Type::*Member, typename Less>
     class rbtree
     {
         private:
-        rbtree_hook _nil;
         void *_root;
         void *_head;
         std::size_t _size;
         Less _less;
 
         static inline Type *nil() { return nullptr; }
-        inline rbtree_hook *hook(Type *item)
+        inline rbtree_hook *hook(rbtree_hook *nh, Type *item)
         {
             if (item == nil())
-                return &_nil;
+                return nh;
             return &(item->*Member);
         }
 
-        inline Type *parent(Type *item)
+        inline Type *parent(rbtree_hook *nh, Type *item)
         {
-            return static_cast<Type *>(hook(item)->parent);
+            return static_cast<Type *>(hook(nh, item)->parent);
         }
 
-        inline Type *left(Type *item)
+        inline Type *left(rbtree_hook *nh, Type *item)
         {
-            return static_cast<Type *>(hook(item)->left);
+            return static_cast<Type *>(hook(nh, item)->left);
         }
 
-        inline Type *right(Type *item)
+        inline Type *right(rbtree_hook *nh, Type *item)
         {
-            return static_cast<Type *>(hook(item)->right);
+            return static_cast<Type *>(hook(nh, item)->right);
         }
 
-        inline Type *successor(Type *item)
+        inline Type *successor(rbtree_hook *nh, Type *item)
         {
-            return static_cast<Type *>(hook(item)->successor);
+            return static_cast<Type *>(hook(nh, item)->successor);
         }
 
-        inline Type *predecessor(Type *item)
+        inline Type *predecessor(rbtree_hook *nh, Type *item)
         {
-            return static_cast<Type *>(hook(item)->predecessor);
+            return static_cast<Type *>(hook(nh, item)->predecessor);
         }
 
-        inline colour colour_of(Type *item)
+        inline colour colour_of(rbtree_hook *nh, Type *item)
         {
-            return hook(item)->colour;
+            return hook(nh, item)->colour;
         }
 
         inline Type *root() const { return static_cast<Type *>(_root); }
         inline Type *head() const { return static_cast<Type *>(_head); }
 
-        void rotate_left(Type *x)
+        void rotate_left(rbtree_hook *nh, Type *x)
         {
-            bug_on(right(x) == nil() || parent(root()) != nil());
-            auto y = right(x);
-            if ((hook(x)->right = left(y)) != nil())
-                hook(left(y))->parent = x;
-            if ((hook(y)->parent = parent(x)) == nil())
+            bug_on(right(nh, x) == nil() || parent(nh, root()) != nil());
+            auto y = right(nh, x);
+            if ((hook(nh, x)->right = left(nh, y)) != nil())
+                hook(nh, left(nh, y))->parent = x;
+            if ((hook(nh, y)->parent = parent(nh, x)) == nil())
                 _root = y;
-            else if (x == left(parent(x)))
-                hook(parent(x))->left = y;
+            else if (x == left(nh, parent(nh, x)))
+                hook(nh, parent(nh, x))->left = y;
             else
-                hook(parent(x))->right = y;
-            hook(y)->left = x;
-            hook(x)->parent = y;
+                hook(nh, parent(nh, x))->right = y;
+            hook(nh, y)->left = x;
+            hook(nh, x)->parent = y;
         }
 
-        void rotate_right(Type *x)
+        void rotate_right(rbtree_hook *nh, Type *x)
         {
-            bug_on(left(x) == nil() || parent(root()) != nil());
-            auto y = left(x);
-            if ((hook(x)->left = right(y)) != nil())
-                hook(right(y))->parent = x;
-            if ((hook(y)->parent = parent(x)) == nil())
+            bug_on(left(nh, x) == nil() || parent(nh, root()) != nil());
+            auto y = left(nh, x);
+            if ((hook(nh, x)->left = right(nh, y)) != nil())
+                hook(nh, right(nh, y))->parent = x;
+            if ((hook(nh, y)->parent = parent(nh, x)) == nil())
                 _root = y;
-            else if (x == right(parent(x)))
-                hook(parent(x))->right = y;
+            else if (x == right(nh, parent(nh, x)))
+                hook(nh, parent(nh, x))->right = y;
             else
-                hook(parent(x))->left = y;
-            hook(y)->right = x;
-            hook(x)->parent = y;
+                hook(nh, parent(nh, x))->left = y;
+            hook(nh, y)->right = x;
+            hook(nh, x)->parent = y;
         }
 
-        void insert_fixup(Type *z)
+        void insert_fixup(rbtree_hook *nh, Type *z)
         {
-            while (colour_of(parent(z)) == colour::red)
+            while (colour_of(nh, parent(nh, z)) == colour::red)
             {
-                if (parent(z) == left(parent(parent(z))))
+                if (parent(nh, z) == left(nh, parent(nh, parent(nh, z))))
                 {
-                    auto y = right(parent(parent(z)));
-                    if (colour_of(y) == colour::red)
+                    auto y = right(nh, parent(nh, parent(nh, z)));
+                    if (colour_of(nh, y) == colour::red)
                     {
-                        hook(parent(z))->colour = colour::black;
-                        hook(y)->colour = colour::black;
-                        hook(parent(parent(z)))->colour = colour::red;
-                        z = parent(parent(z));
+                        hook(nh, parent(nh, z))->colour = colour::black;
+                        hook(nh, y)->colour = colour::black;
+                        hook(nh, parent(nh, parent(nh, z)))->colour = colour::red;
+                        z = parent(nh, parent(nh, z));
                     }
                     else
                     {
-                        if (z == right(parent(z)))
+                        if (z == right(nh, parent(nh, z)))
                         {
-                            z = parent(z);
-                            rotate_left(z);
+                            z = parent(nh, z);
+                            rotate_left(nh, z);
                         }
-                        hook(parent(z))->colour = colour::black;
-                        hook(parent(parent(z)))->colour = colour::red;
-                        rotate_right(parent(parent(z)));
+                        hook(nh, parent(nh, z))->colour = colour::black;
+                        hook(nh, parent(nh, parent(nh, z)))->colour = colour::red;
+                        rotate_right(nh, parent(nh, parent(nh, z)));
                     }
                 }
                 else
                 {
-                    auto y = left(parent(parent(z)));
-                    if (colour_of(y) == colour::red)
+                    auto y = left(nh, parent(nh, parent(nh, z)));
+                    if (colour_of(nh, y) == colour::red)
                     {
-                        hook(parent(z))->colour = colour::black;
-                        hook(y)->colour = colour::black;
-                        hook(parent(parent(z)))->colour = colour::red;
-                        z = parent(parent(z));
+                        hook(nh, parent(nh, z))->colour = colour::black;
+                        hook(nh, y)->colour = colour::black;
+                        hook(nh, parent(nh, parent(nh, z)))->colour = colour::red;
+                        z = parent(nh, parent(nh, z));
                     }
                     else
                     {
-                        if (z == left(parent(z)))
+                        if (z == left(nh, parent(nh, z)))
                         {
-                            z = parent(z);
-                            rotate_right(z);
+                            z = parent(nh, z);
+                            rotate_right(nh, z);
                         }
-                        hook(parent(z))->colour = colour::black;
-                        hook(parent(parent(z)))->colour = colour::red;
-                        rotate_left(parent(parent(z)));
+                        hook(nh, parent(nh, z))->colour = colour::black;
+                        hook(nh, parent(nh, parent(nh, z)))->colour = colour::red;
+                        rotate_left(nh, parent(nh, parent(nh, z)));
                     }
                 }
             }
-            hook(root())->colour = colour::black;
+            hook(nh, root())->colour = colour::black;
         }
 
-        void _insert(Type *z)
+        void _insert(rbtree_hook *nh, Type *z)
         {
             bug_on(!z || z == nil());
 
@@ -182,209 +176,209 @@ export namespace lib
             {
                 y = x;
                 if (_less(*z, *x))
-                    x = left(x);
+                    x = left(nh, x);
                 else
-                    x = right(x);
+                    x = right(nh, x);
             }
-            if ((hook(z)->parent = y) == nil())
+            if ((hook(nh, z)->parent = y) == nil())
             {
                 _root = z;
             }
             else if (_less(*z, *y))
             {
-                hook(y)->left = z;
+                hook(nh, y)->left = z;
 
-                hook(z)->successor = y;
-                auto prev = predecessor(y);
-                hook(z)->predecessor = prev;
+                hook(nh, z)->successor = y;
+                auto prev = predecessor(nh, y);
+                hook(nh, z)->predecessor = prev;
                 if (prev != nil())
-                    hook(prev)->successor = z;
-                hook(y)->predecessor = z;
+                    hook(nh, prev)->successor = z;
+                hook(nh, y)->predecessor = z;
             }
             else
             {
-                hook(y)->right = z;
+                hook(nh, y)->right = z;
 
-                hook(z)->predecessor = y;
-                auto succ = successor(y);
-                hook(z)->successor = succ;
+                hook(nh, z)->predecessor = y;
+                auto succ = successor(nh, y);
+                hook(nh, z)->successor = succ;
                 if (succ != nil())
-                    hook(succ)->predecessor = z;
-                hook(y)->successor = z;
+                    hook(nh, succ)->predecessor = z;
+                hook(nh, y)->successor = z;
             }
 
-            hook(z)->left = nil();
-            hook(z)->right = nil();
-            hook(z)->colour = colour::red;
+            hook(nh, z)->left = nil();
+            hook(nh, z)->right = nil();
+            hook(nh, z)->colour = colour::red;
 
             if (_head == nil() || _less(*z, *head()))
                 _head = z;
 
-            insert_fixup(z);
+            insert_fixup(nh, z);
         }
 
-        void transplant(Type *u, Type *v)
+        void transplant(rbtree_hook *nh, Type *u, Type *v)
         {
-            if (parent(u) == nil())
+            if (parent(nh, u) == nil())
                 _root = v;
-            else if (u == left(parent(u)))
-                hook(parent(u))->left = v;
+            else if (u == left(nh, parent(nh, u)))
+                hook(nh, parent(nh, u))->left = v;
             else
-                hook(parent(u))->right = v;
+                hook(nh, parent(nh, u))->right = v;
 
-            hook(v)->parent = parent(u);
+            hook(nh, v)->parent = parent(nh, u);
         }
 
-        Type *minimum(Type *x)
+        Type *minimum(rbtree_hook *nh, Type *x)
         {
             bug_on(x == nil());
-            while (left(x) != nil())
-                x = left(x);
+            while (left(nh, x) != nil())
+                x = left(nh, x);
             return x;
         }
 
-        Type *maximum(Type *x)
+        Type *maximum(rbtree_hook *nh, Type *x)
         {
             bug_on(x == nil());
-            while (right(x) != nil())
-                x = right(x);
+            while (right(nh, x) != nil())
+                x = right(nh, x);
             return x;
         }
 
-        void _remove_fixup(Type *x)
+        void _remove_fixup(rbtree_hook *nh, Type *x)
         {
-            while (x != root() && colour_of(x) == colour::black)
+            while (x != root() && colour_of(nh, x) == colour::black)
             {
-                if (x == left(parent(x)))
+                if (x == left(nh, parent(nh, x)))
                 {
-                    auto w = right(parent(x));
-                    if (hook(w)->colour == colour::red)
+                    auto w = right(nh, parent(nh, x));
+                    if (hook(nh, w)->colour == colour::red)
                     {
-                        hook(w)->colour = colour::black;
-                        hook(parent(x))->colour = colour::red;
-                        rotate_left(parent(x));
-                        w = right(parent(x));
+                        hook(nh, w)->colour = colour::black;
+                        hook(nh, parent(nh, x))->colour = colour::red;
+                        rotate_left(nh, parent(nh, x));
+                        w = right(nh, parent(nh, x));
                     }
-                    if (colour_of(left(w)) == colour::black && colour_of(right(w)) == colour::black)
+                    if (colour_of(nh, left(nh, w)) == colour::black && colour_of(nh, right(nh, w)) == colour::black)
                     {
-                        hook(w)->colour = colour::red;
-                        x = parent(x);
+                        hook(nh, w)->colour = colour::red;
+                        x = parent(nh, x);
                     }
                     else
                     {
-                        if (colour_of(right(w)) == colour::black)
+                        if (colour_of(nh, right(nh, w)) == colour::black)
                         {
-                            hook(left(w))->colour = colour::black;
-                            hook(w)->colour = colour::red;
-                            rotate_right(w);
-                            w = right(parent(x));
+                            hook(nh, left(nh, w))->colour = colour::black;
+                            hook(nh, w)->colour = colour::red;
+                            rotate_right(nh, w);
+                            w = right(nh, parent(nh, x));
                         }
-                        hook(w)->colour = hook(parent(x))->colour;
-                        hook(parent(x))->colour = colour::black;
-                        hook(right(w))->colour = colour::black;
-                        rotate_left(parent(x));
+                        hook(nh, w)->colour = hook(nh, parent(nh, x))->colour;
+                        hook(nh, parent(nh, x))->colour = colour::black;
+                        hook(nh, right(nh, w))->colour = colour::black;
+                        rotate_left(nh, parent(nh, x));
                         x = root();
                     }
                 }
                 else
                 {
-                    auto w = left(parent(x));
-                    if (colour_of(w) == colour::red)
+                    auto w = left(nh, parent(nh, x));
+                    if (colour_of(nh, w) == colour::red)
                     {
-                        hook(w)->colour = colour::black;
-                        hook(parent(x))->colour = colour::red;
-                        rotate_right(parent(x));
-                        w = left(parent(x));
+                        hook(nh, w)->colour = colour::black;
+                        hook(nh, parent(nh, x))->colour = colour::red;
+                        rotate_right(nh, parent(nh, x));
+                        w = left(nh, parent(nh, x));
                     }
-                    if (colour_of(right(w)) == colour::black && colour_of(left(w)) == colour::black)
+                    if (colour_of(nh, right(nh, w)) == colour::black && colour_of(nh, left(nh, w)) == colour::black)
                     {
-                        hook(w)->colour = colour::red;
-                        x = parent(x);
+                        hook(nh, w)->colour = colour::red;
+                        x = parent(nh, x);
                     }
                     else
                     {
-                        if (colour_of(left(w)) == colour::black)
+                        if (colour_of(nh, left(nh, w)) == colour::black)
                         {
-                            hook(right(w))->colour = colour::black;
-                            hook(w)->colour = colour::red;
-                            rotate_left(w);
-                            w = left(parent(x));
+                            hook(nh, right(nh, w))->colour = colour::black;
+                            hook(nh, w)->colour = colour::red;
+                            rotate_left(nh, w);
+                            w = left(nh, parent(nh, x));
                         }
-                        hook(w)->colour = hook(parent(x))->colour;
-                        hook(parent(x))->colour = colour::black;
-                        hook(left(w))->colour = colour::black;
-                        rotate_right(parent(x));
+                        hook(nh, w)->colour = hook(nh, parent(nh, x))->colour;
+                        hook(nh, parent(nh, x))->colour = colour::black;
+                        hook(nh, left(nh, w))->colour = colour::black;
+                        rotate_right(nh, parent(nh, x));
                         x = root();
                     }
                 }
             }
-            hook(x)->colour = colour::black;
+            hook(nh, x)->colour = colour::black;
         }
 
-        void _remove(Type *z)
+        void _remove(rbtree_hook *nh, Type *z)
         {
             bug_on(!z || z == nil());
 
-            auto pred = predecessor(z);
-            auto succ = successor(z);
+            auto pred = predecessor(nh, z);
+            auto succ = successor(nh, z);
 
-            bug_on(pred != nil() && successor(pred) != z);
-            bug_on(succ != nil() && predecessor(succ) != z);
+            bug_on(pred != nil() && successor(nh, pred) != z);
+            bug_on(succ != nil() && predecessor(nh, succ) != z);
 
             if (pred != nil())
-                hook(pred)->successor = succ;
+                hook(nh, pred)->successor = succ;
             else
                 _head = (succ != nil()) ? succ : nil();
 
             if (succ != nil())
-                hook(succ)->predecessor = pred;
+                hook(nh, succ)->predecessor = pred;
 
             if (_head == z)
                 _head = (succ != nil()) ? succ : (pred != nil() ? pred : nil());
 
-            hook(z)->predecessor = nil();
-            hook(z)->successor = nil();
+            hook(nh, z)->predecessor = nil();
+            hook(nh, z)->successor = nil();
 
             auto x = nil();
             auto y = z;
-            auto yoc = colour_of(y);
+            auto yoc = colour_of(nh, y);
 
-            if (left(z) == nil())
+            if (left(nh, z) == nil())
             {
-                x = right(z);
-                transplant(z, right(z));
+                x = right(nh, z);
+                transplant(nh, z, right(nh, z));
             }
-            else if (right(z) == nil())
+            else if (right(nh, z) == nil())
             {
-                x = left(z);
-                transplant(z, left(z));
+                x = left(nh, z);
+                transplant(nh, z, left(nh, z));
             }
             else
             {
-                y = minimum(right(z));
-                yoc = colour_of(y);
-                x = right(y);
+                y = minimum(nh, right(nh, z));
+                yoc = colour_of(nh, y);
+                x = right(nh, y);
 
-                if (y != right(z))
+                if (y != right(nh, z))
                 {
-                    transplant(y, right(y));
-                    hook(y)->right = right(z);
-                    hook(right(y))->parent = y;
+                    transplant(nh, y, right(nh, y));
+                    hook(nh, y)->right = right(nh, z);
+                    hook(nh, right(nh, y))->parent = y;
                 }
-                else hook(x)->parent = y;
+                else hook(nh, x)->parent = y;
 
-                transplant(z, y);
-                hook(y)->left = left(z);
-                hook(left(y))->parent = y;
-                hook(y)->colour = hook(z)->colour;
+                transplant(nh, z, y);
+                hook(nh, y)->left = left(nh, z);
+                hook(nh, left(nh, y))->parent = y;
+                hook(nh, y)->colour = hook(nh, z)->colour;
             }
             if (yoc == colour::black)
-                _remove_fixup(x);
+                _remove_fixup(nh, x);
 
             if (root() == nil())
                 _head = nil();
             else
-                bug_on(_head == nil() || predecessor(head()) != nil());
+                bug_on(_head == nil() || predecessor(nh, head()) != nil());
         }
 
         class iterator
@@ -404,7 +398,8 @@ export namespace lib
 
             iterator &operator++()
             {
-                _current = _tree->successor(_current);
+                rbtree_hook nh;
+                _current = _tree->successor(&nh, _current);
                 return *this;
             }
 
@@ -417,7 +412,8 @@ export namespace lib
 
             iterator &operator--()
             {
-                _current = _tree->predecessor(_current);
+                rbtree_hook nh;
+                _current = _tree->predecessor(&nh, _current);
                 return *this;
             }
 
@@ -440,7 +436,7 @@ export namespace lib
         };
 
         public:
-        rbtree() : _nil { }, _root { nil() }, _head { nil() }, _size { 0 }, _less { } { }
+        rbtree() : _root { nil() }, _head { nil() }, _size { 0 }, _less { } { }
 
         rbtree(const rbtree &) = delete;
         rbtree(rbtree &&rhs)
@@ -472,14 +468,15 @@ export namespace lib
         void insert(Type *z)
         {
             bug_on(!z);
-            *hook(z) = rbtree_hook { nil() };
+            rbtree_hook nh;
+            *hook(&nh, z) = rbtree_hook { };
 
             if (_root == nil())
             {
                 _root = z;
                 _head = _root;
             }
-            else _insert(z);
+            else _insert(&nh, z);
 
             _size++;
         }
@@ -487,7 +484,8 @@ export namespace lib
         void remove(Type *x)
         {
             bug_on(!x);
-            _remove(x);
+            rbtree_hook nh;
+            _remove(&nh, x);
             bug_on(_size == 0);
             _size--;
         }
@@ -508,7 +506,8 @@ export namespace lib
         {
             if (root() == nil())
                 return nullptr;
-            auto ret = maximum(root());
+            rbtree_hook nh;
+            auto ret = maximum(&nh, root());
             return ret == nil() ? nullptr : ret;
         }
 
@@ -518,12 +517,13 @@ export namespace lib
             auto equal = [&](Type *a, Type *b) {
                 return !_less(*a, *b) && !_less(*b, *a);
             };
+            rbtree_hook nh;
             while (current != nil() && !equal(current, x))
             {
                 if (_less(*x, *current))
-                    current = left(current);
+                    current = left(&nh, current);
                 else
-                    current = right(current);
+                    current = right(&nh, current);
             }
             return current != nil();
         }
