@@ -123,6 +123,10 @@ target("ilobilix.elf")
         )
     end
 
+    if is_mode("release") then
+        add_ldflags("--strip-debug", { force = true })
+    end
+
     -- :lapfedmoment:
     if is_mode("debug") then
         add_defines("KSYM_NAME_LEN=4096")

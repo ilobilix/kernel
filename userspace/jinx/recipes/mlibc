@@ -3,8 +3,8 @@
 name=mlibc
 version=0.0git
 revision=1
-git_url="https://github.com/managarm/mlibc.git"
-commit=1b7f13b45e21ed6ff42e94c026bcefecca9113e5
+git_url="https://github.com/ilobilo/mlibc.git"
+commit=28fc23c4d1f67422e5f5e99156b5d3dad6a5458f
 imagedeps="build-essential meson ninja-build"
 hostdeps="gcc pkg-config"
 deps="linux-headers mlibc-headers"

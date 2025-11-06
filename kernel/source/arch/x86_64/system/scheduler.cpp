@@ -42,13 +42,15 @@ namespace sched::arch
         regs.rflags = 0x202;
         regs.rip = ip;
 
-        const auto &fpu = cpu::features::fpu;
+        const auto &fpu = cpu::features::get_fpu();
         const auto pages = lib::div_roundup(fpu.size, pmm::page_size);
         const auto vfpu = vmm::alloc_vpages(vmm::space_type::other, pages);
 
         if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));
+
         thread->fpu = reinterpret_cast<std::byte *>(vfpu);
+        thread->fpu_size = fpu.size;
 
         // thread->pfstack_top = thread::allocate_kstack(proc);
 
@@ -80,9 +82,8 @@ namespace sched::arch
 
     void deinitialise(process *proc, thread *thread)
     {
-        const auto &fpu = cpu::features::fpu;
         const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
-        if (const auto ret = proc->vmspace->pmap->unmap_dealloc(vaddr, fpu.size, vmm::page_size::small); !ret)
+        if (const auto ret = proc->vmspace->pmap->unmap_dealloc(vaddr, thread->fpu_size, vmm::page_size::small); !ret)
             lib::panic("could not unmap thread fpu storage: {}", magic_enum::enum_name(ret.error()));
     }
 
@@ -92,7 +93,7 @@ namespace sched::arch
         {
             thread->gs_base = cpu::gs::read_kernel();
             thread->fs_base = cpu::fs::read();
-            cpu::features::fpu.save(thread->fpu);
+            cpu::features::get_fpu().save(thread->fpu);
         }
     }
 
@@ -108,7 +109,7 @@ namespace sched::arch
         {
             cpu::gs::write_kernel(thread->gs_base);
             cpu::fs::write(thread->fs_base);
-            cpu::features::fpu.restore(thread->fpu);
+            cpu::features::get_fpu().restore(thread->fpu);
         }
     }
 } // namespace sched::arch
