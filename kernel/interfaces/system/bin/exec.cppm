@@ -28,8 +28,8 @@ export namespace bin::exec
 
         virtual ~format() = default;
 
-        virtual bool identify(const std::shared_ptr<vfs::dentry> &file) = 0;
-        virtual sched::thread *load(request &req, sched::process *proc) = 0;
+        virtual bool identify(const std::shared_ptr<vfs::dentry> &file) const = 0;
+        virtual sched::thread *load(request &req, sched::process *proc) const = 0;
 
         std::string_view name() const { return _name; }
     };
