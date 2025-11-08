@@ -197,20 +197,13 @@ toolchain("ilobilix-clang")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 
     add_defines("UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
-    add_defines("MAGIC_ENUM_NO_STREAMS=1")
+    add_defines("MAGIC_ENUM_NO_STREAMS=1", "MAGIC_ENUM_ENABLE_HASH=1")
 
     add_defines("FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
+    add_defines("FMT_USE_CONSTEVAL=1", "FMT_USE_CONSTEXPR_STRING=1")
     -- TODO: performance impact
     -- remove FMT_BUILTIN_TYPES=0 for fmt::group_digits
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
-
-    add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage")
-    add_defines("cpu_local_init(name, ...)=" ..
-        "void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base)" ..
-            "{ name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); };" ..
-        "[[gnu::section(\".percpu_init\"), gnu::used]]" ..
-        "const auto name ## _init_ptr__ = name ## _init_func__"
-    )
 
     on_load(function (toolchain)
         local cx_args = {
@@ -227,7 +220,8 @@ toolchain("ilobilix-clang")
             "-Wall", "-Wextra",
 
             "-Wno-c23-extensions",
-            "-Wno-c99-designator"
+            "-Wno-c99-designator",
+            "-Wno-unknown-attributes"
         }
         local c_args = { }
         local cxx_args = {
@@ -237,7 +231,8 @@ toolchain("ilobilix-clang")
             "-fcheck-new",
 
             "-D__cpp_lib_ranges_to_container=202202L",
-            "-D__glibcxx_ranges_to_container=202202L"
+            "-D__glibcxx_ranges_to_container=202202L",
+            "-D__cpp_lib_constexpr_string=201907L"
         }
 
         local ld_args = {

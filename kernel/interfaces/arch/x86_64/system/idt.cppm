@@ -58,6 +58,8 @@ export namespace x86_64::idt
 
     constexpr reg invalid { 0, 0 };
 
+    std::array<entry, num_ints> &table();
+
     [[nodiscard]]
     auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>;
 

@@ -490,7 +490,11 @@ export namespace lib
             _size--;
         }
 
-        void remove(iterator x) { remove(x.value()); }
+        void remove(iterator x)
+        {
+            bug_on(x._tree != this);
+            remove(x.value());
+        }
 
         iterator begin() { return { this, head() }; }
         iterator end() { return { this, nil() }; }

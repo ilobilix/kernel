@@ -15,7 +15,7 @@ syscall_entry:
     push 0x23 # cs
     push rcx # rip
     push 0 # error_code
-    push 0 # int_no
+    push 0 # vector
 
     pushall
 

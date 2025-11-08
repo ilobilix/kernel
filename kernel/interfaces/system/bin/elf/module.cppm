@@ -6,7 +6,7 @@ import :symbols;
 import lib;
 import cppstd;
 
-namespace bin::elf::mod
+export namespace bin::elf::mod
 {
     enum class status { };
 
@@ -41,5 +41,10 @@ namespace bin::elf::mod
         status status;
     };
 
-    lib::locker<lib::map::flat_hash<std::string_view, entry>, lib::rwspinlock> modules;
+    lib::locker<
+        lib::map::flat_hash<
+            std::string_view,
+            entry
+        >, lib::rwspinlock
+    > modules;
 } // export namespace bin::elf::mod

@@ -2,19 +2,40 @@
 
 module x86_64.system.syscall;
 
+import :arch;
+
 import x86_64.system.gdt;
+import system.syscall;
 import system.cpu;
+import arch;
 import lib;
 import cppstd;
 
 namespace x86_64::syscall
 {
+    struct getter
+    {
+        static std::array<std::uintptr_t, 6> get_args(cpu::registers *regs)
+        {
+            return { regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9 };
+        }
+    };
+
+    using namespace ::syscall;
+    lib::syscall::entry<6, getter> table[]
+    {
+        [158] = { "arch_prctl", arch::arch_prctl },
+        [186] = { "gettid", proc::gettid }
+    };
+
     extern "C" void syscall_entry();
     extern "C" void syscall_handler(cpu::registers *regs)
     {
-        // args: rdi rsi rdx r10 r8 r9
-        log::debug("syscall {}", regs->rax);
-        // TODO
+        const auto idx = regs->rax;
+        if (idx >= std::size(table) || !table[idx].is_valid())
+            lib::panic("invalid syscall: {}", idx);
+
+        regs->rax = table[idx].invoke(regs);
     }
 
     void init_cpu()

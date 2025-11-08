@@ -17,7 +17,7 @@ namespace fs
     initgraph::task fs_task
     {
         "register-builtin-filesystems",
-        initgraph::require { sched::available_stage() },
+        initgraph::require { },
         initgraph::entail { filesystems_registered_stage() },
         [] {
             lib::bug_on(!vfs::register_fs(tmpfs::init()));

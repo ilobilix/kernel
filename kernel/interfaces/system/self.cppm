@@ -23,7 +23,7 @@ export namespace cpu
             std::size_t idx;
             std::size_t arch_id;
 
-            errno_t err = no_error;
+            errnos err = no_error;
             std::atomic_bool online = false;
         };
 

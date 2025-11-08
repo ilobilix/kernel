@@ -62,7 +62,7 @@ namespace lib
         };
 
         log::println(prefix, "stack trace:");
-        if (ip != 0)
+        if (ip != 0 && lib::ishh(ip))
             print(ip);
 
         for (std::size_t i = 0; i < 20; i++)

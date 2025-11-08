@@ -4,6 +4,7 @@ module system.scheduler;
 
 import x86_64.system.lapic;
 import x86_64.system.gdt;
+import x86_64.system.idt;
 import system.interrupts;
 import system.memory;
 import system.cpu.self;
@@ -24,6 +25,7 @@ namespace sched::arch
 
     void init()
     {
+        // x86_64::idt::table()[14].ist = 1;
         auto [handler, _] = interrupts::allocate(cpu::self()->idx, sched_vector).value();
         handler.set(schedule);
     }
@@ -52,14 +54,14 @@ namespace sched::arch
         thread->fpu = reinterpret_cast<std::byte *>(vfpu);
         thread->fpu_size = fpu.size;
 
-        // thread->pfstack_top = thread::allocate_kstack(proc);
+        thread->pfstack_top = thread::allocate_kstack(proc);
 
         if (thread->is_user)
         {
             regs.cs = x86_64::gdt::segment::ucode | 0x03;
             regs.ss = x86_64::gdt::segment::udata | 0x03;
 
-            regs.rsp = thread->ustack_top = thread::allocate_ustack(proc);
+            regs.rsp = thread->ustack_top;
 
             fpu.restore(thread->fpu);
 
@@ -76,7 +78,7 @@ namespace sched::arch
             regs.cs = x86_64::gdt::segment::code;
             regs.ss = x86_64::gdt::segment::data;
 
-            regs.rsp = thread->ustack_top = thread->kstack_top;
+            regs.rsp = thread->kstack_top;
         }
     }
 
@@ -100,7 +102,7 @@ namespace sched::arch
     void load(thread *thread)
     {
         auto &tss = x86_64::gdt::tss::self();
-        // tss.ist[0] = thread->pfstack_top;
+        tss.ist[0] = thread->pfstack_top;
         tss.rsp[0] = thread->kstack_top;
 
         cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread));
@@ -111,5 +113,10 @@ namespace sched::arch
             cpu::fs::write(thread->fs_base);
             cpu::features::get_fpu().restore(thread->fpu);
         }
+    }
+
+    void update_stack(thread *thread, std::uintptr_t addr)
+    {
+        thread->regs.rsp = addr;
     }
 } // namespace sched::arch

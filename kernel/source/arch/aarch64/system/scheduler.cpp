@@ -40,4 +40,9 @@ namespace sched::arch
     {
         lib::unused(thread);
     }
+
+    void update_stack(thread *thread, std::uintptr_t addr)
+    {
+        lib::unused(thread, addr);
+    }
 } // namespace sched::arch

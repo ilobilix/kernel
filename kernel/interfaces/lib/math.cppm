@@ -34,19 +34,19 @@ export namespace lib
         } (val, bits) && ...);
     }
 
-    inline constexpr bool ishh(auto val)
+    inline bool ishh(auto val)
     {
         return std::uintptr_t(val) >= get_hhdm_offset();
     }
 
     template<typename Type, typename Ret = detail::get_ret_type<Type>>
-    inline constexpr Ret tohh(Type val)
+    inline Ret tohh(Type val)
     {
         return ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) + get_hhdm_offset());
     }
 
     template<typename Type, typename Ret = detail::get_ret_type<Type>>
-    inline constexpr Ret fromhh(Type val)
+    inline Ret fromhh(Type val)
     {
         return !ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) - get_hhdm_offset());
     }

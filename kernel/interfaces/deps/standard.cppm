@@ -23,7 +23,6 @@ module;
 #include <deque>
 #include <exception>
 #include <expected>
-#include <format>
 #include <functional>
 #include <generator>
 #include <initializer_list>
@@ -655,25 +654,6 @@ export namespace std
 
     using std::ranges::enable_borrowed_range;
     using std::ranges::enable_view;
-
-    using std::basic_format_arg;
-    using std::basic_format_args;
-    using std::basic_format_context;
-    using std::basic_format_parse_context;
-    using std::format;
-    using std::format_args;
-    using std::format_context;
-    using std::format_error;
-    using std::format_parse_context;
-    using std::format_string;
-    using std::format_to;
-    using std::format_to_n;
-    using std::format_to_n_result;
-    using std::formatted_size;
-    using std::formatter;
-    using std::make_format_args;
-    using std::vformat;
-    using std::vformat_to;
 
     using std::unexpected;
     using std::bad_expected_access;

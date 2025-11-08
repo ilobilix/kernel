@@ -3,6 +3,7 @@
 export module lib:panic;
 
 import system.cpu;
+import fmt;
 import cppstd;
 
 export namespace lib
@@ -11,7 +12,7 @@ export namespace lib
     void stop_all();
 
     extern "C++" [[noreturn]]
-    void vpanic(std::string_view fmt, std::format_args args, cpu::registers *regs, std::source_location location);
+    void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location);
 
     template<typename ...Args>
     struct panic
@@ -19,13 +20,13 @@ export namespace lib
         [[noreturn]]
         panic(std::string_view fmt, Args &&...args, const std::source_location &location = std::source_location::current())
         {
-            vpanic(fmt, std::make_format_args(args...), nullptr, location);
+            vpanic(fmt, fmt::make_format_args(args...), nullptr, location);
         }
 
         [[noreturn]]
         panic(cpu::registers *regs, std::string_view fmt, Args &&...args, const std::source_location &location = std::source_location::current())
         {
-            vpanic(fmt, std::make_format_args(args...), regs, location);
+            vpanic(fmt, fmt::make_format_args(args...), regs, location);
         }
     };
 

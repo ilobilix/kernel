@@ -132,8 +132,8 @@ export namespace cpu
 
     namespace smap
     {
-        inline void enable() { asm volatile ("stac" ::: "cc"); }
-        inline void disable() { asm volatile ("clac" ::: "cc"); }
+        inline void disable() { asm volatile ("stac" ::: "cc"); }
+        inline void enable() { asm volatile ("clac" ::: "cc"); }
 
         // if one core supports smap, others do too
         bool supported = false;

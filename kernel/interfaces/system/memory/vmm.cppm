@@ -23,9 +23,7 @@ export namespace vmm
         shared = 0x01,
         private_ = 0x02,
         fixed = 0x10,
-        anonymous = 0x20,
-
-        cow = 0x40
+        anonymous = 0x20
     };
 
     class object
@@ -48,6 +46,8 @@ export namespace vmm
 
         std::size_t read(std::uint64_t offset, std::span<std::byte> buffer);
         std::size_t write(std::uint64_t offset, std::span<std::byte> buffer);
+
+        std::size_t copy_to(object &other, std::uint64_t offset, std::size_t length);
     };
 
     class memobject : public object
@@ -66,7 +66,7 @@ export namespace vmm
         std::uintptr_t endp;
 
         std::shared_ptr<object> obj;
-        off_t offset;
+        off_t offsetp;
 
         std::uint8_t prot;
         std::uint8_t flags;
@@ -93,6 +93,8 @@ export namespace vmm
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);
     };
+
+    std::size_t default_page_size();
 
     bool handle_pfault(std::uintptr_t addr, bool on_write);
 

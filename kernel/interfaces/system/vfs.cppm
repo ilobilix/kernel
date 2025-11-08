@@ -2,6 +2,7 @@
 
 export module system.vfs;
 
+import system.memory.virt;
 import lib;
 import cppstd;
 
@@ -41,8 +42,7 @@ export namespace vfs
         virtual std::ssize_t read(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
         virtual std::ssize_t write(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
 
-        virtual std::uintptr_t mmap(std::shared_ptr<inode> self, std::uintptr_t page, int flags) = 0;
-        virtual bool munmap(std::shared_ptr<inode> self, std::uintptr_t page) = 0;
+        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<inode> self, bool priv) = 0;
 
         virtual bool sync() = 0;
 
@@ -70,7 +70,7 @@ export namespace vfs
             virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> expect<std::shared_ptr<inode>> = 0;
             virtual auto unlink(std::shared_ptr<inode> &inode) -> expect<void> = 0;
 
-            virtual auto populate(std::shared_ptr<vfs::inode> &inode, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
+            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
@@ -104,24 +104,18 @@ export namespace vfs
             return op->write(shared_from_this(), offset, buffer);
         }
 
-        std::uintptr_t mmap(std::uintptr_t page, int flags)
+        std::shared_ptr<vmm::object> map(bool priv)
         {
             lib::bug_on(op == nullptr);
-            return op->mmap(shared_from_this(), page, flags);
-        }
-
-        bool munmap(std::uintptr_t page)
-        {
-            lib::bug_on(op == nullptr);
-            return op->munmap(shared_from_this(), page);
+            return op->map(shared_from_this(), priv);
         }
 
         lib::mutex lock;
 
         stat stat;
-        bool can_mmap;
 
         std::shared_ptr<ops> op;
+        std::shared_ptr<vmm::object> memory;
 
         inode(std::shared_ptr<ops> op) : op { op } { }
 
@@ -130,7 +124,7 @@ export namespace vfs
 
     struct dentry : std::enable_shared_from_this<dentry>
     {
-        static std::shared_ptr<dentry> root(bool from_sched = false);
+        static std::shared_ptr<dentry> root(bool absolute);
 
         lib::mutex lock;
 
@@ -150,6 +144,8 @@ export namespace vfs
         path parent;
         path target;
     };
+
+    path get_root(bool absolute);
 
     bool register_fs(std::unique_ptr<filesystem> fs);
     auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;

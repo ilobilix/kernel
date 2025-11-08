@@ -68,6 +68,9 @@ export namespace lib
         }
 
         template<typename Self>
+        auto data(this Self &&self) { return std::forward<Self>(self)._ptr; }
+
+        template<typename Self>
         auto virt_data(this Self &&self) { return std::forward<Self>(self)._ptr; }
 
         template<typename Self>
