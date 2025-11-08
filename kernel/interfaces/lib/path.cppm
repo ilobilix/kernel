@@ -140,8 +140,11 @@ export namespace lib
         path(const path_view &other) : _str { other._str } { normalise(); }
         path(path_view &&other) : _str { std::move(other._str) } { normalise(); }
 
-        path(const auto &source) : _str { source } { normalise(); }
-        path(auto &&source) : _str { std::move(source) } { normalise(); }
+        path(const std::string &source) : _str { source } { normalise(); }
+        path(std::string &&source) : _str { std::move(source) } { normalise(); }
+
+        path(std::string_view source) : _str { source } { normalise(); }
+        path(const char *source) : _str { source } { normalise(); }
 
         ~path() = default;
 

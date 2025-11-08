@@ -2,6 +2,11 @@
 
 export module system.syscall.memory;
 
+import lib;
+import cppstd;
+
 export namespace syscall::memory
 {
+    void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset);
+    int munmap(void *addr, std::size_t length);
 } // export namespace syscall::memory

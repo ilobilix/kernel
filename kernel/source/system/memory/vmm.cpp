@@ -223,6 +223,26 @@ namespace vmm
         return prev.has_value();
     }
 
+    std::uintptr_t vmspace::find_free_region(std::size_t length)
+    {
+        const auto psize = default_page_size();
+
+        const auto pages = lib::div_roundup(length, psize);
+        const auto locked = tree.read_lock();
+
+        // TODO: set cap
+
+        std::uintptr_t last_endp = 0;
+        for (const auto &entry : *locked)
+        {
+            if (entry.startp - last_endp >= pages)
+                return last_endp * psize;
+            last_endp = entry.endp;
+        }
+
+        return last_endp * psize;
+    }
+
     bool handle_pfault(std::uintptr_t addr, bool on_write)
     {
         const auto psize = default_page_size();

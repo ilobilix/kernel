@@ -50,7 +50,7 @@ typedef struct
 } Elf64_Ehdr;
 
 #define ELFMAG "\177ELF"
-#define	SELFMAG 4
+#define SELFMAG 4
 
 #define EI_CLASS 4
 #define ELFCLASS64 2
@@ -154,10 +154,10 @@ typedef struct
 #define DT_STRSZ 10
 #define DT_SYMENT 11
 #define DT_JMPREL 23
-#define	DT_INIT_ARRAY 25
-#define	DT_FINI_ARRAY 26
-#define	DT_INIT_ARRAYSZ 27
-#define	DT_FINI_ARRAYSZ 28
+#define DT_INIT_ARRAY 25
+#define DT_FINI_ARRAY 26
+#define DT_INIT_ARRAYSZ 27
+#define DT_FINI_ARRAYSZ 28
 #define DT_LOOS 0x60000000
 
 typedef struct
@@ -180,3 +180,6 @@ typedef struct
 #define AT_PHENT 4
 #define AT_PHNUM 5
 #define AT_ENTRY 9
+#define AT_SECURE 23
+#define AT_RANDOM 25
+#define AT_EXECFN 31

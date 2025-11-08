@@ -24,6 +24,8 @@ namespace x86_64::syscall
     using namespace ::syscall;
     lib::syscall::entry<6, getter> table[]
     {
+        [9] = { "mmap", memory::mmap },
+        [11] = { "munmap", memory::munmap },
         [158] = { "arch_prctl", arch::arch_prctl },
         [186] = { "gettid", proc::gettid }
     };

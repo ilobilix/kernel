@@ -114,8 +114,6 @@ namespace bin::elf::exec
                             phdr.p_filesz - 1
                         };
 
-                        log::debug("elf: interpreter: {}", path);
-
                         auto ret = vfs::resolve(file, path);
                         if (!ret.has_value())
                             return std::nullopt;
