@@ -15,5 +15,5 @@ export namespace timers::acpipm
     std::uint64_t time_ns();
     std::size_t calibrate(std::size_t ms);
 
-    initgraph::stage *available_stage();
+    lib::initgraph::stage *initialised_stage();
 } // export namespace timers::acpipm

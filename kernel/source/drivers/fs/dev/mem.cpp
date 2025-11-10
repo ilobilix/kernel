@@ -1,0 +1,189 @@
+// Copyright (C) 2024-2025  ilobilo
+
+module;
+
+#include <cerrno>
+
+module drivers.fs.dev.mem;
+
+import drivers.fs.devtmpfs;
+import system.memory.virt;
+import system.vfs;
+import lib;
+import cppstd;
+
+namespace fs::dev::mem
+{
+    struct null_ops : vfs::ops
+    {
+        static std::shared_ptr<null_ops> singleton()
+        {
+            static auto instance = std::make_shared<null_ops>();
+            return instance;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset, buffer);
+            return 0;
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset);
+            return buffer.size_bytes();
+        }
+
+        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        {
+            lib::unused(self, size);
+            return true;
+        }
+
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        {
+            lib::unused(self, priv);
+            return nullptr;
+        }
+
+        bool sync() override { return true; }
+    };
+
+    struct zero_ops : vfs::ops
+    {
+        static std::shared_ptr<zero_ops> singleton()
+        {
+            static auto instance = std::make_shared<zero_ops>();
+            return instance;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset);
+            std::memset(buffer.data(), 0, buffer.size_bytes());
+            return buffer.size_bytes();
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset, buffer);
+            return buffer.size_bytes();
+        }
+
+        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        {
+            lib::unused(self, size);
+            return true;
+        }
+
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        {
+            lib::unused(self, priv);
+            return nullptr;
+        }
+
+        bool sync() override { return true; }
+    };
+
+    struct full_dev : vfs::ops
+    {
+        static std::shared_ptr<full_dev> singleton()
+        {
+            static auto instance = std::make_shared<full_dev>();
+            return instance;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset);
+            std::memset(buffer.data(), 0, buffer.size_bytes());
+            return buffer.size_bytes();
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset, buffer);
+            errno = ENOSPC;
+            return -1;
+        }
+
+        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        {
+            lib::unused(self, size);
+            return true;
+        }
+
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        {
+            lib::unused(self, priv);
+            return nullptr;
+        }
+
+        bool sync() override { return true; }
+    };
+
+    struct random_dev : vfs::ops
+    {
+        std::uniform_int_distribution<std::mt19937_64::result_type> dist;
+        std::mt19937_64 rng;
+        lib::mutex lock;
+
+        static std::shared_ptr<random_dev> singleton()
+        {
+            static auto instance = std::make_shared<random_dev>();
+            return instance;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset);
+            const std::unique_lock _ { lock };
+
+            auto u8buffer = reinterpret_cast<std::uint8_t *>(buffer.data());
+            for (std::size_t i = 0; i < buffer.size_bytes(); ++i)
+                u8buffer[i] = static_cast<std::uint8_t>(dist(rng));
+
+            return buffer.size_bytes();
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            lib::unused(self, offset, buffer);
+            return buffer.size_bytes();
+        }
+
+        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        {
+            lib::unused(self, size);
+            return true;
+        }
+
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        {
+            lib::unused(self, priv);
+            return nullptr;
+        }
+
+        bool sync() override { return true; }
+    };
+
+    lib::initgraph::stage *initialised_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "vfs.dev.memfiles-initialised",
+            lib::initgraph::postsched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task memfiles_task
+    {
+        "vfs.dev.memfiles.initialise",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { devtmpfs::mounted_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] {
+        }
+    };
+} // namespace fs::dev::mem

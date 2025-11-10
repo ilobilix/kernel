@@ -258,6 +258,9 @@ export namespace lib
                 std::forward<Self>(self)._storage.get_lock()
             };
         }
+
+        // Type *unsafe_nolock_access_data() { return _storage.get_data(); }
+        // Lock &unsafe_nolock_access_lock() { return _storage.get_lock(); }
     };
 
     template<typename Type, typename Lock, typename ...Args>

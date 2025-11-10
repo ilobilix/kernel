@@ -119,8 +119,8 @@ namespace pci
             }
         }
 
-        initgraph::stage *ios_discovered_stage();
-        initgraph::stage *rbs_discovered_stage();
+        lib::initgraph::stage *ios_discovered_stage();
+        lib::initgraph::stage *rbs_discovered_stage();
 
         extern bool need_arch_ios;
         extern bool need_arch_rbs;
@@ -128,14 +128,15 @@ namespace pci
 
     namespace arch
     {
-        initgraph::stage *ios_discovered_stage();
-        initgraph::stage *rbs_discovered_stage();
+        lib::initgraph::stage *ios_discovered_stage();
+        lib::initgraph::stage *rbs_discovered_stage();
 
-        initgraph::task ios_task
+        lib::initgraph::task ios_task
         {
             "pci.arch.discover-ios",
-            initgraph::require { acpi::ios_discovered_stage() },
-            initgraph::entail { ios_discovered_stage() },
+            lib::initgraph::presched_init_engine,
+            lib::initgraph::require { acpi::ios_discovered_stage() },
+            lib::initgraph::entail { ios_discovered_stage() },
             [] {
                 if (!acpi::need_arch_ios)
                     return;
@@ -146,11 +147,12 @@ namespace pci
             }
         };
 
-        initgraph::task rbs_task
+        lib::initgraph::task rbs_task
         {
             "pci.arch.discover-rbs",
-            initgraph::require { acpi::rbs_discovered_stage() },
-            initgraph::entail { rbs_discovered_stage() },
+            lib::initgraph::presched_init_engine,
+            lib::initgraph::require { acpi::rbs_discovered_stage() },
+            lib::initgraph::entail { rbs_discovered_stage() },
             [] {
                 if (!acpi::need_arch_rbs)
                     return;

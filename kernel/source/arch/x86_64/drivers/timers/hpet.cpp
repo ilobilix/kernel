@@ -7,6 +7,7 @@ module;
 
 module x86_64.drivers.timers.hpet;
 
+import arch.drivers.timers;
 import system.scheduler;
 import system.memory;
 import system.time;
@@ -126,45 +127,63 @@ namespace x86_64::timers::hpet
         return freq.nanos(current - start);
     }
 
-    time::clock clock { "hpet", 50, time_ns };
-    void init()
+    lib::initgraph::stage *initialised_stage()
     {
-        log::info("hpet: supported: {}", supported());
-
-        vaddr = vmm::alloc_vspace(1);
-        log::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
-
-        const auto psize = vmm::page_size::small;
-        const auto npsize = vmm::pagemap::from_page_size(psize);
-        const auto flags = vmm::pflag::rw;
-        const auto caching = vmm::caching::mmio;
-
-        if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)
-            lib::panic("could not map hpet: {}", magic_enum::enum_name(ret.error()));
-
-        const auto cap = read(regs::cap);
-        is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);
-
-        freq = 1'000'000'000'000'000ull / (cap >> 32);
-
-        log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
-
-        // enable main counter
-        write(regs::cfg, 1);
-
-        initialised = true;
-        if (const auto clock = time::main_clock())
-            offset = time_ns() - clock->ns();
-        else
-            offset = time_ns();
-
-        time::register_clock(clock);
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.hpet.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
     }
 
-    initgraph::task hpet_task
+    time::clock clock { "hpet", 50, time_ns };
+
+    lib::initgraph::task hpet_task
     {
-        "timers.create-hpet-overflow-thread",
-        initgraph::require { sched::available_stage() },
+        "timers.arch.hpet.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] {
+            log::info("hpet: supported: {}", supported());
+
+            vaddr = vmm::alloc_vspace(1);
+            log::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
+
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto flags = vmm::pflag::rw;
+            const auto caching = vmm::caching::mmio;
+
+            if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)
+                lib::panic("could not map hpet: {}", magic_enum::enum_name(ret.error()));
+
+            const auto cap = read(regs::cap);
+            is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);
+
+            freq = 1'000'000'000'000'000ull / (cap >> 32);
+
+            log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
+
+            // enable main counter
+            write(regs::cfg, 1);
+
+            initialised = true;
+            if (const auto clock = time::main_clock())
+                offset = time_ns() - clock->ns();
+            else
+                offset = time_ns();
+
+            time::register_clock(clock);
+        }
+    };
+
+    lib::initgraph::task hpet_thread_task
+    {
+        "timers.arch.hpet.create-thread",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::arch::initialised_stage(), sched::pid0_initialised_stage() },
         [] {
             if (!is_64bit)
                 sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));

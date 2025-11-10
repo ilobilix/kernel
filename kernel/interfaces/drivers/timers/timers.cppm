@@ -19,11 +19,5 @@ export namespace timers
         return nullptr;
     }
 
-    initgraph::stage *available_stage();
-    initgraph::stage *should_init_stage();
-
-    namespace arch
-    {
-        initgraph::stage *initialised_stage();
-    } // namespace arch
+    lib::initgraph::stage *initialised_stage();
 } // export namespace timers

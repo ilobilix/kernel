@@ -123,18 +123,23 @@ namespace timers::acpipm
         return freq.nanos(current - start);
     }
 
-    initgraph::stage *available_stage()
+    lib::initgraph::stage *initialised_stage()
     {
-        static initgraph::stage stage { "timers.acpipm-available" };
+        static lib::initgraph::stage stage
+        {
+            "timers.acpipm.initialised",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
     time::clock clock { "acpipm", 25, time_ns };
-    initgraph::task acpipm_task
+    lib::initgraph::task acpipm_task
     {
-        "timers.init-acpipm",
-        initgraph::require { acpi::tables_stage() },
-        initgraph::entail { available_stage() },
+        "timers.acpipm.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { acpi::tables_stage() },
+        lib::initgraph::entail { initialised_stage() },
         [] {
             auto pmtimer = supported();
             log::info("acpipm: timer supported: {}", pmtimer);
@@ -148,10 +153,11 @@ namespace timers::acpipm
         }
     };
 
-    initgraph::task acpipm_overflow_task
+    lib::initgraph::task acpipm_thread_task
     {
-        "timers.create-acpipm-overflow-thread",
-        initgraph::require { sched::available_stage() },
+        "timers.acpipm.create-thread",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { sched::pid0_initialised_stage() },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));
         }

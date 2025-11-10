@@ -2,6 +2,7 @@
 
 module x86_64.drivers.timers.tsc;
 
+import x86_64.drivers.timers.kvm;
 import drivers.timers;
 import system.cpu.self;
 import system.cpu;
@@ -51,7 +52,7 @@ namespace x86_64::timers::tsc
         return freq.nanos(rdtsc()) - offset.get();
     }
 
-    void init()
+    void init_cpu()
     {
         if (!supported())
             return;
@@ -102,6 +103,27 @@ namespace x86_64::timers::tsc
                 ref = time_ns();
         }
     }
+
+    lib::initgraph::stage *initialised_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.tsc.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task tsc_task
+    {
+        "timers.arch.tsc.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::arch::can_initialise_stage(), kvm::initialised_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] {
+            init_cpu();
+        }
+    };
 
     time::clock clock { "tsc", 75, time_ns };
     void finalise()

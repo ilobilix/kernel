@@ -5,5 +5,5 @@ import lib;
 
 export namespace initramfs
 {
-    initgraph::stage *extracted_stage();
+    lib::initgraph::stage *extracted_stage();
 } // export namespace initramfs

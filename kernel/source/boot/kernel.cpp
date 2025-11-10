@@ -13,6 +13,9 @@ extern "C"
 
     void kthread()
     {
+        lib::initgraph::postsched_init_engine.run();
+        pmm::reclaim_bootloader_memory();
+
         lib::path_view path { "/usr/bin/bash" };
         log::info("loading {}", path);
 
@@ -59,12 +62,9 @@ extern "C"
         memory::init();
         cxxabi::construct();
 
-        initgraph::global_init_engine.run();
-
-        pmm::reclaim_bootloader_memory();
+        lib::initgraph::presched_init_engine.run();
 
         sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread));
-
         sched::start();
     }
 } // extern "C"

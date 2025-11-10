@@ -87,29 +87,42 @@ namespace acpi
         return cached;
     }
 
-    initgraph::stage *tables_stage()
+    lib::initgraph::stage *tables_stage()
     {
-        static initgraph::stage stage { "acpi-tables-access" };
+        static lib::initgraph::stage stage
+        {
+            "acpi.tables-access",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::stage *initialised_stage()
+    lib::initgraph::stage *initialised_stage()
     {
-        static initgraph::stage stage { "acpi-initialised" };
+        static lib::initgraph::stage stage
+        {
+            "acpi.initialised",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::stage *uacpi_stage()
+    lib::initgraph::stage *workers_stage()
     {
-        static initgraph::stage stage { "uacpi-workers-initialised" };
+        static lib::initgraph::stage stage
+        {
+            "acpi.workers-created",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task full_task
+    lib::initgraph::task full_task
     {
-        "fully-initialise-acpi",
-        initgraph::require { tables_stage(), timers::available_stage() },
-        initgraph::entail { initialised_stage() },
+        "acpi.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { tables_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { initialised_stage() },
         [] {
             delete[] early_table_buffer;
 
@@ -168,11 +181,12 @@ namespace acpi
         }
     };
 
-    initgraph::task early_task
+    lib::initgraph::task early_task
     {
-        "setup-acpi-table-access",
-        initgraph::require { output::available_stage() },
-        initgraph::entail { tables_stage() },
+        "acpi.early-tables",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { lib::initgraph::base_stage() },
+        lib::initgraph::entail { tables_stage() },
         [] {
             log::info("acpi: setting up early table access");
 

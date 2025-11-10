@@ -13,5 +13,5 @@ export namespace output
 {
     void early_init();
 
-    initgraph::stage *available_stage();
+    lib::initgraph::stage *initialised_stage();
 } // export namespace output

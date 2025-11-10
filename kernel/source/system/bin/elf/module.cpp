@@ -444,17 +444,22 @@ namespace bin::elf::mod
         }
     } // namespace
 
-    initgraph::stage *modules_loaded_stage()
+    lib::initgraph::stage *modules_loaded_stage()
     {
-        static initgraph::stage stage { "modules-loaded" };
+        static lib::initgraph::stage stage
+        {
+            "bin.elf.modules-loaded",
+            lib::initgraph::postsched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task modules_load_task
+    lib::initgraph::task modules_load_task
     {
-        "load-modules",
-        initgraph::require { initramfs::extracted_stage() },
-        initgraph::entail { modules_loaded_stage() },
+        "bin.elf.load-modules",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { initramfs::extracted_stage() },
+        lib::initgraph::entail { modules_loaded_stage() },
         [] {
             load_internal();
             load_external();

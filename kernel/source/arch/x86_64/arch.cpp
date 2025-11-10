@@ -78,11 +78,12 @@ namespace arch
         x86_64::idt::init();
     }
 
-    initgraph::task bsp_task
+    lib::initgraph::task bsp_task
     {
-        "arch.init-bsp",
-        initgraph::require { acpi::tables_stage() },
-        initgraph::entail { bsp_stage() },
+        "arch.bsp.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { acpi::tables_stage() },
+        lib::initgraph::entail { bsp_stage() },
         [] {
             x86_64::apic::init_cpu();
 
@@ -92,11 +93,12 @@ namespace arch
         }
     };
 
-    initgraph::task cpus_task
+    lib::initgraph::task cpus_task
     {
-        "arch.init-cpus",
-        initgraph::require { bsp_stage(), timers::available_stage() },
-        initgraph::entail { cpus_stage() },
+        "arch.cpus.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { bsp_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { cpus_stage() },
         [] {
             x86_64::apic::calibrate_timer();
             cpu::init();
@@ -120,8 +122,8 @@ namespace arch
 
             x86_64::syscall::init_cpu();
 
-            x86_64::timers::kvm::init();
-            x86_64::timers::tsc::init();
+            x86_64::timers::kvm::init_cpu();
+            x86_64::timers::tsc::init_cpu();
 
             x86_64::apic::init_cpu();
 

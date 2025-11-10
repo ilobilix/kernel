@@ -50,7 +50,7 @@ namespace arch
     initgraph::task bsp_task
     {
         "arch.init-bsp",
-        initgraph::require { output::available_stage() },
+        initgraph::require { output::initialised_stage() },
         initgraph::entail { bsp_stage() },
         [] {
             cpu::init_bsp();

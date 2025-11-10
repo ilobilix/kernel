@@ -8,16 +8,21 @@ import lib;
 
 namespace output
 {
-    initgraph::stage *available_stage()
+    lib::initgraph::stage *initialised_stage()
     {
-        static initgraph::stage stage { "full-output" };
+        static lib::initgraph::stage stage
+        {
+            "output.available",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task output_task
+    lib::initgraph::task output_task
     {
-        "init-output",
-        initgraph::entail { available_stage() },
+        "output.init",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::entail { lib::initgraph::base_stage(), initialised_stage() },
         [] {
             arch::init();
             frm::init();

@@ -62,11 +62,12 @@ namespace uacpi
         arch::halt(true);
     }
 
-    initgraph::task uacpi_task
+    lib::initgraph::task uacpi_task
     {
-        "init-uacpi-workers",
-        initgraph::require { sched::available_stage(), acpi::initialised_stage() },
-        initgraph::entail { acpi::uacpi_stage() },
+        "acpi.create-workers",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { sched::pid0_initialised_stage(), acpi::initialised_stage() },
+        lib::initgraph::entail { acpi::workers_stage() },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(notify_worker));
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(gpe_worker));

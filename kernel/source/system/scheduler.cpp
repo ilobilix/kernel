@@ -106,6 +106,20 @@ namespace sched
             >, lib::rwspinlock
         > processes;
 
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t,
+                std::shared_ptr<group>
+            >, lib::rwspinlock
+        > groups;
+
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t,
+                std::shared_ptr<session>
+            >, lib::rwspinlock
+        > sessions;
+
         bool initialised = false;
 
         std::size_t alloc_pid(process *proc)
@@ -114,6 +128,24 @@ namespace sched
             const auto pid = next_pid++;
             processes.write_lock().value()[pid] = proc;
             return pid;
+        }
+
+        std::shared_ptr<group> create_group(process *proc)
+        {
+            auto grp = std::make_shared<group>();
+            grp->pgid = proc->pgid = proc->pid;
+            grp->members.write_lock().value()[proc->pid] = proc;
+            groups.write_lock().value()[grp->pgid] = grp;
+            return grp;
+        }
+
+        std::shared_ptr<session> create_session(std::shared_ptr<group> grp)
+        {
+            auto sess = std::make_shared<session>();
+            sess->sid = grp->pgid;
+            sess->members.write_lock().value()[grp->pgid] = grp;
+            sessions.write_lock().value()[sess->sid] = sess;
+            return sess;
         }
 
         void save(thread *thread, cpu::registers *regs)
@@ -143,6 +175,16 @@ namespace sched
         if (pid == static_cast<std::size_t>(-1))
             return percpu->idle_proc;
         return processes.read_lock()->at(pid);
+    }
+
+    group *group_for(std::size_t pgid)
+    {
+        return groups.read_lock()->at(pgid).get();
+    }
+
+    session *session_for(std::size_t sid)
+    {
+        return sessions.read_lock()->at(sid).get();
     }
 
     std::uintptr_t thread::allocate_ustack(process *proc)
@@ -296,6 +338,29 @@ namespace sched
         auto proc = new process { };
 
         proc->pid = alloc_pid(proc);
+        if (proc->pid != 0)
+        {
+            if (proc->pid == 1)
+            {
+                lib::bug_on(parent != nullptr);
+                // proc->pgid is set in create_group
+                auto grp = create_group(proc);
+                grp->sid = proc->sid = create_session(grp)->sid;
+            }
+            else if (parent)
+            {
+                proc->pgid = parent->pgid;
+                proc->sid = parent->sid;
+                {
+                    auto grp = group_for(proc->pgid);
+                    auto wlocked = grp->members.write_lock();
+                    lib::bug_on(wlocked->contains(proc->pid));
+                    wlocked.value()[proc->pid] = proc;
+                }
+            }
+            else lib::panic("cannot create a non-init process without a parent");
+        }
+
         proc->vmspace = std::make_shared<vmm::vmspace>(pagemap);
 
         if (parent)
@@ -420,7 +485,8 @@ namespace sched
                 auto proc = proc_for(thread->pid);
                 lib::bug_on(proc->threads.erase(thread->tid) != 1);
                 delete thread;
-                // TODO: orphan processes
+                if (proc->threads.empty())
+                    lib::panic("TODO: process {} exit", proc->pid);
             }
         }
         std::unreachable();
@@ -610,21 +676,22 @@ namespace sched
         in_scheduler = false;
     }
 
-    initgraph::stage *available_stage()
+    lib::initgraph::stage *pid0_initialised_stage()
     {
-        static initgraph::stage stage { "in-scheduler" };
+        static lib::initgraph::stage stage
+        {
+            "sched.pid0.initialised",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task scheduler_task
+    lib::initgraph::task pid0_task
     {
-        "init-pid0",
-        initgraph::require {
-            ::arch::cpus_stage(),
-            timers::available_stage(),
-            vfs::root_mounted_stage()
-        },
-        initgraph::entail { available_stage() },
+        "sched.pid0.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::arch::cpus_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { pid0_initialised_stage() },
         [] {
             auto proc = process::create(
                 nullptr,

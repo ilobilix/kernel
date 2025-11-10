@@ -18,6 +18,11 @@ import magic_enum;
 import lib;
 import cppstd;
 
+namespace pci
+{
+    lib::initgraph::stage *ios_discovered_stage();
+} // namespace pci
+
 namespace pci::acpi
 {
     [[gnu::weak]] std::uint32_t ecam_read(std::uintptr_t addr, std::size_t width);
@@ -245,26 +250,35 @@ namespace pci::acpi
         }
     };
 
-    initgraph::stage *ios_discovered_stage()
+    lib::initgraph::stage *ios_discovered_stage()
     {
-        static initgraph::stage stage { "pci.acpi.ios-discovered" };
+        static lib::initgraph::stage stage
+        {
+            "pci.acpi.ios-discovered",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::stage *rbs_discovered_stage()
+    lib::initgraph::stage *rbs_discovered_stage()
     {
-        static initgraph::stage stage { "pci.acpi.rbs-discovered" };
+        static lib::initgraph::stage stage
+        {
+            "pci.acpi.rbs-discovered",
+            lib::initgraph::presched_init_engine
+        };
         return &stage;
     }
 
     bool need_arch_ios = true;
     bool need_arch_rbs = true;
 
-    initgraph::task ios_task
+    lib::initgraph::task ios_task
     {
         "pci.acpi.discover-ios",
-        initgraph::require { ::acpi::tables_stage() },
-        initgraph::entail { ios_discovered_stage() },
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::acpi::tables_stage() },
+        lib::initgraph::entail { ios_discovered_stage() },
         [] {
             uacpi_table table;
             if (uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &table) != UACPI_STATUS_OK)
@@ -305,11 +319,12 @@ namespace pci::acpi
         }
     };
 
-    initgraph::task rbs_task
+    lib::initgraph::task rbs_task
     {
         "pci.acpi.discover-rbs",
-        initgraph::require { ::acpi::initialised_stage() },
-        initgraph::entail { rbs_discovered_stage() },
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::acpi::initialised_stage(), pci::ios_discovered_stage() },
+        lib::initgraph::entail { rbs_discovered_stage() },
         [] {
             static constexpr const char *root_ids[]
             {
