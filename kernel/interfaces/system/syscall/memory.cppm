@@ -9,4 +9,5 @@ export namespace syscall::memory
 {
     void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset);
     int munmap(void *addr, std::size_t length);
+    int mprotect(void *addr, std::size_t len, int prot);
 } // export namespace syscall::memory

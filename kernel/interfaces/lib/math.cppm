@@ -181,7 +181,7 @@ export namespace lib
         constexpr std::uint64_t frequency() const { return freq; }
     };
 
-    inline constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)
+    constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)
     {
         constexpr auto days_from_civil = [](std::int64_t years, std::uint64_t months, std::uint64_t days)
         {
@@ -198,7 +198,23 @@ export namespace lib
     }
     inline constexpr auto epoch = timestamp(1970, 1, 1, 0, 0, 0);
 
-    inline constexpr std::tuple<std::uint8_t, std::uint8_t, std::uint8_t> time_from(std::uint64_t unix)
+    constexpr std::tuple<std::uint16_t, std::uint8_t, std::uint8_t> date_from(std::uint64_t unix)
+    {
+        unix /= 86400;
+        unix += 719468;
+
+        const auto era = (unix >= 0 ? unix : unix - 146096) / 146097;
+        const auto doe = static_cast<std::uint64_t>(unix - era * 146097);
+        const auto yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+        const auto year = static_cast<std::uint16_t>(yoe + era * 400);
+        const auto doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        const auto mp = (5 * doy + 2) / 153;
+        const auto day = static_cast<std::uint8_t>(doy - (153 * mp + 2) / 5 + 1);
+        const auto month = static_cast<std::uint8_t>(mp < 10 ? mp + 3 : mp - 9);
+        return { year + (month <= 2), month, day };
+    }
+
+    constexpr std::tuple<std::uint8_t, std::uint8_t, std::uint8_t> time_from(std::uint64_t unix)
     {
         unix %= 86400;
         return { unix / 3600, unix / 60 % 60, unix % 60 };

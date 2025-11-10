@@ -4,6 +4,7 @@ module system.time;
 
 import frigg;
 import arch;
+import boot;
 import lib;
 import cppstd;
 
@@ -53,5 +54,20 @@ namespace time
             arch::pause();
 
         return true;
+    }
+
+    timespec now()
+    {
+        if (main == nullptr)
+            return timespec { };
+
+        // TODO: make this more accurate with rtc
+
+        const auto boot_time_s = boot::time();
+        const auto clock_ns = main->ns();
+        return timespec {
+            static_cast<time_t>(boot_time_s + clock_ns / 1'000'000'000),
+            static_cast<long>(clock_ns % 1'000'000'000)
+        };
     }
 } // namespace time

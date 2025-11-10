@@ -72,5 +72,6 @@ export namespace pmm
         return free(reinterpret_cast<void *>(ptr), count);
     }
 
+    void reclaim_bootloader_memory();
     void init();
 } // export namespace pmm

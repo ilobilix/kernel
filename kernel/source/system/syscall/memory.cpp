@@ -73,4 +73,23 @@ namespace syscall::memory
         errno = ENOSYS;
         return -1;
     }
+
+    int mprotect(void *addr, std::size_t len, int prot)
+    {
+        const auto thread = sched::this_thread();
+        const auto proc = sched::proc_for(thread->pid);
+        const auto &vmspace = proc->vmspace;
+
+        const auto res = vmspace->protect(
+            reinterpret_cast<std::uintptr_t>(addr), len,
+            static_cast<std::uint8_t>(prot)
+        );
+
+        if (!res)
+        {
+            errno = ENOMEM;
+            return -1;
+        }
+        return 0;
+    }
 } // namespace syscall::memory

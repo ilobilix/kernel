@@ -46,7 +46,7 @@ namespace sched::arch
 
         const auto &fpu = cpu::features::get_fpu();
         const auto pages = lib::div_roundup(fpu.size, pmm::page_size);
-        const auto vfpu = vmm::alloc_vpages(vmm::space_type::other, pages);
+        const auto vfpu = vmm::alloc_vspace(pages);
 
         if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));

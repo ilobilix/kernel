@@ -81,10 +81,7 @@ namespace cpu
             const auto flags = vmm::pflag::rw;
             const auto size = boot::kstack_size;
 
-            const auto stack = vmm::alloc_vpages(
-                vmm::space_type::stack,
-                size / pmm::page_size
-            );
+            const auto stack = vmm::alloc_vspace(size / pmm::page_size);
 
             if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, size, flags, psize); !ret)
             {

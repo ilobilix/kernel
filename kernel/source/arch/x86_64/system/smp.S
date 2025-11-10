@@ -4,7 +4,6 @@
 
 .code64
 .extern generic_mp_entry
-.global mp_entry
 mp_entry:
     mov rax, [rdi + 24]
     mov rcx, [rax]
@@ -15,6 +14,7 @@ mp_entry:
 
     call generic_mp_entry
     ud2
+.global mp_entry
 
 #else
 

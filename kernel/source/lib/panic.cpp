@@ -64,8 +64,8 @@ namespace lib
 
         if (regs)
         {
-            lib::trace(log::level::fatal, regs->fp(), regs->ip());
             arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
+            lib::trace(log::level::fatal, regs->fp(), regs->ip());
         }
         else lib::trace(log::level::fatal, 0, 0);
 

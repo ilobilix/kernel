@@ -46,6 +46,7 @@ export namespace vmm
 
         std::size_t read(std::uint64_t offset, std::span<std::byte> buffer);
         std::size_t write(std::uint64_t offset, std::span<std::byte> buffer);
+        std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
         std::size_t copy_to(object &other, std::uint64_t offset, std::size_t length);
     };
@@ -91,6 +92,11 @@ export namespace vmm
             std::shared_ptr<object> obj, off_t offset
         );
 
+        std::expected<void, error> protect(
+            std::uintptr_t address, std::size_t length,
+            std::uint8_t prot
+        );
+
         bool is_mapped(std::uintptr_t addr, std::size_t length);
         std::uintptr_t find_free_region(std::size_t length);
     };
@@ -99,15 +105,7 @@ export namespace vmm
 
     bool handle_pfault(std::uintptr_t addr, bool on_write);
 
-    enum class space_type : std::size_t
-    {
-        slab,
-        stack,
-        modules,
-        acpi, pci,
-        other
-    };
-    std::uintptr_t alloc_vpages(space_type type, std::size_t pages = 1);
+    std::uintptr_t alloc_vspace(std::size_t pages);
 
     void init();
     void init_vspaces();

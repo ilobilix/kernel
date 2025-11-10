@@ -9,6 +9,7 @@ import cppstd;
 export namespace vfs
 {
     inline constexpr std::size_t symloop_max = 40;
+    inline constexpr std::size_t path_max = 4096;
 
     enum class error
     {
@@ -41,6 +42,7 @@ export namespace vfs
     {
         virtual std::ssize_t read(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
         virtual std::ssize_t write(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
+        virtual bool trunc(std::shared_ptr<inode> self, std::size_t size) = 0;
 
         virtual std::shared_ptr<vmm::object> map(std::shared_ptr<inode> self, bool priv) = 0;
 
@@ -104,6 +106,12 @@ export namespace vfs
             return op->write(shared_from_this(), offset, buffer);
         }
 
+        bool trunc(std::size_t size)
+        {
+            lib::bug_on(op == nullptr);
+            return op->trunc(shared_from_this(), size);
+        }
+
         std::shared_ptr<vmm::object> map(bool priv)
         {
             lib::bug_on(op == nullptr);
@@ -152,7 +160,7 @@ export namespace vfs
 
     auto path_for(lib::path _path) -> expect<path>;
     auto resolve(std::optional<path> parent, lib::path path) -> expect<resolve_res>;
-    auto reduce(path src, std::size_t symlink_depth = symloop_max) -> expect<path>;
+    auto reduce(path parent, path src, std::size_t symlink_depth = symloop_max) -> expect<path>;
 
     auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> expect<void>;
     auto unmount(lib::path target) -> expect<void>;

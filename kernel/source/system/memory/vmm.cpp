@@ -83,6 +83,30 @@ namespace vmm
         return progress;
     }
 
+    std::size_t object::clear(std::uint64_t offset, std::uint8_t value, std::size_t length)
+    {
+        const auto psize = default_page_size();
+
+        std::size_t progress = 0;
+        while (progress < length)
+        {
+            const auto misalign = (progress + offset) % psize;
+            const auto idx = (progress + offset) / psize;
+            const auto csize = std::min(psize - misalign, length - progress);
+
+            const auto page = get_page(idx);
+            if (page == 0)
+                break;
+
+            std::memset(
+                reinterpret_cast<void *>(lib::tohh(page) + misalign),
+                value, csize
+            );
+            progress += csize;
+        }
+        return progress;
+    }
+
     std::size_t object::copy_to(object &other, std::uint64_t offset, std::size_t length)
     {
         const auto psize = default_page_size();
@@ -199,6 +223,99 @@ namespace vmm
         return { };
     }
 
+    std::expected<void, error> vmspace::protect(
+            std::uintptr_t address, std::size_t length,
+            std::uint8_t prot
+        )
+    {
+        const auto psize = default_page_size();
+        if (address % psize)
+            return std::unexpected { error::addr_not_aligned };
+
+        const auto pflags = [prot] {
+            auto ret = pflag::user;
+            if (prot & prot::read)
+                ret |= pflag::read;
+            if (prot & prot::write)
+                ret |= pflag::write;
+            if (prot & prot::exec)
+                ret |= pflag::exec;
+            return ret;
+        } ();
+
+        const auto pages = lib::div_roundup(length, psize);
+        const auto startp = address / psize;
+        const auto endp = startp + pages;
+
+        const auto locked = tree.write_lock();
+
+        auto overlapping = std::views::filter(*locked, [startp, endp](const auto &entry) {
+            return startp < entry.endp && entry.startp < endp;
+        });
+
+        for (const auto &entry : overlapping)
+        {
+            locked->erase(entry);
+
+            if (startp <= entry.startp && entry.endp <= endp)
+            {
+                locked->emplace(
+                    entry.startp, entry.endp,
+                    entry.obj, entry.offsetp,
+                    prot, entry.flags
+                );
+                // remap
+                lib::panic_if(
+                    !pmap->protect(
+                        entry.startp * psize,
+                        (entry.endp - entry.startp) * psize,
+                        pflags
+                    ),
+                    "vmm: could not change protection flags"
+                );
+                continue;
+            }
+
+            const auto headp = startp > entry.startp ? startp - entry.startp : 0;
+            const auto tailp = endp < entry.endp ? entry.endp - endp : 0;
+
+            if (headp != 0)
+            {
+                locked->emplace(
+                    entry.startp, entry.startp + headp,
+                    entry.obj, entry.offsetp,
+                    entry.prot, entry.flags
+                );
+            }
+
+            if (tailp != 0)
+            {
+                locked->emplace(
+                    entry.endp - tailp, entry.endp,
+                    entry.obj, entry.offsetp + (entry.endp - entry.startp) - tailp,
+                    entry.prot, entry.flags
+                );
+            }
+
+            locked->emplace(
+                std::max(startp, entry.startp), std::min(endp, entry.endp),
+                entry.obj, entry.offsetp + headp,
+                prot, entry.flags
+            );
+
+            lib::panic_if(
+                !pmap->protect(
+                    std::max(startp, entry.startp) * psize,
+                    (std::min(endp, entry.endp) - std::max(startp, entry.startp)) * psize,
+                    pflags
+                ),
+                "vmm: could not change protection flags"
+            );
+        };
+
+        return { };
+    }
+
     bool vmspace::is_mapped(std::uintptr_t addr, std::size_t length)
     {
         const auto psize = default_page_size();
@@ -272,12 +389,14 @@ namespace vmm
                         (entry.startp + entry.offsetp) * psize,
                         (entry.endp - entry.startp) * psize
                     );
-                    lib::bug_on(!vmspace->map(
-                        entry.startp * psize,
-                        (entry.endp - entry.startp) * psize,
-                        entry.prot, entry.flags,
-                        obj, entry.offsetp * psize
-                    ));
+                    lib::panic_if(
+                        !vmspace->map(
+                            entry.startp * psize,
+                            (entry.endp - entry.startp) * psize,
+                            entry.prot, entry.flags,
+                            obj, entry.offsetp * psize
+                        ), "vmm: could not perform copy-on-write"
+                    );
                 }
                 else obj = entry.obj;
 

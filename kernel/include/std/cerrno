@@ -3,6 +3,7 @@
 #pragma once
 
 #include <concepts>
+#include <cstddef>
 
 enum errnos : int
 {
@@ -152,6 +153,12 @@ class errno_type
     errno_type &operator=(errnos rhs)
     {
         *errno_location() = rhs;
+        return *this;
+    }
+
+    errno_type &operator=(std::ssize_t rhs)
+    {
+        *errno_location() = static_cast<errnos>(rhs);
         return *this;
     }
 

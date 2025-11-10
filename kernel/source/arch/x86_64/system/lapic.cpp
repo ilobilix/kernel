@@ -236,7 +236,7 @@ namespace x86_64::apic
             if (is_bsp)
             {
                 pmmio = phys_mmio;
-                mmio = vmm::alloc_vpages(vmm::space_type::other, 1);
+                mmio = vmm::alloc_vspace(1);
 
                 log::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
 
