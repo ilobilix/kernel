@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-
 module drivers.fs.dev.mem;
 
 import drivers.fs.devtmpfs;
@@ -103,8 +99,7 @@ namespace fs::dev::mem
         std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
         {
             lib::unused(self, offset, buffer);
-            errno = ENOSPC;
-            return -1;
+            return (errno = ENOSPC, -1);
         }
 
         bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override

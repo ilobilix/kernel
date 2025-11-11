@@ -134,6 +134,9 @@ export namespace vfs
         std::shared_ptr<file> file;
         std::atomic_bool closexec;
 
+        filedesc() : file { }, closexec { false } { }
+        filedesc(const filedesc &rhs) : file { rhs.file }, closexec { rhs.closexec.load() } { }
+
         static std::shared_ptr<filedesc> create(const path &path, int flags)
         {
             auto fd = std::make_shared<filedesc>();

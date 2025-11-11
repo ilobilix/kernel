@@ -1,10 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-#include <user.h>
-
 module x86_64.system.syscall;
 
 import system.scheduler;

@@ -26,5 +26,5 @@ export namespace time
 
     bool stall_ns(std::size_t ns);
 
-    timespec now();
+    timespec now(clockid_t clockid = 0);
 } // export namespace time

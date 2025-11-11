@@ -1,12 +1,8 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-#include <user.h>
-
 export module lib:syscall;
 
+import :errno;
 import :log;
 import :types;
 import :unused;
@@ -53,15 +49,23 @@ namespace lib::syscall
         private:
         std::string_view name;
         void *handler;
-        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *);
+        bool (*checker)(std::uintptr_t);
+        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *, bool (*)(std::uintptr_t));
+
+        static bool default_checker(std::uintptr_t val)
+        {
+            return static_cast<std::intptr_t>(val) < 0;
+        }
 
         public:
-        constexpr entry(std::string_view name, const auto &func) : name { name }, handler { reinterpret_cast<void *>(func) },
+        constexpr entry(std::string_view name, const auto &func, decltype(checker) check = default_checker)
+            : name { name }, handler { reinterpret_cast<void *>(func) }, checker { check },
             invoker {
-                [](cpu::registers *regs, std::string_view name, void *handler) -> std::uintptr_t
+                [](cpu::registers *regs, std::string_view name, void *handler, bool (*check)(std::uintptr_t)) -> std::uintptr_t
                 {
                     using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
-                    static_assert(std::is_trivially_default_constructible_v<typename sign::return_type>);
+                    constexpr bool is_void = std::same_as<typename sign::return_type, void>;
+                    static_assert(std::is_trivially_default_constructible_v<typename sign::return_type> || is_void);
 
                     const auto arr = Getter::get_args(regs);
                     typename sign::args_type args;
@@ -84,13 +88,19 @@ namespace lib::syscall
                     lib::unused(name);
 #endif
 
+                    const auto _check = [&](auto value) { return is_void || check(value); };
+                    std::uintptr_t uptr_ret = 0;
+
                     errno = no_error;
-                    const auto ret = std::apply(reinterpret_cast<sign::type *>(handler), args);
-                    const auto uptr_ret = std::uintptr_t(ret);
-                    const auto iptr_ret = std::intptr_t(ret);
+                    if constexpr (!is_void)
+                    {
+                        const auto ret = std::apply(reinterpret_cast<sign::type *>(handler), args);
+                        uptr_ret = std::uintptr_t(ret);
+                    }
+                    else std::apply(reinterpret_cast<sign::type *>(handler), args);
 
                     const auto error = magic_enum::enum_cast<errnos>(errno);
-                    if (error.has_value() && iptr_ret < 0)
+                    if (error.has_value() && _check(uptr_ret))
                     {
 #if ILOBILIX_SYSCALL_LOG
                         log::debug(
@@ -101,8 +111,11 @@ namespace lib::syscall
                         return -errno;
                     }
 #if ILOBILIX_SYSCALL_LOG
-                    if constexpr (std::is_same_v<typename sign::return_type, void>)
+                    if constexpr (is_void)
+                    {
                         log::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
+                        return 0;
+                    }
                     else if constexpr (std::is_pointer_v<typename sign::return_type>)
                         log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, reinterpret_cast<const void *>(uptr_ret));
                     else
@@ -124,7 +137,7 @@ namespace lib::syscall
 
         std::uintptr_t invoke(cpu::registers *regs)
         {
-            return invoker(regs, name, handler);
+            return invoker(regs, name, handler, checker);
         }
     };
 } // namespace lib::syscall

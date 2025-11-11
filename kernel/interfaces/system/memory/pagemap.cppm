@@ -55,6 +55,7 @@ export namespace vmm
     enum class error
     {
         addr_not_aligned,
+        addr_in_use,
         not_mapped,
         invalid_entry
     };

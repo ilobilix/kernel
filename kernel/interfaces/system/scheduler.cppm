@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-
 export module system.scheduler;
 
 import system.scheduler.base;
@@ -70,6 +66,8 @@ export namespace sched
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
 
+        std::weak_ptr<vmm::memobject> ustack_obj;
+
         std::size_t tid;
         std::size_t pid;
 
@@ -105,10 +103,8 @@ export namespace sched
         lib::rbtree_hook rbtree_hook;
         frg::default_list_hook<thread> list_hook;
 
-        static std::uintptr_t allocate_ustack(process *proc);
         static std::uintptr_t allocate_kstack(process *proc);
 
-        std::uintptr_t modify_ustack();
         void update_ustack(std::uintptr_t addr);
 
         void prepare_sleep(std::size_t ms = 0);
@@ -128,8 +124,8 @@ export namespace sched
         std::size_t pgid;
         std::size_t sid;
 
-        gid_t gid = 0, sgid = 0, egid = 0;
-        uid_t uid = 0, suid = 0, euid = 0;
+        gid_t rgid = 0, sgid = 0, egid = 0;
+        uid_t ruid = 0, suid = 0, euid = 0;
 
         std::shared_ptr<vmm::vmspace> vmspace;
 

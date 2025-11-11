@@ -172,25 +172,30 @@ namespace vmm
 
         const auto locked = tree.write_lock();
 
-        auto overlapping = std::views::filter(*locked, [startp, endp](const auto &entry) {
-            return startp < entry.endp && entry.startp < endp;
-        });
+        const auto overlapping = std::ranges::to<std::vector<mapping>>(
+            std::views::filter(*locked, [startp, endp](const auto &entry) {
+                return startp < entry.endp && entry.startp < endp;
+            })
+        );
 
         for (const auto &entry : overlapping)
         {
+            if (entry.flags & flag::untouchable)
+                return std::unexpected { error::addr_in_use };
+
             locked->erase(entry);
 
             if (startp <= entry.startp && entry.endp <= endp)
             {
                 const auto addr = entry.startp * psize;
                 const auto sz = entry.endp * psize - addr;
-                lib::bug_on(!pmap->unmap(addr, sz, page_size::small));
+                lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
             }
             else
             {
                 const auto addr = std::max(startp, entry.startp) * psize;
                 const auto sz = std::min(endp, entry.endp) * psize - addr;
-                lib::bug_on(!pmap->unmap(addr, sz, page_size::small));
+                lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
 
                 const auto headp = startp < entry.startp ? 0 : startp - entry.startp;
                 const auto tailp = endp >= entry.endp ? 0 : entry.endp - endp;
@@ -223,10 +228,66 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> vmspace::protect(
-            std::uintptr_t address, std::size_t length,
-            std::uint8_t prot
-        )
+    std::expected<void, error> vmspace::unmap(std::uintptr_t address, std::size_t length)
+    {
+        const auto psize = default_page_size();
+        if (address % psize)
+            return std::unexpected { error::addr_not_aligned };
+
+        const auto startp = address / psize;
+        const auto endp = lib::div_roundup(address + length, psize);
+
+        const auto locked = tree.write_lock();
+
+        const auto overlapping = std::ranges::to<std::vector<mapping>>(
+            std::views::filter(*locked, [startp, endp](const auto &entry) {
+                return startp < entry.endp && entry.startp < endp && !(entry.flags & flag::untouchable);
+            })
+        );
+
+        for (const auto &entry : overlapping)
+        {
+            locked->erase(entry);
+
+            if (startp <= entry.startp && entry.endp <= endp)
+            {
+                const auto addr = entry.startp * psize;
+                const auto sz = entry.endp * psize - addr;
+                lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
+                continue;
+            }
+
+            const auto headp = startp > entry.startp ? startp - entry.startp : 0;
+            const auto tailp = endp < entry.endp ? entry.endp - endp : 0;
+
+            if (headp != 0)
+            {
+                locked->emplace(
+                    entry.startp, entry.startp + headp,
+                    entry.obj, entry.offsetp,
+                    entry.prot, entry.flags
+                );
+            }
+
+            if (tailp != 0)
+            {
+                locked->emplace(
+                    entry.endp - tailp, entry.endp,
+                    entry.obj, entry.offsetp + (entry.endp - entry.startp) - tailp,
+                    entry.prot, entry.flags
+                );
+            }
+
+            const auto addr = std::max(startp, entry.startp) * psize;
+            const auto sz = std::min(endp, entry.endp) * psize - addr;
+            lib::panic_if(!pmap->unmap(addr, sz), "vmm: could not unmap region");
+        };
+
+        return { };
+
+    }
+
+    std::expected<void, error> vmspace::protect(std::uintptr_t address, std::size_t length, std::uint8_t prot)
     {
         const auto psize = default_page_size();
         if (address % psize)
@@ -249,9 +310,11 @@ namespace vmm
 
         const auto locked = tree.write_lock();
 
-        auto overlapping = std::views::filter(*locked, [startp, endp](const auto &entry) {
-            return startp < entry.endp && entry.startp < endp;
-        });
+        const auto overlapping = std::ranges::to<std::vector<mapping>>(
+            std::views::filter(*locked, [startp, endp](const auto &entry) {
+                return startp < entry.endp && entry.startp < endp && !(entry.flags & flag::untouchable);
+            })
+        );
 
         for (const auto &entry : overlapping)
         {
@@ -264,15 +327,11 @@ namespace vmm
                     entry.obj, entry.offsetp,
                     prot, entry.flags
                 );
-                // remap
-                lib::panic_if(
-                    !pmap->protect(
-                        entry.startp * psize,
-                        (entry.endp - entry.startp) * psize,
-                        pflags
-                    ),
-                    "vmm: could not change protection flags"
-                );
+
+                const auto addr = entry.startp * psize;
+                const auto sz = (entry.endp - entry.startp) * psize;
+                lib::panic_if(!pmap->protect(addr, sz, pflags), "vmm: could not change protection flags");
+
                 continue;
             }
 
@@ -303,14 +362,9 @@ namespace vmm
                 prot, entry.flags
             );
 
-            lib::panic_if(
-                !pmap->protect(
-                    std::max(startp, entry.startp) * psize,
-                    (std::min(endp, entry.endp) - std::max(startp, entry.startp)) * psize,
-                    pflags
-                ),
-                "vmm: could not change protection flags"
-            );
+            const auto addr = std::max(startp, entry.startp) * psize;
+            const auto sz = std::min(endp, entry.endp) * psize - addr;
+            lib::panic_if(!pmap->protect(addr, sz, pflags), "vmm: could not change protection flags");
         };
 
         return { };
@@ -318,6 +372,9 @@ namespace vmm
 
     bool vmspace::is_mapped(std::uintptr_t addr, std::size_t length)
     {
+        if (length == 0)
+            return false;
+
         const auto psize = default_page_size();
 
         const auto pages = lib::div_roundup(length, psize);
@@ -330,14 +387,20 @@ namespace vmm
             return startp < entry.endp && entry.startp < endp;
         });
 
-        std::optional<std::uintptr_t> prev { std::nullopt };
+        std::size_t covered = 0;
         for (const auto &entry : overlapping)
         {
-            if (prev.has_value() && prev.value() + 1 != entry.startp)
+            if (entry.endp < covered)
+                continue;
+
+            if (entry.startp > covered)
                 return false;
-            prev = entry.endp;
+
+            covered = std::max(covered, std::min(endp, entry.endp));
+            if (covered >= endp)
+                return true;
         }
-        return prev.has_value();
+        return covered >= endp;
     }
 
     std::uintptr_t vmspace::find_free_region(std::size_t length)

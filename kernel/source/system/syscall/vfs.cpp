@@ -1,10 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-#include <user.h>
-
 module system.syscall.vfs;
 
 import system.scheduler;
@@ -29,23 +24,14 @@ namespace syscall::vfs
                 return proc->cwd;
 
             if (dirfd < 0)
-            {
-                errno = EINVAL;
-                return std::nullopt;
-            }
+                return (errno = EBADF, std::nullopt);
 
             auto fd = proc->fdt.get(static_cast<std::size_t>(dirfd));
             if (fd == nullptr)
-            {
-                errno = EBADF;
-                return std::nullopt;
-            }
+                return (errno = EBADF, std::nullopt);
 
             if (fd->file->path.dentry->inode->stat.type() != stat::type::s_ifdir)
-            {
-                errno = ENOTDIR;
-                return std::nullopt;
-            }
+                return (errno = ENOTDIR, std::nullopt);
 
             return fd->file->path;
         }
@@ -93,10 +79,8 @@ namespace syscall::vfs
 
             const auto res = vfs::resolve(parent, path);
             if (!res)
-            {
-                errno = map_error(res.error());
-                return std::nullopt;
-            }
+                return (errno = map_error(res.error()), std::nullopt);
+
             return res.value();
         }
 
@@ -104,15 +88,9 @@ namespace syscall::vfs
         {
             const auto pathname_len = lib::strnlen_user(pathname, vfs::path_max);
             if (pathname_len == 0)
-            {
-                errno = EINVAL;
-                return std::nullopt;
-            }
+                return (errno = EINVAL, std::nullopt);
             if (pathname_len == vfs::path_max)
-            {
-                errno = ENAMETOOLONG;
-                return std::nullopt;
-            }
+                return (errno = ENAMETOOLONG, std::nullopt);
 
             lib::path path { pathname_len, 0 };
             lib::bug_on(path.str().size() != pathname_len);
@@ -144,16 +122,10 @@ namespace syscall::vfs
         const bool write = is_write(flags);
 
         if ((flags & o_tmpfile) && !write)
-        {
-            errno = EINVAL;
-            return -1;
-        }
+            return (errno = EINVAL, -1);
 
         if ((flags & o_directory) && (flags & o_creat))
-        {
-            errno = EINVAL;
-            return -1;
-        }
+            return (errno = EINVAL, -1);
 
         // ignore other bits
         mode &= (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
@@ -161,6 +133,7 @@ namespace syscall::vfs
         const auto val = get_path(pathname);
         if (!val.has_value())
             return -1;
+
         const auto path = val.value();
 
         vfs::path target { };
@@ -175,17 +148,12 @@ namespace syscall::vfs
                 return -1;
 
             if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
-            {
-                errno = ENOTDIR;
-                return -1;
-            }
+                return (errno = ENOTDIR, -1);
 
             const auto created = vfs::create(parent->target, path.basename(), (mode & ~proc->umask));
             if (!created.has_value())
-            {
-                errno = map_error(created.error());
-                return -1;
-            }
+                return (errno = map_error(created.error()), -1);
+
             lib::bug_on(!created->dentry || created->dentry->inode);
 
             const auto &parent_stat = parent->target.dentry->inode->stat;
@@ -213,39 +181,25 @@ namespace syscall::vfs
             {
                 const auto reduced = vfs::reduce(res->parent, target);
                 if (!reduced.has_value())
-                {
-                    errno = map_error(reduced.error());
-                    return -1;
-                }
+                    return (errno = map_error(reduced.error()), -1);
                 target = reduced.value();
             }
             else if (target.dentry->inode->stat.type() == stat::type::s_iflnk)
-            {
-                errno = ELOOP;
-                return -1;
-            }
+                return (errno = ELOOP, -1);
         }
 
         auto &stat = target.dentry->inode->stat;
         if (stat.type() == stat::type::s_ifdir && write)
-        {
-            errno = EISDIR;
-            return -1;
-        }
+            return (errno = EISDIR, -1);
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
-        {
-            errno = ENOTDIR;
-            return -1;
-        }
+            return (errno = ENOTDIR, -1);
 
         if (flags & o_trunc)
         {
             if (!target.dentry->inode->trunc(0))
-            {
-                errno = EINVAL;
-                return -1;
-            }
+                return (errno = EINVAL, -1);
+
             stat.update_time(stat::time::modify | stat::time::status);
         }
 
@@ -260,11 +214,9 @@ namespace syscall::vfs
         const auto thread = sched::this_thread();
         const auto proc = sched::proc_for(thread->pid);
 
-        if (!proc->fdt.close(static_cast<std::size_t>(fd)))
-        {
-            errno = EBADF;
-            return -1;
-        }
+        if (fd < 0 || !proc->fdt.close(static_cast<std::size_t>(fd)))
+            return (errno = EBADF, -1);
+
         return 0;
     }
 
@@ -273,34 +225,24 @@ namespace syscall::vfs
         const auto thread = sched::this_thread();
         const auto proc = sched::proc_for(thread->pid);
 
+        if (fd < 0)
+            return (errno = EBADF, -1);
         auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
         if (!fdesc)
-        {
-            errno = EBADF;
-            return -1;
-        }
+            return (errno = EBADF, -1);
 
         auto &file = fdesc->file;
         if (!is_read(file->flags))
-        {
-            errno = EBADF;
-            return -1;
-        }
+            return (errno = EBADF, -1);
 
         auto &stat = file->path.dentry->inode->stat;
         if (stat.type() == stat::type::s_ifdir)
-        {
-            errno = EISDIR;
-            return -1;
-        }
+            return (errno = EISDIR, -1);
 
         lib::membuffer buffer { count };
         const auto ret = fdesc->file->read(buffer.span());
         if (ret < 0)
-        {
-            errno = -ret;
-            return -1;
-        }
+            return (errno = -ret, -1);
 
         if (ret > 0)
             lib::copy_to_user(buf, buffer.data(), static_cast<std::size_t>(ret));
@@ -314,29 +256,22 @@ namespace syscall::vfs
         const auto thread = sched::this_thread();
         const auto proc = sched::proc_for(thread->pid);
 
+        if (fd < 0)
+            return (errno = EBADF, -1);
         auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
         if (!fdesc)
-        {
-            errno = EBADF;
-            return -1;
-        }
+            return (errno = EBADF, -1);
 
         auto &file = fdesc->file;
         if (!is_write(file->flags))
-        {
-            errno = EBADF;
-            return -1;
-        }
+            return (errno = EBADF, -1);
 
         lib::membuffer buffer { count };
         lib::copy_from_user(buffer.data(), buf, count);
 
         const auto ret = fdesc->file->write(buffer.span());
         if (ret < 0)
-        {
-            errno = -ret;
-            return -1;
-        }
+            return (errno = -ret, -1);
 
         // TODO: sync
 
@@ -350,21 +285,17 @@ namespace syscall::vfs
         const auto thread = sched::this_thread();
         const auto proc = sched::proc_for(thread->pid);
 
+        if (fd < 0)
+            return (errno = EBADF, -1);
         auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
         if (!fdesc)
-        {
-            errno = EBADF;
-            return -1;
-        }
+            return (errno = EBADF, -1);
 
         auto &file = fdesc->file;
         auto &stat = file->path.dentry->inode->stat;
         const auto type = stat.type();
         if (type == stat::s_ifchr || type == stat::s_ifsock || type == stat::s_ififo)
-        {
-            errno = ESPIPE;
-            return -1;
-        }
+            return (errno = ESPIPE, -1);
 
         std::size_t new_offset = 0;
         switch (whence)
@@ -374,37 +305,147 @@ namespace syscall::vfs
                 break;
             case seek_cur:
                 if (file->offset + offset > std::numeric_limits<off_t>::max())
-                {
-                    errno = EOVERFLOW;
-                    return -1;
-                }
+                    return (errno = EOVERFLOW, -1);
                 new_offset = file->offset + offset;
                 break;
             case seek_end:
             {
                 const std::size_t size = stat.st_size;
                 if (size + offset > std::numeric_limits<off_t>::max())
-                {
-                    errno = EOVERFLOW;
-                    return -1;
-                }
+                    return (errno = EOVERFLOW, -1);
                 new_offset = size + offset;
                 break;
             }
             default:
-                errno = EINVAL;
-                return -1;
+                return (errno = EINVAL, -1);
         }
 
         if constexpr (std::is_signed_v<off_t>)
         {
             if (static_cast<off_t>(new_offset) < 0)
-            {
-                errno = EOVERFLOW;
-                return -1;
-            }
+                return (errno = EOVERFLOW, -1);
         }
 
         return file->offset = new_offset;
+    }
+
+    int fstatat(int dirfd, const char __user *pathname, ::stat __user *statbuf, int flags)
+    {
+        const auto thread = sched::this_thread();
+        const auto proc = sched::proc_for(thread->pid);
+
+        if (flags & at_empty_path)
+        {
+            if (dirfd == at_fdcwd)
+            {
+                lib::copy_to_user(statbuf, &proc->cwd.dentry->inode->stat, sizeof(::stat));
+                return 0;
+            }
+
+            if (dirfd < 0)
+                return (errno = EBADF, -1);
+            auto fd = proc->fdt.get(static_cast<std::size_t>(dirfd));
+            if (fd == nullptr)
+                return (errno = EBADF, -1);
+
+            auto &inode = fd->file->path.dentry->inode;
+            lib::copy_to_user(statbuf, &inode->stat, sizeof(::stat));
+            return 0;
+        }
+
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+
+        const auto val = get_path(pathname);
+        if (!val.has_value())
+            return -1;
+
+        const auto path = val.value();
+
+        vfs::path target { };
+        const auto res = resolve_from(proc, dirfd, path);
+        if (!res.has_value())
+            return -1;
+
+        target = res->target;
+        lib::bug_on(!target.dentry || !target.dentry->inode);
+
+        if (follow_links)
+        {
+            const auto reduced = vfs::reduce(res->parent, target);
+            if (!reduced.has_value())
+                return (errno = map_error(reduced.error()), -1);
+            target = reduced.value();
+        }
+
+        lib::copy_to_user(statbuf, &target.dentry->inode->stat, sizeof(::stat));
+        return 0;
+    }
+
+    int ioctl(int fd, unsigned long request, void __user *argp)
+    {
+        const auto thread = sched::this_thread();
+        const auto proc = sched::proc_for(thread->pid);
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &inode = fdesc->file->path.dentry->inode;
+        return inode->ioctl(request, lib::may_be_uptr { argp });
+    }
+
+    int fcntl(int fd, int cmd, std::uintptr_t arg)
+    {
+        const auto thread = sched::this_thread();
+        const auto proc = sched::proc_for(thread->pid);
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        switch (cmd)
+        {
+            case 0: // F_DUPFD
+            {
+                const auto newfd = static_cast<int>(arg);
+                if (newfd < 0)
+                    return (errno = EINVAL, -1);
+                const auto newfdesc = std::make_shared<filedesc>(*fdesc);
+                const auto new_fd = proc->fdt.allocate_fd(newfdesc, newfd, false);
+                if (!new_fd.has_value())
+                    return (errno = EMFILE, -1);
+                return static_cast<int>(new_fd.value());
+            }
+            case 1: // F_GETFD
+                return fdesc->file->flags | (fdesc->closexec ? o_closexec : 0);
+            case 2: // F_SETFD
+                fdesc->closexec = (arg & o_closexec) != 0;
+                fdesc->file->flags = static_cast<int>(arg) & ~o_closexec;
+                break;
+            // case 3: // F_GETFL
+            //     break;
+            // case 4: // F_SETFL
+            //     break;
+            default:
+                return (errno = EINVAL, -1);
+        }
+        return 0;
+    }
+
+    char *getcwd(char __user *buf, std::size_t size)
+    {
+        const auto thread = sched::this_thread();
+        const auto proc = sched::proc_for(thread->pid);
+
+        const auto path_str = vfs::pathname_from(proc->cwd);
+        if (path_str.size() + 1 > size)
+            return (errno = ERANGE, nullptr);
+
+        lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1);
+        return (__force char *)(buf);
     }
 } // namespace syscall::vfs

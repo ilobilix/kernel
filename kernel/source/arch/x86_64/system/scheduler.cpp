@@ -11,6 +11,7 @@ import system.cpu.self;
 import system.cpu;
 import magic_enum;
 import arch;
+import boot;
 import lib;
 import cppstd;
 
@@ -84,9 +85,16 @@ namespace sched::arch
 
     void deinitialise(process *proc, thread *thread)
     {
+        auto &pmap = proc->vmspace->pmap;
+
         const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
-        if (const auto ret = proc->vmspace->pmap->unmap_dealloc(vaddr, thread->fpu_size, vmm::page_size::small); !ret)
-            lib::panic("could not unmap thread fpu storage: {}", magic_enum::enum_name(ret.error()));
+        if (const auto ret = pmap->unmap_dealloc(vaddr, thread->fpu_size, vmm::page_size::small); !ret)
+            lib::panic("could not unmap thread's fpu storage: {}", magic_enum::enum_name(ret.error()));
+
+        const auto size = boot::kstack_size;
+        const std::uintptr_t bottom = thread->pfstack_top - size;
+        if (const auto ret = pmap->unmap_dealloc(bottom, size, vmm::page_size::small); !ret)
+            lib::panic("could not unmap thread's page fault stack: {}", magic_enum::enum_name(ret.error()));
     }
 
     void save(thread *thread)

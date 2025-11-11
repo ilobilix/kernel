@@ -232,7 +232,10 @@ toolchain("ilobilix-clang")
 
             "-D__cpp_lib_ranges_to_container=202202L",
             "-D__glibcxx_ranges_to_container=202202L",
-            "-D__cpp_lib_constexpr_string=201907L"
+            "-D__cpp_lib_constexpr_string=201907L",
+
+            "-D__user=__attribute__((address_space(1)))",
+            "-D__force=__attribute__((force))"
         }
 
         local ld_args = {

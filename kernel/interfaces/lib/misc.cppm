@@ -1,10 +1,8 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <cerrno>
-
 export module lib:misc;
+
+import :errno;
 import cppstd;
 
 export namespace lib

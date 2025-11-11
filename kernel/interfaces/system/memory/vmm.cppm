@@ -23,7 +23,9 @@ export namespace vmm
         shared = 0x01,
         private_ = 0x02,
         fixed = 0x10,
-        anonymous = 0x20
+        anonymous = 0x20,
+
+        untouchable = 0x40
     };
 
     class object
@@ -91,14 +93,13 @@ export namespace vmm
             std::uint8_t prot, std::uint8_t flags,
             std::shared_ptr<object> obj, off_t offset
         );
-
-        std::expected<void, error> protect(
-            std::uintptr_t address, std::size_t length,
-            std::uint8_t prot
-        );
+        std::expected<void, error> unmap(std::uintptr_t address, std::size_t length);
+        std::expected<void, error> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);
         std::uintptr_t find_free_region(std::size_t length);
+
+        ~vmspace() { lib::panic_if(pmap.use_count() != 1); }
     };
 
     std::size_t default_page_size();
