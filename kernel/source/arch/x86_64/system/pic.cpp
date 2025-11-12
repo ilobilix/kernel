@@ -80,6 +80,7 @@ namespace x86_64::pic
     void init()
     {
         log::info("pic: remapping");
+        arch::int_switch(false);
 
         // auto i1 = lib::io::in<8>(port::master_data);
         // auto i2 = lib::io::in<8>(port::slave_data);

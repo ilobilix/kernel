@@ -72,32 +72,30 @@ namespace lib
         return false;
     }
 
-    void semaphore::signal(std::size_t n, bool drop)
+    void semaphore::signal(bool drop)
     {
         const bool ints = arch::int_switch_status(false);
         lock.lock();
 
-        if (n == 0)
-            n = threads.size();
-
-        if (n == 0 && drop)
+        if (drop && threads.size() == 0)
         {
             lock.unlock();
             arch::int_switch(ints);
             return;
         }
 
-        while (n--)
+        sched::thread *thread = nullptr;
+        if (++signals <= 0)
         {
-            if (++signals <= 0)
-            {
-                auto thread = threads.front();
-                threads.pop_front();
-                static_cast<sched::thread *>(thread)->wake_up(0);
-            }
+            lib::bug_on(threads.size() == 0);
+            thread = static_cast<sched::thread *>(threads.front());
+            threads.pop_front();
         }
 
         lock.unlock();
         arch::int_switch(ints);
+
+        if (thread)
+            thread->wake_up(0);
     }
 } // namespace lib

@@ -263,6 +263,11 @@ export namespace cpu
         {
             return msr::read(0xC0000101);
         }
+
+        bool is_set()
+        {
+            return read_user() != 0;
+        }
     } // namespace gs
 
     namespace fs
@@ -279,4 +284,5 @@ export namespace cpu
     } // namespace gs
 
     extern "C++" std::uintptr_t self_addr() { return gs::read(); }
+    extern "C++" bool percpu_available() { return gs::is_set(); }
 } // export namespace cpu

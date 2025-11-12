@@ -193,6 +193,15 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_MAX_UACPI_POINTS=" .. (get_config("max_uacpi_points") and "1" or "0"))
     add_defines("ILOBILIX_LIMINE_MP=" .. (get_config("limine_mp") and "1" or "0"))
 
+    add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage", { public = true })
+    add_defines("cpu_local_init(name, ...)=" ..
+        "void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base)" ..
+            "{ name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); };" ..
+        "[[gnu::section(\".percpu_init\"), gnu::used]]" ..
+        "const auto name ## _init_ptr__ = name ## _init_func__",
+        { public = true }
+    )
+
     add_defines("LIMINE_API_REVISION=2")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 

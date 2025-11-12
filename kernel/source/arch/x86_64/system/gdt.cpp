@@ -61,9 +61,8 @@ namespace x86_64::gdt
 
             return reinterpret_cast<std::uintptr_t>(stack) + boot::kstack_size;
         };
-        tss_local->rsp[0] = allocate_stack(); // cpl3 to cpl0
         tss_local->ist[0] = allocate_stack(); // page fault
-        // tss_local->ist[1] = allocate_stack(); // scheduler
+        tss_local->ist[1] = allocate_stack(); // scheduler
 
         tss_local->iopboffset = sizeof(tss::reg);
 

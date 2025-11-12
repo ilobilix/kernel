@@ -88,8 +88,6 @@ export namespace sched
         std::optional<std::size_t> sleep_until;
 
 #if defined(__x86_64__)
-        std::uintptr_t pfstack_top;
-
         std::uintptr_t gs_base;
         std::uintptr_t fs_base;
 
@@ -102,8 +100,6 @@ export namespace sched
 
         lib::rbtree_hook rbtree_hook;
         frg::default_list_hook<thread> list_hook;
-
-        static std::uintptr_t allocate_kstack(process *proc);
 
         void update_ustack(std::uintptr_t addr);
 
@@ -190,7 +186,6 @@ export namespace sched
 
     void enable();
     void disable();
-    bool is_enabled();
 
     lib::initgraph::stage *pid0_initialised_stage();
 

@@ -286,6 +286,31 @@ namespace vmm
         return { };
     }
 
+    std::expected<void, error> vmspace::unmap(std::shared_ptr<object> obj)
+    {
+        lib::bug_on(obj == nullptr);
+
+        const auto psize = default_page_size();
+        const auto locked = tree.write_lock();
+
+        const auto overlapping = std::ranges::to<std::vector<mapping>>(
+            std::views::filter(*locked, [obj](const auto &entry) {
+                return entry.obj == obj && !(entry.flags & flag::untouchable);
+            })
+        );
+
+        for (const auto &entry : overlapping)
+        {
+            locked->erase(entry);
+
+            const auto addr = entry.startp * psize;
+            const auto sz = (entry.endp - entry.startp) * psize;
+            lib::panic_if(!pmap->unmap(addr, sz), "vmm: could not unmap region");
+        };
+
+        return { };
+    }
+
     std::expected<void, error> vmspace::protect(std::uintptr_t address, std::size_t length, std::uint8_t prot)
     {
         const auto psize = default_page_size();

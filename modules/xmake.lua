@@ -19,6 +19,7 @@ target("modules.dependencies")
         "-nostdlib",
         "-Wl,-znoexecstack",
         "-fpic",
+        "-fno-plt",
         "-Wl,-T" .. "$(projectdir)/modules/module.ld",
         { force = true, public = true }
     )

@@ -23,12 +23,15 @@ export namespace cpu
             std::size_t idx;
             std::size_t arch_id;
 
+            std::atomic_bool in_interrupt;
+
             errnos err = no_error;
             std::atomic_bool online = false;
         };
 
         processor *self();
         std::uintptr_t self_addr();
+        bool percpu_available();
     } // extern "C++"
 
     namespace per

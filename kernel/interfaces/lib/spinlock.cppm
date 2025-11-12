@@ -1,15 +1,17 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:spinlock;
+
 import cppstd;
 
 namespace lib::lock
 {
     bool acquire_irq();
     void release_irq(bool irq);
+    bool in_interrupt();
 
-    bool acquire_preempt();
-    void release_preempt(bool preempt);
+    void acquire_preempt();
+    void release_preempt();
 
     void pause();
 
@@ -114,7 +116,8 @@ export namespace lib
         void lock()
         {
             spinlock_base<lock_type::none>::lock();
-            _interrupts = lock::acquire_irq();
+            if (!lock::in_interrupt())
+                _interrupts = lock::acquire_irq();
         }
 
         bool unlock()
@@ -122,7 +125,8 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::release_irq(_interrupts);
+            if (!lock::in_interrupt())
+                lock::release_irq(_interrupts);
             return true;
         }
     };
@@ -130,25 +134,16 @@ export namespace lib
     template<>
     class spinlock_base<lock_type::preempt> : public spinlock_base<lock_type::none>
     {
-        private:
-        bool _preempt;
-
         public:
         constexpr spinlock_base()
-            : spinlock_base<lock_type::none> { }, _preempt { false } { }
+            : spinlock_base<lock_type::none> { } { }
 
         using spinlock_base<lock_type::none>::spinlock_base;
 
         void lock()
         {
-            while (true)
-            {
-                _preempt = lock::acquire_preempt();
-                if (spinlock_base<lock_type::none>::try_lock())
-                    break;
-                lock::release_preempt(_preempt);
-                lock::pause();
-            }
+            spinlock_base<lock_type::none>::lock();
+            lock::acquire_preempt();
         }
 
         bool unlock()
@@ -156,7 +151,7 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::release_preempt(_preempt);
+            lock::release_preempt();
             return true;
         }
     };

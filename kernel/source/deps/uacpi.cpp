@@ -46,7 +46,7 @@ namespace uacpi
                 }
             }
             if (worked)
-                completed.signal(0, true);
+                completed.signal(true);
         }
     }
 
@@ -374,7 +374,7 @@ extern "C"
         if (sched::is_initialised())
         {
             const auto thread = sched::this_thread();
-            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->pid));
+            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->parent->pid));
         }
 
         return reinterpret_cast<uacpi_thread_id>(1);

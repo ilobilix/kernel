@@ -44,44 +44,32 @@ namespace sched
 
         thread *running_thread;
 
-        lib::locker<
-            lib::rbtree<
-                thread,
-                &thread::rbtree_hook,
-                compare<
-                    std::optional<std::size_t>,
-                    &thread::sleep_until
-                >
-            >,
-            lib::spinlock_preempt
+        lib::rbtree<
+            thread,
+            &thread::rbtree_hook,
+            compare<
+                std::optional<std::size_t>,
+                &thread::sleep_until
+            >
         > sleep_queue;
 
         process *idle_proc;
         thread *idle_thread;
 
-        lib::locker<
-            frg::intrusive_list<
+        frg::intrusive_list<
+            thread,
+            frg::locate_member<
                 thread,
-                frg::locate_member<
-                    thread,
-                    frg::default_list_hook<thread>,
-                    &thread::list_hook
-                >
-            >,
-            lib::spinlock_preempt
+                frg::default_list_hook<thread>,
+                &thread::list_hook
+            >
         > dead_threads;
 
-        lib::semaphore reap;
+        std::size_t preemption = 0;
+        bool in_scheduler = false;
     };
 
     cpu_local<percpu> percpu;
-
-    cpu_local<bool> preemption;
-    cpu_local_init(preemption, true);
-
-    cpu_local<bool> in_scheduler;
-    cpu_local_init(in_scheduler, false);
-
     cpu_local_init(percpu);
 
     namespace arch
@@ -212,16 +200,6 @@ namespace sched
         return ret;
     }
 
-    std::uintptr_t thread::allocate_kstack(process *proc)
-    {
-        auto &pmap = proc->vmspace->pmap;
-        const auto vaddr = vmm::alloc_vspace(boot::kstack_size / pmm::page_size);
-        if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::pflag::rw, vmm::page_size::small); !ret)
-            lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
-
-        return vaddr + boot::kstack_size;
-    }
-
     void thread::update_ustack(std::uintptr_t addr)
     {
         lib::bug_on(!is_user);
@@ -262,15 +240,21 @@ namespace sched
 
     thread::~thread()
     {
-        const auto &pmap = parent->vmspace->pmap;
+        std::free(kstack_top - boot::kstack_size);
 
-        const std::uintptr_t bottom = kstack_top - boot::kstack_size;
-        if (const auto ret = pmap->unmap_dealloc(bottom, boot::kstack_size, vmm::page_size::small); !ret)
-            lib::panic("could not unmap thread's kernel stack: {}", magic_enum::enum_name(ret.error()));
+        if (is_user)
+        {
+            const auto obj_ref = ustack_obj.use_count();
+            const auto &vmspace = parent->vmspace;
+            // const auto vaddr = ustack_top - boot::ustack_size;
+            // lib::panic_if(!vmspace->unmap(vaddr, boot::ustack_size));
+            lib::panic_if(!vmspace->unmap(ustack_obj.lock()));
+            lib::panic_if(ustack_obj.use_count() != obj_ref - 1);
+        }
 
         arch::deinitialise(parent, this);
 
-        lib::panic("TODO: thread {} deconstructor", tid);
+        // log::error("TODO: thread {} deconstructor on cpu {}", tid, cpu::self()->idx);
     }
 
     thread *thread::create(process *parent, std::uintptr_t ip, bool is_user)
@@ -285,7 +269,7 @@ namespace sched
         thread->priority = default_prio;
         thread->vruntime = 0;
 
-        auto stack = thread::allocate_kstack(parent);
+        const auto stack = std::malloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
         thread->kstack_top = stack;
 
         if (is_user)
@@ -425,7 +409,11 @@ namespace sched
                 );
                 std::unreachable();
             case status::sleeping:
-                obj.sleep_queue.lock()->insert(thread);
+                lib::panic_if(
+                    cpu::self()->idx != cpu_idx,
+                    "can't enqueue a sleeping thread on a different cpu"
+                );
+                obj.sleep_queue.insert(thread);
                 break;
             [[likely]] case status::running:
                 thread->status = status::ready;
@@ -453,24 +441,31 @@ namespace sched
 
     void reaper()
     {
+        auto &dead = percpu->dead_threads;
         while (true)
         {
-            percpu->reap.wait();
-
-            // move dead_threads so it's not locked for a long time
-            decltype(percpu::dead_threads)::value_type list;
+            while (true)
             {
-                auto locked = percpu->dead_threads.lock();
-                while (!locked->empty())
-                    list.push_back(locked->pop_front());
+                if (!dead.empty())
+                    break;
+                yield();
             }
+
+            disable();
+            decltype(percpu::dead_threads) list;
+            while (!dead.empty())
+                list.push_back(dead.pop_front());
+            enable();
+
             while (!list.empty())
             {
                 // TODO
-                const auto thread = std::move(list.front());
+                const auto thread = list.front();
                 list.pop_front();
+
                 auto proc = thread->parent;
                 lib::bug_on(proc->threads.erase(thread->tid) != 1);
+
                 delete thread;
                 if (proc->threads.empty())
                     lib::panic("TODO: process {} exit", proc->pid);
@@ -481,11 +476,13 @@ namespace sched
 
     void sleeper()
     {
+        auto &eepers = percpu->sleep_queue;
+        auto &dead = percpu->dead_threads;
         while (true)
         {
             while (true)
             {
-                if (!percpu->sleep_queue.lock()->empty())
+                if (!eepers.empty())
                     break;
                 yield();
             }
@@ -493,11 +490,9 @@ namespace sched
             const auto clock = time::main_clock();
             const auto time = clock->ns();
 
-            bool found_dead = false;
-
-            auto slocked = percpu->sleep_queue.lock();
-            const auto begin = slocked->begin();
-            for (auto it = begin; it != slocked->end(); )
+            disable();
+            const auto begin = eepers.begin();
+            for (auto it = begin; it != eepers.end(); )
             {
                 const auto thread = (it++).value();
                 if (!thread->sleep_until.has_value())
@@ -505,13 +500,12 @@ namespace sched
                     switch (thread->status)
                     {
                         case status::ready:
-                            slocked->remove(thread);
+                            eepers.remove(thread);
                             percpu->queue.lock()->insert(thread);
                             break;
                         case status::killed:
-                            slocked->remove(thread);
-                            percpu->dead_threads.lock()->push_back(thread);
-                            found_dead = true;
+                            eepers.remove(thread);
+                            dead.push_back(thread);
                             break;
                         case status::not_ready:
                         case status::sleeping:
@@ -528,7 +522,7 @@ namespace sched
                     if (time < thread->sleep_until.value())
                         break;
 
-                    slocked->remove(thread);
+                    eepers.remove(thread);
 
                     thread->status = status::ready;
                     thread->wake_reason = wake_reason::success;
@@ -541,8 +535,7 @@ namespace sched
                     }
                 }
             }
-            if (found_dead)
-                percpu->reap.signal();
+            enable();
             yield();
         }
         std::unreachable();
@@ -550,26 +543,24 @@ namespace sched
 
     void schedule(cpu::registers *regs)
     {
-        if (!preemption.get())
+        auto &pcpu = percpu.get();
+        if (pcpu.preemption > 0)
         {
             arch::reschedule(timeslice);
             return;
         }
-        lib::bug_on(percpu->dead_threads.is_locked());
-        lib::bug_on(percpu->sleep_queue.is_locked());
 
-        in_scheduler = true;
+        pcpu.in_scheduler = true;
 
         const auto clock = time::main_clock();
         const auto time = clock->ns();
 
         const auto self = cpu::self();
-
-        bool found_dead = false;
+        auto &dead = pcpu.dead_threads;
 
         thread *next = nullptr;
         {
-            auto locked = percpu->queue.lock();
+            auto locked = pcpu.queue.lock();
 
             const auto begin = locked->begin();
             for (auto it = begin; it != locked->end(); )
@@ -590,8 +581,7 @@ namespace sched
                         std::unreachable();
                     case status::killed:
                         locked->remove(thread);
-                        percpu->dead_threads.lock()->push_back(thread);
-                        found_dead = true;
+                        dead.push_back(thread);
                         break;
                     [[unlikely]] case status::not_ready:
                         break;
@@ -602,18 +592,13 @@ namespace sched
             found:
         }
 
-        const auto current = percpu->running_thread;
-        const bool is_current_idle = (current == percpu->idle_thread);
+        const auto current = pcpu.running_thread;
+        const bool is_current_idle = (current == pcpu.idle_thread);
 
         std::optional<std::size_t> prev_pid { };
         if (current) [[likely]]
         {
-            if (current->status == status::killed)
-            {
-                percpu->dead_threads.lock()->push_back(current);
-                found_dead = true;
-            }
-            else
+            if (current->status != status::killed)
             {
                 prev_pid = current->parent->pid;
                 if (!is_current_idle) [[likely]]
@@ -638,19 +623,17 @@ namespace sched
                 // should it save idle thread ctx?
                 else save(current, regs);
             }
+            else dead.push_back(current);
         }
 
-        if (found_dead)
-            percpu->reap.signal();
-
         if (next == nullptr) [[unlikely]]
-            next = percpu->idle_thread;
+            next = pcpu.idle_thread;
 
         if (next != current) [[likely]]
         {
             next->running_on = self->self;
             next->status = status::running;
-            percpu->running_thread = next;
+            pcpu.running_thread = next;
 
             const bool same_pid = (prev_pid.has_value() && prev_pid.value() == next->parent->pid);
             load(same_pid, next, regs);
@@ -660,7 +643,7 @@ namespace sched
             next->schedule_time = clock->ns();
 
         arch::reschedule(timeslice);
-        in_scheduler = false;
+        pcpu.in_scheduler = false;
     }
 
     lib::initgraph::stage *pid0_initialised_stage()
@@ -690,23 +673,18 @@ namespace sched
 
     void enable()
     {
-        if (initialised)
+        if (initialised && !percpu->in_scheduler)
         {
-            preemption = true;
-            if (!in_scheduler.get())
+            auto &pre = percpu->preemption;
+            if (pre == 0 || --pre == 0)
                 arch::reschedule(0);
         }
     }
 
     void disable()
     {
-        if (initialised)
-            preemption = false;
-    }
-
-    bool is_enabled()
-    {
-        return initialised && preemption.get();
+        if (initialised && !percpu->in_scheduler)
+            percpu->preemption++;
     }
 
     [[noreturn]] void start()

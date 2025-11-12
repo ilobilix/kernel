@@ -14,9 +14,10 @@ export import aarch64.system.cpu;
 export namespace cpu
 {
     extern "C++" struct processor;
+    extern "C++" bool percpu_available();
+
     processor *nth(std::size_t n);
     std::uintptr_t nth_base(std::size_t n);
-    bool percpu_available();
 
     std::size_t bsp_idx();
     std::size_t bsp_aid();
