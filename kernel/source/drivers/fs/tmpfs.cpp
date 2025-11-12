@@ -25,7 +25,7 @@ namespace fs::tmpfs
         stat.st_nlink = 1;
 
         const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = thread->parent;
 
         stat.st_uid = proc->euid;
         stat.st_gid = proc->egid;

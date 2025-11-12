@@ -15,42 +15,23 @@ namespace syscall::proc
 
     pid_t getpid()
     {
-        return sched::this_thread()->pid;
+        return sched::this_thread()->parent->pid;
     }
 
     pid_t getppid()
     {
-        const auto parent = sched::proc_for(sched::this_thread()->pid)->parent;
+        const auto parent = sched::this_thread()->parent->parent;
         return parent ? parent->pid : 0;
     }
 
-    uid_t getuid()
-    {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
-        return proc->ruid;
-    }
-
-    uid_t geteuid()
-    {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
-        return proc->euid;
-    }
-
-    gid_t getgid()
-    {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
-        return proc->rgid;
-    }
-
-    gid_t getegid()
-    {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
-        return proc->egid;
-    }
+    uid_t getuid() { return sched::this_thread()->parent->ruid;}
+    uid_t geteuid() { return sched::this_thread()->parent->euid; }
+    gid_t getgid() { return sched::this_thread()->parent->rgid; }
+    gid_t getegid() { return sched::this_thread()->parent->egid; }
 
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid)
     {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (ruid)
             lib::copy_to_user(ruid, &proc->ruid, sizeof(uid_t));
@@ -64,7 +45,7 @@ namespace syscall::proc
 
     int getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid)
     {
-        const auto proc = sched::proc_for(sched::this_thread()->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (rgid)
             lib::copy_to_user(rgid, &proc->rgid, sizeof(gid_t));

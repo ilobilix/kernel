@@ -36,7 +36,7 @@ namespace vfs
     path get_root(bool absolute)
     {
         if (!absolute && sched::is_initialised())
-            return sched::proc_for(sched::this_thread()->pid)->root;
+            return sched::this_thread()->parent->root;
 
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
         // hmmmm is this correct? what about multiple mounts?
@@ -67,7 +67,7 @@ namespace vfs
     std::shared_ptr<dentry> dentry::root(bool absolute)
     {
         if (!absolute && sched::is_initialised())
-            return sched::proc_for(sched::this_thread()->pid)->root.dentry;
+            return sched::this_thread()->parent->root.dentry;
         return vfs::root;
     }
 
@@ -103,7 +103,7 @@ namespace vfs
     {
         std::optional<path> parent { };
         if (sched::is_initialised())
-            parent = sched::proc_for(sched::this_thread()->pid)->root;
+            parent = sched::this_thread()->parent->root;
         auto res = resolve(parent, _path);
         if (!res)
             return std::unexpected(res.error());

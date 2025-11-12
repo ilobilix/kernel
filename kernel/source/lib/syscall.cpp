@@ -10,6 +10,6 @@ namespace lib::syscall
     std::pair<std::size_t, std::size_t> get_ptid()
     {
         auto me = sched::this_thread();
-        return { me->pid, me->tid };
+        return { me->parent->pid, me->tid };
     }
 } // namespace lib::syscall
