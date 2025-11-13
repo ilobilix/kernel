@@ -9,6 +9,9 @@ project(ilobilix
 set(CMAKE_PROJECT_LICENSE "EUPL-1.2")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# workaround to make modules and compile_commands.json work with clangd
+set(CMAKE_CXX_COMPILE_OBJECT "${CMAKE_CXX_COMPILE_OBJECT} @<OBJECT>.modmap")
+
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 set(CMAKE_CXX_STANDARD 23)
