@@ -1,0 +1,14 @@
+# Copyright (C) 2024-2025  ilobilo
+
+include(${CMAKE_SOURCE_DIR}/cmake/build-type.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/config.cmake)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR ILOBILIX_UBSAN)
+    string(APPEND CMAKE_C_FLAGS " -DKSYM_NAME_LEN=4096")
+    string(APPEND CMAKE_CXX_FLAGS " -DKSYM_NAME_LEN=4096")
+    string(APPEND CMAKE_ASM_FLAGS " -DKSYM_NAME_LEN=4096")
+else()
+    string(APPEND CMAKE_C_FLAGS " -DKSYM_NAME_LEN=1024")
+    string(APPEND CMAKE_CXX_FLAGS " -DKSYM_NAME_LEN=1024")
+    string(APPEND CMAKE_ASM_FLAGS " -DKSYM_NAME_LEN=1024")
+endif()

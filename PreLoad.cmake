@@ -1,0 +1,12 @@
+# Copyright (C) 2025  ilobilo
+
+set(CMAKE_GENERATOR "Ninja" CACHE INTERNAL "" FORCE)
+
+set(CMAKE_C_COMPILER clang CACHE STRING "C compiler" FORCE)
+set(CMAKE_CXX_COMPILER clang++ CACHE STRING "C++ compiler" FORCE)
+set(CMAKE_ASM_COMPILER clang CACHE STRING "ASM compiler" FORCE)
+
+set(CMAKE_AR llvm-ar CACHE STRING "" FORCE)
+set(CMAKE_NM llvm-nm CACHE STRING "" FORCE)
+set(CMAKE_RANLIB llvm-ranlib CACHE STRING "" FORCE)
+set(CMAKE_STRIP llvm-strip CACHE STRING "" FORCE)

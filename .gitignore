@@ -2,7 +2,9 @@
 .vscode
 .xmake
 .xmake-local
+
 build
+build-cmake
 
 serial.txt
 log.txt
