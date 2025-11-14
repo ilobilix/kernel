@@ -93,6 +93,24 @@ static bool is_ignored_symbol(const char *name, char type)
 	return false;
 }
 
+// static bool is_tls_symbol(const struct sym_entry *s)
+// {
+//     unsigned long long text_begin = text_range_text->start;
+
+//     if (!text_begin || s->addr >= text_begin)
+//         return false;
+
+//     switch (s->sym[0]) {
+// 		case 'D':
+// 		case 'd':
+// 		case 'B':
+// 		case 'b':
+// 			return true;
+// 		default:
+// 			return false;
+//     }
+// }
+
 static void check_symbol_range(const char *sym, unsigned long long addr,
 			       struct addr_range *ranges, int entries)
 {
@@ -196,6 +214,9 @@ static bool string_starts_with(const char *s, const char *prefix)
 static int symbol_valid(const struct sym_entry *s)
 {
 	const char *name = sym_name(s);
+
+	// if (is_tls_symbol(s))
+	// 	return 0;
 
 	/* if --all-symbols is not specified, then symbols outside the text
 	 * and inittext sections are discarded */

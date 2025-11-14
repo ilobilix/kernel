@@ -3,26 +3,52 @@
 module lib;
 
 import system.scheduler;
+import system.cpu.self;
 import system.time;
 import arch;
 import cppstd;
 
 namespace lib::lock
 {
+    namespace
+    {
+        cpu_local<std::atomic_size_t> irq_depth;
+        cpu_local_init(irq_depth, 0uz);
+
+        std::atomic_size_t prepcpu_depth = 0;
+    } // namespace
+
+
     bool acquire_irq()
     {
-        auto irq = arch::int_status();
-        arch::int_switch(false);
-        return irq;
+        const auto ret = arch::int_status();
+
+        std::atomic_size_t *depth = &prepcpu_depth;
+        if (cpu::percpu_available())
+        {
+            depth = &irq_depth.get();
+            if (cpu::self()->in_interrupt.load(std::memory_order_acquire))
+                return ret;
+        }
+
+        if (depth->fetch_add(1, std::memory_order_acquire) == 0)
+            arch::int_switch(false);
+        return ret;
     }
 
-    void release_irq(bool irq)
+    void release_irq(bool old)
     {
-        if (arch::int_status() != irq)
-            arch::int_switch(irq);
-    }
+        std::atomic_size_t *depth = &prepcpu_depth;
+        if (cpu::percpu_available())
+        {
+            depth = &irq_depth.get();
+            if (cpu::self()->in_interrupt.load(std::memory_order_acquire))
+                return;
+        }
 
-    bool in_interrupt() { return arch::in_interrupt(); }
+        if (depth->fetch_sub(1, std::memory_order_release) == 1)
+            arch::int_switch(old);
+    }
 
     void acquire_preempt() { sched::disable(); }
     void release_preempt() { sched::enable(); }
