@@ -53,7 +53,9 @@ export namespace vfs
         o_noatime = 01000000,
         o_nonblock = 04000,
         o_ndelay = o_nonblock,
-        o_sync = 04010000
+        o_sync = 04010000,
+
+        changeable_status_flags = o_append | o_async | o_direct | o_noatime | o_nonblock,
     };
 
     inline constexpr bool is_read(int flags)

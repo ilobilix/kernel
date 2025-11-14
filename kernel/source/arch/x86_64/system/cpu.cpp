@@ -220,12 +220,12 @@ namespace cpu
                 wrreg(cr4, cr4);
             }
 
-            // TSC
-            {
-                auto cr4 = rdreg(cr4);
-                cr4 |= (1 << 2);
-                wrreg(cr4, cr4);
-            }
+            // // TSC in ring 0
+            // {
+            //     auto cr4 = rdreg(cr4);
+            //     cr4 |= (1 << 2);
+            //     wrreg(cr4, cr4);
+            // }
 
             if (cached1 && (res1.c & (1 << 26)))
             {

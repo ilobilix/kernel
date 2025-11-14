@@ -84,7 +84,8 @@ namespace syscall::proc
         // return (errno = ENOSYS, -1);
     }
 
-    struct rlimit {
+    struct rlimit
+    {
         rlim_t rlim_cur;
         rlim_t rlim_max;
     };

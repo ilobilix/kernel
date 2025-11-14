@@ -29,6 +29,9 @@ namespace x86_64::syscall
         [1] = { "write", vfs::write },
         [2] = { "open", vfs::open },
         [3] = { "close", vfs::close },
+        [4] = { "stat", vfs::stat },
+        [5] = { "fstat", vfs::fstat },
+        [6] = { "lstat", vfs::lstat },
         [8] = { "lseek", vfs::lseek },
         [9] = { "mmap", memory::mmap },
         [10] = { "mprotect", memory::mprotect },
@@ -36,6 +39,10 @@ namespace x86_64::syscall
         [13] = { "sigaction", proc::sigaction },
         [14] = { "sigprocmask", proc::sigprocmask },
         [16] = { "ioctl", vfs::ioctl },
+        [17] = { "pread", vfs::pread },
+        [18] = { "pwrite", vfs::pwrite },
+        [19] = { "readv", vfs::readv },
+        [20] = { "writev", vfs::writev },
         [39] = { "getpid", proc::getpid },
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl },
@@ -56,6 +63,8 @@ namespace x86_64::syscall
         [231] = { "exit_group", proc::exit_group },
         [257] = { "openat", vfs::openat },
         [262] = { "fstatat", vfs::fstatat },
+        [295] = { "preadv", vfs::preadv },
+        [296] = { "pwritev", vfs::pwritev },
         [302] = { "prlimit", proc::prlimit }
     };
 

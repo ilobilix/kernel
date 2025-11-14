@@ -23,7 +23,11 @@ extern "C"
         if (!ret.has_value())
             lib::panic("could not resolve {}", path);
 
-        auto format = bin::exec::identify(ret->target.dentry);
+        auto res = vfs::reduce(ret->parent, ret->target);
+        if (!res.has_value())
+            lib::panic("could not reduce {}", path);
+
+        auto format = bin::exec::identify(res->dentry);
         if (!format)
             lib::panic("could not identify {} file format", path);
 

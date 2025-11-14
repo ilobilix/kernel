@@ -66,6 +66,6 @@ add_custom_command(
     VERBATIM
 )
 
-add_custom_target(ilobilix ALL DEPENDS ${KERNEL_OUTPUT_ELF})
+add_custom_target(kernel ALL DEPENDS ${KERNEL_OUTPUT_ELF})
 add_custom_target(kernel_elf_syms DEPENDS ${KERNEL_OUTPUT_SYMS})
-add_dependencies(ilobilix kernel_elf_syms)
+add_dependencies(kernel kernel_elf_syms)
