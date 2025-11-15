@@ -2,6 +2,8 @@
 
 import cppstd;
 
+// phd memcpy from managarm
+
 #if ILOBILIX_MAX_UACPI_POINTS
 template<typename Type>
 struct word_helper { enum class [[gnu::may_alias, gnu::aligned(1)]] word_enum : Type { }; };
