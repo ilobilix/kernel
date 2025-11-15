@@ -243,14 +243,24 @@ export
         timespec st_mtim;
         timespec st_ctim;
 
-        constexpr type type() const
+        static constexpr type type(mode_t mode)
         {
-            return static_cast<enum type>(st_mode & static_cast<mode_t>(type::s_ifmt));
+            return static_cast<enum type>(mode & static_cast<mode_t>(type::s_ifmt));
+        }
+
+        constexpr enum type type() const
+        {
+            return type(st_mode);
+        }
+
+        static constexpr mode_t mode(mode_t mode)
+        {
+            return mode & ~static_cast<mode_t>(type::s_ifmt);
         }
 
         constexpr mode_t mode() const
         {
-            return st_mode & ~static_cast<mode_t>(type::s_ifmt);
+            return mode(st_mode);
         }
 
         static constexpr std::uint32_t major(dev_t dev)

@@ -31,7 +31,9 @@ export namespace vfs
 
         invalid_filesystem,
         invalid_mount,
-        invalid_symlink
+        invalid_symlink,
+        invalid_device,
+        invalid_type
     };
 
     template<typename Type>
@@ -181,7 +183,7 @@ export namespace vfs
     auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> expect<void>;
     auto unmount(lib::path target) -> expect<void>;
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode) -> expect<path>;
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t dev = 0) -> expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;

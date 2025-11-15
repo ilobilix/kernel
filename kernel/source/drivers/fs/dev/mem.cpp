@@ -4,7 +4,9 @@ module drivers.fs.dev.mem;
 
 import drivers.fs.devtmpfs;
 import system.memory.virt;
+import system.dev;
 import system.vfs;
+import boot;
 import lib;
 import cppstd;
 
@@ -81,11 +83,11 @@ namespace fs::dev::mem
         bool sync() override { return true; }
     };
 
-    struct full_dev : vfs::ops
+    struct full_ops : vfs::ops
     {
-        static std::shared_ptr<full_dev> singleton()
+        static std::shared_ptr<full_ops> singleton()
         {
-            static auto instance = std::make_shared<full_dev>();
+            static auto instance = std::make_shared<full_ops>();
             return instance;
         }
 
@@ -117,6 +119,7 @@ namespace fs::dev::mem
         bool sync() override { return true; }
     };
 
+    // TODO
     struct random_dev : vfs::ops
     {
         std::uniform_int_distribution<std::mt19937_64::result_type> dist;
@@ -179,6 +182,15 @@ namespace fs::dev::mem
         lib::initgraph::require { devtmpfs::mounted_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
+            using namespace ::dev;
+            register_cdev(null_ops::singleton(), makedev(1, 3));
+            register_cdev(zero_ops::singleton(), makedev(1, 5));
+            register_cdev(full_ops::singleton(), makedev(1, 7));
+
+            auto rand = random_dev::singleton();
+            rand->rng.seed(boot::time());
+            register_cdev(rand, makedev(1, 8));
+            register_cdev(rand, makedev(1, 9));
         }
     };
 } // namespace fs::dev::mem

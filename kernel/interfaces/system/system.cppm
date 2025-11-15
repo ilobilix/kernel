@@ -7,6 +7,7 @@ export import system.acpi;
 export import system.bin;
 export import system.cpu;
 export import system.cpu.self;
+export import system.dev;
 export import system.interrupts;
 export import system.memory;
 export import system.net;
