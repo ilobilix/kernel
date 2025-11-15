@@ -26,10 +26,6 @@
 	path = dependencies/frigg/frigg
 	url = https://github.com/managarm/frigg
 	shallow = true
-[submodule "dependencies/frozen/frozen"]
-	path = dependencies/frozen/frozen
-	url = https://github.com/serge-sans-paille/frozen
-	shallow = true
 [submodule "dependencies/magic_enum/magic_enum"]
 	path = dependencies/magic_enum/magic_enum
 	url = https://github.com/Neargye/magic_enum

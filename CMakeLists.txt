@@ -21,6 +21,7 @@ set(CMAKE_SCAN_FOR_MODULES)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS ON)
 
+add_subdirectory(dependencies/limine)
 add_subdirectory(dependencies/kallsyms)
 
 add_subdirectory(dependencies)
