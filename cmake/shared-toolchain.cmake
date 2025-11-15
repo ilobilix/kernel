@@ -134,6 +134,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/kallsyms.cmake)
 set(_EXE_LINKER_FLAGS
     "-fuse-ld=lld"
     "-nostdlib"
+    "-static"
     "-Wl,-static"
     "-Wl,-znoexecstack"
     "-Wl,-zmax-page-size=0x1000"

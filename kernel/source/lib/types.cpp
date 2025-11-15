@@ -1,7 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module lib;
+
 import system.time;
+import cppstd;
 
 namespace lib
 {
