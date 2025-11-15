@@ -1,7 +1,0 @@
-#!/bin/sh
-
-name=core-libs
-version=0.0
-revision=1
-deps="mlibc libgcc libstdc++ libintl libiconv tzdata libxcrypt libatomic"
-skip_pkg_check=yes

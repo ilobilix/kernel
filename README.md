@@ -10,7 +10,7 @@ Make sure you have recent versions of the following programs installed:
 * ``lld``
 * ``llvm``
 * ``sed``
-* ``tar``
+<!-- * ``tar``
 * For creating a disk image
   * ``mtools`` (``mformat``, ``mmd`` and ``mcopy``)
   * ``parted``
@@ -20,11 +20,12 @@ Make sure you have recent versions of the following programs installed:
   * ``xorriso``
 * ``qemu-system`` (``x86_64`` and ``aarch64``)
 * To build the sysroot:
-  * [jinx dependencies](https://codeberg.org/Mintsuki/jinx#dependencies)
+  * [jinx dependencies](https://codeberg.org/Mintsuki/jinx#dependencies) -->
 
 ## Building and Running
+### TODO
 
-* Clone this repository:
+<!-- * Clone this repository:
   * ``git clone --depth=1 --recursive https://github.com/ilobilo/ilobilix``
 * (Optional) Configure the kernel:
   * ``./xmake.sh f --option=value``
@@ -40,7 +41,7 @@ Make sure you have recent versions of the following programs installed:
 * (Optional) Run targets are ``[bios|uefi](-[debug|gdb])``. For example: ``bios-debug`` or ``uefi-gdb``
   * Default run target is ``uefi``. (same as ``./xmake.sh run uefi``)
 * To build an iso (``build/ilobilix/[arch]/[mode]/image.iso``):
-  * ``./xmake.sh build iso``
+  * ``./xmake.sh build iso`` -->
 
 ## Known Bugs
 * ``aarch64`` basically doesn't work
