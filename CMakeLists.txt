@@ -21,9 +21,12 @@ set(CMAKE_SCAN_FOR_MODULES)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS ON)
 
+set(INTERNAL_MODULE_TARGETS)
+set(INTERNAL_MODULE_OBJECTS)
+
 add_subdirectory(dependencies/limine)
 add_subdirectory(dependencies/kallsyms)
-
 add_subdirectory(dependencies)
 add_subdirectory(kernel/interfaces)
+add_subdirectory(modules)
 add_subdirectory(kernel/source)

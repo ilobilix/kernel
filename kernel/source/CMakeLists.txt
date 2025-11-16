@@ -22,7 +22,12 @@ add_library(kernel_objs OBJECT ${KERNEL_SOURCE_FILES})
 target_include_directories(kernel_objs PRIVATE ${DEPENDENCY_INCLUDES})
 target_link_libraries(kernel_objs PRIVATE cxx_modules kernel_deps)
 
-set(KERNEL_OBJECTS_JOINED "$<JOIN:$<TARGET_OBJECTS:kernel_objs>,|>")
+set(_kernel_objects "$<TARGET_OBJECTS:kernel_objs>")
+if(INTERNAL_MODULE_OBJECTS)
+    list(APPEND _kernel_objects ${INTERNAL_MODULE_OBJECTS})
+endif()
+list(JOIN _kernel_objects "|" KERNEL_OBJECTS_JOINED)
+
 set(KERNEL_LINK_LIBS cxx_modules kernel_deps)
 set(KERNEL_LINK_LIBS_FILES "")
 foreach(lib IN LISTS KERNEL_LINK_LIBS)
@@ -59,7 +64,12 @@ add_custom_command(
         -DOUTPUT_SYMS=${KERNEL_OUTPUT_SYMS}
         -DTMP_DIR=${KERNEL_TMPDIR}
         -P ${CMAKE_SOURCE_DIR}/cmake/kallsyms-pipeline.cmake
-    DEPENDS kernel_objs kallsyms ${KERNEL_LINK_LIBS}
+    DEPENDS
+        ${_kernel_objects}
+        kernel_objs
+        kallsyms
+        ${KERNEL_LINK_LIBS}
+        ${INTERNAL_MODULE_TARGETS}
     BYPRODUCTS
         ${KERNEL_TMPDIR}/.tmp_ilobilix1
         ${KERNEL_TMPDIR}/.tmp_ilobilix2
@@ -68,4 +78,6 @@ add_custom_command(
 
 add_custom_target(kernel ALL DEPENDS ${KERNEL_OUTPUT_ELF})
 add_custom_target(kernel_elf_syms DEPENDS ${KERNEL_OUTPUT_SYMS})
+
 add_dependencies(kernel kernel_elf_syms)
+add_dependencies(kernel kernel_external_modules)
