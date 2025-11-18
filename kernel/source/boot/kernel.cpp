@@ -35,7 +35,7 @@ extern "C"
         auto proc = sched::process::create(nullptr, pmap);
 
         auto thread = format->load({
-            .file = ret->target,
+            .file = res.value(),
             .interp = std::nullopt,
             .argv = { "bash" },
             .envp = {

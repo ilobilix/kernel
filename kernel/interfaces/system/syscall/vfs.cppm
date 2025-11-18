@@ -35,5 +35,9 @@ export namespace syscall::vfs
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);
 
+    int dup(int oldfd);
+    int dup2(int oldfd, int newfd);
+    int dup3(int oldfd, int newfd, int flags);
+
     char *getcwd(char __user *buf, std::size_t size);
 } // export namespace syscall::vfs

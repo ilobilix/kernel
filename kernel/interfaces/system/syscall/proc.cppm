@@ -21,6 +21,7 @@ export namespace syscall::proc
     int getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid);
 
     pid_t getpgid(pid_t pid);
+    int setpgid(pid_t pid, pid_t pgid);
 
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact);
     int sigprocmask(int how, const struct sigset_t __user *set, struct sigset_t __user *oldset, std::size_t sigsetsize);

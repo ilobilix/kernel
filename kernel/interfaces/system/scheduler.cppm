@@ -68,7 +68,7 @@ export namespace sched
 
         std::weak_ptr<vmm::memobject> ustack_obj;
 
-        std::size_t tid;
+        pid_t tid;
         process *parent;
 
         status status;
@@ -116,9 +116,9 @@ export namespace sched
     {
         static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
 
-        std::size_t pid;
-        std::size_t pgid;
-        std::size_t sid;
+        pid_t pid;
+        pid_t pgid;
+        pid_t sid;
 
         gid_t rgid = 0, sgid = 0, egid = 0;
         uid_t ruid = 0, suid = 0, euid = 0;
@@ -130,13 +130,15 @@ export namespace sched
         mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
         vfs::fdtable fdt;
 
+        bool has_execved = false;
+
         lib::spinlock lock;
 
         process *parent;
-        lib::map::flat_hash<std::size_t, process *> children;
-        lib::map::flat_hash<std::size_t, thread *> threads;
+        lib::map::flat_hash<pid_t, process *> children;
+        lib::map::flat_hash<pid_t, thread *> threads;
 
-        std::atomic<std::size_t> next_tid = 1;
+        std::atomic<pid_t> next_tid = 1;
         std::uintptr_t next_stack_top = initial_stck_top;
 
         static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
@@ -147,31 +149,37 @@ export namespace sched
 
     struct group
     {
-        std::size_t pgid;
-        std::size_t sid;
+        pid_t pgid;
+        pid_t sid;
         lib::locker<
             lib::map::flat_hash<
-                std::size_t, process *
+                pid_t, process *
             >, lib::rwspinlock
         > members;
     };
 
     struct session
     {
-        std::size_t sid;
+        pid_t sid;
         lib::locker<
             lib::map::flat_hash<
-                std::size_t,
-                std::shared_ptr<group>
+                pid_t, std::shared_ptr<group>
             >, lib::rwspinlock
         > members;
     };
 
     bool is_initialised();
 
-    process *proc_for(std::size_t pid);
-    group *group_for(std::size_t pgid);
-    session *session_for(std::size_t sid);
+    process *proc_for(pid_t pid);
+
+    std::shared_ptr<group> group_for(pid_t pgid);
+    std::shared_ptr<session> session_for(pid_t sid);
+
+    std::shared_ptr<group> create_group(process *proc);
+    std::shared_ptr<session> create_session(std::shared_ptr<group> grp);
+
+    bool change_group(process *proc, std::shared_ptr<group> grp);
+    bool change_session(std::shared_ptr<group> grp, std::shared_ptr<session> sess);
 
     thread *this_thread();
 
@@ -181,8 +189,8 @@ export namespace sched
     std::size_t allocate_cpu();
     void enqueue(thread *thread, std::size_t cpu_idx);
 
-    void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);
-    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    void spawn(pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    void spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
 
     void enable();
     void disable();
