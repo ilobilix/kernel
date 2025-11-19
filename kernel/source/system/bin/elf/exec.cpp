@@ -29,13 +29,11 @@ namespace bin::elf::exec
             Elf64_Addr at_phnum;
         };
 
-        static auto load_file(const vfs::path &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t addr) -> std::optional<std::pair<auxval, std::optional<vfs::path>>>
+        static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t addr)
+            -> std::optional<std::pair<auxval, std::shared_ptr<vfs::file>>>
         {
-            lib::bug_on(!file.dentry->inode);
-            auto &inode = file.dentry->inode;
-
             Elf64_Ehdr ehdr;
-            lib::panic_if(inode->read(0, std::span {
+            lib::panic_if(file->pread(0, std::span {
                 reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
             }) != sizeof(ehdr));
 
@@ -50,12 +48,12 @@ namespace bin::elf::exec
                 .at_phnum = ehdr.e_phnum
             };
 
-            std::optional<vfs::path> interp { };
+            std::shared_ptr<vfs::file> interp { };
 
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
-                lib::panic_if(inode->read(
+                lib::panic_if(file->pread(
                     ehdr.e_phoff + i * ehdr.e_phentsize,
                     std::span { reinterpret_cast<std::byte *>(&phdr), sizeof(phdr) }
                 ) != sizeof(phdr));
@@ -80,7 +78,7 @@ namespace bin::elf::exec
                         auto obj = std::make_shared<vmm::memobject>();
 
                         lib::membuffer file_buffer { phdr.p_filesz };
-                        lib::panic_if(inode->read(
+                        lib::panic_if(file->pread(
                             phdr.p_offset, file_buffer.span()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz));
 
@@ -113,7 +111,7 @@ namespace bin::elf::exec
                     case PT_INTERP:
                     {
                         lib::membuffer buffer { phdr.p_filesz - 1 };
-                        lib::panic_if(inode->read(
+                        lib::panic_if(file->pread(
                             phdr.p_offset, buffer.span()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz - 1));
 
@@ -122,11 +120,11 @@ namespace bin::elf::exec
                             phdr.p_filesz - 1
                         };
 
-                        auto ret = vfs::resolve(file, path);
+                        auto ret = vfs::resolve(file->path, path);
                         if (!ret.has_value())
                             return std::nullopt;
 
-                        interp = ret->target;
+                        interp = vfs::file::create(ret->target, 0, 0);
                         break;
                     }
                     default:
@@ -140,13 +138,10 @@ namespace bin::elf::exec
         public:
         format() : bin::exec::format { "elf" } { }
 
-        bool identify(const std::shared_ptr<vfs::dentry> &file) const override
+        bool identify(const std::shared_ptr<vfs::file> &file) const override
         {
-            lib::bug_on(!file || !file->inode);
-            auto &inode = file->inode;
-
             Elf64_Ehdr ehdr;
-            lib::bug_on(inode->read(0, std::span {
+            lib::bug_on(file->pread(0, std::span {
                 reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
             }) != sizeof(ehdr));
 
@@ -168,17 +163,17 @@ namespace bin::elf::exec
 
             const auto auxv = ret->first;
 
-            lib::bug_on(req.interp.has_value() && ret->second.has_value());
+            lib::bug_on(req.interp && ret->second);
 
             std::uintptr_t entry = ret->first.at_entry;
-            if (ret->second.has_value())
+            if (ret->second)
             {
-                ret = load_file(*ret->second, proc->vmspace, 0);
+                ret = load_file(ret->second, proc->vmspace, 0);
                 if (!ret.has_value())
                     return nullptr;
 
                 entry = ret->first.at_entry;
-                lib::bug_on(ret->second.has_value());
+                lib::bug_on(ret->second != nullptr);
             }
 
             auto thread = sched::thread::create(proc, entry, true);

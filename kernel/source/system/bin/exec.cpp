@@ -35,7 +35,7 @@ namespace bin::exec
         return it->second;
     }
 
-    std::shared_ptr<format> identify(const std::shared_ptr<vfs::dentry> &file)
+    std::shared_ptr<format> identify(const std::shared_ptr<vfs::file> &file)
     {
         const auto rlocked = formats.read_lock();
         for (const auto &[name, fmt] : *rlocked)

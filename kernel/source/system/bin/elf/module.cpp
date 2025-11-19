@@ -136,17 +136,19 @@ namespace bin::elf::mod
             log::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");
         }
 
-        bool load(lib::path path, std::shared_ptr<vfs::dentry> node)
+        bool load(lib::path path, std::shared_ptr<vfs::file> file)
         {
-            log::info("elf: module: loading '{}'", path / node->name);
-            auto &back = node->inode;
+            log::info("elf: module: loading '{}'", path / file->path.dentry->name);
 
-            const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
-            lib::panic_if(back->read(0, std::span {
-                file.get(), static_cast<std::size_t>(back->stat.st_size)
-            }) != back->stat.st_size);
+            auto &inode = file->path.dentry->inode;
+            lib::membuffer buffer { static_cast<std::size_t>(inode->stat.st_size) };
+            if (file->pread(0, buffer.span()) != inode->stat.st_size)
+            {
+                log::error("elf: module: could not read the module file");
+                return false;
+            }
 
-            const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(file.get());
+            const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(buffer.data());
 
             if (std::memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
             {
@@ -175,7 +177,7 @@ namespace bin::elf::mod
             }
 
             const std::span<std::uint8_t> phdrs {
-                reinterpret_cast<std::uint8_t *>(file.get() + ehdr->e_phoff),
+                reinterpret_cast<std::uint8_t *>(buffer.data() + ehdr->e_phoff),
                 static_cast<std::size_t>(ehdr->e_phnum * ehdr->e_phentsize)
             };
 
@@ -258,7 +260,7 @@ namespace bin::elf::mod
                         );
                         std::memcpy(
                             reinterpret_cast<void *>(loaded_at + phdr->p_vaddr),
-                            file.get() + phdr->p_offset,
+                            buffer.data() + phdr->p_offset,
                             phdr->p_filesz
                         );
                         break;
@@ -266,7 +268,7 @@ namespace bin::elf::mod
                     case PT_DYNAMIC:
                     {
                         const std::span<Elf64_Dyn> dyntable {
-                            reinterpret_cast<Elf64_Dyn *>(file.get() + phdr->p_offset),
+                            reinterpret_cast<Elf64_Dyn *>(buffer.data() + phdr->p_offset),
                             phdr->p_filesz / sizeof(Elf64_Dyn)
                         };
 
@@ -441,7 +443,10 @@ namespace bin::elf::mod
                     if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
                         continue;
 
-                    load(path, child);
+                    load(path, vfs::file::create({
+                        .mnt = dir.mnt,
+                        .dentry = child
+                    }, 0, 0));
                 }
             };
             load_from("/usr/lib/modules/noarch");

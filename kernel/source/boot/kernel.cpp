@@ -27,16 +27,23 @@ extern "C"
         if (!res.has_value())
             lib::panic("could not reduce {}", path);
 
-        auto format = bin::exec::identify(res->dentry);
+        auto file = vfs::file::create(res.value(), 0, 0);
+        auto format = bin::exec::identify(file);
         if (!format)
             lib::panic("could not identify {} file format", path);
 
         auto pmap = std::make_shared<vmm::pagemap>();
         auto proc = sched::process::create(nullptr, pmap);
 
+        auto cons = vfs::create(std::nullopt, "/dev/console", 0666 | stat::s_ifchr, dev::makedev(5, 1));
+        lib::panic_if(!cons, "could not create /dev/console");
+        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
+        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
+        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
+
         auto thread = format->load({
-            .file = res.value(),
-            .interp = std::nullopt,
+            .file = file,
+            .interp = { },
             .argv = { "bash" },
             .envp = {
                 "TERM=linux",

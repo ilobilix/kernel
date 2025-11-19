@@ -20,27 +20,27 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset, buffer);
+            lib::unused(file, offset, buffer);
             return 0;
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset);
+            lib::unused(file, offset);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
-            lib::unused(self, size);
+            lib::unused(file, size);
             return true;
         }
 
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
         {
-            lib::unused(self, priv);
+            lib::unused(file, priv);
             return nullptr;
         }
 
@@ -55,28 +55,28 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset);
+            lib::unused(file, offset);
             std::memset(buffer.data(), 0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset, buffer);
+            lib::unused(file, offset, buffer);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
-            lib::unused(self, size);
+            lib::unused(file, size);
             return true;
         }
 
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
         {
-            lib::unused(self, priv);
+            lib::unused(file, priv);
             return nullptr;
         }
 
@@ -91,28 +91,28 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset);
+            lib::unused(file, offset);
             std::memset(buffer.data(), 0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset, buffer);
+            lib::unused(file, offset, buffer);
             return (errno = ENOSPC, -1);
         }
 
-        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
-            lib::unused(self, size);
+            lib::unused(file, size);
             return true;
         }
 
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
         {
-            lib::unused(self, priv);
+            lib::unused(file, priv);
             return nullptr;
         }
 
@@ -132,9 +132,9 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset);
+            lib::unused(file, offset);
             const std::unique_lock _ { lock };
 
             auto u8buffer = reinterpret_cast<std::uint8_t *>(buffer.data());
@@ -144,21 +144,21 @@ namespace fs::dev::mem
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            lib::unused(self, offset, buffer);
+            lib::unused(file, offset, buffer);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
-            lib::unused(self, size);
+            lib::unused(file, size);
             return true;
         }
 
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
         {
-            lib::unused(self, priv);
+            lib::unused(file, priv);
             return nullptr;
         }
 

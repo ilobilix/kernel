@@ -3,7 +3,6 @@
 module system.syscall.vfs;
 
 import system.scheduler;
-import system.vfs.file;
 import system.vfs;
 import magic_enum;
 import lib;
@@ -194,17 +193,27 @@ namespace syscall::vfs
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return (errno = ENOTDIR, -1);
 
+        auto fdesc = filedesc::create(target, flags);
+        if (!fdesc)
+            return (errno = EMFILE, -1);
+        const auto fd = fdt.allocate_fd(fdesc, 0, false);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+
+        if (!fdesc->file->open())
+        {
+            fdt.close(fd);
+            return (errno = EIO, -1);
+        }
+
         if (flags & o_trunc)
         {
-            if (!target.dentry->inode->trunc(0))
+            if (!fdesc->file->trunc(0))
                 return (errno = EINVAL, -1);
 
             stat.update_time(stat::time::modify | stat::time::status);
         }
 
-        const auto fd = fdt.allocate_fd(filedesc::create(target, flags), 0, false);
-        if (fd < 0)
-            return (errno = EMFILE, -1);
         return fd;
     }
 
@@ -212,9 +221,16 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0 || !proc->fdt.close(fd))
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(fd);
+        if (!fdesc)
             return (errno = EBADF, -1);
 
+        if (!fdesc->file->close())
+            return (errno = EIO, -1);
+
+        lib::bug_on(!proc->fdt.close(fd));
         return 0;
     }
 
@@ -619,8 +635,7 @@ namespace syscall::vfs
         if (!fdesc)
             return (errno = EBADF, -1);
 
-        auto &inode = fdesc->file->path.dentry->inode;
-        return inode->ioctl(request, lib::may_be_uptr { argp });
+        return fdesc->file->ioctl(request, lib::may_be_uptr { argp });
     }
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)

@@ -36,23 +36,115 @@ export namespace vfs
         invalid_type
     };
 
+    enum openflags : int
+    {
+#if defined(__x86_64__)
+        o_direct = 040000,
+        o_largefile = 0100000,
+        o_directory = 0200000,
+        o_nofollow = 0400000,
+#elif defined(__aarch64__)
+        o_directory = 040000,
+        o_nofollow = 0100000,
+        o_direct = 0200000,
+        o_largefile = 0400000,
+#else
+#  error "unsupported architecture"
+#endif
+
+        o_path = 010000000,
+
+        // access modes
+        o_accmode = 03 | o_path,
+        o_rdonly = 00,
+        o_wronly = 01,
+        o_rdwr = 02,
+
+        // creation flags
+        o_creat = 0100,
+        o_excl = 0200,
+        o_noctty = 0400,
+        o_trunc = 01000,
+        // o_directory
+        // o_nofollow
+        o_closexec = 02000000,
+        o_tmpfile = 020000000 | o_directory,
+
+        creation_flags = o_creat | o_excl | o_noctty | o_trunc | o_directory | o_nofollow | o_closexec | o_tmpfile,
+
+        // status flags
+        o_append = 02000,
+        o_async = 020000,
+        // o_direct
+        o_dsync = 010000,
+        // o_largefile
+        o_noatime = 01000000,
+        o_nonblock = 04000,
+        o_ndelay = o_nonblock,
+        o_sync = 04010000,
+
+        changeable_status_flags = o_append | o_async | o_direct | o_noatime | o_nonblock,
+    };
+
+    inline constexpr bool is_read(int flags)
+    {
+        return (flags & o_accmode) == o_rdonly || (flags & o_accmode) == o_rdwr;
+    }
+
+    inline constexpr bool is_write(int flags)
+    {
+        return (flags & o_accmode) == o_wronly || (flags & o_accmode) == o_rdwr;
+    }
+
+    enum seekwhence : int
+    {
+        seek_set = 0,
+        seek_cur = 1,
+        seek_end = 2
+    };
+
+    enum atflags : int
+    {
+        at_fdcwd = -100,
+        at_symlink_nofollow = 0x100,
+        at_removedir = 0x200,
+        at_symlink_follow = 0x400,
+        at_eaccess = 0x200,
+        at_no_automount = 0x800,
+        at_empty_path = 0x1000
+    };
+
+    // stat and s_* bits are defined in lib/types.cppm
+
     template<typename Type>
     using expect = std::expected<Type, error>;
 
-    struct inode;
+    struct file;
     struct ops
     {
-        virtual std::ssize_t read(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
-        virtual std::ssize_t write(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
-        virtual bool trunc(std::shared_ptr<inode> self, std::size_t size) = 0;
+        virtual bool open(std::shared_ptr<file> self)
+        {
+            lib::unused(self);
+            return true;
+        }
 
-        virtual int ioctl(std::shared_ptr<inode> self, unsigned long request, lib::may_be_uptr argp)
+        virtual bool close(std::shared_ptr<file> self)
+        {
+            lib::unused(self);
+            return true;
+        }
+
+        virtual std::ssize_t read(std::shared_ptr<file> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
+        virtual std::ssize_t write(std::shared_ptr<file> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
+        virtual bool trunc(std::shared_ptr<file> self, std::size_t size) = 0;
+
+        virtual int ioctl(std::shared_ptr<file> self, unsigned long request, lib::may_be_uptr argp)
         {
             lib::unused(self, request, argp);
             return (errno = ENOSYS, -1);
         }
 
-        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<inode> self, bool priv) = 0;
+        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<file> self, bool priv) = 0;
 
         virtual bool sync() = 0;
 
@@ -68,6 +160,7 @@ export namespace vfs
         std::shared_ptr<dentry> dentry;
     };
 
+    struct inode;
     struct filesystem
     {
         std::string name;
@@ -105,38 +198,8 @@ export namespace vfs
         std::optional<path> mounted_on;
     };
 
-    struct inode : std::enable_shared_from_this<inode>
+    struct inode
     {
-        std::ssize_t read(std::size_t offset, std::span<std::byte> buffer)
-        {
-            lib::bug_on(op == nullptr);
-            return op->read(shared_from_this(), offset, buffer);
-        }
-
-        std::ssize_t write(std::size_t offset, std::span<std::byte> buffer)
-        {
-            lib::bug_on(op == nullptr);
-            return op->write(shared_from_this(), offset, buffer);
-        }
-
-        bool trunc(std::size_t size)
-        {
-            lib::bug_on(op == nullptr);
-            return op->trunc(shared_from_this(), size);
-        }
-
-        int ioctl(unsigned long request, lib::may_be_uptr argp)
-        {
-            lib::bug_on(op == nullptr);
-            return op->ioctl(shared_from_this(), request, argp);
-        }
-
-        std::shared_ptr<vmm::object> map(bool priv)
-        {
-            lib::bug_on(op == nullptr);
-            return op->map(shared_from_this(), priv);
-        }
-
         lib::mutex lock;
         std::shared_ptr<ops> op;
         stat stat;
@@ -161,6 +224,116 @@ export namespace vfs
         lib::map::flat_hash<std::string_view, std::shared_ptr<dentry>> children;
 
         std::list<std::weak_ptr<mount>> child_mounts;
+    };
+
+    struct file : std::enable_shared_from_this<file>
+    {
+        inline std::shared_ptr<ops> &get_ops() const
+        {
+            lib::bug_on(!path.dentry || !path.dentry->inode);
+            auto &inode = path.dentry->inode;
+            lib::bug_on(!inode->op);
+            return inode->op;
+        }
+
+        lib::mutex lock;
+        path path;
+        std::size_t offset;
+        int flags;
+
+        bool open()
+        {
+            return get_ops()->open(shared_from_this());
+        }
+
+        bool close()
+        {
+            return get_ops()->close(shared_from_this());
+        }
+
+        std::ssize_t read(std::span<std::byte> buffer)
+        {
+            std::unique_lock _ { lock };
+            const auto ret = get_ops()->read(shared_from_this(), offset, buffer);
+            if (ret > 0)
+                offset += static_cast<std::size_t>(ret);
+            return ret;
+        }
+
+        std::ssize_t write(std::span<std::byte> buffer)
+        {
+            std::unique_lock _ { lock };
+            const auto ret = get_ops()->write(shared_from_this(), offset, buffer);
+            if (ret > 0)
+                offset += static_cast<std::size_t>(ret);
+            return ret;
+        }
+
+        std::ssize_t pread(std::uint64_t offset, std::span<std::byte> buffer)
+        {
+            return get_ops()->read(shared_from_this(), offset, buffer);
+        }
+
+        std::ssize_t pwrite(std::uint64_t offset, std::span<std::byte> buffer)
+        {
+            return get_ops()->write(shared_from_this(), offset, buffer);
+        }
+
+        bool trunc(std::size_t size)
+        {
+            return get_ops()->trunc(shared_from_this(), size);
+        }
+
+        int ioctl(unsigned long request, lib::may_be_uptr argp)
+        {
+            return get_ops()->ioctl(shared_from_this(), request, argp);
+        }
+
+        std::shared_ptr<vmm::object> map(bool priv)
+        {
+            return get_ops()->map(shared_from_this(), priv);
+        }
+
+        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
+        {
+            auto file = std::make_shared<vfs::file>();
+            file->path = path;
+            file->offset = offset;
+            file->flags = flags;
+            return file;
+        }
+    };
+
+    struct filedesc
+    {
+        std::shared_ptr<file> file { };
+        std::atomic_bool closexec = false;
+
+        static std::shared_ptr<filedesc> create(const path &path, int flags)
+        {
+            auto fd = std::make_shared<filedesc>();
+            fd->file = vfs::file::create(path, 0, flags & ~creation_flags);
+            fd->closexec = (flags & o_closexec) != 0;
+            return fd;
+        }
+    };
+
+    class fdtable
+    {
+        private:
+        lib::locker<
+            lib::map::flat_hash<
+                int, std::shared_ptr<filedesc>
+            >, lib::rwspinlock
+        > fds;
+        int next_fd = 0;
+
+        public:
+        bool close(int fd);
+        std::shared_ptr<filedesc> get(int fd);
+        int allocate_fd(std::shared_ptr<filedesc> desc, int fd, bool force);
+
+        ~fdtable() = default;
     };
 
     struct resolve_res
