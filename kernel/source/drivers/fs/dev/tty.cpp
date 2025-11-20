@@ -57,11 +57,11 @@ namespace fs::dev::tty
         bool sync() override { return true; }
     };
 
-    lib::initgraph::stage *initialised_stage()
+    lib::initgraph::stage *registered_stage()
     {
         static lib::initgraph::stage stage
         {
-            "vfs.dev.tty-initialised",
+            "vfs.dev.tty-registered",
             lib::initgraph::postsched_init_engine
         };
         return &stage;
@@ -69,10 +69,10 @@ namespace fs::dev::tty
 
     lib::initgraph::task tty_task
     {
-        "vfs.dev.tty.initialise",
+        "vfs.dev.tty.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::mounted_stage() },
-        lib::initgraph::entail { initialised_stage() },
+        lib::initgraph::entail { registered_stage() },
         [] {
             using namespace ::dev;
             register_cdev(ops::singleton(), makedev(5, 1));

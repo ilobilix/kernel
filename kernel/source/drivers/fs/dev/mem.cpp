@@ -165,11 +165,11 @@ namespace fs::dev::mem
         bool sync() override { return true; }
     };
 
-    lib::initgraph::stage *initialised_stage()
+    lib::initgraph::stage *registered_stage()
     {
         static lib::initgraph::stage stage
         {
-            "vfs.dev.memfiles-initialised",
+            "vfs.dev.memfiles-registered",
             lib::initgraph::postsched_init_engine
         };
         return &stage;
@@ -177,10 +177,10 @@ namespace fs::dev::mem
 
     lib::initgraph::task memfiles_task
     {
-        "vfs.dev.memfiles.initialise",
+        "vfs.dev.memfiles.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::mounted_stage() },
-        lib::initgraph::entail { initialised_stage() },
+        lib::initgraph::entail { registered_stage() },
         [] {
             using namespace ::dev;
             register_cdev(null_ops::singleton(), makedev(1, 3));

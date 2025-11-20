@@ -85,6 +85,9 @@ namespace syscall::vfs
 
         std::optional<lib::path> get_path(const char __user *pathname)
         {
+            if (pathname == nullptr)
+                return (errno = EFAULT, std::nullopt);
+
             const auto pathname_len = lib::strnlen_user(pathname, vfs::path_max);
             if (pathname_len == 0)
                 return (errno = EINVAL, std::nullopt);
@@ -98,6 +101,46 @@ namespace syscall::vfs
 
             path.normalise();
             return std::move(path);
+        }
+
+        std::optional<vfs::path> get_target(sched::process *proc, int dirfd, const char __user *pathname, bool follow_links, bool empty_path)
+        {
+            if (empty_path)
+            {
+                if (dirfd == at_fdcwd)
+                    return proc->cwd;
+
+                if (dirfd < 0)
+                    return (errno = EBADF, std::nullopt);
+                auto fd = proc->fdt.get(dirfd);
+                if (fd == nullptr)
+                    return (errno = EBADF, std::nullopt);
+
+                return fd->file->path;
+            }
+
+            const auto val = get_path(pathname);
+            if (!val.has_value())
+                return std::nullopt;
+
+            const auto path = val.value();
+
+            vfs::path target { };
+            const auto res = resolve_from(proc, dirfd, path);
+            if (!res.has_value())
+                return std::nullopt;
+
+            target = res->target;
+            lib::bug_on(!target.dentry || !target.dentry->inode);
+
+            if (follow_links)
+            {
+                const auto reduced = vfs::reduce(res->parent, target);
+                if (!reduced.has_value())
+                    return (errno = map_error(reduced.error()), std::nullopt);
+                target = reduced.value();
+            }
+            return target;
         }
     } // namespace
 
@@ -182,8 +225,6 @@ namespace syscall::vfs
                     return (errno = map_error(reduced.error()), -1);
                 target = reduced.value();
             }
-            else if (target.dentry->inode->stat.type() == stat::type::s_iflnk)
-                return (errno = ELOOP, -1);
         }
 
         auto &stat = target.dentry->inode->stat;
@@ -563,50 +604,14 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (flags & at_empty_path)
-        {
-            if (dirfd == at_fdcwd)
-            {
-                lib::copy_to_user(statbuf, &proc->cwd.dentry->inode->stat, sizeof(::stat));
-                return 0;
-            }
-
-            if (dirfd < 0)
-                return (errno = EBADF, -1);
-            auto fd = proc->fdt.get(dirfd);
-            if (fd == nullptr)
-                return (errno = EBADF, -1);
-
-            auto &inode = fd->file->path.dentry->inode;
-            lib::copy_to_user(statbuf, &inode->stat, sizeof(::stat));
-            return 0;
-        }
-
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
 
-        const auto val = get_path(pathname);
-        if (!val.has_value())
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path);
+        if (!target.has_value())
             return -1;
 
-        const auto path = val.value();
-
-        vfs::path target { };
-        const auto res = resolve_from(proc, dirfd, path);
-        if (!res.has_value())
-            return -1;
-
-        target = res->target;
-        lib::bug_on(!target.dentry || !target.dentry->inode);
-
-        if (follow_links)
-        {
-            const auto reduced = vfs::reduce(res->parent, target);
-            if (!reduced.has_value())
-                return (errno = map_error(reduced.error()), -1);
-            target = reduced.value();
-        }
-
-        lib::copy_to_user(statbuf, &target.dentry->inode->stat, sizeof(::stat));
+        lib::copy_to_user(statbuf, &target->dentry->inode->stat, sizeof(::stat));
         return 0;
     }
 
@@ -625,6 +630,38 @@ namespace syscall::vfs
         return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow);
     }
 
+    int faccessat(int dirfd, const char __user *pathname, int mode, int flags)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
+        const bool eaccess = (flags & at_eaccess) != 0;
+
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path);
+        if (!target.has_value())
+            return -1;
+
+        if (mode == f_ok)
+            return 0;
+
+        const auto uid = eaccess ? proc->euid : proc->ruid;
+        const auto gid = eaccess ? proc->egid : proc->rgid;
+
+        if ((mode & (x_ok | w_ok | r_ok)) == 0)
+            return (errno = EINVAL, -1);
+
+        if (!vfs::check_access(uid, gid, target->dentry->inode->stat, mode))
+            return (errno = EACCES, -1);
+
+        return 0;
+    }
+
+    int access(const char __user *pathname, int mode)
+    {
+        return faccessat(at_fdcwd, pathname, mode, 0);
+    }
+
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
         const auto proc = sched::this_thread()->parent;
@@ -634,6 +671,9 @@ namespace syscall::vfs
         auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
+
+        if (fdesc->file->path.dentry->inode->stat.type() != stat::type::s_ifchr)
+            return (errno = ENOTTY, -1);
 
         return fdesc->file->ioctl(request, lib::may_be_uptr { argp });
     }

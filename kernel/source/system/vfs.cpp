@@ -443,6 +443,49 @@ namespace vfs
         return std::unexpected(ret.error());
     }
 
+    bool check_access(uid_t uid, gid_t gid, const ::stat &stat, int mode)
+    {
+        if (mode == f_ok)
+            return true;
+
+        if (uid == 0)
+        {
+            if (!(mode & x_ok))
+                return true;
+
+            if (stat.type() == ::stat::s_ifdir)
+                return true;
+
+            return (stat.st_mode & (s_ixusr | s_ixgrp | s_ixoth)) != 0;
+        }
+
+        auto rbit = s_iroth;
+        auto wbit = s_iwoth;
+        auto xbit = s_ixoth;
+
+        if (uid == stat.st_uid)
+        {
+            rbit = s_irusr;
+            wbit = s_iwusr;
+            xbit = s_ixusr;
+        }
+        else if (gid == stat.st_gid)
+        {
+            rbit = s_irgrp;
+            wbit = s_iwgrp;
+            xbit = s_ixgrp;
+        }
+
+        if ((mode & r_ok) && !(stat.st_mode & rbit))
+            return false;
+        if ((mode & w_ok) && !(stat.st_mode & wbit))
+            return false;
+        if ((mode & x_ok) && !(stat.st_mode & xbit))
+            return false;
+
+        return true;
+    }
+
     auto stat(std::optional<path> parent, lib::path path) -> expect<::stat>
     {
         auto res = resolve(parent, path);

@@ -8,5 +8,6 @@ import lib;
 
 export namespace fs::dev
 {
-    lib::initgraph::stage *initialised_stage();
+    lib::initgraph::stage *registered_stage();
+    lib::initgraph::stage *populated_stage();
 } // export namespace fs::dev
