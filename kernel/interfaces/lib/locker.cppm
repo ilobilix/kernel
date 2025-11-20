@@ -313,7 +313,7 @@ export namespace lib
             };
         }
 
-        bool is_locked() const requires detail::is_lock<Lock>
+        bool is_locked() const
         {
             return _lock.is_locked();
         }

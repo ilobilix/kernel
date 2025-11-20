@@ -75,6 +75,11 @@ export namespace lib
             return global.is_locked() && counter == 0;
         }
 
+        bool is_locked()
+        {
+            return global.is_locked();
+        }
+
         bool upgrade()
         {
             bug_on(!is_read_locked());
