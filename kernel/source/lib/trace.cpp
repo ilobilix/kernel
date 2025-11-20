@@ -56,7 +56,7 @@ namespace lib
             log::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
 
             if (ptr)
-                std::free(ptr);
+                lib::free(ptr);
 
             return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };

@@ -54,15 +54,8 @@ namespace x86_64::gdt
         if (cpu->idx == cpu::bsp_idx())
             log::info("gdt: loading on bsp");
 
-        auto allocate_stack = [] {
-            const auto stack = vmm::alloc_vspace(boot::kstack_size / pmm::page_size);
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::pflag::rw); !ret)
-                lib::panic("could not map kernel stack: {}", magic_enum::enum_name(ret.error()));
-
-            return reinterpret_cast<std::uintptr_t>(stack) + boot::kstack_size;
-        };
-        tss_local->ist[0] = allocate_stack(); // page fault
-        tss_local->ist[1] = allocate_stack(); // scheduler
+        tss_local->ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size); // page fault
+        tss_local->ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size); // scheduler
 
         tss_local->iopboffset = sizeof(tss::reg);
 

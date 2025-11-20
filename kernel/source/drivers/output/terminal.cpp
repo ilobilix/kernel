@@ -101,7 +101,7 @@ namespace output::term
             }
 
             auto ctx = flanterm_fb_init(
-                std::malloc, [](void *ptr, std::size_t) { std::free(ptr); },
+                lib::alloc, [](void *ptr, std::size_t) { lib::free(ptr); },
                 reinterpret_cast<std::uint32_t *>(frm.address),
                 frm.width, frm.height, frm.pitch,
                 frm.red_mask_size, frm.red_mask_shift,

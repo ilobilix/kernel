@@ -274,16 +274,16 @@ extern "C"
 #endif
     }
 
-    void *uacpi_kernel_alloc(uacpi_size size) { return std::malloc(size); }
+    void *uacpi_kernel_alloc(uacpi_size size) { return lib::alloc(size); }
 
 #ifdef UACPI_NATIVE_ALLOC_ZEROED
-    void *uacpi_kernel_alloc_zeroed(uacpi_size size) { return std::calloc(1, size); }
+    void *uacpi_kernel_alloc_zeroed(uacpi_size size) { return lib::allocz(size); }
 #endif
 
 #ifndef UACPI_SIZED_FREES
-    void uacpi_kernel_free(void *mem) { std::free(mem); }
+    void uacpi_kernel_free(void *mem) { lib::free(mem); }
 #else
-    void uacpi_kernel_free(void *mem, uacpi_size) { std::free(mem); }
+    void uacpi_kernel_free(void *mem, uacpi_size) { lib::free(mem); }
 #endif
 
     void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *buf)

@@ -41,18 +41,14 @@ namespace sched::arch
 
     void finalise(process *proc, thread *thread, std::uintptr_t ip)
     {
+        lib::unused(proc);
+
         auto &regs = thread->regs;
         regs.rflags = 0x202;
         regs.rip = ip;
 
         const auto &fpu = cpu::features::get_fpu();
-        const auto pages = lib::div_roundup(fpu.size, pmm::page_size);
-        const auto vfpu = vmm::alloc_vspace(pages);
-
-        if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::pflag::rw, vmm::page_size::small); !ret)
-            lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));
-
-        thread->fpu = reinterpret_cast<std::byte *>(vfpu);
+        thread->fpu = lib::allocz<std::byte *>(fpu.size);
         thread->fpu_size = fpu.size;
 
         if (thread->is_user)
@@ -83,11 +79,8 @@ namespace sched::arch
 
     void deinitialise(process *proc, thread *thread)
     {
-        auto &pmap = proc->vmspace->pmap;
-
-        const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
-        if (const auto ret = pmap->unmap_dealloc(vaddr, thread->fpu_size, vmm::page_size::small); !ret)
-            lib::panic("could not unmap thread's fpu storage: {}", magic_enum::enum_name(ret.error()));
+        lib::unused(proc);
+        lib::free(thread->fpu);
     }
 
     void save(thread *thread)

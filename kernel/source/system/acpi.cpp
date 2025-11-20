@@ -41,7 +41,7 @@ namespace acpi
                 return;
 
             const auto ptr = static_cast<acpi_madt *>(out_table.ptr);
-            madt::hdr = std::malloc<acpi_madt *>(ptr->hdr.length);
+            madt::hdr = lib::alloc<acpi_madt *>(ptr->hdr.length);
             std::memcpy(madt::hdr, ptr, ptr->hdr.length);
             uacpi_table_unref(&out_table);
 

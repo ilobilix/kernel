@@ -78,21 +78,8 @@ namespace cpu
             proc->self = proc;
             proc->idx = idx;
             proc->arch_id = aid;
+            proc->stack_top = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
 
-            const auto psize = vmm::page_size::small;
-            const auto flags = vmm::pflag::rw;
-            const auto size = boot::kstack_size;
-
-            const auto stack = vmm::alloc_vspace(size / pmm::page_size);
-
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, size, flags, psize); !ret)
-            {
-                lib::panic("could not map cpu {} kernel stack: {}",
-                    idx, magic_enum::enum_name(ret.error())
-                );
-            }
-
-            proc->stack_top = stack + size;
             return proc;
         }
     } // namespace per
