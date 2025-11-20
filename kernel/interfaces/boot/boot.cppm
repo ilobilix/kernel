@@ -11,11 +11,12 @@ import cppstd;
 
 namespace
 {
-    [[gnu::used, gnu::section(".requests_start_marker")]]
-    volatile LIMINE_REQUESTS_START_MARKER;
+    [[gnu::used, gnu::section(".limine_requests_start")]]
+    volatile std::uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
-    [[gnu::used, gnu::section(".requests_end_marker")]]
-    volatile LIMINE_REQUESTS_END_MARKER;
+    [[gnu::used, gnu::section(".limine_requests_end")]]
+    volatile std::uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
+
 } // namespace
 
 export namespace boot
@@ -23,8 +24,6 @@ export namespace boot
     // constexpr std::uintptr_t kstack_size = 0x10000; // 64 kib
     constexpr std::uintptr_t kstack_size = 0x4000; // 16 kib
     constexpr std::uintptr_t ustack_size = 0x200000; // 2 mib
-
-    constexpr std::size_t limine_rev = 3;
 
 #if ILOBILIX_LIMINE_MP
     using limine_mp_info = ::limine_mp_info;
@@ -40,16 +39,17 @@ export namespace boot
         bad_memory = LIMINE_MEMMAP_BAD_MEMORY,
         bootloader = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE,
         kernel_and_modules = LIMINE_MEMMAP_EXECUTABLE_AND_MODULES,
-        framebuffer = LIMINE_MEMMAP_FRAMEBUFFER
+        framebuffer = LIMINE_MEMMAP_FRAMEBUFFER,
+        acpi_tables = LIMINE_MEMMAP_ACPI_TABLES
     };
 
-    [[gnu::used, gnu::section(".requests")]]
-    volatile LIMINE_BASE_REVISION(limine_rev)
+    [[gnu::used, gnu::section(".limine_requests")]]
+    volatile std::uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(4);
 
     namespace requests
     {
 // #if defined(__aarch64__)
-//         [[gnu::used, gnu::section(".requests")]]
+//         [[gnu::used, gnu::section(".limine_requests")]]
 //         volatile limine_dtb_request dtb
 //         {
 //             .id = LIMINE_DTB_REQUEST,
@@ -58,18 +58,24 @@ export namespace boot
 //         };
 // #endif
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_framebuffer_request framebuffer
         {
-            .id = LIMINE_FRAMEBUFFER_REQUEST,
+            .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+#if defined(__x86_64__)
+#  define LIMINE_PAGING_MODE_DEFAULT LIMINE_PAGING_MODE_X86_64_DEFAULT
+#elif defined(__aarch64__)
+#  define LIMINE_PAGING_MODE_DEFAULT LIMINE_PAGING_MODE_AARCH64_DEFAULT
+#endif
+
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_paging_mode_request paging_mode
         {
-            .id = LIMINE_PAGING_MODE_REQUEST,
+            .id = LIMINE_PAGING_MODE_REQUEST_ID,
             .revision = 0,
             .response = nullptr,
             .mode = LIMINE_PAGING_MODE_DEFAULT,
@@ -77,73 +83,73 @@ export namespace boot
             .min_mode = LIMINE_PAGING_MODE_DEFAULT
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_memmap_request memmap
         {
-            .id = LIMINE_MEMMAP_REQUEST,
+            .id = LIMINE_MEMMAP_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_rsdp_request rsdp
         {
-            .id = LIMINE_RSDP_REQUEST,
+            .id = LIMINE_RSDP_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_module_request module_
         {
-            .id = LIMINE_MODULE_REQUEST,
+            .id = LIMINE_MODULE_REQUEST_ID,
             .revision = 0,
             .response = nullptr,
             .internal_module_count = 0,
             .internal_modules = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_executable_file_request kernel_file
         {
-            .id = LIMINE_EXECUTABLE_FILE_REQUEST,
+            .id = LIMINE_EXECUTABLE_FILE_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
-        volatile limine_boot_time_request boot_time
+        [[gnu::used, gnu::section(".limine_requests")]]
+        volatile limine_date_at_boot_request boot_time
         {
-            .id = LIMINE_BOOT_TIME_REQUEST,
+            .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_hhdm_request hhdm
         {
-            .id = LIMINE_HHDM_REQUEST,
+            .id = LIMINE_HHDM_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_executable_address_request kernel_address
         {
-            .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
+            .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID,
             .revision = 0,
             .response = nullptr
         };
 
 #if ILOBILIX_LIMINE_MP
-        [[gnu::used, gnu::section(".requests")]]
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_mp_request mp
         {
-            .id = LIMINE_MP_REQUEST,
+            .id = LIMINE_MP_REQUEST_ID,
             .revision = 0,
             .response = nullptr,
 #  if defined(__x86_64__)
-            .flags = LIMINE_MP_X2APIC
+            .flags = LIMINE_MP_REQUEST_X86_64_X2APIC
 #  else
             .flags = 0
 #  endif
@@ -156,7 +162,7 @@ export namespace boot
         const auto mods = requests::module_.response;
         for (std::size_t i = 0; i < mods->module_count; i++)
         {
-            if (mods->modules[i]->cmdline == name)
+            if (mods->modules[i]->string == name)
                 return mods->modules[i];
         }
         return nullptr;
@@ -171,13 +177,13 @@ export namespace boot
 
     std::int64_t time()
     {
-        static const auto cached = [] { return requests::boot_time.response->boot_time; } ();
+        static const auto cached = [] { return requests::boot_time.response->timestamp; } ();
         return cached;
     }
 
     void check_requests()
     {
-        if (!LIMINE_BASE_REVISION_SUPPORTED)
+        if (!LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision))
             lib::panic("Limine base revision not supported");
 
         if (requests::memmap.response == nullptr)

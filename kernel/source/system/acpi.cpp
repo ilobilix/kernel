@@ -84,7 +84,7 @@ namespace acpi
     std::uintptr_t get_rsdp()
     {
         static const auto cached = [] { return boot::requests::rsdp.response->address; } ();
-        return cached;
+        return reinterpret_cast<std::uintptr_t>(cached);
     }
 
     lib::initgraph::stage *tables_stage()

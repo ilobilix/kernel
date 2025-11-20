@@ -52,9 +52,9 @@
 	shallow = true
 [submodule "dependencies/limine/limine"]
 	path = dependencies/limine/limine
-	url = https://github.com/limine-bootloader/limine
+	url = https://codeberg.org/Limine/Limine
 	shallow = true
-	branch = v8.x-binary
+	branch = v10.x-binary
 [submodule "dependencies/demangler/demangler"]
 	path = dependencies/demangler/demangler
 	url = https://github.com/ilobilo/demangler
