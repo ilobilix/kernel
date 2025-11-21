@@ -5,6 +5,7 @@ export module lib:syscall;
 import :errno;
 import :log;
 import :types;
+import :string;
 import :unused;
 import system.cpu;
 import magic_enum;
@@ -70,13 +71,14 @@ namespace lib::syscall
                     const auto arr = Getter::get_args(regs);
                     typename sign::args_type args;
 
-                    std::size_t i = 0;
-                    std::apply([&](auto &&...args) {
-                        (std::invoke([&]<typename Type>(Type &arg) {
+                    [&]<std::size_t ...I>(std::index_sequence<I...>)
+                    {
+                        ([&]<typename Type>(Type &item)
+                        {
                             static_assert(std::is_trivially_default_constructible_v<Type>);
-                            arg = Type(arr[i++]);
-                        }, args), ...);
-                    }, args);
+                            item = Type(arr[I]);
+                        } (std::get<I>(args)), ...);
+                    } (std::make_index_sequence<std::tuple_size_v<typename sign::args_type>> { });
 
 #if ILOBILIX_SYSCALL_LOG
                     const auto [pid, tid] = get_ptid();

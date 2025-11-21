@@ -2,7 +2,7 @@
 
 export module lib:panic;
 
-import :types;
+import :string;
 import system.cpu;
 import fmt;
 import cppstd;

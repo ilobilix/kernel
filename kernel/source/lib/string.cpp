@@ -27,13 +27,3 @@ namespace lib
         copy_from_user(str.data(), ustr, length);
     }
 } // namespace lib
-
-void stat::update_time(std::uint8_t flags)
-{
-    if (flags & time::access)
-        st_atim = ::time::now();
-    if (flags & time::modify)
-        st_mtim = ::time::now();
-    if (flags & time::status)
-        st_ctim = ::time::now();
-}

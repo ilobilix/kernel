@@ -15,11 +15,6 @@ namespace lib
         std::memcpy(dest, (__force void *)src, len);
     }
 
-    void strncpy_from_user(char *dest, const char __user *src, std::size_t len)
-    {
-        std::strncpy(dest, (__force const char *)src, len);
-    }
-
     std::size_t strnlen_user(const char __user *str, std::size_t len)
     {
         return std::strnlen((__force const char *)str, len);

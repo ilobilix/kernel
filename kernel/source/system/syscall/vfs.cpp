@@ -14,6 +14,13 @@ namespace syscall::vfs
 
     namespace
     {
+        std::shared_ptr<filedesc> get_fd(sched::process *proc, int fdnum)
+        {
+            if (fdnum < 0)
+                return (errno = EBADF, nullptr);
+            return proc->fdt.get(fdnum) ?: (errno = EBADF, nullptr);
+        }
+
         std::optional<path> get_parent(sched::process *proc, int dirfd, lib::path_view path)
         {
             if (path.is_absolute())
@@ -22,12 +29,9 @@ namespace syscall::vfs
             if (dirfd == at_fdcwd)
                 return proc->cwd;
 
-            if (dirfd < 0)
-                return (errno = EBADF, std::nullopt);
-
-            auto fd = proc->fdt.get(dirfd);
+            auto fd = get_fd(proc, dirfd);
             if (fd == nullptr)
-                return (errno = EBADF, std::nullopt);
+                return std::nullopt;
 
             if (fd->file->path.dentry->inode->stat.type() != stat::type::s_ifdir)
                 return (errno = ENOTDIR, std::nullopt);
@@ -97,7 +101,7 @@ namespace syscall::vfs
             lib::path path { pathname_len, 0 };
             lib::bug_on(path.str().size() != pathname_len);
 
-            lib::strncpy_from_user(path.str().data(), pathname, pathname_len);
+            lib::copy_from_user(path.str().data(), pathname, pathname_len);
 
             path.normalise();
             return std::move(path);
@@ -110,11 +114,9 @@ namespace syscall::vfs
                 if (dirfd == at_fdcwd)
                     return proc->cwd;
 
-                if (dirfd < 0)
-                    return (errno = EBADF, std::nullopt);
-                auto fd = proc->fdt.get(dirfd);
+                auto fd = get_fd(proc, dirfd);
                 if (fd == nullptr)
-                    return (errno = EBADF, std::nullopt);
+                    return std::nullopt;
 
                 return fd->file->path;
             }
@@ -201,7 +203,7 @@ namespace syscall::vfs
             auto &stat = created->dentry->inode->stat;
 
             stat.st_uid = proc->euid;
-            if (parent_stat.mode() & fmode::s_isgid)
+            if (parent_stat.mode() & s_isgid)
                 stat.st_gid = parent_stat.st_gid;
             else
                 stat.st_gid = proc->egid;
@@ -262,11 +264,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         if (!fdesc->file->close())
             return (errno = EIO, -1);
@@ -279,11 +279,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_read(file->flags))
@@ -309,11 +307,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_write(file->flags))
@@ -337,11 +333,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_read(file->flags))
@@ -367,11 +361,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_write(file->flags))
@@ -395,15 +387,13 @@ namespace syscall::vfs
         std::size_t iov_len;
     };
 
-    std::ssize_t readv(int fd, const struct iovec __user *iov, int iovcnt)
+    std::ssize_t readv(int fd, const iovec __user *iov, int iovcnt)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_read(file->flags))
@@ -412,8 +402,8 @@ namespace syscall::vfs
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
-            struct iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+            iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
 
             lib::membuffer buffer { local_iov.iov_len };
             const auto ret = fdesc->file->read(buffer.span());
@@ -434,15 +424,13 @@ namespace syscall::vfs
         return static_cast<std::ssize_t>(total_read);
     }
 
-    std::ssize_t writev(int fd, const struct iovec __user *iov, int iovcnt)
+    std::ssize_t writev(int fd, const iovec __user *iov, int iovcnt)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_write(file->flags))
@@ -451,8 +439,8 @@ namespace syscall::vfs
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
-            struct iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+            iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
 
             lib::membuffer buffer { local_iov.iov_len };
             const auto uptr = (__force const void __user *)local_iov.iov_base;
@@ -471,15 +459,13 @@ namespace syscall::vfs
         return static_cast<std::ssize_t>(total_written);
     }
 
-    std::ssize_t preadv(int fd, const struct iovec __user *iov, int iovcnt, off_t offset)
+    std::ssize_t preadv(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_read(file->flags))
@@ -488,8 +474,8 @@ namespace syscall::vfs
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
-            struct iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+            iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
 
             lib::membuffer buffer { local_iov.iov_len };
             const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), buffer.span());
@@ -511,15 +497,13 @@ namespace syscall::vfs
         return static_cast<std::ssize_t>(total_read);
     }
 
-    std::ssize_t pwritev(int fd, const struct iovec __user *iov, int iovcnt, off_t offset)
+    std::ssize_t pwritev(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         if (!is_write(file->flags))
@@ -528,8 +512,8 @@ namespace syscall::vfs
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
-            struct iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+            iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
 
             lib::membuffer buffer { local_iov.iov_len };
             const auto uptr = (__force const void __user *)local_iov.iov_base;
@@ -549,18 +533,16 @@ namespace syscall::vfs
         return static_cast<std::ssize_t>(total_written);
     }
 
-    // std::ssize_t preadv2(int fd, const struct iovec __user *iov, int iovcnt, off_t offset, int flags);
-    // std::ssize_t pwritev2(int fd, const struct iovec __user *iov, int iovcnt, off_t offset, int flags);
+    // std::ssize_t preadv2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
+    // std::ssize_t pwritev2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
 
     off_t lseek(int fd, off_t offset, int whence)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         auto &file = fdesc->file;
         auto &stat = file->path.dentry->inode->stat;
@@ -666,11 +648,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         if (fdesc->file->path.dentry->inode->stat.type() != stat::type::s_ifchr)
             return (errno = ENOTTY, -1);
@@ -682,11 +662,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(fd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
 
         switch (cmd)
         {
@@ -725,11 +703,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (oldfd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(oldfd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
+        auto fdesc = get_fd(proc, oldfd);
+        if (fdesc == nullptr)
+            return -1;
 
         const auto newfdesc = std::make_shared<filedesc>(fdesc->file, false);
         const auto new_fd = proc->fdt.allocate_fd(newfdesc, 0, false);
