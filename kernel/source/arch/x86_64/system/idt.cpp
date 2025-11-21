@@ -102,8 +102,8 @@ namespace x86_64::idt
                 auto &handler = irq_handlers[idx];
                 if (handler.used()) [[likely]]
                     handler(regs);
-                else
-                    lib::panic(regs, "unhandled irq {}", vector);
+                // else
+                //     lib::panic(regs, "unhandled irq {}", vector);
             }
 
             eoi(vector);

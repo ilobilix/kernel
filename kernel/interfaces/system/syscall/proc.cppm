@@ -26,7 +26,11 @@ export namespace syscall::proc
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact);
     int sigprocmask(int how, const struct sigset_t __user *set, struct sigset_t __user *oldset, std::size_t sigsetsize);
 
-    long futex(std::uint32_t __user *uaddr, int futex_op, std::uint32_t val, const timespec *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3);
+    struct fd_set;
+    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout);
+    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const sigset_t __user *sigmask);
+
+    long futex(std::uint32_t __user *uaddr, int futex_op, std::uint32_t val, const timespec __user *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3);
 
     int prlimit(pid_t pid, int resource, const struct rlimit __user *new_limit, struct rlimit __user *old_limit);
 

@@ -22,12 +22,8 @@ namespace fs::dev::tty
 
         std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
         {
-            static std::size_t i = 0;
-            lib::unused(file, offset);
-            if (i++ == 1)
-                arch::halt(false);
-            buffer[0] = std::byte('\n');
-            return 1;
+            arch::halt(false);
+            return -1;
         }
 
         std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
