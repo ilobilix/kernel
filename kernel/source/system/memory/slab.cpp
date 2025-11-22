@@ -21,7 +21,7 @@ namespace slab
             const auto vaddr = vmm::alloc_vspace(pages);
 
             const auto psize = vmm::page_size::small;
-            const auto flags = vmm::pflag::rw;
+            const auto flags = vmm::pflag::rwg;
 
             if (const auto ret = vmm::kernel_pagemap->map_alloc(vaddr, length, flags, psize); !ret)
                 lib::panic("could not map slab memory: {}", magic_enum::enum_name(ret.error()));

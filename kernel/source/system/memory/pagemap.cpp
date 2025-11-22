@@ -362,7 +362,7 @@ namespace vmm
                     const std::uintptr_t vaddr = phdr->p_vaddr;
                     const auto size = phdr->p_memsz;
 
-                    auto flags = pflag::none;
+                    auto flags = pflag::global;
                     if (phdr->p_flags & PF_R)
                         flags |= pflag::read;
                     if (phdr->p_flags & PF_W)

@@ -19,7 +19,7 @@ namespace interrupts
 
     std::optional<std::pair<handler &, std::size_t>> allocate(std::size_t cpuidx, std::size_t hint)
     {
-        lib::bug_on(hint >= idt::num_ints || cpuidx >= cpu::cpu_count());
+        lib::bug_on(hint >= idt::num_ints || cpuidx >= cpu::count());
 
         if (hint < idt::irq(0))
             hint += idt::irq(0);
@@ -45,7 +45,7 @@ namespace interrupts
 
     std::optional<std::reference_wrapper<handler>> get(std::size_t cpuidx, std::size_t vector)
     {
-        lib::bug_on(vector >= idt::num_ints || cpuidx >= cpu::cpu_count());
+        lib::bug_on(vector >= idt::num_ints || cpuidx >= cpu::count());
         return idt::handler_at(cpuidx, vector);
     }
 

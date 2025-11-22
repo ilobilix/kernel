@@ -422,9 +422,9 @@ namespace sched
         std::size_t idx = 0;
         std::size_t min = std::numeric_limits<std::size_t>::max();
 
-        for (std::size_t i = 0; i < cpu::cpu_count(); i++)
+        for (std::size_t i = 0; i < cpu::count(); i++)
         {
-            auto &obj = percpu.get(cpu::nth_base(i));
+            auto &obj = percpu.get(cpu::local::nth_base(i));
             const auto size = obj.queue.lock()->size();
             if (size < min)
             {
@@ -437,7 +437,7 @@ namespace sched
 
     void enqueue(thread *thread, std::size_t cpu_idx)
     {
-        auto &obj = percpu.get(cpu::nth_base(cpu_idx));
+        auto &obj = percpu.get(cpu::local::nth_base(cpu_idx));
         switch (thread->status)
         {
             [[unlikely]] case status::killed:
@@ -492,7 +492,7 @@ namespace sched
             }
 
             // for batch reaping
-            me->prepare_sleep(100);
+            me->prepare_sleep(timeslice * 5);
             yield();
 
             disable();
@@ -788,9 +788,9 @@ namespace sched
 
         if (self->idx == cpu::bsp_idx())
         {
-            for (std::size_t idx = 0; idx < cpu::cpu_count(); idx++)
+            for (std::size_t idx = 0; idx < cpu::count(); idx++)
             {
-                auto &obj = percpu.get(cpu::nth_base(idx));
+                auto &obj = percpu.get(cpu::local::nth_base(idx));
                 obj.reaper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
                 sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), -5);
             }

@@ -198,7 +198,7 @@ namespace bin::elf::mod
 
             const auto loaded_at = vmm::alloc_vspace(max_size);
 
-            const auto flags = vmm::pflag::rw;
+            const auto flags = vmm::pflag::rwg;
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
             const auto npages = lib::div_roundup(npsize, pmm::page_size);
@@ -390,7 +390,7 @@ namespace bin::elf::mod
                 if (phdr->p_type != PT_LOAD)
                     continue;
 
-                auto flags = vmm::pflag::none;
+                auto flags = vmm::pflag::global;
                 if (phdr->p_flags & PF_R)
                     flags |= vmm::pflag::read;
                 if (phdr->p_flags & PF_W)

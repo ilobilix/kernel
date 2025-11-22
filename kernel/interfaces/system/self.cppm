@@ -31,11 +31,12 @@ export namespace cpu
 
         processor *self();
         std::uintptr_t self_addr();
-        bool percpu_available();
     } // extern "C++"
 
-    namespace per
+    namespace local
     {
+        extern "C++" bool available();
+
         template<typename Type, std::size_t Size = sizeof(Type)>
         class storage
         {
@@ -72,5 +73,5 @@ export namespace cpu
                 initialise_base(self_addr(), args...);
             }
         };
-    } // namespace per
+    } // namespace local
 } // export namespace cpu

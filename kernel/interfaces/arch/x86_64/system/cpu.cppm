@@ -284,5 +284,4 @@ export namespace cpu
     } // namespace gs
 
     extern "C++" std::uintptr_t self_addr() { return gs::read(); }
-    extern "C++" bool percpu_available() { return gs::is_set(); }
 } // export namespace cpu

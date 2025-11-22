@@ -345,6 +345,7 @@ export namespace std
         using std::ranges::prev_permutation_result;
 
         using std::ranges::contains;
+        using std::ranges::iota;
     } // namespace ranges
 
     using std::array;

@@ -15,11 +15,6 @@ namespace cpu
 {
     namespace
     {
-        [[gnu::section(".percpu_head")]]
-        per::storage<processor> me;
-
-        std::uintptr_t *bases;
-
         constexpr std::size_t _bsp_idx = 0;
         std::size_t _bsp_aid;
     } // namespace
@@ -27,7 +22,7 @@ namespace cpu
     std::size_t bsp_idx() { return _bsp_idx; }
     std::size_t bsp_aid() { return _bsp_aid; }
 
-    namespace per
+    namespace local
     {
         extern "C"
         {
@@ -37,7 +32,19 @@ namespace cpu
             extern char __start_percpu[], __end_percpu[];
         } // extern "C"
 
-        std::uintptr_t init()
+        namespace
+        {
+            [[gnu::section(".percpu_head")]]
+            local::storage<processor> me;
+
+            std::uintptr_t *bases;
+
+            bool _available = false;
+        } // namespace
+
+        extern "C++" bool available() { return _available; }
+
+        std::uintptr_t map()
         {
             static std::size_t offset = 0;
 
@@ -47,7 +54,7 @@ namespace cpu
                 reinterpret_cast<std::uintptr_t>(__start_percpu);
 
             const auto psize = vmm::page_size::small;
-            const auto flags = vmm::pflag::rw;
+            const auto flags = vmm::pflag::rwg;
 
             if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, flags, psize); !ret)
                 lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
@@ -69,7 +76,7 @@ namespace cpu
             else
                 log::info("cpu: bringing up ap {}", idx);
 
-            const auto base = per::init();
+            const auto base = map();
             me.initialise_base(bases[idx] = base);
 
             auto proc = nth(idx);
@@ -80,23 +87,24 @@ namespace cpu
             proc->arch_id = aid;
             proc->stack_top = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
 
+            _available = true;
             return proc;
         }
-    } // namespace per
 
-    processor *nth(std::size_t n)
-    {
-        return bases ? std::addressof(me.get(bases[n])) : nullptr;
-    }
+        processor *nth(std::size_t n)
+        {
+            return bases ? std::addressof(me.get(bases[n])) : nullptr;
+        }
 
-    std::uintptr_t nth_base(std::size_t n)
-    {
-        return bases ? bases[n] : 0;
-    }
+        std::uintptr_t nth_base(std::size_t n)
+        {
+            return bases ? bases[n] : 0;
+        }
+    } // namespace local
 
     extern "C++" processor *self()
     {
-        return bases ? std::addressof(me.get()) : nullptr;
+        return local::bases ? std::addressof(local::me.get()) : nullptr;
     }
 
 #if ILOBILIX_LIMINE_MP
@@ -116,7 +124,7 @@ namespace cpu
     } // namespace mp
 #endif
 
-    std::size_t cpu_count()
+    std::size_t count()
     {
 #if ILOBILIX_LIMINE_MP
         static const auto cached = [] { return boot::requests::mp.response->cpu_count; } ();
@@ -128,7 +136,7 @@ namespace cpu
 
     void init_bsp()
     {
-        bases = new std::uintptr_t[cpu_count()] { };
+        local::bases = new std::uintptr_t[count()] { };
 
 #if ILOBILIX_LIMINE_MP
 #  if defined(__x86_64__)
@@ -140,15 +148,15 @@ namespace cpu
         _bsp_aid = mp::bsp_aid();
 #endif
 
-        const auto proc = per::request(_bsp_aid);
+        const auto proc = local::request(_bsp_aid);
         arch::core::bsp(reinterpret_cast<std::uintptr_t>(proc));
     }
 
     void init()
     {
-        log::info("cpu: number of available processors: {}", cpu_count());
+        log::info("cpu: number of available processors: {}", count());
 #if ILOBILIX_LIMINE_MP
-        for (std::size_t i = 0; i < cpu_count(); i++)
+        for (std::size_t i = 0; i < count(); i++)
         {
             const auto entry = boot::requests::mp.response->cpus[i];
 #  if defined(__x86_64__)
@@ -159,7 +167,7 @@ namespace cpu
             if (aid == bsp_aid())
                 continue;
 
-            const auto cpu = per::request(aid);
+            const auto cpu = local::request(aid);
             std::uintptr_t args[2] {
                 reinterpret_cast<std::uintptr_t>(vmm::kernel_pagemap->get_arch_table()),
                 reinterpret_cast<std::uintptr_t>(cpu)
@@ -177,7 +185,7 @@ namespace cpu
             next:
         }
 #else
-        mp::boot_cores(per::request);
+        mp::boot_cores(local::request);
 #endif
     }
 } // namespace cpu

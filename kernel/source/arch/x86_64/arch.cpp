@@ -30,7 +30,7 @@ namespace arch
     void halt_others()
     {
         using namespace x86_64;
-        if (cpu::cpu_count() != 0 && apic::is_initialised())
+        if (cpu::count() > 1 && apic::is_initialised())
             apic::ipi(apic::shorthand::all_noself, apic::delivery::fixed, idt::panic_int);
     }
 
@@ -58,7 +58,8 @@ namespace arch
 
     bool in_interrupt()
     {
-        return cpu::percpu_available() && cpu::self()->in_interrupt.load(std::memory_order_acquire);
+        return cpu::local::available() &&
+            cpu::self()->in_interrupt.load(std::memory_order_acquire);
     }
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, log::level lvl)

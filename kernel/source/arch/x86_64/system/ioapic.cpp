@@ -65,8 +65,10 @@ namespace x86_64::apic::io
 
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
+                const auto flags = vmm::pflag::rwg;
+                const auto cache = vmm::caching::mmio;
 
-                if (const auto ret = vmm::kernel_pagemap->map(_mmio, mmio, npsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+                if (const auto ret = vmm::kernel_pagemap->map(_mmio, mmio, npsize, flags, psize, cache); !ret)
                     lib::panic("could not map ioapic mmio: {}", magic_enum::enum_name(ret.error()));
 
                 _redirs = ((read(0x01) >> 16) & 0xFF) + 1;

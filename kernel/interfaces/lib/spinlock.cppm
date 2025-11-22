@@ -114,8 +114,8 @@ export namespace lib
 
         void lock()
         {
-            spinlock_base<lock_type::none>::lock();
             _interrupts = lock::acquire_irq();
+            spinlock_base<lock_type::none>::lock();
         }
 
         bool unlock()

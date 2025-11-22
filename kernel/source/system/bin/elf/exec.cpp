@@ -124,7 +124,11 @@ namespace bin::elf::exec
                         if (!ret.has_value())
                             return std::nullopt;
 
-                        interp = vfs::file::create(ret->target, 0, 0);
+                        auto res = vfs::reduce(ret->parent, ret->target);
+                        if (!res.has_value())
+                            return std::nullopt;
+
+                        interp = vfs::file::create(res.value(), 0, 0);
                         break;
                     }
                     default:
