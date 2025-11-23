@@ -31,7 +31,7 @@ namespace vmm
         return 0;
     }
 
-    std::size_t object::read(std::uint64_t offset, std::span<std::byte> buffer)
+    std::size_t object::read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         const auto psize = default_page_size();
         const auto length = buffer.size_bytes();
@@ -47,17 +47,15 @@ namespace vmm
             if (page == 0)
                 break;
 
-            std::memcpy(
-                buffer.subspan(progress, csize).data(),
-                reinterpret_cast<const void *>(lib::tohh(page) + misalign),
-                csize
+            buffer.subspan(progress, csize).copy_from(
+                reinterpret_cast<std::byte *>(lib::tohh(page) + misalign)
             );
             progress += csize;
         }
         return progress;
     }
 
-    std::size_t object::write(std::uint64_t offset, std::span<std::byte> buffer)
+    std::size_t object::write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         const auto psize = default_page_size();
         const auto length = buffer.size_bytes();
@@ -73,10 +71,8 @@ namespace vmm
             if (page == 0)
                 break;
 
-            std::memcpy(
-                reinterpret_cast<void *>(lib::tohh(page) + misalign),
-                buffer.subspan(progress, csize).data(),
-                csize
+            buffer.subspan(progress, csize).copy_to(
+                reinterpret_cast<std::byte *>(lib::tohh(page) + misalign)
             );
             progress += csize;
         }
@@ -150,7 +146,8 @@ namespace vmm
             pmm::free(page);
     }
 
-    std::expected<void, error> vmspace::map(
+    std::expected<void, error> map_internal(
+            auto &locked, auto &pmap,
             std::uintptr_t address, std::size_t length,
             std::uint8_t prot, std::uint8_t flags,
             std::shared_ptr<object> obj, off_t offset
@@ -169,8 +166,6 @@ namespace vmm
 
         const auto startp = address / psize;
         const auto endp = lib::div_roundup(address + length, psize);
-
-        const auto locked = tree.write_lock();
 
         const auto overlapping = std::ranges::to<std::vector<mapping>>(
             std::views::filter(*locked, [startp, endp](const auto &entry) {
@@ -226,6 +221,16 @@ namespace vmm
         );
 
         return { };
+    }
+
+    std::expected<void, error> vmspace::map(
+            std::uintptr_t address, std::size_t length,
+            std::uint8_t prot, std::uint8_t flags,
+            std::shared_ptr<object> obj, off_t offset
+        )
+    {
+        auto locked = tree.write_lock();
+        return map_internal(locked, pmap, address, length, prot, flags, obj, offset);
     }
 
     std::expected<void, error> vmspace::unmap(std::uintptr_t address, std::size_t length)
@@ -427,7 +432,7 @@ namespace vmm
         return covered >= endp;
     }
 
-    std::uintptr_t vmspace::find_free_region(std::size_t length)
+    std::optional<std::uintptr_t> vmspace::find_free_region(std::size_t length)
     {
         const auto psize = default_page_size();
 
@@ -476,7 +481,8 @@ namespace vmm
                         (entry.endp - entry.startp) * psize
                     );
                     lib::panic_if(
-                        !vmspace->map(
+                        !map_internal(
+                            wlocked, vmspace->pmap,
                             entry.startp * psize,
                             (entry.endp - entry.startp) * psize,
                             entry.prot, entry.flags,
@@ -497,16 +503,14 @@ namespace vmm
                         ret |= pflag::exec;
                     return ret;
                 } ();
-            }
 
-            if (obj != nullptr)
-            {
                 if (const auto pg = obj->get_page(pidx))
                 {
                     if (const auto ret = vmspace->pmap->translate(page * psize, page_size::small); ret.has_value() && ret.value() == pg)
                     {
                         log::error("vmm: huh? address 0x{:X} is already mapped to 0x{:X}", page * psize, pg);
-                        return false;
+                        pflags = pflag::rwxu;
+                        // return false;
                     }
 
                     if (vmspace->pmap->map(page * psize, pg, psize, pflags))

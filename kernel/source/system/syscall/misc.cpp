@@ -28,7 +28,20 @@ namespace syscall::misc
             .machine = "x86_64",
             .domainname = "(none)"
         };
-        lib::copy_to_user(buf, &kbuf, sizeof(utsname));
+        if (!lib::copy_to_user(buf, &kbuf, sizeof(utsname)))
+            return (errno = EFAULT, -1);
         return 0;
+    }
+
+    std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags)
+    {
+        lib::unused(flags);
+        if (buflen == 0)
+            return 0;
+
+        auto uspan = lib::maybe_uspan<std::byte>::create((__force std::byte *)(buf), buflen);
+        if (!uspan)
+            return (errno = EFAULT, -1);
+        return lib::random_bytes(uspan.value());
     }
 } // namespace syscall::misc

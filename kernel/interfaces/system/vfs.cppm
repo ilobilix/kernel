@@ -142,11 +142,11 @@ export namespace vfs
             return true;
         }
 
-        virtual std::ssize_t read(std::shared_ptr<file> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
-        virtual std::ssize_t write(std::shared_ptr<file> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
+        virtual std::ssize_t read(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual std::ssize_t write(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual bool trunc(std::shared_ptr<file> self, std::size_t size) = 0;
 
-        virtual int ioctl(std::shared_ptr<file> self, unsigned long request, lib::may_be_uptr argp)
+        virtual int ioctl(std::shared_ptr<file> self, unsigned long request, lib::uptr_or_addr argp)
         {
             lib::unused(self, request, argp);
             return (errno = ENOTTY, -1);
@@ -264,7 +264,7 @@ export namespace vfs
             return get_ops()->close(shared_from_this());
         }
 
-        std::ssize_t read(std::span<std::byte> buffer)
+        std::ssize_t read(lib::maybe_uspan<std::byte> buffer)
         {
             std::unique_lock _ { lock };
             const auto ret = get_ops()->read(shared_from_this(), offset, buffer);
@@ -273,7 +273,7 @@ export namespace vfs
             return ret;
         }
 
-        std::ssize_t write(std::span<std::byte> buffer)
+        std::ssize_t write(lib::maybe_uspan<std::byte> buffer)
         {
             std::unique_lock _ { lock };
             const auto ret = get_ops()->write(shared_from_this(), offset, buffer);
@@ -282,12 +282,12 @@ export namespace vfs
             return ret;
         }
 
-        std::ssize_t pread(std::uint64_t offset, std::span<std::byte> buffer)
+        std::ssize_t pread(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
             return get_ops()->read(shared_from_this(), offset, buffer);
         }
 
-        std::ssize_t pwrite(std::uint64_t offset, std::span<std::byte> buffer)
+        std::ssize_t pwrite(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
             return get_ops()->write(shared_from_this(), offset, buffer);
         }
@@ -297,7 +297,7 @@ export namespace vfs
             return get_ops()->trunc(shared_from_this(), size);
         }
 
-        int ioctl(unsigned long request, lib::may_be_uptr argp)
+        int ioctl(unsigned long request, lib::uptr_or_addr argp)
         {
             return get_ops()->ioctl(shared_from_this(), request, argp);
         }

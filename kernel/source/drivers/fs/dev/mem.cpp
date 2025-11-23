@@ -20,13 +20,13 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return 0;
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
             return buffer.size_bytes();
@@ -55,14 +55,14 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
-            std::memset(buffer.data(), 0, buffer.size_bytes());
+            buffer.fill(0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return buffer.size_bytes();
@@ -91,14 +91,14 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
-            std::memset(buffer.data(), 0, buffer.size_bytes());
+            buffer.fill(0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return (errno = ENOSPC, -1);
@@ -122,29 +122,20 @@ namespace fs::dev::mem
     // TODO
     struct random_dev : vfs::ops
     {
-        std::uniform_int_distribution<std::mt19937_64::result_type> dist;
-        std::mt19937_64 rng;
-        lib::mutex lock;
-
         static std::shared_ptr<random_dev> singleton()
         {
             static auto instance = std::make_shared<random_dev>();
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
-            const std::unique_lock _ { lock };
-
-            auto u8buffer = reinterpret_cast<std::uint8_t *>(buffer.data());
-            for (std::size_t i = 0; i < buffer.size_bytes(); ++i)
-                u8buffer[i] = static_cast<std::uint8_t>(dist(rng));
-
+            lib::random_bytes(buffer);
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return buffer.size_bytes();
@@ -187,8 +178,7 @@ namespace fs::dev::mem
             register_cdev(zero_ops::singleton(), makedev(1, 5));
             register_cdev(full_ops::singleton(), makedev(1, 7));
 
-            auto rand = random_dev::singleton();
-            rand->rng.seed(boot::time());
+            const auto rand = random_dev::singleton();
             register_cdev(rand, makedev(1, 8));
             register_cdev(rand, makedev(1, 9));
         }

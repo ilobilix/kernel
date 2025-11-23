@@ -11,6 +11,7 @@ export namespace bin::exec
 {
     struct request
     {
+        std::string pathname;
         std::shared_ptr<vfs::file> file;
         std::shared_ptr<vfs::file> interp;
 

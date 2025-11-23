@@ -142,7 +142,7 @@ namespace bin::elf::mod
 
             auto &inode = file->path.dentry->inode;
             lib::membuffer buffer { static_cast<std::size_t>(inode->stat.st_size) };
-            if (file->pread(0, buffer.span()) != inode->stat.st_size)
+            if (file->pread(0, buffer.maybe_uspan()) != inode->stat.st_size)
             {
                 log::error("elf: module: could not read the module file");
                 return false;
@@ -450,7 +450,7 @@ namespace bin::elf::mod
                 }
             };
             load_from("/usr/lib/modules/noarch");
-            load_from("/usr/lib/modules/" ILOBILIX_ARCH_STR);
+            load_from("/usr/lib/modules/" ILOBILIX_ARCH);
         }
     } // namespace
 

@@ -16,7 +16,8 @@ namespace syscall::proc
             if (uptr == nullptr)
                 return std::nullopt;
             Type val;
-            lib::copy_from_user(&val, uptr, sizeof(Type));
+            if (!lib::copy_from_user(&val, uptr, sizeof(Type)))
+                return std::nullopt;
             return val;
         }
 
@@ -55,11 +56,20 @@ namespace syscall::proc
         const auto proc = sched::this_thread()->parent;
 
         if (ruid)
-            lib::copy_to_user(ruid, &proc->ruid, sizeof(uid_t));
+        {
+            if (!lib::copy_to_user(ruid, &proc->ruid, sizeof(uid_t)))
+                return (errno = EFAULT, -1);
+        }
         if (euid)
-            lib::copy_to_user(euid, &proc->euid, sizeof(uid_t));
+        {
+            if (!lib::copy_to_user(euid, &proc->euid, sizeof(uid_t)))
+                return (errno = EFAULT, -1);
+        }
         if (suid)
-            lib::copy_to_user(suid, &proc->suid, sizeof(uid_t));
+        {
+            if (!lib::copy_to_user(suid, &proc->suid, sizeof(uid_t)))
+                return (errno = EFAULT, -1);
+        }
 
         return 0;
     }
@@ -69,11 +79,20 @@ namespace syscall::proc
         const auto proc = sched::this_thread()->parent;
 
         if (rgid)
-            lib::copy_to_user(rgid, &proc->rgid, sizeof(gid_t));
+        {
+            if (!lib::copy_to_user(rgid, &proc->rgid, sizeof(gid_t)))
+                return (errno = EFAULT, -1);
+        }
         if (egid)
-            lib::copy_to_user(egid, &proc->egid, sizeof(gid_t));
+        {
+            if (!lib::copy_to_user(egid, &proc->egid, sizeof(gid_t)))
+                return (errno = EFAULT, -1);
+        }
         if (sgid)
-            lib::copy_to_user(sgid, &proc->sgid, sizeof(gid_t));
+        {
+            if (!lib::copy_to_user(sgid, &proc->sgid, sizeof(gid_t)))
+                return (errno = EFAULT, -1);
+        }
 
         return 0;
     }
@@ -124,15 +143,31 @@ namespace syscall::proc
         return (errno = no_error, 0);
     }
 
+    int set_tid_address(int __user *tidptr)
+    {
+        auto thread = sched::this_thread();
+        thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(tidptr);
+        return thread->tid;
+    }
+
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact)
     {
+        // TODO
         lib::unused(signum, act, oldact);
         return (errno = ENOSYS, -1);
     }
 
     int sigprocmask(int how, const struct sigset_t __user *set, struct sigset_t __user *oldset, std::size_t sigsetsize)
     {
+        // TODO
         lib::unused(how, set, oldset, sigsetsize);
+        return (errno = ENOSYS, -1);
+    }
+
+    int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig)
+    {
+        // TODO
+        lib::unused(rseq, rseq_len, flags, sig);
         return (errno = ENOSYS, -1);
     }
 
@@ -250,9 +285,24 @@ namespace syscall::proc
 
     long futex(std::uint32_t __user *uaddr, int futex_op, std::uint32_t val, const timespec __user *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3)
     {
+        // TODO
         lib::unused(uaddr, futex_op, val, timeout, uaddr2, val3);
         // return (errno = ENOSYS, -1);
         return 0;
+    }
+
+    long get_robust_list(int pid, struct robust_list_head __user *__user *head_ptr, std::size_t __user *sizep)
+    {
+        // TODO
+        lib::unused(pid, head_ptr, sizep);
+        return (errno = ENOSYS, -1);
+    }
+
+    long set_robust_list(struct robust_list_head __user *head, std::size_t size)
+    {
+        // TODO
+        lib::unused(head, size);
+        return (errno = ENOSYS, -1);
     }
 
     struct rlimit
@@ -263,12 +313,14 @@ namespace syscall::proc
 
     int prlimit(pid_t pid, int resource, const struct rlimit __user *new_limit, struct rlimit __user *old_limit)
     {
+        // TODO
         lib::unused(pid, resource, new_limit, old_limit);
         return (errno = ENOSYS, -1);
     }
 
     [[noreturn]] void exit_group(int status)
     {
+        // TODO
         lib::unused(status);
         lib::panic("todo: exit_group");
         std::unreachable();

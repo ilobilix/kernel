@@ -90,11 +90,11 @@ namespace initramfs
                             break;
                         }
 
-                        const std::span data {
+                        const auto data = lib::maybe_uspan<std::byte>::create(
                             reinterpret_cast<std::byte *>(
                                 reinterpret_cast<std::uintptr_t>(current) + 512
                             ), size
-                        };
+                        ).value();
 
                         auto file = vfs::file::create(ret.value(), 0, 0);
                         if (file->pwrite(0, data) != std::ssize_t(size))

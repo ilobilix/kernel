@@ -318,6 +318,11 @@ export namespace lib
             return _lock.is_locked();
         }
 
+        bool is_locked()
+        {
+            return _lock.is_locked();
+        }
+
         template<typename Self> requires detail::is_rwlock<Lock>
         [[nodiscard]] auto read_lock(this Self &&self)
         {

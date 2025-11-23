@@ -5,7 +5,6 @@ import lib;
 
 // phd memcpy from managarm
 
-#if ILOBILIX_MAX_UACPI_POINTS
 template<typename Type>
 struct word_helper { enum class [[gnu::may_alias, gnu::aligned(1)]] word_enum : Type { }; };
 
@@ -28,11 +27,9 @@ inline void alias_store(std::uint8_t *&p, word<Type> value)
     *reinterpret_cast<word<Type> *>(p) = value;
     p += sizeof(Type);
 }
-#endif
 
 extern "C"
 {
-#if ILOBILIX_MAX_UACPI_POINTS
     void *memcpy(void *dest, const void *src, std::size_t n)
     {
         auto cur_dest = reinterpret_cast<std::uint8_t *>(dest);
@@ -173,28 +170,6 @@ extern "C"
             *cur_dest = byte;
         return dest;
     }
-#else
-    [[gnu::weak]] void *memcpy(void *dest, const void *src, std::size_t len)
-    {
-        auto pdest = static_cast<std::uint8_t *>(dest);
-        auto psrc = static_cast<const std::uint8_t *>(src);
-
-        for (std::size_t i = 0; i < len; i++)
-            pdest[i] = psrc[i];
-
-        return dest;
-    }
-
-    [[gnu::weak]] void *memset(void *dest, int ch, std::size_t len)
-    {
-        auto ptr = static_cast<std::uint8_t *>(dest);
-
-        for (std::size_t i = 0; i < len; i++)
-            ptr[i] = static_cast<std::uint8_t>(ch);
-
-        return dest;
-    }
-#endif
 
     [[gnu::weak]] void *memmove(void *dest, const void *src, std::size_t len)
     {

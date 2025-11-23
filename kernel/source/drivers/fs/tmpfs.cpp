@@ -37,7 +37,7 @@ namespace fs::tmpfs
         );
     }
 
-    std::ssize_t ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer)
+    std::ssize_t ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -54,7 +54,7 @@ namespace fs::tmpfs
         return real_size;
     }
 
-    std::ssize_t ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer)
+    std::ssize_t ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };

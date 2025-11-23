@@ -162,7 +162,11 @@ export namespace vmm
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
-        static bool is_canonical(std::uintptr_t addr);
+
+        [[gnu::pure]] static bool is_canonical(std::uintptr_t addr);
+
+        [[gnu::pure]] static std::pair<std::uintptr_t, std::uintptr_t> user_range();
+        [[gnu::pure]] static std::pair<std::uintptr_t, std::uintptr_t> kernel_range();
 
         [[gnu::pure]] static std::size_t from_page_size(page_size psize);
         [[gnu::pure]] static page_size max_page_size(std::size_t size);

@@ -46,8 +46,8 @@ export namespace vmm
 
         std::uintptr_t get_page(std::size_t idx);
 
-        std::size_t read(std::uint64_t offset, std::span<std::byte> buffer);
-        std::size_t write(std::uint64_t offset, std::span<std::byte> buffer);
+        std::size_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
+        std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
         std::size_t copy_to(object &other, std::uint64_t offset, std::size_t length);
@@ -88,6 +88,13 @@ export namespace vmm
             lib::rwmutex
         > tree;
 
+        std::uintptr_t brk_start = 0;
+        std::uintptr_t brk = 0;
+        inline void init_brk(std::uintptr_t addr)
+        {
+            brk_start = brk = addr;
+        }
+
         std::expected<void, error> map(
             std::uintptr_t address, std::size_t length,
             std::uint8_t prot, std::uint8_t flags,
@@ -98,7 +105,7 @@ export namespace vmm
         std::expected<void, error> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);
-        std::uintptr_t find_free_region(std::size_t length);
+        std::optional<std::uintptr_t> find_free_region(std::size_t length);
 
         ~vmspace() { lib::panic_if(pmap.use_count() != 1); }
     };

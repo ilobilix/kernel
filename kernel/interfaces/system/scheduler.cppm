@@ -77,7 +77,10 @@ export namespace sched
 
         nice_t priority;
 
-        std::uint64_t vruntime;
+        std::uintptr_t set_child_tid = 0;
+        std::uintptr_t clear_child_tid = 0;
+
+        std::uint64_t vruntime = 0;
         std::uint64_t schedule_time;
 
         lib::spinlock sleep_lock;
