@@ -112,11 +112,12 @@ export namespace lib
 
             if (_is_user)
             {
-                return lib::copy_from_user(
+                impl::copy_from_user(
                     dest.data(),
                     (__force void __user *)(_span.data()),
                     dest.size_bytes()
                 );
+                return true;
             }
 
             std::memcpy(dest.data(), _span.data(), dest.size_bytes());
@@ -134,11 +135,12 @@ export namespace lib
                 return false;
             if (_is_user)
             {
-                return lib::copy_to_user(
+                impl::copy_to_user(
                     (__force void __user *)(_span.data()),
                     src.data(),
                     src.size_bytes()
                 );
+                return true;
             }
 
             std::memcpy(_span.data(), src.data(), src.size_bytes());
@@ -157,11 +159,12 @@ export namespace lib
 
             if (_is_user)
             {
-                return lib::fill_user(
+                impl::fill_user(
                     (__force void __user *)(_span.data()),
                     static_cast<int>(value),
                     count * sizeof(Type)
                 );
+                return true;
             }
 
             std::memset(
