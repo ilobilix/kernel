@@ -20,6 +20,7 @@ namespace bin::elf::exec
     {
         private:
         static inline constexpr std::uintptr_t default_base = 0x400000;
+        static inline constexpr std::uintptr_t defautl_interp_base = 0x40000000;
 
         struct auxval
         {
@@ -29,13 +30,15 @@ namespace bin::elf::exec
             Elf64_Addr at_phnum;
         };
 
-        static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t addr)
+        static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr)
             -> std::optional<std::pair<auxval, std::shared_ptr<vfs::file>>>
         {
             Elf64_Ehdr ehdr;
-            lib::panic_if(file->pread(0, std::span {
-                reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
-            }) != sizeof(ehdr));
+            lib::panic_if(file->pread(
+                0, lib::maybe_uspan<std::byte>::create(
+                    reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
+                ).value()
+            ) != sizeof(ehdr));
 
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
@@ -55,7 +58,9 @@ namespace bin::elf::exec
                 Elf64_Phdr phdr;
                 lib::panic_if(file->pread(
                     ehdr.e_phoff + i * ehdr.e_phentsize,
-                    std::span { reinterpret_cast<std::byte *>(&phdr), sizeof(phdr) }
+                    lib::maybe_uspan<std::byte>::create(
+                        reinterpret_cast<std::byte *>(&phdr), sizeof(phdr)
+                    ).value()
                 ) != sizeof(phdr));
 
                 switch (phdr.p_type)
@@ -79,11 +84,11 @@ namespace bin::elf::exec
 
                         lib::membuffer file_buffer { phdr.p_filesz };
                         lib::panic_if(file->pread(
-                            phdr.p_offset, file_buffer.span()
+                            phdr.p_offset, file_buffer.maybe_uspan()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz));
 
                         lib::panic_if(obj->write(
-                            misalign, file_buffer.span()
+                            misalign, file_buffer.maybe_uspan()
                         ) != phdr.p_filesz);
 
                         if (phdr.p_memsz > phdr.p_filesz)
@@ -93,7 +98,7 @@ namespace bin::elf::exec
                             std::memset(zeroes.data(), 0, zeroes.size());
 
                             lib::panic_if(obj->write(
-                                misalign + phdr.p_filesz, zeroes.span()
+                                misalign + phdr.p_filesz, zeroes.maybe_uspan()
                             ) != zeroes_len);
                         }
 
@@ -112,7 +117,7 @@ namespace bin::elf::exec
                     {
                         lib::membuffer buffer { phdr.p_filesz - 1 };
                         lib::panic_if(file->pread(
-                            phdr.p_offset, buffer.span()
+                            phdr.p_offset, buffer.maybe_uspan()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz - 1));
 
                         std::string_view path {
@@ -122,11 +127,17 @@ namespace bin::elf::exec
 
                         auto ret = vfs::resolve(file->path, path);
                         if (!ret.has_value())
+                        {
+                            log::error("elf: could not resolve interpreter path '{}'", path);
                             return std::nullopt;
+                        }
 
                         auto res = vfs::reduce(ret->parent, ret->target);
                         if (!res.has_value())
+                        {
+                            log::error("elf: could not reduce interpreter path '{}'", path);
                             return std::nullopt;
+                        }
 
                         interp = vfs::file::create(res.value(), 0, 0);
                         break;
@@ -145,9 +156,11 @@ namespace bin::elf::exec
         bool identify(const std::shared_ptr<vfs::file> &file) const override
         {
             Elf64_Ehdr ehdr;
-            lib::bug_on(file->pread(0, std::span {
-                reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
-            }) != sizeof(ehdr));
+            lib::bug_on(file->pread(
+                0, lib::maybe_uspan<std::byte>::create(
+                    reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
+                ).value()
+            ) != sizeof(ehdr));
 
             return std::memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0 &&
                 ehdr.e_ident[EI_CLASS] == ELFCLASS64 &&
@@ -161,24 +174,32 @@ namespace bin::elf::exec
         {
             lib::bug_on(!proc);
 
-            auto ret = load_file(req.file, proc->vmspace, default_base);
+            std::uintptr_t exec_base = default_base;
+            std::uintptr_t interp_base = 0;
+
+            auto ret = load_file(req.file, proc->vmspace, exec_base);
             if (!ret.has_value())
                 return nullptr;
 
-            const auto auxv = ret->first;
+            const auto [auxv, interp] = ret.value();
+            lib::bug_on(req.interp && interp);
 
-            lib::bug_on(req.interp && ret->second);
-
-            std::uintptr_t entry = ret->first.at_entry;
-            if (ret->second)
+            std::uintptr_t entry = auxv.at_entry;
+            if (interp)
             {
-                ret = load_file(ret->second, proc->vmspace, 0);
+                interp_base = defautl_interp_base;
+                ret = load_file(interp, proc->vmspace, interp_base);
                 if (!ret.has_value())
                     return nullptr;
 
-                entry = ret->first.at_entry;
-                lib::bug_on(ret->second != nullptr);
+                lib::bug_on(interp_base == exec_base);
+                const auto [iauxv, ii] = ret.value();
+
+                entry = iauxv.at_entry;
+                lib::bug_on(ii != nullptr);
             }
+            // TODO: fix
+            proc->vmspace->init_brk(std::max(exec_base, interp_base) + lib::mib(16));
 
             auto thread = sched::thread::create(proc, entry, true);
 
@@ -188,7 +209,10 @@ namespace bin::elf::exec
             const auto stack_size = boot::ustack_size;
             const auto addr_bottom = thread->ustack_top - stack_size;
 
-            constexpr std::size_t num_auxvals = 6;
+            auto execfn_path = req.pathname.empty() ? vfs::pathname_from(req.file->path) : req.pathname;
+            const std::string_view plaform_name { ILOBILIX_SYSNAME };
+
+            constexpr std::size_t num_auxvals = 16;
 
             const bool one_more = (req.argv.size() + req.envp.size() + 1) & 1;
             const auto required_size =
@@ -204,7 +228,9 @@ namespace bin::elf::exec
                         [](std::size_t acc, const std::string &arg) {
                             return acc + arg.length() + 1;
                         }
-                    ), 16
+                    ) +
+                    execfn_path.length() + 1 +
+                    plaform_name.length() + 1, 16
                 ) + (one_more ? 8 : 0) + (num_auxvals * 16) + 8 +
                 req.envp.size() * 8 + 8 + req.argv.size() * 8 + 8;
 
@@ -238,6 +264,20 @@ namespace bin::elf::exec
                 argv_offsets.push_back(addr_bottom + offset);
             }
 
+            std::uintptr_t execfn_offset = 0;
+            {
+                offset -= execfn_path.length() + 1;
+                std::memcpy(sptr(), execfn_path.c_str(), execfn_path.length() + 1);
+                execfn_offset = addr_bottom + offset;
+            }
+
+            std::uintptr_t platform_offset = 0;
+            {
+                offset -= plaform_name.length() + 1;
+                std::memcpy(sptr(), plaform_name.data(), plaform_name.length() + 1);
+                platform_offset = addr_bottom + offset;
+            }
+
             offset = lib::align_down(offset, 16);
             if (one_more)
             {
@@ -261,10 +301,23 @@ namespace bin::elf::exec
             write_auxv(AT_PHDR, auxv.at_phdr);
             write_auxv(AT_PHENT, auxv.at_phent);
             write_auxv(AT_PHNUM, auxv.at_phnum);
+            write_auxv(AT_PAGESZ, vmm::default_page_size());
+            write_auxv(AT_BASE, interp_base);
             write_auxv(AT_ENTRY, auxv.at_entry);
-            // write_auxv(AT_EXECFN, 0);
-            // write_auxv(AT_RANDOM, 0);
+            write_auxv(AT_NOTELF, 0);
+            write_auxv(AT_UID, proc->ruid);
+            write_auxv(AT_EUID, proc->euid);
+            write_auxv(AT_GID, proc->rgid);
+            write_auxv(AT_EGID, proc->egid);
+            write_auxv(AT_PLATFORM, platform_offset);
+            // write_auxv(AT_HWCAP, 0); // TODO
+            write_auxv(AT_EXECFN, execfn_offset);
+            // write_auxv(AT_RANDOM, 0); // TODO
             write_auxv(AT_SECURE, 0);
+            write_auxv(AT_BASE_PLATFORM, platform_offset);
+
+            if (num != num_auxvals)
+                lib::panic("you froggot to update num_auxvals");
 
             offset -= 8;
             *sptr() = 0;
@@ -290,7 +343,7 @@ namespace bin::elf::exec
             lib::bug_on((stack_size - offset) != required_size);
 
             lib::panic_if(obj->write(
-                offset, stack_buffer.span()
+                offset, stack_buffer.maybe_uspan()
             ) != stack_buffer.size());
 
             thread->update_ustack(addr_bottom + offset);

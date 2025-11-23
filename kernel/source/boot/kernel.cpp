@@ -35,13 +35,14 @@ extern "C"
         auto pmap = std::make_shared<vmm::pagemap>();
         auto proc = sched::process::create(nullptr, pmap);
 
-        auto cons = vfs::create(std::nullopt, "/dev/console", 0666 | stat::s_ifchr, dev::makedev(5, 1));
-        lib::panic_if(!cons, "could not create /dev/console");
+        auto cons = vfs::create(std::nullopt, "/dev/tty", 0666 | stat::s_ifchr, dev::makedev(5, 0));
+        lib::panic_if(!cons, "could not create /dev/tty");
         proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
         proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
         proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
 
         auto thread = format->load({
+            .pathname = "/usr/bin/bash",
             .file = file,
             .interp = { },
             .argv = { "bash" },

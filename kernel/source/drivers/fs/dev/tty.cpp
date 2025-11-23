@@ -20,19 +20,22 @@ namespace fs::dev::tty
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             arch::halt(false);
             return -1;
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
-            log::print("{}", std::string_view { reinterpret_cast<const char *>(buffer.data()), buffer.size_bytes() });
+            lib::membuffer buf { buffer.size_bytes() };
+            buffer.copy_to(buf.span());
+            const std::string_view str { reinterpret_cast<const char *>(buf.data()), buf.size_bytes() };
+            log::print("{}", str);
             return buffer.size_bytes();
         }
 
-        int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::may_be_uptr argp) override
+        int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::uptr_or_addr argp) override
         {
             lib::unused(file, request, argp);
             return 0;
@@ -71,7 +74,7 @@ namespace fs::dev::tty
         lib::initgraph::entail { registered_stage() },
         [] {
             using namespace ::dev;
-            register_cdev(ops::singleton(), makedev(5, 1));
+            register_cdev(ops::singleton(), makedev(5, 0));
         }
     };
 } // namespace fs::dev::tty

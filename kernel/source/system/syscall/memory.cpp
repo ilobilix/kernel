@@ -23,8 +23,10 @@ namespace syscall::memory
             return (errno = EINVAL, invalid_addr);
 
         const auto psize = vmm::default_page_size();
-        if (length % psize != 0 || offset % psize != 0)
+        if (offset % psize != 0)
             return (errno = EINVAL, invalid_addr);
+
+        length = lib::align_up(length, psize);
 
         if (anon && fd != -1)
             return (errno = EINVAL, invalid_addr);
@@ -47,9 +49,10 @@ namespace syscall::memory
         }
         else
         {
-            address = vmspace->find_free_region(length);
-            if (address == 0)
+            auto ret = vmspace->find_free_region(length);
+            if (!ret.has_value())
                 return (errno = ENOMEM, invalid_addr);
+            address = ret.value();
         }
 
         if (address + length < address)
@@ -104,5 +107,40 @@ namespace syscall::memory
         );
 
         return res ? 0 : (errno = ENOMEM, -1);
+    }
+
+    void *brk(void *addr)
+    {
+        const auto proc = sched::this_thread()->parent;
+        const auto &vmspace = proc->vmspace;
+
+        const auto psize = vmm::default_page_size();
+
+        const auto address = reinterpret_cast<std::uintptr_t>(addr);
+        const auto old = vmspace->brk;
+
+        if (address == old)
+            return reinterpret_cast<void *>(old);
+
+        if (address > old)
+        {
+            const auto begin = lib::align_up(old, psize);
+            const auto length = lib::align_up(address - begin, psize);
+            if (length == 0 || vmspace->is_mapped(begin, length))
+                return reinterpret_cast<void *>(old);
+
+            auto obj = std::make_shared<vmm::memobject>();
+            if (!vmspace->map(
+                begin, length,
+                vmm::prot::read | vmm::prot::write | vmm::prot::exec,
+                vmm::flag::private_ | vmm::flag::anonymous,
+                obj, 0
+            ))
+                return reinterpret_cast<void *>(old);
+        }
+        else return reinterpret_cast<void *>(old); // TODO
+
+        vmspace->brk = address;
+        return addr;
     }
 } // namespace syscall::memory
