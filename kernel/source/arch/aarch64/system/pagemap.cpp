@@ -152,6 +152,18 @@ namespace vmm
         return true;
     }
 
+    [[gnu::pure]] std::pair<std::uintptr_t, std::uintptr_t> pagemap::user_range()
+    {
+        // TODO
+        return { 0, 0 };
+    }
+
+    [[gnu::pure]] std::pair<std::uintptr_t, std::uintptr_t> pagemap::kernel_range()
+    {
+        // TODO
+        return { 0, 0 };
+    }
+
     [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
         lib::bug_on(!magic_enum::enum_contains(psize));

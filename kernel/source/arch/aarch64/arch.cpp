@@ -47,21 +47,23 @@ namespace arch
 
     void early_init() { }
 
-    initgraph::task bsp_task
+    lib::initgraph::task bsp_task
     {
-        "arch.init-bsp",
-        initgraph::require { output::initialised_stage() },
-        initgraph::entail { bsp_stage() },
+        "arch.bsp.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { lib::initgraph::base_stage() },
+        lib::initgraph::entail { bsp_stage() },
         [] {
             cpu::init_bsp();
         }
     };
 
-    initgraph::task cpus_task
+    lib::initgraph::task cpus_task
     {
-        "arch.init-cpus",
-        initgraph::require { bsp_stage(), timers::available_stage() },
-        initgraph::entail { cpus_stage() },
+        "arch.cpus.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { bsp_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { cpus_stage() },
         [] {
             cpu::init();
         }

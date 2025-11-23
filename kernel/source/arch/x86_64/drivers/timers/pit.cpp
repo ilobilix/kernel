@@ -2,10 +2,10 @@
 
 module x86_64.drivers.timers.pit;
 
-import arch.drivers.timers;
 import system.interrupts;
 import system.time;
 import system.cpu;
+import drivers.timers;
 import magic_enum;
 import arch;
 import lib;

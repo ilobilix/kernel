@@ -69,6 +69,15 @@ export namespace lib
 
     template<typename Type>
     using remove_address_space_t = typename remove_address_space<Type>::type;
+
+    template<typename Type>
+    struct has_address_space
+    {
+        static constexpr bool value = !std::is_same_v<Type, remove_address_space_t<Type>>;
+    };
+
+    template<typename Type>
+    inline constexpr bool has_address_space_v = has_address_space<Type>::value;
 } // export namespace lib
 
 export

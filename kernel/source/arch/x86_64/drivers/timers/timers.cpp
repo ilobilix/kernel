@@ -31,35 +31,6 @@ namespace timers::arch
         return nullptr;
     }
 
-    lib::initgraph::stage *can_initialise_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.can-initialise",
-            lib::initgraph::presched_init_engine
-        };
-        return &stage;
-    }
-
-    lib::initgraph::stage *initialised_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.initialised",
-            lib::initgraph::presched_init_engine
-        };
-        return &stage;
-    }
-
-    lib::initgraph::task can_timers_task
-    {
-        "timers.arch.set-can-initialise",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::arch::bsp_stage(), timers::acpipm::initialised_stage() },
-        lib::initgraph::entail { can_initialise_stage() },
-        [] { }
-    };
-
     lib::initgraph::task timers_task
     {
         "timers.arch.initialise",
