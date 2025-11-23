@@ -39,9 +39,9 @@ SECTIONS
     } :rodata
 
     .modules : {
-        __start_section_modules = .;
+        __start_modules = .;
         KEEP(*(.modules))
-        __end_section_modules = .;
+        __end_modules = .;
     } :rodata
 
     .init_array : {

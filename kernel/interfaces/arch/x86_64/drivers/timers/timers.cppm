@@ -15,7 +15,4 @@ export namespace timers::arch
 {
     using namespace x86_64::timers;
     auto calibrator() -> std::size_t (*)(std::size_t ms);
-
-    lib::initgraph::stage *can_initialise_stage();
-    lib::initgraph::stage *initialised_stage();
 } // export namespace timers::arch

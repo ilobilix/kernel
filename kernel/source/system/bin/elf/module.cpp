@@ -15,8 +15,7 @@ import cppstd;
 
 namespace bin::elf::mod
 {
-    extern "C" char __start_section_modules[];
-    extern "C" char __end_section_modules[];
+    extern "C" char __start_modules[], __end_modules[];
 
     void initfini::init()
     {
@@ -129,8 +128,8 @@ namespace bin::elf::mod
 
         void load_internal()
         {
-            const auto start = reinterpret_cast<std::uintptr_t>(__start_section_modules);
-            const auto end = reinterpret_cast<std::uintptr_t>(__end_section_modules);
+            const auto start = reinterpret_cast<std::uintptr_t>(__start_modules);
+            const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
 
             auto nmod = load(true, start, end, { }, { }, { });
             log::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");

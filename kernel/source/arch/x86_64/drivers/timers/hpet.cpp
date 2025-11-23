@@ -7,10 +7,10 @@ module;
 
 module x86_64.drivers.timers.hpet;
 
-import arch.drivers.timers;
 import system.scheduler;
 import system.memory;
 import system.time;
+import drivers.timers;
 import magic_enum;
 import boot;
 import arch;
