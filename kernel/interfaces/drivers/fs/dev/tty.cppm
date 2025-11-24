@@ -32,6 +32,24 @@ export namespace fs::dev::tty
         std::uint16_t ws_ypixel;
     };
 
+    struct instance;
+    struct line_discipline
+    {
+        instance *inst;
+
+        line_discipline(instance *inst) : inst { inst } { }
+
+        virtual ~line_discipline() = default;
+
+        virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer) = 0;
+
+        virtual void receive(std::span<std::byte> buffer) = 0;
+
+        virtual void open() { }
+        virtual void close() { }
+    };
+
     struct driver;
     struct instance
     {
@@ -39,6 +57,8 @@ export namespace fs::dev::tty
         std::uint32_t minor;
 
         std::atomic<std::uint32_t> ref;
+
+        lib::locker<std::shared_ptr<line_discipline>, lib::rwmutex> ldisc;
 
         lib::locker<termios, lib::rwmutex> termios;
         lib::locker<winsize, lib::rwmutex> winsize;
@@ -54,17 +74,41 @@ export namespace fs::dev::tty
 
         frg::default_list_hook<instance> hook;
 
-        instance(driver *drv, std::uint32_t minor);
+        instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc);
+
+        virtual ~instance() = default;
+
+        virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer)
+        {
+            auto rlocked = ldisc.read_lock();
+            if (rlocked.value())
+                return rlocked.value()->read(buffer);
+            return -1;
+        }
+
+        virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer)
+        {
+            auto rlocked = ldisc.read_lock();
+            if (rlocked.value())
+                return rlocked.value()->write(buffer);
+            return -1;
+        }
+
+        // send to hardware
+        virtual std::ssize_t transmit(lib::maybe_uspan<std::byte> buffer) = 0;
+        // called by hardware
+        void receive(std::span<std::byte> buffer)
+        {
+            auto rlocked = ldisc.read_lock();
+            if (rlocked.value())
+                rlocked.value()->receive(buffer);
+        }
 
         virtual bool open(std::shared_ptr<vfs::file> self) = 0;
         virtual bool close() = 0;
 
-        virtual std::ssize_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual std::ssize_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual void flush_buffer() = 0;
         virtual int ioctl(unsigned long request, lib::uptr_or_addr argp) = 0;
-
-        virtual ~instance() = default;
     };
 
     struct driver
@@ -87,11 +131,11 @@ export namespace fs::dev::tty
         driver(std::string_view name, std::uint32_t major, std::uint32_t minor_start, const termios &init_termios)
             : name { name }, major { major }, minor_start { minor_start }, init_termios { init_termios } { }
 
+        virtual ~driver() = default;
+
         virtual std::shared_ptr<instance> create_instance(std::uint32_t minor) = 0;
         virtual void destroy_instance(std::shared_ptr<instance> inst) = 0;
         virtual int ioctl(std::shared_ptr<instance> inst, unsigned long request, lib::uptr_or_addr argp) = 0;
-
-        virtual ~driver() = default;
     };
 
     lib::initgraph::stage *registered_stage();
