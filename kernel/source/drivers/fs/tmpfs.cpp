@@ -11,7 +11,7 @@ import cppstd;
 
 namespace fs::tmpfs
 {
-    inode::inode(dev_t dev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op)
+    inode::inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op)
         : vfs::inode { op }, memory { std::make_shared<vmm::memobject>() }
     {
         stat.st_size = 0;
@@ -19,6 +19,7 @@ namespace fs::tmpfs
         stat.st_blksize = 512;
 
         stat.st_dev = dev;
+        stat.st_rdev = rdev;
 
         stat.st_ino = ino;
         stat.st_mode = mode;
@@ -105,16 +106,16 @@ namespace fs::tmpfs
 
     bool ops::sync() { return true; }
 
-    auto fs::instance::create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
-        return std::shared_ptr<vfs::inode>(new inode { dev_id, next_inode++, mode, ops ?: ops::singleton() });
+        return std::shared_ptr<vfs::inode>(new inode { dev_id, rdev, next_inode++, mode, ops ?: ops::singleton() });
     }
 
     auto fs::instance::symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(target);
-        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), nullptr);
+        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, nullptr);
     }
 
     auto fs::instance::link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>>
@@ -155,7 +156,7 @@ namespace fs::tmpfs
         auto root = std::make_shared<vfs::dentry>();
         root->name = "tmpfs root. this shouldn't be visible anywhere";
         root->inode = std::make_shared<inode>(
-            dev_id, locked->next_inode++,
+            dev_id, 0, locked->next_inode++,
             static_cast<mode_t>(stat::type::s_ifdir),
             ops::singleton()
         );

@@ -178,7 +178,7 @@ export namespace vfs
             std::atomic<ino_t> next_inode = 1;
             dev_t dev_id;
 
-            virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<ops> ops = nullptr) -> expect<std::shared_ptr<inode>> = 0;
+            virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, dev_t rdev, std::shared_ptr<ops> ops) -> expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<inode>> = 0;
             virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> expect<std::shared_ptr<inode>> = 0;
@@ -248,9 +248,11 @@ export namespace vfs
         }
 
         lib::mutex lock;
+        std::atomic<std::uint32_t> ref;
         path path;
         std::size_t offset;
         int flags;
+        pid_t pid;
 
         std::shared_ptr<void> private_data;
 
@@ -307,12 +309,14 @@ export namespace vfs
             return get_ops()->map(shared_from_this(), priv);
         }
 
-        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
+        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags, pid_t pid)
         {
             auto file = std::make_shared<vfs::file>();
+            file->ref = 1;
             file->path = path;
             file->offset = offset;
             file->flags = flags;
+            file->pid = pid;
             return file;
         }
     };
@@ -322,31 +326,13 @@ export namespace vfs
         std::shared_ptr<file> file { };
         std::atomic_bool closexec = false;
 
-        static std::shared_ptr<filedesc> create(const path &path, int flags)
+        static std::shared_ptr<filedesc> create(const path &path, int flags, pid_t pid)
         {
             auto fd = std::make_shared<filedesc>();
-            fd->file = vfs::file::create(path, 0, flags & ~creation_flags);
+            fd->file = vfs::file::create(path, 0, flags & ~creation_flags, pid);
             fd->closexec = (flags & o_closexec) != 0;
             return fd;
         }
-    };
-
-    class fdtable
-    {
-        private:
-        lib::locker<
-            lib::map::flat_hash<
-                int, std::shared_ptr<filedesc>
-            >, lib::rwspinlock
-        > fds;
-        int next_fd = 0;
-
-        public:
-        bool close(int fd);
-        std::shared_ptr<filedesc> get(int fd);
-        int allocate_fd(std::shared_ptr<filedesc> desc, int fd, bool force);
-
-        ~fdtable() = default;
     };
 
     struct resolve_res
@@ -369,7 +355,7 @@ export namespace vfs
     auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> expect<void>;
     auto unmount(lib::path target) -> expect<void>;
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t dev = 0) -> expect<path>;
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0) -> expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;

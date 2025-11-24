@@ -240,7 +240,7 @@ namespace syscall::vfs
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return (errno = ENOTDIR, -1);
 
-        auto fdesc = filedesc::create(target, flags);
+        auto fdesc = filedesc::create(target, flags, proc->pid);
         if (!fdesc)
             return (errno = EMFILE, -1);
         const auto fd = fdt.allocate_fd(fdesc, 0, false);
@@ -272,8 +272,11 @@ namespace syscall::vfs
         if (fdesc == nullptr)
             return -1;
 
-        if (!fdesc->file->close())
-            return (errno = EIO, -1);
+        if (fdesc->file->ref.fetch_sub(1) == 1)
+        {
+            if (!fdesc->file->close())
+                return (errno = EIO, -1);
+        }
 
         lib::bug_on(!proc->fdt.close(fd));
         return 0;
@@ -715,33 +718,13 @@ namespace syscall::vfs
     int dup(int oldfd)
     {
         const auto proc = sched::this_thread()->parent;
-
-        auto fdesc = get_fd(proc, oldfd);
-        if (fdesc == nullptr)
-            return -1;
-
-        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, false);
-        const auto new_fd = proc->fdt.allocate_fd(newfdesc, 0, false);
-        if (new_fd < 0)
-            return (errno = EMFILE, -1);
-        return new_fd;
+        return proc->fdt.dup(oldfd, 0, false, false);
     }
 
     int dup2(int oldfd, int newfd)
     {
         const auto proc = sched::this_thread()->parent;
-
-        if (oldfd < 0 || newfd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(oldfd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
-
-        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, false);
-        const auto fd = proc->fdt.allocate_fd(newfdesc, newfd, true);
-        if (fd < 0)
-            return (errno = EMFILE, -1);
-        return fd;
+        return proc->fdt.dup(oldfd, newfd, false, true);
     }
 
     int dup3(int oldfd, int newfd, int flags)
@@ -750,18 +733,7 @@ namespace syscall::vfs
             return (errno = EINVAL, -1);
 
         const auto proc = sched::this_thread()->parent;
-
-        if (oldfd < 0 || newfd < 0)
-            return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(oldfd);
-        if (!fdesc)
-            return (errno = EBADF, -1);
-
-        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, flags & o_closexec);
-        const auto fd = proc->fdt.allocate_fd(newfdesc, newfd, true);
-        if (fd < 0)
-            return (errno = EMFILE, -1);
-        return fd;
+        return proc->fdt.dup(oldfd, newfd, (flags & o_closexec) != 0, true);
     }
 
     char *getcwd(char __user *buf, std::size_t size)

@@ -381,6 +381,54 @@ namespace sched
         return proc;
     }
 
+    bool process::fdtable::close(int fd)
+    {
+        return fds.write_lock()->erase(fd);
+    }
+
+    std::shared_ptr<vfs::filedesc> process::fdtable::get(int fd)
+    {
+        const auto rlocked = fds.read_lock();
+        auto it = rlocked->find(fd);
+        if (it == rlocked->end())
+            return nullptr;
+        return it->second;
+    }
+
+    int process::fdtable::allocate_fd(std::shared_ptr<vfs::filedesc> desc, int fd, bool force)
+    {
+        auto wlocked = fds.write_lock();
+        if (wlocked->contains(fd))
+        {
+            if (!force)
+            {
+                fd = next_fd++;
+                while (wlocked->contains(fd))
+                    fd++;
+            }
+            else lib::bug_on(!wlocked->erase(fd));
+        }
+
+        wlocked.value()[fd] = desc;
+        return fd;
+    }
+
+    int process::fdtable::dup(int oldfd, int newfd, bool closexec, bool force)
+    {
+        if (oldfd < 0 || newfd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = get(oldfd);
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        const auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
+        const auto fd = allocate_fd(newfdesc, newfd, force);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+        fdesc->file->ref.fetch_add(1);
+        return fd;
+    }
+
     thread *this_thread()
     {
         return percpu->running_thread;
