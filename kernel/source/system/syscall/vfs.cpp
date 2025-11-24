@@ -746,6 +746,6 @@ namespace syscall::vfs
 
         if (!lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1))
             return (errno = EFAULT, nullptr);
-        return (__force char *)(buf);
+        return lib::remove_user_cast<char>(buf);
     }
 } // namespace syscall::vfs

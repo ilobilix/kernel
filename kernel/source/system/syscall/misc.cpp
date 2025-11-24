@@ -39,7 +39,7 @@ namespace syscall::misc
         if (buflen == 0)
             return 0;
 
-        auto uspan = lib::maybe_uspan<std::byte>::create((__force std::byte *)(buf), buflen);
+        auto uspan = lib::maybe_uspan<std::byte>::create(lib::remove_user_cast<std::byte>(buf), buflen);
         if (!uspan)
             return (errno = EFAULT, -1);
         return lib::random_bytes(uspan.value());
