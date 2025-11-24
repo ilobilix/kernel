@@ -247,7 +247,7 @@ namespace syscall::vfs
         if (fd < 0)
             return (errno = EMFILE, -1);
 
-        if (!fdesc->file->open())
+        if (!fdesc->file->open(flags))
         {
             fdt.close(fd);
             return (errno = EIO, -1);
