@@ -20,28 +20,28 @@ namespace lib::impl
     void copy_to_user(void __user *dest, const void *src, std::size_t len)
     {
         user_acquire();
-        std::memcpy((__force void *)dest, src, len);
+        std::memcpy(remove_user_cast<void>(dest), src, len);
         user_release();
     }
 
     void copy_from_user(void *dest, const void __user *src, std::size_t len)
     {
         user_acquire();
-        std::memcpy(dest, (__force void *)src, len);
+        std::memcpy(dest, remove_user_cast<void>(src), len);
         user_release();
     }
 
     void fill_user(void __user *dest, int value, std::size_t len)
     {
         user_acquire();
-        std::memset((__force void *)dest, value, len);
+        std::memset(remove_user_cast<void>(dest), value, len);
         user_release();
     }
 
     std::size_t strnlen_user(const char __user *str, std::size_t len)
     {
         user_acquire();
-        std::size_t ret = std::strnlen((__force const char *)str, len);
+        std::size_t ret = std::strnlen(remove_user_cast<const char>(str), len);
         user_release();
         return ret;
     }
