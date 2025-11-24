@@ -143,6 +143,43 @@ namespace syscall::proc
         return (errno = no_error, 0);
     }
 
+    int getgroups(int size, gid_t __user *list)
+    {
+        if (size < 0)
+            return (errno = EINVAL, -1);
+
+        const auto proc = sched::this_thread()->parent;
+        const auto supgids = proc->supplementary_gids.read_lock();
+        const auto num = supgids->size();
+
+        if (size == 0)
+            return num;
+        if (static_cast<std::size_t>(size) < num)
+            return (errno = EINVAL, -1);
+
+        if (!lib::copy_to_user(list, supgids->data(), num * sizeof(gid_t)))
+            return (errno = EFAULT, -1);
+
+        return num;
+    }
+
+    #define NGROUPS_MAX 65536
+    int setgroups(std::size_t size, const gid_t __user *list)
+    {
+        // TODO: capability check
+        if (size > NGROUPS_MAX)
+            return (errno = EINVAL, -1);
+
+        std::vector<gid_t> supgids(size);
+        if (!lib::copy_from_user(supgids.data(), list, size * sizeof(gid_t)))
+            return (errno = EFAULT, -1);
+
+        const auto proc = sched::this_thread()->parent;
+        proc->supplementary_gids.write_lock().value() = std::move(supgids);
+
+        return 0;
+    }
+
     int set_tid_address(int __user *tidptr)
     {
         auto thread = sched::this_thread();

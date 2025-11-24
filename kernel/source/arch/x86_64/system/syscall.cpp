@@ -60,6 +60,8 @@ namespace x86_64::syscall
         [108] = { "getegid", proc::getegid },
         [109] = { "setpgid", proc::setpgid },
         [110] = { "getppid", proc::getppid },
+        [115] = { "getgroups", proc::getgroups },
+        [116] = { "setgroups", proc::setgroups },
         [118] = { "getresuid", proc::getresuid },
         [120] = { "getresgid", proc::getresgid },
         [121] = { "getpgid", proc::getpgid },

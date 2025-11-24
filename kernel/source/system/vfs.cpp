@@ -290,15 +290,15 @@ namespace vfs
         return std::unexpected(error::todo);
     }
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t dev) -> expect<path>
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev) -> expect<path>
     {
         std::shared_ptr<vfs::ops> ops { };
-        if (dev != 0)
+        if (rdev != 0)
         {
             const auto type = stat::type(mode);
             if (type != stat::type::s_ifchr && type != stat::type::s_ifblk)
                 return std::unexpected(error::invalid_type);
-            ops = dev::get_cdev_ops(dev);
+            ops = dev::get_cdev_ops(rdev);
             if (!ops)
                 return std::unexpected(error::invalid_device);
         }
@@ -314,7 +314,7 @@ namespace vfs
         const auto real_parent = res->target;
         const auto name = _path.basename();
 
-        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, ops);
+        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev, ops);
         if (ret)
         {
             auto dentry = std::make_shared<vfs::dentry>();
@@ -510,38 +510,6 @@ namespace vfs
             return true;
         }
         return false;
-    }
-
-    bool fdtable::close(int fd)
-    {
-        return fds.write_lock()->erase(fd);
-    }
-
-    std::shared_ptr<filedesc> fdtable::get(int fd)
-    {
-        const auto rlocked = fds.read_lock();
-        auto it = rlocked->find(fd);
-        if (it == rlocked->end())
-            return nullptr;
-        return it->second;
-    }
-
-    int fdtable::allocate_fd(std::shared_ptr<filedesc> desc, int fd, bool force)
-    {
-        auto wlocked = fds.write_lock();
-        if (wlocked->contains(fd))
-        {
-            if (!force)
-            {
-                fd = next_fd++;
-                while (wlocked->contains(fd))
-                    fd++;
-            }
-            else lib::bug_on(!wlocked->erase(fd));
-        }
-
-        wlocked.value()[fd] = desc;
-        return fd;
     }
 
     lib::initgraph::stage *root_mounted_stage()

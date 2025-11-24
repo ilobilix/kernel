@@ -23,6 +23,9 @@ export namespace syscall::proc
     pid_t getpgid(pid_t pid);
     int setpgid(pid_t pid, pid_t pgid);
 
+    int getgroups(int size, gid_t __user *list);
+    int setgroups(std::size_t size, const gid_t __user *list);
+
     int set_tid_address(int __user *tidptr);
 
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact);

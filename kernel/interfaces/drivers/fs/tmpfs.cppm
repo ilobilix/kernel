@@ -12,7 +12,7 @@ export namespace fs::tmpfs
     struct inode : vfs::inode
     {
         std::shared_ptr<vmm::object> memory;
-        inode(dev_t dev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op);
+        inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op);
     };
 
     struct ops : vfs::ops
@@ -37,7 +37,7 @@ export namespace fs::tmpfs
     {
         struct instance : vfs::filesystem::instance, std::enable_shared_from_this<instance>
         {
-            auto create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>> override;
+            auto create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>> override;
             auto symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::inode>> override;
             auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>> override;
             auto unlink(std::shared_ptr<vfs::inode> &node) -> vfs::expect<void> override;

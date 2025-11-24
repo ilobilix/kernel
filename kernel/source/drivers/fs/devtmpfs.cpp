@@ -33,7 +33,7 @@ namespace fs::devtmpfs
             root = std::make_shared<vfs::dentry>();
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
-                locked->dev_id, locked->next_inode++,
+                locked->dev_id, 0, locked->next_inode++,
                 static_cast<mode_t>(stat::type::s_ifdir),
                 tmpfs::ops::singleton()
             );
