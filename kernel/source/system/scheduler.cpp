@@ -94,15 +94,13 @@ namespace sched
 
         lib::locker<
             lib::map::flat_hash<
-                std::size_t,
-                std::shared_ptr<group>
+                std::size_t, group *
             >, lib::rwspinlock
         > groups;
 
         lib::locker<
             lib::map::flat_hash<
-                std::size_t,
-                std::shared_ptr<session>
+                std::size_t, session *
             >, lib::rwspinlock
         > sessions;
 
@@ -138,25 +136,25 @@ namespace sched
 
     bool is_initialised() { return initialised; }
 
-    std::shared_ptr<group> create_group(process *proc)
+    group *create_group(process *proc)
     {
-        auto grp = std::make_shared<group>();
+        auto grp = new group { };
         grp->pgid = proc->pgid = proc->pid;
         grp->members.write_lock().value()[proc->pid] = proc;
         groups.write_lock().value()[grp->pgid] = grp;
         return grp;
     }
 
-    std::shared_ptr<session> create_session(std::shared_ptr<group> grp)
+    session *create_session(group *grp)
     {
-        auto sess = std::make_shared<session>();
+        auto sess = new session { };
         sess->sid = grp->pgid;
         sess->members.write_lock().value()[grp->pgid] = grp;
         sessions.write_lock().value()[sess->sid] = sess;
         return sess;
     }
 
-    bool change_group(process *proc, std::shared_ptr<group> grp)
+    bool change_group(process *proc, group *grp)
     {
         const auto wlocked = grp->members.write_lock();
         const auto [it, inserted] = wlocked->emplace(proc->pid, proc);
@@ -177,7 +175,7 @@ namespace sched
         return false;
     }
 
-    bool change_session(std::shared_ptr<group> grp, std::shared_ptr<session> sess)
+    bool change_session(group *grp, session *sess)
     {
         const auto wlocked = sess->members.write_lock();
         const auto [it, inserted] = wlocked->emplace(grp->pgid, grp);
@@ -215,7 +213,7 @@ namespace sched
         return ret;
     }
 
-    std::shared_ptr<group> group_for(pid_t pgid)
+    group *group_for(pid_t pgid)
     {
         const auto rlocked = groups.read_lock();
         const auto it = rlocked->find(pgid);
@@ -224,7 +222,7 @@ namespace sched
         return it->second;
     }
 
-    std::shared_ptr<session> session_for(pid_t sid)
+    session *session_for(pid_t sid)
     {
         const auto rlocked = sessions.read_lock();
         const auto it = rlocked->find(sid);
@@ -561,6 +559,8 @@ namespace sched
                 delete thread;
                 if (proc->threads.empty())
                     lib::panic("TODO: process {} exit", proc->pid);
+
+                // TODO: thread, process, group and session cleanup
             }
         }
         std::unreachable();

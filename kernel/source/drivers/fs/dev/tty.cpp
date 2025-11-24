@@ -37,18 +37,59 @@ namespace fs::dev::tty
             return nullptr;
         }
 
-        bool generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst)
+        bool generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst, int flags)
         {
-            auto wlocked = inst->ctrl.write_lock();
-            lib::bug_on(wlocked->pgid != 0 || wlocked->sid != 0);
+            if (auto locked = inst->ctrl.lock(); !locked->pgid || !locked->sid)
+            {
+                lib::bug_on(locked->pgid || locked->sid);
 
-            auto proc = sched::proc_for(self->pid);
-            if (!proc)
-                return (errno = ESRCH, false);
-            wlocked->pgid = proc->pgid;
-            wlocked->sid = proc->sid;
+                const auto proc = sched::proc_for(self->pid);
+                lib::bug_on(!proc);
+
+                locked->pgid = proc->pgid;
+                locked->sid = proc->sid;
+            }
+
+            if (!(flags & vfs::o_noctty))
+            {
+                const auto proc = sched::proc_for(self->pid);
+                lib::bug_on(!proc);
+
+                if (self->pid != proc->sid)
+                    goto skip;
+
+                const auto sess = sched::session_for(proc->sid);
+                lib::bug_on(!sess);
+
+                sess->controlling_tty.lock().value() = inst;
+            }
+            skip:
 
             return inst->open(self);
+        }
+
+        bool generic_close(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst)
+        {
+            lib::unused(self);
+
+            inst->flush_buffer();
+
+            if (!inst->close())
+                return false;
+
+            if (auto locked = inst->ctrl.lock(); locked->sid)
+            {
+                lib::bug_on(!locked->pgid);
+                if (const auto session = sched::session_for(locked->sid))
+                {
+                    auto ctty = session->controlling_tty.lock();
+                    if (ctty.value() == inst)
+                        ctty.value() = nullptr;
+                }
+                locked->sid = 0;
+                locked->pgid = 0;
+            }
+            return true;
         }
     } // namespace
 
@@ -137,7 +178,7 @@ namespace fs::dev::tty
             return instance;
         }
 
-        bool open(std::shared_ptr<vfs::file> self) override
+        bool open(std::shared_ptr<vfs::file> self, int flags) override
         {
             lib::bug_on(self->private_data != nullptr);
             lib::bug_on(!self || !self->path.dentry || !self->path.dentry->inode);
@@ -162,7 +203,7 @@ namespace fs::dev::tty
                     if (!inst)
                         return (errno = ENODEV, false);
 
-                    if (!generic_open(self, inst))
+                    if (!generic_open(self, inst, flags))
                     {
                         drv->destroy_instance(inst);
                         return false;
@@ -190,11 +231,13 @@ namespace fs::dev::tty
                 lib::bug_on(drv == nullptr);
                 {
                     auto locked = drv->instances.lock();
+                    // someone else could have opened it again
                     if (inst->ref.load(std::memory_order_acquire) != 0)
                         return true;
 
-                    if (!inst->close())
+                    if (!generic_close(self, inst))
                     {
+                        // can't even close ttys properly smh
                         inst->ref.fetch_add(1, std::memory_order_relaxed);
                         return false;
                     }
@@ -207,6 +250,79 @@ namespace fs::dev::tty
             const auto rdev = self->path.dentry->inode->stat.st_rdev;
             log::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::unused(offset);
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->read(buffer);
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::unused(offset);
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->write(buffer);
+        }
+
+        int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::uptr_or_addr argp) override
+        {
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->ioctl(request, argp);
+        }
+
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        {
+            lib::unused(file, size);
+            return true;
+        }
+
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
+        {
+            lib::unused(file, priv);
+            return nullptr;
+        }
+
+        bool sync() override { return true; }
+    };
+
+    struct current_ops : vfs::ops
+    {
+        static std::shared_ptr<current_ops> singleton()
+        {
+            static auto instance = std::make_shared<current_ops>();
+            return instance;
+        }
+
+        bool open(std::shared_ptr<vfs::file> self, int flags) override
+        {
+            lib::unused(flags);
+
+            const auto proc = sched::proc_for(self->pid);
+            lib::bug_on(!proc);
+
+            auto sess = sched::session_for(proc->sid);
+            lib::bug_on(!sess);
+
+            auto ctty = sess->controlling_tty.lock();
+            if (!ctty.value())
+                return (errno = ENXIO, false);
+
+            // it's already open so just increment the ref count
+            ctty.value()->ref.fetch_add(1, std::memory_order_acq_rel);
+            self->private_data = ctty.value();
+
+            log::debug("tty: opened (5, 0) for pid {}", self->pid);
+            return true;
+        }
+
+        bool close(std::shared_ptr<vfs::file> self) override
+        {
+            return tty::ops::singleton()->close(self);
         }
 
         std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
@@ -264,6 +380,10 @@ namespace fs::dev::tty
         lib::initgraph::require { devtmpfs::mounted_stage() },
         lib::initgraph::entail { registered_stage() },
         [] {
+            register_cdev(current_ops::singleton(), makedev(5, 0));
+            auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0));
+            lib::panic_if(!ret.has_value(), "tty: could not create /dev/tty: {}", magic_enum::enum_name(ret.error()));
+
             const auto test_drv = new test_driver { };
             drivers.push_back(test_drv);
 

@@ -47,7 +47,7 @@ extern "C"
             auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr, proc->pid);
             if (!tty || !tty->file)
                 lib::panic("could not create {} filedesc", tty_path);
-            if (!tty->file->open())
+            if (!tty->file->open(0))
                 lib::panic("could not open {}", tty_path);
 
             proc->fdt.allocate_fd(tty, 0, false);
