@@ -36,12 +36,45 @@ namespace fs::dev::tty
             }
             return nullptr;
         }
+
+        bool generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst)
+        {
+            if (auto wlocked = inst->ctrl.write_lock(); wlocked->pgid == 0 && wlocked->sid == 0)
+            {
+                auto proc = sched::proc_for(self->pid);
+                wlocked->pgid = proc->pgid;
+                wlocked->sid = proc->sid;
+            }
+            return inst->open(self);
+        }
     } // namespace
 
     using namespace ::dev;
 
-    instance::instance(driver *drv, std::uint32_t minor)
-        : drv { drv }, minor { minor }, ref { 1 }
+    struct default_ldisc : line_discipline
+    {
+        default_ldisc(instance *inst) : line_discipline { inst } { }
+
+        std::ssize_t read(lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::unused(buffer);
+            return -1;
+        }
+
+        std::ssize_t write(lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::bug_on(!inst);
+            return inst->transmit(buffer);
+        }
+
+        void receive(std::span<std::byte> buffer) override
+        {
+            lib::unused(buffer);
+        }
+    };
+
+    instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc)
+        : drv { drv }, minor { minor }, ref { 1 }, ldisc { ldisc }
     {
         lib::bug_on(drv == nullptr);
         *termios.write_lock() = drv->init_termios;
@@ -53,27 +86,14 @@ namespace fs::dev::tty
         {
             bool open(std::shared_ptr<vfs::file> self) override
             {
-                if (auto wlocked = ctrl.write_lock(); wlocked->pgid == 0 && wlocked->sid == 0)
-                {
-                    auto proc = sched::proc_for(self->pid);
-                    wlocked->pgid = proc->pgid;
-                    wlocked->sid = proc->sid;
-                }
+                lib::unused(self);
                 return true;
             }
 
             bool close() override { return true; }
 
-            std::ssize_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            std::ssize_t transmit(lib::maybe_uspan<std::byte> buffer) override
             {
-                lib::unused(offset, buffer);
-                arch::halt();
-                return 0;
-            }
-
-            std::ssize_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-            {
-                lib::unused(offset);
                 lib::membuffer buf { buffer.size_bytes() };
                 buffer.copy_to(buf.span());
                 const std::string_view str { reinterpret_cast<const char *>(buf.data()), buf.size_bytes() };
@@ -90,7 +110,7 @@ namespace fs::dev::tty
             }
 
             test_instance(driver *drv, std::uint32_t minor)
-                : instance { drv, minor } { }
+                : instance { drv, minor, std::make_shared<default_ldisc>(this) } { }
         };
 
         std::shared_ptr<instance> create_instance(std::uint32_t minor) override
@@ -156,7 +176,7 @@ namespace fs::dev::tty
                 inst = drv->create_instance(minor(rdev));
                 if (!inst)
                     return (errno = ENODEV, false);
-                if (!inst->open(self))
+                if (!generic_open(self, inst))
                 {
                     drv->destroy_instance(inst);
                     return false;
@@ -178,8 +198,8 @@ namespace fs::dev::tty
 
             if (inst->ref.fetch_sub(1) == 1)
             {
-                lib::bug_on(!inst->drv);
-                inst->drv->destroy_instance(inst);
+                // lib::bug_on(!inst->drv);
+                // inst->drv->destroy_instance(inst);
             }
 
             const auto rdev = self->path.dentry->inode->stat.st_rdev;
@@ -189,16 +209,18 @@ namespace fs::dev::tty
 
         std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
+            lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(offset, buffer);
+            return inst->read(buffer);
         }
 
         std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
+            lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(offset, buffer);
+            return inst->write(buffer);
         }
 
         int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::uptr_or_addr argp) override
