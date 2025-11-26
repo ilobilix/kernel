@@ -11,6 +11,7 @@ extern "C"
     [[gnu::used]]
     auto kernel_stack_top = kernel_stack + boot::kstack_size;
 
+    [[noreturn]]
     void kthread()
     {
         lib::initgraph::postsched_init_engine.run();

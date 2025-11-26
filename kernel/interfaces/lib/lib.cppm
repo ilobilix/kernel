@@ -26,6 +26,7 @@ export import :path;
 export import :random;
 export import :ranged;
 export import :rbtree;
+export import :ringbuffer;
 export import :rwlock;
 export import :semaphore;
 export import :set;
