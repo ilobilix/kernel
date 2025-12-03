@@ -2,13 +2,22 @@
 
 import lib;
 
+import std;
+import std.compat;
+
 namespace external
 {
     __attribute__((constructor))
-    void func() { log::info("YAYAYAYAYAYAYAYAYYAYAYAY!"); }
+    void func()
+    {
+        lib::info("YAYAYAYAYAYAYAYAYYAYAYAY!");
+        lib::print("abcd");
+        lib::println("efg");
+        lib::debug("hijklmnop");
+    }
 
-    bool init() { log::info("Hello, World!"); return true; }
-    bool fini() { log::info("Goodbye, World!"); return true; }
+    bool init() { lib::error("Hello, World!"); return true; }
+    bool fini() { lib::warn("Goodbye, World!"); return true; }
 } // namespace external
 
 define_module {

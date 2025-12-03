@@ -5,7 +5,7 @@ import std;
 
 extern "C++" std::uintptr_t (*get_hhdm_offset)();
 
-namespace detail
+namespace lib::detail
 {
     template<typename Type>
     using get_ret_type =
@@ -16,8 +16,7 @@ namespace detail
                 std::uintptr_t, std::intptr_t
             >, Type
         >;
-} // namespace detail
-
+} // namespace lib::detail
 export using uint128_t = unsigned _BitInt(128);
 export using int128_t = _BitInt(128);
 

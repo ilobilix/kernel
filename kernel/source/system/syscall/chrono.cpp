@@ -1,14 +1,14 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module system.syscall.time;
+module system.syscall.chrono;
 
-import system.time;
+import system.chrono;
 import lib;
 import std;
 
-namespace syscall::time
+namespace syscall::chrono
 {
-    using namespace ::time;
+    using namespace ::chrono;
 
     int clock_gettime(clockid_t clockid, timespec __user *tp)
     {
@@ -43,4 +43,4 @@ namespace syscall::time
         lib::unused(tv, tz);
         return 0;
     }
-} // namespace syscall::time
+} // namespace syscall::chrono

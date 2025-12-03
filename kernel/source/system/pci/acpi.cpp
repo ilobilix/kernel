@@ -137,17 +137,17 @@ namespace pci::acpi
             {
                 if (parent)
                 {
-                    log::warn("pci: no '_PRT' for bus {:04X}:{:02X}. assuming expansion bridge routing", bus->seg, bus->id);
+                    lib::warn("pci: no '_PRT' for bus {:04X}:{:02X}. assuming expansion bridge routing", bus->seg, bus->id);
                     for (std::size_t i = 0; i < 4; i++)
                         bridge_irq[i] = parent->resolve(bus->associated_bridge.lock()->dev, i + 1);
                     mod = model::expansion;
                 }
-                else log::error("pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible", bus->seg, bus->id);
+                else lib::error("pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible", bus->seg, bus->id);
                 return;
             }
             else if (ret != UACPI_STATUS_OK)
             {
-                log::error("pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}", bus->seg, bus->id, uacpi_status_to_string(ret));
+                lib::error("pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}", bus->seg, bus->id, uacpi_status_to_string(ret));
                 return;
             }
 
@@ -283,19 +283,19 @@ namespace pci::acpi
             uacpi_table table;
             if (uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &table) != UACPI_STATUS_OK)
             {
-                log::warn("pci: mcfg table not found");
+                lib::warn("pci: mcfg table not found");
                 return;
             }
 
             const auto mcfg = static_cast<acpi_mcfg *>(table.ptr);
             if (mcfg->hdr.length < sizeof(acpi_mcfg) + sizeof(acpi_mcfg_allocation))
             {
-                log::warn("pci: mcfg table has no entries");
+                lib::warn("pci: mcfg table has no entries");
                 uacpi_table_unref(&table);
                 return;
             }
 
-            log::debug("pci: using ecam");
+            lib::debug("pci: using ecam");
 
             const std::size_t entries = ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation);
             for (std::size_t i = 0; i < entries; i++)
@@ -356,7 +356,7 @@ namespace pci::acpi
 
             if (num)
             {
-                log::debug("pci: found {} root bus{} with acpi", num, num > 1 ? "es" : "");
+                lib::debug("pci: found {} root bus{} with acpi", num, num > 1 ? "es" : "");
                 need_arch_rbs = false;
             }
         }

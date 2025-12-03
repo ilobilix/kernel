@@ -4,7 +4,7 @@ module drivers.fs.tmpfs;
 
 import system.memory.virt;
 import system.scheduler;
-import system.time;
+import system.chrono;
 import system.vfs;
 import lib;
 import std;

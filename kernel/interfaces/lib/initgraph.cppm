@@ -132,9 +132,9 @@ export namespace lib::initgraph
         void on_realise_node(initgraph::node *node)
         {
             if (node->type() == initgraph::node_type::stage)
-                log::debug("initgraph: registering stage '{}'", node->name());
+                lib::debug("initgraph: registering stage '{}'", node->name());
             else if (node->type() == initgraph::node_type::task)
-                log::debug("initgraph: registering task '{}'", node->name());
+                lib::debug("initgraph: registering task '{}'", node->name());
         }
 
         // void on_realise_edge(initgraph::edge *edge)
@@ -144,19 +144,19 @@ export namespace lib::initgraph
         void pre_activate(initgraph::node *node)
         {
             if (node->type() == initgraph::node_type::task)
-                log::debug("initgraph: running task '{}'", node->name());
+                lib::debug("initgraph: running task '{}'", node->name());
         }
 
         void post_activate(initgraph::node *node)
         {
             if (node->type() == initgraph::node_type::stage)
-                log::debug("initgraph: reached stage '{}'", node->name());
+                lib::debug("initgraph: reached stage '{}'", node->name());
         }
 
         void report_unreached(initgraph::node *node)
         {
             if (node->type() == initgraph::node_type::stage)
-                log::debug("initgraph: stage '{}' could not be reached", node->name());
+                lib::debug("initgraph: stage '{}' could not be reached", node->name());
         }
 
         void on_unreached()
@@ -171,7 +171,7 @@ export namespace lib::initgraph
         void run()
         {
             if constexpr (debug)
-                log::debug("initgraph: running engine '{}'", _name);
+                lib::debug("initgraph: running engine '{}'", _name);
 
             for (auto node : _nodes)
                 node->_wanted = true;
@@ -224,7 +224,7 @@ export namespace lib::initgraph
                 on_unreached();
 
             if constexpr (debug)
-                log::debug("initgraph: finished running engine '{}'", _name);
+                lib::debug("initgraph: finished running engine '{}'", _name);
         }
     };
 

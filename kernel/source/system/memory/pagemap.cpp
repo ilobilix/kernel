@@ -275,7 +275,7 @@ namespace vmm
 
     pagemap::~pagemap()
     {
-        log::warn("vmm: destroying a pagemap");
+        lib::warn("vmm: destroying a pagemap");
 
         [](this auto self, table *ptr, std::size_t start, std::size_t end, std::size_t level)
         {
@@ -296,14 +296,14 @@ namespace vmm
 
     void init()
     {
-        log::info("vmm: setting up the kernel pagemap");
-        log::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
+        lib::info("vmm: setting up the kernel pagemap");
+        lib::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
 
         kernel_pagemap.initialize();
 
-        log::debug("vmm: mapping:");
+        lib::debug("vmm: mapping:");
         {
-            log::debug("vmm: - memory map entries");
+            lib::debug("vmm: - memory map entries");
 
             const auto memmaps = boot::requests::memmap.response->entries;
             const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -336,7 +336,7 @@ namespace vmm
                 if (len == 0)
                     continue;
 
-                log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, memmap->base, vaddr);
+                lib::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, memmap->base, vaddr);
 
                 if (const auto ret = kernel_pagemap->map(vaddr, base, len, pflag::rw, psize, cache); !ret)
                     lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
@@ -352,7 +352,7 @@ namespace vmm
             const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
             auto phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff);
 
-            log::debug("vmm: - kernel binary");
+            lib::debug("vmm: - kernel binary");
 
             for (std::size_t i = 0; i < ehdr->e_phnum; i++)
             {
@@ -370,7 +370,7 @@ namespace vmm
                     if (phdr->p_flags & PF_X)
                         flags |= pflag::exec;
 
-                    log::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
+                    lib::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
 
                     if (const auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache); !ret)
                         lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
@@ -379,7 +379,7 @@ namespace vmm
             }
         }
 
-        log::debug("vmm: loading the pagemap");
+        lib::debug("vmm: loading the pagemap");
         kernel_pagemap->load();
     }
 

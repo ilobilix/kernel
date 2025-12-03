@@ -156,7 +156,7 @@ namespace x86_64::idt
     {
         if (cpu->idx == cpu::bsp_idx())
         {
-            log::info("idt: setting up irq handlers");
+            lib::info("idt: setting up irq handlers");
 
             // page fault ist 0
             idt[14].ist = 1;

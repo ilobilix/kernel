@@ -20,7 +20,7 @@ extern "C"
         sched::thread *thread = nullptr;
         {
             lib::path_view path { "/usr/bin/bash" };
-            // log::info("loading {}", path);
+            // lib::info("loading {}", path);
 
             auto ret = vfs::resolve(std::nullopt, path);
             if (!ret.has_value())

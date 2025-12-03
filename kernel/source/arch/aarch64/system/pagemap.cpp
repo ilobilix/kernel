@@ -256,7 +256,7 @@ namespace vmm
             }
             else lib::panic("unknown page size");
 
-            log::debug("vmm: page size is 0x{:X} kib", psize);
+            lib::debug("vmm: page size is 0x{:X} kib", psize);
 
             arch::page_sizes[0] = psize;
             arch::page_sizes[1] = arch::page_sizes[0] * 512;

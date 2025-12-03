@@ -10,7 +10,7 @@ module drivers.timers.acpipm;
 
 import system.scheduler;
 import system.acpi;
-import system.time;
+import system.chrono;
 import lib;
 import std;
 
@@ -133,7 +133,7 @@ namespace timers::acpipm
         return &stage;
     }
 
-    time::clock clock { "acpipm", 25, time_ns };
+    chrono::clock clock { "acpipm", 25, time_ns };
     lib::initgraph::task acpipm_task
     {
         "timers.acpipm.initialise",
@@ -142,14 +142,14 @@ namespace timers::acpipm
         lib::initgraph::entail { initialised_stage() },
         [] {
             auto pmtimer = supported();
-            log::info("acpipm: timer supported: {}", pmtimer);
+            lib::info("acpipm: timer supported: {}", pmtimer);
 
-            if (const auto clock = time::main_clock())
+            if (const auto clock = chrono::main_clock())
                 offset = time_ns() - clock->ns();
             else
                 offset = time_ns();
 
-            time::register_clock(clock);
+            chrono::register_clock(clock);
         }
     };
 

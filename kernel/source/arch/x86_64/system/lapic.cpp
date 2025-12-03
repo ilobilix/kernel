@@ -66,7 +66,7 @@ namespace x86_64::apic
             const auto tsc_supported = timers::tsc::supported();
             cpu::id_res res;
             tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
-            log::debug("lapic: tsc deadline supported: {}", tsc_deadline);
+            lib::debug("lapic: tsc deadline supported: {}", tsc_deadline);
 
             return true;
         } ();
@@ -114,7 +114,7 @@ namespace x86_64::apic
 
         if (tsc_deadline)
         {
-            log::debug("lapic: using tsc deadline");
+            lib::debug("lapic: using tsc deadline");
             is_calibrated = true;
             return;
         }
@@ -146,7 +146,7 @@ namespace x86_64::apic
             val /= times;
         }
 
-        log::debug("lapic: timer frequency: {} hz", val);
+        lib::debug("lapic: timer frequency: {} hz", val);
         freq = val;
         is_calibrated = true;
     }
@@ -220,7 +220,7 @@ namespace x86_64::apic
             x2apic = _x2apic;
 
         if (is_bsp)
-            log::debug("lapic: x2apic supported: {}", x2apic);
+            lib::debug("lapic: x2apic supported: {}", x2apic);
 
         // APIC global enable
         val |= (1 << 11);
@@ -238,7 +238,7 @@ namespace x86_64::apic
                 pmmio = phys_mmio;
                 mmio = vmm::alloc_vspace(1);
 
-                log::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
+                lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
 
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);

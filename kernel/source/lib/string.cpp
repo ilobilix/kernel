@@ -2,7 +2,7 @@
 
 module lib;
 
-import system.time;
+import system.chrono;
 import std;
 
 namespace lib

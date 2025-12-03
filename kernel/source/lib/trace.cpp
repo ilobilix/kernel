@@ -12,7 +12,7 @@ import std;
 
 namespace lib
 {
-    void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip)
+    void trace(lib::log_level prefix, std::uintptr_t fp, std::uintptr_t ip)
     {
         if (fp == 0 || fp & 7)
             fp = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
@@ -53,7 +53,7 @@ namespace lib
             }
 
             auto [offset, where] = ret.value_or(bin::elf::sym::lookup_result { 0, "unknown" });
-            log::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
+            lib::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
 
             if (ptr)
                 lib::free(ptr);
@@ -61,7 +61,7 @@ namespace lib
             return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };
 
-        log::println(prefix, "stack trace:");
+        lib::println(prefix, "stack trace:");
         if (ip != 0 && lib::ishh(ip))
             print(ip);
 

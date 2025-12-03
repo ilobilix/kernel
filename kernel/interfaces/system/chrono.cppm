@@ -1,12 +1,12 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module system.time;
+export module system.chrono;
 
 import lib;
 import frigg;
 import std;
 
-export namespace time
+export namespace chrono
 {
     struct clock
     {
@@ -27,4 +27,4 @@ export namespace time
     bool stall_ns(std::size_t ns);
 
     timespec now(clockid_t clockid = 0);
-} // export namespace time
+} // export namespace chrono

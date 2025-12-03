@@ -7,7 +7,7 @@ extern "C"
 {
     void FRG_INTF(log)(const char *cstring)
     {
-        log::debug("frigg: {}", cstring);
+        lib::debug("frigg: {}", cstring);
     }
 
     void FRG_INTF(panic)(const char *cstring)

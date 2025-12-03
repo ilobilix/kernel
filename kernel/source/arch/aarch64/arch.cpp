@@ -43,7 +43,10 @@ namespace arch
         return val == 0;
     }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs, log::level lvl) { lib::unused(regs, lvl); }
+    void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log_level lvl)
+    {
+        lib::unused(regs, lvl);
+    }
 
     void early_init() { }
 

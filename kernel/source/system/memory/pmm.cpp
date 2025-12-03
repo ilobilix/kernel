@@ -350,7 +350,7 @@ namespace pmm
             // first called when allocating the pagemap
             [[maybe_unused]]
             static const auto once = [] {
-                log::info("pmm: setting up bootstrap allocator");
+                lib::info("pmm: setting up bootstrap allocator");
 
                 const auto memmaps = boot::requests::memmap.response->entries;
                 const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -507,7 +507,7 @@ namespace pmm
 
     void reclaim_bootloader_memory()
     {
-        log::debug("pmm: reclaiming bootloader memory");
+        lib::debug("pmm: reclaiming bootloader memory");
 
         const auto memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -527,7 +527,7 @@ namespace pmm
         const auto memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
 
-        log::debug("pmm: number of memory maps: {}", num);
+        lib::debug("pmm: number of memory maps: {}", num);
 
         for (std::size_t i = 0; i < num; i++)
         {
@@ -541,10 +541,10 @@ namespace pmm
 
         std::size_t pfndb_used_total = 0;
         {
-            log::info("pmm: setting up pfndb");
+            lib::info("pmm: setting up pfndb");
 
             mem.pfndb_base = lib::tohh(lib::align_up(mem.top, lib::gib(1)));
-            log::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
+            lib::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
 
             const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
             mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(page);
@@ -567,7 +567,7 @@ namespace pmm
             pfndb_used_total += mem.used - start;
         }
 
-        log::info("pmm: initialising the physical memory allocator");
+        lib::info("pmm: initialising the physical memory allocator");
 
         for (std::size_t i = 0; i < num; i++)
         {
@@ -593,17 +593,17 @@ namespace pmm
         initialised = true;
 
         {
-            log::debug("pmm: adding bootstrap memory to pfndb");
+            lib::debug("pmm: adding bootstrap memory to pfndb");
 
             std::size_t start = mem.used;
             *memmaps[bootstrap_memmap_idx] = bootstrap_memmap;
             pfndb_add(bootstrap_memmap_idx);
             pfndb_used_total += mem.used - start;
 
-            log::debug("pmm: total memory used for pfndb: {} KiB", pfndb_used_total / lib::kib(1));
+            lib::debug("pmm: total memory used for pfndb: {} KiB", pfndb_used_total / lib::kib(1));
         }
 
-        log::debug("pmm: adding bootstrap memory to allocator");
+        lib::debug("pmm: adding bootstrap memory to allocator");
         add_range(bootstrap_memmap.base, bootstrap_memmap.length, false);
 
         bootstrap_memmap_idx = -1;

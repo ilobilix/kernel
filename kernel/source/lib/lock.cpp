@@ -4,7 +4,7 @@ module lib;
 
 import system.scheduler;
 import system.cpu.self;
-import system.time;
+import system.chrono;
 import arch;
 import std;
 
@@ -53,7 +53,7 @@ namespace lib::lock
     // auto clock() -> std::uint64_t (*)();
     std::uint64_t (*clock())()
     {
-        const auto clock = time::main_clock();
+        const auto clock = chrono::main_clock();
         if (clock == nullptr)
             return nullptr;
         return clock->ns;
