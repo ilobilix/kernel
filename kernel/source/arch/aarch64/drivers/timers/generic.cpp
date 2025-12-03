@@ -4,11 +4,11 @@ module aarch64.drivers.timers.generic;
 
 import system.cpu.self;
 import system.cpu;
-import system.time;
+import system.chrono;
 import drivers.timers;
 
 import lib;
-import std;
+import cppstd;
 
 namespace aarch64::timers::generic
 {
@@ -28,7 +28,7 @@ namespace aarch64::timers::generic
         return &stage;
     }
 
-    time::clock clock { "generic", 0, time_ns };
+    chrono::clock clock { "generic", 0, time_ns };
 
     lib::initgraph::task generic_task
     {
@@ -37,10 +37,10 @@ namespace aarch64::timers::generic
         lib::initgraph::require { ::timers::arch::can_initialise_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
-            // if (const auto clock = time::main_clock())
+            // if (const auto clock = chrono::main_clock())
             //     offset = time_ns() - clock->ns();
 
-            // time::register_clock(clock);
+            // chrono::register_clock(clock);
             // initialised = true;
         }
     };

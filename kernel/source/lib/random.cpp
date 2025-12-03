@@ -3,7 +3,7 @@
 module lib;
 
 import :mutex;
-import system.time;
+import system.chrono;
 import std;
 
 namespace lib
@@ -11,7 +11,7 @@ namespace lib
     // TODO: better random
     std::ssize_t random_bytes(lib::maybe_uspan<std::byte> buffer)
     {
-        static std::mt19937_64 rng { static_cast<std::uint64_t>(time::now().to_ns()) };
+        static std::mt19937_64 rng { static_cast<std::uint64_t>(chrono::now().to_ns()) };
         static std::uniform_int_distribution<std::uint8_t> dist { 0, 255 };
 
         static mutex lock;

@@ -130,14 +130,14 @@ namespace bin::elf::exec
                         auto ret = vfs::resolve(file->path, path);
                         if (!ret.has_value())
                         {
-                            log::error("elf: could not resolve interpreter path '{}'", path);
+                            lib::error("elf: could not resolve interpreter path '{}'", path);
                             return std::nullopt;
                         }
 
                         auto res = vfs::reduce(ret->parent, ret->target);
                         if (!res.has_value())
                         {
-                            log::error("elf: could not reduce interpreter path '{}'", path);
+                            lib::error("elf: could not reduce interpreter path '{}'", path);
                             return std::nullopt;
                         }
 

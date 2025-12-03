@@ -61,7 +61,7 @@ namespace x86_64::apic::io
             {
                 _mmio = vmm::alloc_vspace(1);
 
-                log::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
+                lib::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
 
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
@@ -136,21 +136,21 @@ namespace x86_64::apic::io
 
     void set_gsi(std::size_t gsi, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv)
     {
-        log::debug("ioapic: redirecting gsi {} to vector 0x{:X}", gsi, vector);
+        lib::debug("ioapic: redirecting gsi {} to vector 0x{:X}", gsi, vector);
         const auto &entry = gsi2ioapic(gsi);
         entry.set_idx(gsi - entry.gsi_range().first, vector, dest, flags, deliv);
     }
 
     void mask_gsi(std::uint32_t gsi)
     {
-        // log::debug("ioapic: masking gsi {}", gsi);
+        // lib::debug("ioapic: masking gsi {}", gsi);
         const auto &entry = gsi2ioapic(gsi);
         entry.mask(gsi - entry.gsi_range().first);
     }
 
     void unmask_gsi(std::uint32_t gsi)
     {
-        // log::debug("ioapic: unmasking gsi {}", gsi);
+        // lib::debug("ioapic: unmasking gsi {}", gsi);
         const auto &entry = gsi2ioapic(gsi);
         entry.unmask(gsi - entry.gsi_range().first);
     }
@@ -159,7 +159,7 @@ namespace x86_64::apic::io
     {
         lib::bug_on(vector < 0x20);
 
-        log::debug("ioapic: masking vector 0x{:X}", vector);
+        lib::debug("ioapic: masking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);
         if (gsi.has_value())
             mask_gsi(gsi.value());
@@ -171,7 +171,7 @@ namespace x86_64::apic::io
     {
         lib::bug_on(vector < 0x20);
 
-        log::debug("ioapic: unmasking vector 0x{:X}", vector);
+        lib::debug("ioapic: unmasking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);
         if (gsi.has_value())
             unmask_gsi(gsi.value());
@@ -181,11 +181,11 @@ namespace x86_64::apic::io
 
     void init()
     {
-        log::info("ioapic: setting up");
+        lib::info("ioapic: setting up");
 
         if (acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty())
         {
-            log::error("ioapic: no ioapics found, falling back to legacy pic");
+            lib::error("ioapic: no ioapics found, falling back to legacy pic");
             return;
         }
 

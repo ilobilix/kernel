@@ -80,7 +80,7 @@ extern "C"
 #ifdef UACPI_KERNEL_INITIALIZATION
     uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl)
     {
-        log::debug("uacpi_kernel_initialize({})", static_cast<int>(current_init_lvl));
+        lib::debug("uacpi_kernel_initialize({})", static_cast<int>(current_init_lvl));
         switch (current_init_lvl)
         {
             case UACPI_INIT_LEVEL_EARLY:
@@ -97,7 +97,7 @@ extern "C"
 
     void uacpi_kernel_deinitialize()
     {
-        log::debug("uacpi_kernel_deinitialize()");
+        lib::debug("uacpi_kernel_deinitialize()");
     }
 #endif
 
@@ -294,16 +294,16 @@ extern "C"
         {
             case UACPI_LOG_DEBUG:
             case UACPI_LOG_TRACE:
-                log::debug("uacpi: {}", str);
+                lib::debug("uacpi: {}", str);
                 break;
             case UACPI_LOG_INFO:
-                log::info("uacpi: {}", str);
+                lib::info("uacpi: {}", str);
                 break;
             case UACPI_LOG_WARN:
-                log::warn("uacpi: {}", str);
+                lib::warn("uacpi: {}", str);
                 break;
             case UACPI_LOG_ERROR:
-                log::error("uacpi: {}", str);
+                lib::error("uacpi: {}", str);
                 break;
             default:
                 std::unreachable();
@@ -312,7 +312,7 @@ extern "C"
 
     uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot()
     {
-        const auto clock = time::main_clock();
+        const auto clock = chrono::main_clock();
         if (clock == nullptr)
             return 0;
         return clock->ns();
@@ -320,7 +320,7 @@ extern "C"
 
     void uacpi_kernel_stall(uacpi_u8 usec)
     {
-        time::stall_ns(usec * 1'000);
+        chrono::stall_ns(usec * 1'000);
     }
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
@@ -445,10 +445,10 @@ extern "C"
         switch (req->type)
         {
             case UACPI_FIRMWARE_REQUEST_TYPE_BREAKPOINT:
-                log::info("uACPI: ignoring breakpoint");
+                lib::info("uACPI: ignoring breakpoint");
                 break;
             case UACPI_FIRMWARE_REQUEST_TYPE_FATAL:
-                log::error("fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
+                lib::error("fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
                     static_cast<int>(req->fatal.type), req->fatal.code, req->fatal.arg
                 );
                 break;
@@ -475,7 +475,7 @@ extern "C"
 
         *reinterpret_cast<std::size_t *>(out_irq_handle) = vector;
 
-        log::debug("uacpi: installed interrupt handler for irq {} (vector {})", irq, vector);
+        lib::debug("uacpi: installed interrupt handler for irq {} (vector {})", irq, vector);
         return UACPI_STATUS_OK;
     }
 
@@ -513,7 +513,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx)
     {
-        log::debug("uacpi: scheduling work of type {}", magic_enum::enum_name(type));
+        lib::debug("uacpi: scheduling work of type {}", magic_enum::enum_name(type));
         switch (type)
         {
             case UACPI_WORK_GPE_EXECUTION:

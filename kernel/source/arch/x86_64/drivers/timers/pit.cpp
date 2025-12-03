@@ -3,7 +3,7 @@
 module x86_64.drivers.timers.pit;
 
 import system.interrupts;
-import system.time;
+import system.chrono;
 import system.cpu;
 import drivers.timers;
 import magic_enum;
@@ -66,7 +66,7 @@ namespace x86_64::timers::pit
         return &stage;
     }
 
-    time::clock clock { "pit", 0, time_ns };
+    chrono::clock clock { "pit", 0, time_ns };
 
     lib::initgraph::task pit_task
     {
@@ -79,7 +79,7 @@ namespace x86_64::timers::pit
             const std::uint8_t low = divisor & 0xFF;
             const std::uint8_t high = (divisor >> 8) & 0xFF;
 
-            log::info("pit: setting up with frequency {} hz", frequency);
+            lib::info("pit: setting up with frequency {} hz", frequency);
 
             lib::io::out<8>(port::command, cmd::mode2 | cmd::accesslh);
             lib::io::out<8>(port::channel0, low);
@@ -89,10 +89,10 @@ namespace x86_64::timers::pit
             handler.set([](auto) { tick++; });
             interrupts::unmask(vector);
 
-            if (const auto clock = time::main_clock())
+            if (const auto clock = chrono::main_clock())
                 offset = time_ns() - clock->ns();
 
-            time::register_clock(clock);
+            chrono::register_clock(clock);
             initialised = true;
         }
     };

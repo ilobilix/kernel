@@ -30,8 +30,8 @@ namespace pci
             const auto header = bus->template read<8>(dev, func, reg::header) & 0x7F;
             if (header == 0x00) // device
             {
-                // log::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
-                log::info("pci: general device: {:04X}:{:04X}", venid, devid);
+                // lib::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                lib::info("pci: general device: {:04X}:{:04X}", venid, devid);
 
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
@@ -53,14 +53,14 @@ namespace pci
             }
             else if (header == 0x01) // PCI-to-PCI bridge
             {
-                // log::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
-                log::info("pci: bridge: {:04X}:{:04X}", venid, devid);
+                // lib::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
+                lib::info("pci: bridge: {:04X}:{:04X}", venid, devid);
                 auto bridge = std::make_shared<pci::bridge>(bus, dev, func);
 
                 const auto secondary_id = bridge->template read<8>(reg::secondary_bus);
                 if (secondary_id)
                 {
-                    log::debug("pci: secondary bus: {:04X}:{:02X}", bus->seg, secondary_id);
+                    lib::debug("pci: secondary bus: {:04X}:{:02X}", bus->seg, secondary_id);
 
                     bridge->secondary_bus = secondary_id;
                     bridge->subordinate_bus = bridge->template read<8>(reg::subordinate_bus);
@@ -236,7 +236,7 @@ namespace pci
                         break;
                     }
                     default:
-                        log::error("pci: unknown memory mapped bar type 0x{:X}", type);
+                        lib::error("pci: unknown memory mapped bar type 0x{:X}", type);
                         break;
                 }
 
@@ -251,7 +251,7 @@ namespace pci
             }
 
             if (ret.type != bar::type::invalid)
-                log::debug("pci: - bar: 0x{:X}, size: 0x{:X}, type: {}", ret.phys, ret.size, magic_enum::enum_name(ret.type));
+                lib::debug("pci: - bar: 0x{:X}, size: 0x{:X}, type: {}", ret.phys, ret.size, magic_enum::enum_name(ret.type));
 
             bars[i] = ret;
             if (bit64 == true)
@@ -373,22 +373,22 @@ namespace pci
         lib::initgraph::require { ios_discovered_stage(), rbs_discovered_stage() },
         lib::initgraph::entail { enumerated_stage() },
         [] {
-            log::info("pci: enumerating devices");
+            lib::info("pci: enumerating devices");
 
             if (ios.empty())
             {
-                log::error("pci: no config spaces found");
+                lib::error("pci: no config spaces found");
                 return;
             }
             if (rbs.empty())
             {
-                log::error("pci: no root buses found");
+                lib::error("pci: no root buses found");
                 return;
             }
 
             for (const auto &rb : rbs)
             {
-                log::debug("pci: root bus: {:04X}:{:02X}", rb->seg, rb->id);
+                lib::debug("pci: root bus: {:04X}:{:02X}", rb->seg, rb->id);
                 enum_bus(rb);
             }
         }

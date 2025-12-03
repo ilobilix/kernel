@@ -56,7 +56,7 @@ namespace vfs
         if (locked->contains(fs->name))
             return false;
 
-        log::info("vfs: registering filesystem '{}'", fs->name);
+        lib::info("vfs: registering filesystem '{}'", fs->name);
         locked.value()[fs->name] = std::move(fs);
         return true;
     }
@@ -279,7 +279,7 @@ namespace vfs
         mnt.value()->mounted_on = target;
         target.dentry->child_mounts.push_back(mnt.value());
 
-        log::info("vfs: mount('{}', '{}', '{}')", source_path, target_path, fstype);
+        lib::info("vfs: mount('{}', '{}', '{}')", source_path, target_path, fstype);
 
         return { };
     }

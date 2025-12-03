@@ -134,7 +134,7 @@ namespace fs::dev::tty
                 lib::membuffer buf { buffer.size_bytes() };
                 buffer.copy_to(buf.span());
                 const std::string_view str { reinterpret_cast<const char *>(buf.data()), buf.size_bytes() };
-                log::print("{}", str);
+                lib::print("{}", str);
                 return buffer.size_bytes();
             }
 
@@ -152,13 +152,13 @@ namespace fs::dev::tty
 
         std::shared_ptr<instance> create_instance(std::uint32_t minor) override
         {
-            log::debug("tty: creating test instance with minor {}", minor);
+            lib::debug("tty: creating test instance with minor {}", minor);
             return std::make_shared<test_instance>(this, minor);
         }
 
         void destroy_instance(std::shared_ptr<instance> inst) override
         {
-            log::debug("tty: destroying test instance with minor {}", inst->minor);
+            lib::debug("tty: destroying test instance with minor {}", inst->minor);
         }
 
         int ioctl(std::shared_ptr<instance> inst, unsigned long request, lib::uptr_or_addr argp) override
@@ -214,7 +214,7 @@ namespace fs::dev::tty
             }
             self->private_data = inst;
 
-            log::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
         }
 
@@ -248,7 +248,7 @@ namespace fs::dev::tty
             self->private_data.reset();
 
             const auto rdev = self->path.dentry->inode->stat.st_rdev;
-            log::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
         }
 
@@ -316,7 +316,7 @@ namespace fs::dev::tty
             ctty.value()->ref.fetch_add(1, std::memory_order_acq_rel);
             self->private_data = ctty.value();
 
-            log::debug("tty: opened (5, 0) for pid {}", self->pid);
+            lib::debug("tty: opened (5, 0) for pid {}", self->pid);
             return true;
         }
 
@@ -401,7 +401,7 @@ namespace fs::dev::tty
                 minor++;
                 if (!ret.has_value())
                 {
-                    log::error(
+                    lib::error(
                         "tty: could not create '{}': {}",
                         name, magic_enum::enum_name(ret.error())
                     );

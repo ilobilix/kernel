@@ -83,9 +83,9 @@ namespace lib::syscall
 #if ILOBILIX_SYSCALL_LOG
                     const auto [pid, tid] = get_ptid();
                     if constexpr (std::same_as<typename sign::args_type, std::tuple<>>)
-                        log::debug("syscall: [{}:{}]: {}()", pid, tid, name);
+                        lib::debug("syscall: [{}:{}]: {}()", pid, tid, name);
                     else
-                        log::debug("syscall: [{}:{}]: {}{}", pid, tid, name, ptr(args));
+                        lib::debug("syscall: [{}:{}]: {}{}", pid, tid, name, ptr(args));
 #else
                     lib::unused(name);
 #endif
@@ -105,7 +105,7 @@ namespace lib::syscall
                     if (error.has_value() && _check(uptr_ret))
                     {
 #if ILOBILIX_SYSCALL_LOG
-                        log::debug(
+                        lib::debug(
                             "syscall: [{}:{}]: {} -> {}", pid, tid, name,
                             magic_enum::enum_name(error.value())
                         );
@@ -115,13 +115,13 @@ namespace lib::syscall
 #if ILOBILIX_SYSCALL_LOG
                     if constexpr (is_void)
                     {
-                        log::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
+                        lib::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
                         return 0;
                     }
                     else if constexpr (std::is_pointer_v<typename sign::return_type>)
-                        log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, reinterpret_cast<const void *>(uptr_ret));
+                        lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, reinterpret_cast<const void *>(uptr_ret));
                     else
-                        log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
+                        lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
 #endif
                     return uptr_ret;
                 }

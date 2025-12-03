@@ -7,7 +7,7 @@ import :math;
 import fmt;
 import std;
 
-namespace log
+namespace lib::log
 {
     constinit lib::spinlock_preempt _lock;
     std::uint64_t get_time();
@@ -49,11 +49,11 @@ namespace log
             unsafe::prints(fmt);
         }
     } // namespace detail
-} // namespace log
+} // namespace lib::log
 
-export namespace log
+export namespace lib::log
 {
-    enum class level
+    enum class log_level
     {
 #if ILOBILIX_DEBUG
         debug,
@@ -95,7 +95,7 @@ export namespace log
 
     namespace unsafe
     {
-        inline constexpr void print_nolock(level lvl, std::string_view fmt, auto &&...args)
+        inline constexpr void print_nolock(log_level lvl, std::string_view fmt, auto &&...args)
         {
             const auto index = std::to_underlying(lvl);
 
@@ -109,7 +109,7 @@ export namespace log
         }
     } // namespace unsafe
 
-    inline constexpr void print(level lvl, std::string_view fmt, auto &&...args)
+    inline constexpr void print(log_level lvl, std::string_view fmt, auto &&...args)
     {
         const std::unique_lock _ { _lock };
         unsafe::print_nolock(lvl, fmt, args...);
@@ -122,7 +122,7 @@ export namespace log
         unsafe::printc('\n');
     }
 
-    inline constexpr void println(level lvl, std::string_view fmt = "", auto &&...args)
+    inline constexpr void println(log_level lvl, std::string_view fmt = "", auto &&...args)
     {
         const std::unique_lock _ { _lock };
         unsafe::print_nolock(lvl, fmt, args...);
@@ -130,12 +130,26 @@ export namespace log
     }
 
 #if ILOBILIX_DEBUG
-    inline constexpr void debug(std::string_view fmt, auto &&...args) { println(level::debug, fmt, args...); }
+    inline constexpr void debug(std::string_view fmt, auto &&...args) { println(log_level::debug, fmt, args...); }
 #else
     inline constexpr void debug(std::string_view, auto &&...) { }
 #endif
-    inline constexpr void info (std::string_view fmt, auto &&...args) { println(level::info,  fmt, args...); }
-    inline constexpr void warn (std::string_view fmt, auto &&...args) { println(level::warn,  fmt, args...); }
-    inline constexpr void error(std::string_view fmt, auto &&...args) { println(level::error, fmt, args...); }
-    inline constexpr void fatal(std::string_view fmt, auto &&...args) { println(level::fatal, fmt, args...); }
-} // export namespace log
+    inline constexpr void info (std::string_view fmt, auto &&...args) { println(log_level::info,  fmt, args...); }
+    inline constexpr void warn (std::string_view fmt, auto &&...args) { println(log_level::warn,  fmt, args...); }
+    inline constexpr void error(std::string_view fmt, auto &&...args) { println(log_level::error, fmt, args...); }
+    inline constexpr void fatal(std::string_view fmt, auto &&...args) { println(log_level::fatal, fmt, args...); }
+} // export namespace lib::log
+
+export namespace lib
+{
+    using log::log_level;
+
+    using log::print;
+    using log::println;
+
+    using log::debug;
+    using log::info;
+    using log::warn;
+    using log::error;
+    using log::fatal;
+} // export namespace lib

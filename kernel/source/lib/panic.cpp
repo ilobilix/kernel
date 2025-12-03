@@ -43,14 +43,14 @@ namespace lib
         static std::atomic_bool panicking = false;
         if (panicking)
         {
-            log::fatal("one panic was more than enough already and now you want a second one?");
+            lib::fatal("one panic was more than enough already and now you want a second one?");
             goto exit;
         }
         panicking = true;
 
-        log::unsafe::unlock();
+        lib::log::unsafe::unlock();
 
-        log::println("");
+        lib::println("");
 #if ILOBILIX_EXTRA_PANIC_MSG
 #  if !ILOBILIX_MAX_UACPI_POINTS
         if (auto ctx = output::term::main())
@@ -58,19 +58,19 @@ namespace lib
 #  endif
         for (auto chr : nooo_unicode)
             output::serial::printc(chr);
-        log::println("");
+        lib::println("");
 #endif
 
-        log::fatal("kernel panicked with the following message:");
-        log::fatal(fmt, args);
-        log::fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
+        lib::fatal("kernel panicked with the following message:");
+        lib::fatal(fmt, args);
+        lib::fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
 
         if (regs)
         {
-            arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
-            lib::trace(log::level::fatal, regs->fp(), regs->ip());
+            arch::dump_regs(regs, cpu::extra_regs::read(), lib::log_level::fatal);
+            lib::trace(lib::log_level::fatal, regs->fp(), regs->ip());
         }
-        else lib::trace(log::level::fatal, 0, 0);
+        else lib::trace(lib::log_level::fatal, 0, 0);
 
         exit:
         arch::halt(false);

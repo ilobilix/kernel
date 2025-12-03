@@ -8,7 +8,7 @@ import x86_64.system.gdt;
 import system.memory.virt;
 import system.memory.phys;
 import system.cpu.self;
-import system.time;
+import system.chrono;
 import system.acpi;
 import magic_enum;
 import arch;
@@ -101,11 +101,11 @@ namespace cpu::mp
             inner(*vmm::kernel_pagemap);
         };
 
-        log::debug("cpu: trampoline address 0x{:X}", trampoline_page);
+        lib::debug("cpu: trampoline address 0x{:X}", trampoline_page);
         map("trampoline address", trampoline_page, trampoline_page, smp_trampoline_size, vmm::pflag::rwx);
         std::memcpy(reinterpret_cast<void *>(trampoline_page), smp_trampoline_start, smp_trampoline_size);
 
-        log::debug("cpu: temporary stack address 0x{:X}", temp_stack_page);
+        lib::debug("cpu: temporary stack address 0x{:X}", temp_stack_page);
         map("temporary stack", temp_stack_page, temp_stack_page, pmm::page_size, vmm::pflag::rwx);
 
         const bool x2apic = x86_64::apic::supported().second;
@@ -143,18 +143,18 @@ namespace cpu::mp
             };
 
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::init, 0);
-            time::stall_ns(10'000'000);
+            chrono::stall_ns(10'000'000);
 
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
-            time::stall_ns(200'000);
+            chrono::stall_ns(200'000);
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
-            time::stall_ns(200'000);
+            chrono::stall_ns(200'000);
 
             for (std::size_t i = 0; i < 1000; i++)
             {
                 if (__atomic_load_n(&info->booted_flag, __ATOMIC_RELAXED) == 1)
                     return;
-                time::stall_ns(300'000);
+                chrono::stall_ns(300'000);
             }
             lib::panic("could not boot up a core");
         };
@@ -197,7 +197,7 @@ namespace cpu::mp
             {
                 if (check())
                     return;
-                time::stall_ns(300'000);
+                chrono::stall_ns(300'000);
             }
             lib::panic("could not boot up cores");
         } ();

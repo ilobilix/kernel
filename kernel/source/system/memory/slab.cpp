@@ -59,7 +59,7 @@ namespace slab
 
     void init()
     {
-        log::info("heap: initialising the slab allocator");
+        lib::info("heap: initialising the slab allocator");
 
         pool.initialize(valloc);
         kalloc.initialize(pool.get());

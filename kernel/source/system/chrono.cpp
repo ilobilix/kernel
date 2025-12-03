@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module system.time;
+module system.chrono;
 
 import frigg;
 import arch;
@@ -8,7 +8,7 @@ import boot;
 import lib;
 import std;
 
-namespace time
+namespace chrono
 {
     namespace
     {
@@ -34,9 +34,9 @@ namespace time
 
     void register_clock(clock &clock)
     {
-        log::info("time: registering clock source '{}'", clock.name);
+        lib::info("time: registering clock source '{}'", clock.name);
         clocks.push(&clock);
-        log::debug("time: main clock is set to '{}'", (main = clocks.top())->name);
+        lib::debug("time: main clock is set to '{}'", (main = clocks.top())->name);
     }
 
     clock *main_clock()
@@ -71,4 +71,4 @@ namespace time
             static_cast<long>(clock_ns % 1'000'000'000)
         };
     }
-} // namespace time
+} // namespace chrono

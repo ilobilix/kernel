@@ -52,7 +52,7 @@ namespace x86_64::gdt
     void init_on(cpu::processor *cpu)
     {
         if (cpu->idx == cpu::bsp_idx())
-            log::info("gdt: loading on bsp");
+            lib::info("gdt: loading on bsp");
 
         tss_local->ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size); // page fault
         tss_local->ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size); // scheduler

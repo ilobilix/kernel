@@ -24,7 +24,7 @@ namespace dev
     {
         auto [it, inserted] = cdev_table.write_lock()->emplace(dev, ops);
         if (inserted)
-            log::debug("dev: registered character device ({}, {})", major(dev), minor(dev));
+            lib::debug("dev: registered character device ({}, {})", major(dev), minor(dev));
         return inserted;
     }
 

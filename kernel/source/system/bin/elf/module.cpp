@@ -48,28 +48,28 @@ namespace bin::elf::mod
         void log_entry(auto &entry)
         {
             auto ptr = entry.header;
-            log::info("elf: - description: '{}'", ptr->description);
+            lib::info("elf: - description: '{}'", ptr->description);
 
             std::visit(
                 lib::overloaded {
-                    [&](const ::mod::generic &) { log::info("elf: - type: generic"); },
-                    [&](const ::mod::pci &) { log::info("elf: - type: pci"); },
-                    [&](const ::mod::acpi &) { log::info("elf: - type: acpi"); }
+                    [&](const ::mod::generic &) { lib::info("elf: - type: generic"); },
+                    [&](const ::mod::pci &) { lib::info("elf: - type: pci"); },
+                    [&](const ::mod::acpi &) { lib::info("elf: - type: acpi"); }
                 }, ptr->interface
             );
 
             const auto ndeps = entry.deps.size();
-            log::info("elf: - dependencies: {}", ndeps);
+            lib::info("elf: - dependencies: {}", ndeps);
 
             if (ndeps != 0)
-                log::print(log::level::info, "elf: -  ");
+                lib::print(lib::log_level::info, "elf: -  ");
             for (std::size_t i = 0; i < ndeps; i++)
             {
                 auto mod = entry.deps[i];
-                log::print("'{}'{}", mod, i == ndeps - 1 ? "" : ", ");
+                lib::print("'{}'{}", mod, i == ndeps - 1 ? "" : ", ");
             }
             if (ndeps != 0)
-                log::println();
+                lib::println();
         }
 
         std::size_t load(bool internal, std::uintptr_t start, std::uintptr_t end, decltype(entry::pages) &&pages, sym::symbol_table &&symbols, initfini initfini)
@@ -95,7 +95,7 @@ namespace bin::elf::mod
                 const auto ndeps = ptr->dependencies.ndeps;
                 const auto deps = reinterpret_cast<const char *const *>(ptr->dependencies.list);
 
-                log::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", ptr->name);
+                lib::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", ptr->name);
 
                 entry *entryptr;
                 {
@@ -132,18 +132,18 @@ namespace bin::elf::mod
             const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
 
             auto nmod = load(true, start, end, { }, { }, { });
-            log::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");
+            lib::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");
         }
 
         bool load(lib::path path, std::shared_ptr<vfs::file> file)
         {
-            log::info("elf: module: loading '{}'", path / file->path.dentry->name);
+            lib::info("elf: module: loading '{}'", path / file->path.dentry->name);
 
             auto &inode = file->path.dentry->inode;
             lib::membuffer buffer { static_cast<std::size_t>(inode->stat.st_size) };
             if (file->pread(0, buffer.maybe_uspan()) != inode->stat.st_size)
             {
-                log::error("elf: module: could not read the module file");
+                lib::error("elf: module: could not read the module file");
                 return false;
             }
 
@@ -151,27 +151,27 @@ namespace bin::elf::mod
 
             if (std::memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
             {
-                log::error("elf: module: invalid magic");
+                lib::error("elf: module: invalid magic");
                 return false;
             }
             if (ehdr->e_ident[EI_CLASS] != ELFCLASS64)
             {
-                log::error("elf: module: invalid class");
+                lib::error("elf: module: invalid class");
                 return false;
             }
             if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB)
             {
-                log::error("elf: module: invalid data type");
+                lib::error("elf: module: invalid data type");
                 return false;
             }
             if (ehdr->e_ident[EI_OSABI] != ELFOSABI_SYSV)
             {
-                log::error("elf: module: invalid os abi");
+                lib::error("elf: module: invalid os abi");
                 return false;
             }
             if (ehdr->e_type != ET_DYN)
             {
-                log::error("elf: module: not a shared object");
+                lib::error("elf: module: not a shared object");
                 return false;
             }
 
@@ -304,7 +304,7 @@ namespace bin::elf::mod
                     case PT_NULL:
                         break;
                     default:
-                        log::warn("elf: module: ignoring phdr type 0x{:X}", type);
+                        lib::warn("elf: module: ignoring phdr type 0x{:X}", type);
                         break;
                 }
             }
@@ -334,7 +334,7 @@ namespace bin::elf::mod
                             auto symaddr = sym::klookup(name);
                             if (symaddr == -1ul)
                             {
-                                log::error("elf: module: symbol '{}' not found", name);
+                                lib::error("elf: module: symbol '{}' not found", name);
                                 return false;
                             }
                             resolved = symaddr;
@@ -352,7 +352,7 @@ namespace bin::elf::mod
                     default:
                         // TODO: remove me when aarch64 relocation is implemented!
                         lib::unused(loc);
-                        log::error("elf: module: unknown relocation 0x{:X}", type);
+                        lib::error("elf: module: unknown relocation 0x{:X}", type);
                         return false;
                 }
                 return true;
@@ -363,7 +363,7 @@ namespace bin::elf::mod
                 auto &rela = *reinterpret_cast<Elf64_Rela *>(dt_rela + i * dt_relaent);
                 if (reloc(rela) == false)
                 {
-                    log::error("elf: module: relocation failed");
+                    lib::error("elf: module: relocation failed");
                     unmap_all();
                     return false;
                 }
@@ -374,7 +374,7 @@ namespace bin::elf::mod
                 auto &rela = *reinterpret_cast<Elf64_Rela *>(dt_jmprel + i * dt_relaent);
                 if (reloc(rela) == false)
                 {
-                    log::error("elf: module: relocation failed");
+                    lib::error("elf: module: relocation failed");
                     unmap_all();
                     return false;
                 }
@@ -415,7 +415,7 @@ namespace bin::elf::mod
             );
             if (nmod == 0)
             {
-                log::error("elf: module: no drivers found");
+                lib::error("elf: module: no drivers found");
                 unmap_all();
                 return false;
             }
@@ -430,7 +430,7 @@ namespace bin::elf::mod
                 auto ret = vfs::resolve(std::nullopt, path);
                 if (!ret || ret->target.dentry->inode->stat.type() != stat::type::s_ifdir)
                 {
-                    log::error("elf: module: directory '{}' not found", path);
+                    lib::error("elf: module: directory '{}' not found", path);
                     return;
                 }
 
