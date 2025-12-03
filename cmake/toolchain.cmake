@@ -17,6 +17,7 @@ set(_C_CXX_ASM_FLAGS
     "-Wno-c99-designator"
     "-Wno-unknown-attributes"
     "-Wno-unused-command-line-argument"
+    "-Wno-deprecated-declarations"
 )
 
 set(_CXX_FLAGS

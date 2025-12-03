@@ -2,4 +2,3 @@
 
 export module arch.system;
 
-export import aarch64.system.cpu;

@@ -1,15 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module system.cpu;
-import std;
 
-#if defined(__x86_64__)
-export import x86_64.system.cpu;
-#elif defined(__aarch64__)
-export import aarch64.system.cpu;
-#else
-#  error "Unsupported architecture"
-#endif
+export import system.cpu.arch;
+import std;
 
 export namespace cpu
 {

@@ -4,7 +4,7 @@ module;
 
 #include <arch/x86_64/system/cpu.hpp>
 
-module x86_64.system.cpu;
+module system.cpu.arch;
 
 import system.cpu.self;
 import lib;
