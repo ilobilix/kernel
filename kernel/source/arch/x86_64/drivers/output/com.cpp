@@ -5,7 +5,7 @@ module x86_64.drivers.output.com;
 import drivers.output.serial;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::output::com
 {

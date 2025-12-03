@@ -1,6 +1,7 @@
 # Copyright (C) 2024-2025  ilobilo
 
 include(${CMAKE_SOURCE_DIR}/cmake/shared-toolchain.cmake)
+include(${CMAKE_SOURCE_DIR}/dependencies/libstdcxx-headers/libstdcxx-headers.cmake)
 
 file(GLOB_RECURSE CXX_MODULE_FILES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cppm
@@ -22,4 +23,11 @@ target_sources(cxx_modules
         FILE_SET cxx_modules
         TYPE CXX_MODULES
         FILES ${CXX_MODULE_FILES}
+)
+target_sources(cxx_modules
+    PUBLIC
+        FILE_SET cxx_std_modules
+        TYPE CXX_MODULES
+        BASE_DIRS ${LIBSTDCXX_HEADERS_BASE_DIR}
+        FILES ${LIBSTDCXX_HEADERS_MODULES}
 )

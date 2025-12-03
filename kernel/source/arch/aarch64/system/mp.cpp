@@ -3,7 +3,7 @@
 module system.cpu;
 
 import lib;
-import cppstd;
+import std;
 
 namespace cpu::mp
 {

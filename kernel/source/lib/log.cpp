@@ -11,7 +11,7 @@ import drivers.output.terminal;
 #endif
 import drivers.output.serial;
 import system.time;
-import cppstd;
+import std;
 
 namespace log::unsafe
 {

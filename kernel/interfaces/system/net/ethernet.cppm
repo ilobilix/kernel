@@ -5,7 +5,7 @@ export module system.net:ether;
 import :addr;
 import :packet;
 import lib;
-import cppstd;
+import std;
 
 namespace utils
 {
@@ -39,10 +39,10 @@ export namespace net::ether
 
         packet(std::byte *ptr, std::size_t ptr_length)
         {
-            auto bytes = reinterpret_cast<std::uint8_t *>(ptr);
+            const auto bytes = reinterpret_cast<std::uint8_t *>(ptr);
 
-            dest = addr::mac(bytes);
-            source = addr::mac(bytes + 6);
+            dest = addr::mac { bytes };
+            source = addr::mac { bytes + 6 };
 
             tp = (static_cast<std::uint16_t>(bytes[12]) << 8) | bytes[13];
 
@@ -52,8 +52,8 @@ export namespace net::ether
 
         std::byte *to_bytes(std::byte *ptr) const
         {
-            ptr = this->dest.to_bytes(ptr);
-            ptr = this->source.to_bytes(ptr);
+            ptr = dest.to_bytes(ptr);
+            ptr = source.to_bytes(ptr);
 
             *reinterpret_cast<std::uint8_t *>(ptr++) = (tp >> 8) & 0xFF;
             *reinterpret_cast<std::uint8_t *>(ptr++) = tp & 0xFF;
@@ -82,13 +82,13 @@ export namespace net::ether
         nic *_nic;
 
         std::deque<lib::membuffer> packets;
-        // event::simple::event_t event;
+        lib::semaphore event;
 
         void attach_senders() requires (sizeof...(Types) == 0) { }
         void attach_senders() requires (sizeof...(Types) > 0)
         {
             [&]<std::size_t ...I>(std::index_sequence<I...>) {
-                (std::get<I>(this->processors).attach_sender(this), ...);
+                (std::get<I>(processors).attach_sender(this), ...);
             } (std::make_index_sequence<sizeof...(Types)> { });
         }
 
@@ -100,7 +100,7 @@ export namespace net::ether
             swap(lhs.ip, rhs.ip);
             swap(lhs._nic, rhs._nic);
             swap(lhs.packets, rhs.packets);
-            // swap(lhs.event, rhs.event);
+            swap(lhs.event, rhs.event);
         }
 
         dispatcher(nic *_nic) : processors { }, _nic { _nic } { attach_senders(); }
@@ -110,8 +110,8 @@ export namespace net::ether
         {
             while (true)
             {
-                // if (ptr->packets.empty())
-                //     ptr->event.await();
+                if (self.packets.empty())
+                    self.event.wait();
 
                 while (self.packets.empty() == false)
                 {
@@ -134,7 +134,7 @@ export namespace net::ether
         void receive(lib::membuffer &&buffer) override
         {
             packets.emplace_front(std::move(buffer));
-            // event.trigger();
+            event.signal();
         }
 
         addr::mac mac() override

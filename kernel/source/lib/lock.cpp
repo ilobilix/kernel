@@ -6,7 +6,7 @@ import system.scheduler;
 import system.cpu.self;
 import system.time;
 import arch;
-import cppstd;
+import std;
 
 namespace lib::lock
 {

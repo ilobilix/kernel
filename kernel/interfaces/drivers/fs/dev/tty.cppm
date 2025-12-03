@@ -5,7 +5,7 @@ export module drivers.fs.dev.tty;
 import system.vfs;
 import lib;
 import frigg;
-import cppstd;
+import std;
 
 export namespace fs::dev::tty
 {
@@ -52,6 +52,8 @@ export namespace fs::dev::tty
 
     struct default_ldisc : line_discipline
     {
+        lib::rbspmco<char, 1024> buffer;
+
         default_ldisc(instance *inst) : line_discipline { inst } { }
 
         std::ssize_t read(lib::maybe_uspan<std::byte> buffer) override;

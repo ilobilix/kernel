@@ -7,7 +7,7 @@ import system.memory;
 import magic_enum;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace aarch64::output::pl011
 {

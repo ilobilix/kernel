@@ -5,7 +5,7 @@ export module lib:rwlock;
 import :spinlock;
 import :mutex;
 import :bug_on;
-import cppstd;
+import std;
 
 export namespace lib
 {

@@ -5,7 +5,7 @@ export module lib:panic;
 import :string;
 import system.cpu;
 import fmt;
-import cppstd;
+import std;
 
 namespace lib
 {

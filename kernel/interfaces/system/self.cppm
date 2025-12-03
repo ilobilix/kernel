@@ -5,7 +5,7 @@ module;
 #include <cerrno>
 
 export module system.cpu.self;
-import cppstd;
+import std;
 
 extern "C" char __start_percpu[];
 extern "C" char __end_percpu[];

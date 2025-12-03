@@ -3,7 +3,7 @@
 export module drivers.fs.dev.mem;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace fs::dev::mem
 {

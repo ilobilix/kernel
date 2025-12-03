@@ -3,8 +3,8 @@
 export module system.net:packet;
 
 import :addr;
-import cppstd;
 import lib;
+import std;
 
 export namespace net
 {

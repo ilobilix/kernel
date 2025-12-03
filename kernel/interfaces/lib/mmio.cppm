@@ -3,7 +3,7 @@
 export module lib:mmio;
 
 import :types;
-import cppstd;
+import std;
 
 extern "C++" namespace lib::mmio
 {

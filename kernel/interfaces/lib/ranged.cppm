@@ -2,8 +2,8 @@
 
 export module lib:ranged;
 
-import cppstd;
 import :panic;
+import std;
 
 export namespace lib
 {

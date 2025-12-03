@@ -3,7 +3,7 @@
 export module x86_64.system.ioapic;
 
 import magic_enum;
-import cppstd;
+import std;
 
 export namespace x86_64::apic::io
 {

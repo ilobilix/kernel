@@ -4,7 +4,7 @@ export module lib:bug_on;
 
 import :panic;
 import :types;
-import cppstd;
+import std;
 namespace lib
 {
     constexpr comptime_string bug_on_message { "BUG BUG BUG!!!!!" };

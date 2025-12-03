@@ -5,7 +5,7 @@ export module arch.drivers.timers;
 export import aarch64.drivers.timers.generic;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace timers::arch
 {

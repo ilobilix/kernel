@@ -6,7 +6,7 @@ import :log;
 import :bug_on;
 import :panic;
 import frigg;
-import cppstd;
+import std;
 
 // this code is yoinked from managarm
 

@@ -7,7 +7,7 @@ import system.cpu.self;
 import system.dev;
 import drivers.fs;
 import lib;
-import cppstd;
+import std;
 
 namespace vfs
 {

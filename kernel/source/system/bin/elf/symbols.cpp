@@ -9,7 +9,7 @@ module system.bin.elf;
 import system.memory;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace bin::elf::sym
 {

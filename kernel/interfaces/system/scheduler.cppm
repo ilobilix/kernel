@@ -10,7 +10,7 @@ import system.vfs;
 import drivers.fs.dev.tty;
 import frigg;
 import lib;
-import cppstd;
+import std;
 
 namespace cpu
 {

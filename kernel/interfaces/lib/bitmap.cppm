@@ -4,7 +4,7 @@ export module lib:bitmap;
 
 import :bug_on;
 import :math;
-import cppstd;
+import std;
 
 export namespace lib
 {

@@ -5,7 +5,7 @@ export module system.bin.exec;
 import system.memory.virt;
 import system.scheduler;
 import system.vfs;
-import cppstd;
+import std;
 
 export namespace bin::exec
 {

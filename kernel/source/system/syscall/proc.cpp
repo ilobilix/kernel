@@ -4,7 +4,7 @@ module system.syscall.proc;
 
 import system.scheduler;
 import lib;
-import cppstd;
+import std;
 
 namespace syscall::proc
 {

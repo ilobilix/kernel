@@ -9,7 +9,7 @@ import magic_enum;
 import frigg;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace pmm
 {

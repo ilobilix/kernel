@@ -3,7 +3,7 @@
 module x86_64.drivers.timers.rtc;
 
 import arch.drivers.timers;
-import cppstd;
+import std;
 
 namespace x86_64::timers::rtc
 {

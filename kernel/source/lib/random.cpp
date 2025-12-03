@@ -4,7 +4,7 @@ module lib;
 
 import :mutex;
 import system.time;
-import cppstd;
+import std;
 
 namespace lib
 {

@@ -13,7 +13,7 @@ import system.acpi;
 import magic_enum;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 #if !ILOBILIX_LIMINE_MP
 

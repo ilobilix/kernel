@@ -6,7 +6,7 @@ import system.memory.phys;
 import system.cpu;
 import magic_enum;
 import lib;
-import cppstd;
+import std;
 
 import :pagemap;
 

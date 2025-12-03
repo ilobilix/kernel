@@ -5,7 +5,7 @@ export module lib:ringbuffer;
 import :memory;
 import :math;
 import :bug_on;
-import cppstd;
+import std;
 
 export namespace lib
 {

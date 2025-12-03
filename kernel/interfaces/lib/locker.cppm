@@ -3,7 +3,7 @@
 export module lib:locker;
 
 import :bug_on;
-import cppstd;
+import std;
 
 namespace detail
 {

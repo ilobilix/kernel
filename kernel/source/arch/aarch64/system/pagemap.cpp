@@ -10,7 +10,7 @@ import system.memory.phys;
 import system.cpu;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 import :pagemap;
 

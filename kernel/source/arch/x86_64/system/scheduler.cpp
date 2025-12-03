@@ -13,7 +13,7 @@ import magic_enum;
 import arch;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace sched
 {

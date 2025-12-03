@@ -4,7 +4,7 @@ export module lib:types;
 
 import :log;
 import fmt;
-import cppstd;
+import std;
 
 export namespace lib
 {

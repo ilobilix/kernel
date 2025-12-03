@@ -9,7 +9,7 @@ export import x86_64.drivers.timers.rtc;
 export import x86_64.drivers.timers.tsc;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace timers::arch
 {

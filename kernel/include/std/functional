@@ -1,6 +1,0 @@
-// Copyright (C) 2024-2025  ilobilo
-
-#pragma once
-
-#include <functional/std_function.h>
-#include_next <functional>

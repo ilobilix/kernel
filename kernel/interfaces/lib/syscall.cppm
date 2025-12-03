@@ -9,7 +9,7 @@ import :string;
 import :unused;
 import system.cpu;
 import magic_enum;
-import cppstd;
+import std;
 
 namespace lib::syscall
 {

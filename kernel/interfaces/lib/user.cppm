@@ -4,7 +4,7 @@ export module lib:user;
 
 import :bug_on;
 import :types;
-import cppstd;
+import std;
 
 namespace lib::impl
 {

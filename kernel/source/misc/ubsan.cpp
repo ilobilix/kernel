@@ -2,7 +2,7 @@
 
 import arch;
 import lib;
-import cppstd;
+import std;
 
 struct source_location
 {

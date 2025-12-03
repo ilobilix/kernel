@@ -4,7 +4,7 @@ export module drivers.fs.devtmpfs;
 
 import system.vfs;
 import lib;
-import cppstd;
+import std;
 
 export namespace fs::devtmpfs
 {
