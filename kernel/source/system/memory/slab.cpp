@@ -7,7 +7,7 @@ import system.memory.virt;
 import magic_enum;
 import frigg;
 import lib;
-import cppstd;
+import std;
 
 namespace slab
 {

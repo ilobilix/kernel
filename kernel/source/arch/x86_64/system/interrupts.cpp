@@ -11,7 +11,7 @@ import x86_64.system.pic;
 import x86_64.system.idt;
 import system.acpi;
 import lib;
-import cppstd;
+import std;
 
 namespace interrupts
 {

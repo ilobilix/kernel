@@ -11,7 +11,7 @@ module;
 #include <frg/list.hpp>
 
 export module frigg;
-import cppstd;
+import std;
 
 export namespace frg
 {

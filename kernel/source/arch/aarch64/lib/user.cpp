@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module lib;
-import cppstd;
+import std;
 
 namespace lib::impl
 {

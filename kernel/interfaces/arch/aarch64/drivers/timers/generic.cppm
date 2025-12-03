@@ -3,7 +3,7 @@
 export module aarch64.drivers.timers.generic;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace aarch64::timers::generic
 {

@@ -4,7 +4,7 @@ module system.bin.exec;
 
 import system.vfs;
 import lib;
-import cppstd;
+import std;
 
 namespace bin::exec
 {

@@ -7,7 +7,7 @@ module;
 export module system.acpi;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace acpi
 {

@@ -5,7 +5,7 @@ module;
 #include <arch/x86_64/system/cpu.hpp>
 
 export module x86_64.system.cpu;
-import cppstd;
+import std;
 
 export namespace cpu
 {

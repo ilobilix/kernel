@@ -1,8 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module drivers.output.serial;
-import cppstd;
+
 import lib;
+import std;
 
 namespace output::serial
 {

@@ -5,7 +5,7 @@ module;
 #include <arch/aarch64/system/cpu.hpp>
 
 export module aarch64.system.cpu;
-import cppstd;
+import std;
 
 // TODO: everything
 

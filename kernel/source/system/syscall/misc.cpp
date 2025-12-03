@@ -3,7 +3,7 @@
 module system.syscall.misc;
 
 import lib;
-import cppstd;
+import std;
 
 namespace syscall::misc
 {

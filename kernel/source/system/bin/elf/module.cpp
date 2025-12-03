@@ -11,7 +11,7 @@ import system.memory;
 import system.vfs;
 import magic_enum;
 import lib;
-import cppstd;
+import std;
 
 namespace bin::elf::mod
 {

@@ -8,7 +8,7 @@ import boot;
 import arch;
 import lib;
 import fmt;
-import cppstd;
+import std;
 
 #if ILOBILIX_EXTRA_PANIC_MSG
 namespace

@@ -12,7 +12,7 @@ import system.memory;
 import system.vfs;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace bin::elf::exec
 {

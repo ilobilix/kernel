@@ -6,7 +6,7 @@ import system.memory.phys;
 import system.scheduler;
 import system.cpu;
 import lib;
-import cppstd;
+import std;
 
 import :pagemap;
 

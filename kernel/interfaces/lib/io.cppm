@@ -3,7 +3,7 @@
 export module lib:io;
 
 import :types;
-import cppstd;
+import std;
 
 #if defined(__x86_64__)
 export import x86_64.lib.io;

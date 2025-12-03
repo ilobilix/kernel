@@ -6,7 +6,7 @@ import system.scheduler;
 import drivers.timers;
 import drivers.output;
 import system.cpu;
-import cppstd;
+import std;
 
 namespace arch
 {

@@ -8,7 +8,7 @@ import system.vfs;
 import magic_enum;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace initramfs
 {

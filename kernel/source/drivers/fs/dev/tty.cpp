@@ -9,7 +9,7 @@ import system.vfs;
 import system.dev;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 import magic_enum;
 import fmt;

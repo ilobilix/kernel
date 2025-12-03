@@ -5,7 +5,7 @@ module;
 #include <cerrno>
 
 export module lib:errno;
-import cppstd;
+import std;
 
 export
 {

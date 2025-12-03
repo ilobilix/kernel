@@ -1,10 +1,10 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module system.memory.virt;
-export import :pagemap;
 
-import cppstd;
+export import :pagemap;
 import lib;
+import std;
 
 export namespace vmm
 {

@@ -7,7 +7,7 @@ module;
 export module boot;
 
 import lib;
-import cppstd;
+import std;
 
 namespace
 {

@@ -5,7 +5,7 @@ export module lib:buffer;
 import :bug_on;
 import :math;
 import :user;
-import cppstd;
+import std;
 
 export namespace lib
 {

@@ -7,7 +7,7 @@ module;
 export module drivers.timers.acpipm;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace timers::acpipm
 {

@@ -6,7 +6,7 @@ import frigg;
 import arch;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace time
 {

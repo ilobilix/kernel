@@ -6,7 +6,7 @@ import system.memory.virt;
 import system.scheduler;
 import lib;
 
-import cppstd;
+import std;
 
 namespace syscall::memory
 {

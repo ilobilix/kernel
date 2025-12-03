@@ -9,7 +9,7 @@ import drivers.timers;
 import magic_enum;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::timers::pit
 {

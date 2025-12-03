@@ -7,7 +7,7 @@ import system.memory;
 import magic_enum;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::gdt
 {

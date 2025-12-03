@@ -3,7 +3,7 @@
 module lib;
 
 import system.cpu;
-import cppstd;
+import std;
 
 namespace lib::impl
 {

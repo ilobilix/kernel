@@ -6,8 +6,8 @@ import :ether;
 import :addr;
 import :packet;
 
-import cppstd;
 import lib;
+import std;
 
 namespace net::arp
 {
@@ -49,25 +49,24 @@ namespace net::arp
 
         packet(const ether::packet &ether)
         {
-            auto bytes = reinterpret_cast<std::uint8_t *>(ether.data);
-            {
-                hwtype = (static_cast<std::uint16_t>(bytes[0]) << 8) | bytes[1];
-                protype = (static_cast<std::uint16_t>(bytes[2]) << 8) | bytes[3];
+            const auto bytes = reinterpret_cast<std::uint8_t *>(ether.data);
 
-                hwsize = bytes[4];
-                prosize = bytes[5];
-                op = (static_cast<std::uint16_t>(bytes[6]) << 8) | bytes[7];
+            hwtype = (static_cast<std::uint16_t>(bytes[0]) << 8) | bytes[1];
+            protype = (static_cast<std::uint16_t>(bytes[2]) << 8) | bytes[3];
 
-                lib::bug_on(hwtype != std::to_underlying(hwtype::ethernet));
-                lib::bug_on(protype != std::to_underlying(protocol::ipv4));
-                lib::bug_on(hwsize != 6);
-                lib::bug_on(prosize != 4);
+            hwsize = bytes[4];
+            prosize = bytes[5];
+            op = (static_cast<std::uint16_t>(bytes[6]) << 8) | bytes[7];
 
-                smac = addr::mac { bytes + 8 };
-                sip = addr::ip::v4 { bytes + 14 };
-                dmac = addr::mac { bytes + 18 };
-                dip = addr::ip::v4 { bytes + 24 };
-            }
+            lib::bug_on(hwtype != std::to_underlying(hwtype::ethernet));
+            lib::bug_on(protype != std::to_underlying(protocol::ipv4));
+            lib::bug_on(hwsize != 6);
+            lib::bug_on(prosize != 4);
+
+            smac = addr::mac { bytes + 8 };
+            sip = addr::ip::v4 { bytes + 14 };
+            dmac = addr::mac { bytes + 18 };
+            dip = addr::ip::v4 { bytes + 24 };
         }
 
         std::byte *to_bytes(std::byte *ptr) const
@@ -118,7 +117,7 @@ namespace net::arp
         addr::mac mac;
         bool resolved;
 
-        // event::simple::event_t doorbell;
+        lib::semaphore doorbell;
 
         constexpr bool operator==(const route &rhs) const
         {
@@ -174,7 +173,7 @@ namespace net::arp
                         route->ip = arp.sip;
                         route->mac = arp.smac;
                         route->resolved = true;
-                        // route->doorbell.trigger();
+                        route->doorbell.signal();
                     }
                     break;
                 default:
@@ -189,7 +188,7 @@ namespace net::arp
                 if (route->ip != ipv4)
                     continue;
 
-                // route->doorbell.await();
+                route->doorbell.wait();
                 lib::bug_on(route->resolved == false);
                 return route->mac;
             }
@@ -197,7 +196,7 @@ namespace net::arp
             const auto &route = routes.emplace_back(new arp::route(ipv4, { }, false));
             submit_query(ipv4);
 
-            // route->doorbell.await();
+            route->doorbell.wait();
             lib::bug_on(route->resolved == false);
             return route->mac;
         }

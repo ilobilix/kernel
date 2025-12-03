@@ -5,7 +5,7 @@ export module system.memory.virt:pagemap;
 import magic_enum;
 import frigg;
 import lib;
-import cppstd;
+import std;
 
 namespace vmm
 {

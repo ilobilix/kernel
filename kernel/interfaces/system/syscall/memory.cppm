@@ -3,7 +3,7 @@
 export module system.syscall.memory;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace syscall::memory
 {

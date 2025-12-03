@@ -3,7 +3,7 @@
 export module x86_64.drivers.timers.pit;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace x86_64::timers::pit
 {

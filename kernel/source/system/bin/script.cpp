@@ -3,7 +3,7 @@
 module system.bin.exec;
 
 import lib;
-import cppstd;
+import std;
 
 namespace bin::script
 {

@@ -8,7 +8,7 @@ module lib;
 
 import system.bin.elf;
 import :log;
-import cppstd;
+import std;
 
 namespace lib
 {

@@ -3,7 +3,7 @@
 #include <stdarg.h>
 
 import lib;
-import cppstd;
+import std;
 
 extern "C"
 {

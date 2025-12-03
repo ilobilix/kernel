@@ -13,7 +13,7 @@ import system.cpu.self;
 import system.cpu;
 import magic_enum;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::apic
 {

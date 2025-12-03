@@ -15,7 +15,7 @@ import magic_enum;
 import boot;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::timers::hpet
 {

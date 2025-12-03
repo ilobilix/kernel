@@ -5,7 +5,7 @@ export module lib:string;
 import :errno;
 import :types;
 import fmt;
-import cppstd;
+import std;
 
 export namespace lib
 {

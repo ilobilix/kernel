@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:math;
-import cppstd;
+import std;
 
 extern "C++" std::uintptr_t (*get_hhdm_offset)();
 

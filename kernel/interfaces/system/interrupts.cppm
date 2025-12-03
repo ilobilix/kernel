@@ -3,7 +3,7 @@
 export module system.interrupts;
 
 import system.cpu;
-import cppstd;
+import std;
 
 export namespace interrupts
 {
