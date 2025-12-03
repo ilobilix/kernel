@@ -4,7 +4,7 @@ module;
 
 #include <arch/aarch64/system/cpu.hpp>
 
-export module aarch64.system.cpu;
+export module system.cpu.arch:impl;
 import std;
 
 // TODO: everything
@@ -52,5 +52,5 @@ export namespace cpu
         return mrs(tpidr_el0);
     }
 
-    extern "C++" std::uintptr_t self_addr() { return read_el1_base(); }
+    std::uintptr_t self_addr() { return read_el1_base(); }
 } // export namespace cpu

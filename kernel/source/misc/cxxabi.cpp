@@ -118,8 +118,26 @@ namespace std
     //     return FNV1a(key, len, seed);
     // }
 
+#if __cplusplus < 202400L
     bad_alloc::~bad_alloc() throw() { }
     const char *bad_alloc::what() const throw() { return "bad_alloc"; }
+#else
+    bool is_debugger_present() noexcept
+    {
+        return false;
+    }
+
+    void breakpoint() noexcept
+    {
+        __builtin_debugtrap();
+    }
+
+    void breakpoint_if_debugging() noexcept
+    {
+        if (is_debugger_present()) [[unlikely]]
+            breakpoint();
+    }
+#endif
 } // namespace std
 
 [[nodiscard]] void *operator new(std::size_t size) { return lib::alloc(size); }

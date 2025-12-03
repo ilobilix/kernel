@@ -7,8 +7,10 @@
 
 namespace std
 {
+#if __cplusplus < 202400L
     inline const char *exception::what() const noexcept { return "std::exception"; }
     inline exception::~exception() noexcept { }
+#endif
 
     class runtime_error : public exception
     {

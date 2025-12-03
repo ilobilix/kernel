@@ -5,6 +5,8 @@ module;
 #include <cerrno>
 
 export module system.cpu.self;
+
+import system.cpu.arch;
 import std;
 
 extern "C" char __start_percpu[];
@@ -30,7 +32,6 @@ export namespace cpu
         };
 
         processor *self();
-        std::uintptr_t self_addr();
     } // extern "C++"
 
     namespace local
