@@ -2,25 +2,6 @@
 
 #pragma once
 
-namespace std
-{
-    constexpr auto ceil(auto val)
-    {
-        return __builtin_ceil(val);
-    }
-
-    constexpr auto isnan(auto val)
-    {
-        return __builtin_isnan(val);
-    }
-
-    constexpr auto isfinite(auto val)
-    {
-        return __builtin_isfinite(val);
-    }
-
-    constexpr auto signbit(auto val)
-    {
-        return __builtin_signbit(val);
-    }
-} // namespace std
+#if __has_include_next(<cmath>)
+#  include_next <cmath>
+#endif

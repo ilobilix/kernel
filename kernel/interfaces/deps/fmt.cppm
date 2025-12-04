@@ -17,7 +17,6 @@ export namespace fmt
 
     using ::fmt::format_args;
     using ::fmt::format_context;
-    using ::fmt::format_error;
     using ::fmt::format_parse_context;
 
     using ::fmt::format_string;

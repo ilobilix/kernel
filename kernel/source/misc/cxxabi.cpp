@@ -118,10 +118,7 @@ namespace std
     //     return FNV1a(key, len, seed);
     // }
 
-#if __cplusplus < 202400L
-    bad_alloc::~bad_alloc() throw() { }
-    const char *bad_alloc::what() const throw() { return "bad_alloc"; }
-#else
+#if __cplusplus >= 202400L
     bool is_debugger_present() noexcept
     {
         return false;
