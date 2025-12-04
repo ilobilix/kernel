@@ -4,7 +4,7 @@ module;
 
 #include <cerrno>
 
-export module system.cpu.self;
+export module system.cpu.local;
 
 import system.cpu.arch;
 import std;
@@ -14,30 +14,23 @@ extern "C" char __end_percpu[];
 
 export namespace cpu
 {
-    extern "C++"
+    struct processor
     {
-        struct processor
-        {
-            // do not move
-            processor *self;
-            std::uintptr_t stack_top;
+        // do not move
+        processor *self;
+        std::uintptr_t stack_top;
 
-            std::size_t idx;
-            std::size_t arch_id;
+        std::size_t idx;
+        std::size_t arch_id;
 
-            std::atomic_bool in_interrupt;
+        std::atomic_bool in_interrupt;
 
-            errnos err = no_error;
-            std::atomic_bool online = false;
-        };
-
-        processor *self();
-    } // extern "C++"
+        errnos err = no_error;
+        std::atomic_bool online = false;
+    };
 
     namespace local
     {
-        extern "C++" bool available();
-
         template<typename Type, std::size_t Size = sizeof(Type)>
         class storage
         {
@@ -74,5 +67,14 @@ export namespace cpu
                 initialise_base(self_addr(), args...);
             }
         };
+
+        processor *request(std::size_t aid);
+
+        processor *nth(std::size_t n);
+        std::uintptr_t nth_base(std::size_t n);
+
+        bool available();
     } // namespace local
+
+    processor *self();
 } // export namespace cpu

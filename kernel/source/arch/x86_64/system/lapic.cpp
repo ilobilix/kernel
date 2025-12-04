@@ -9,7 +9,7 @@ module x86_64.system.lapic;
 
 import drivers.timers;
 import system.memory;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import magic_enum;
 import lib;

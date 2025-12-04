@@ -4,7 +4,7 @@ module x86_64.drivers.timers.tsc;
 
 import x86_64.drivers.timers.kvm;
 import drivers.timers;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import system.chrono;
 

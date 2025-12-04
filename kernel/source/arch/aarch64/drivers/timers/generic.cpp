@@ -2,7 +2,7 @@
 
 module aarch64.drivers.timers.generic;
 
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import system.chrono;
 import drivers.timers;

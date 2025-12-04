@@ -2,7 +2,7 @@
 
 #include <cerrno>
 
-import system.cpu.self;
+import system.cpu.local;
 import system.scheduler;
 
 extern "C"
