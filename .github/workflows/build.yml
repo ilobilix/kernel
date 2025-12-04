@@ -18,7 +18,7 @@ jobs:
       - name: Update and install dependencies
         run: |
           pacman --noconfirm -Syu
-          pacman --needed --noconfirm -S base-devel clang lld llvm cmake ninja xorriso
+          pacman --needed --noconfirm -S base-devel clang lld llvm cmake ninja xorriso git
 
       - name: Checkout repository
         uses: actions/checkout@v6
