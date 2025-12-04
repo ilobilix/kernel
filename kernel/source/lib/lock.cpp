@@ -3,7 +3,7 @@
 module lib;
 
 import system.scheduler;
-import system.cpu.self;
+import system.cpu.local;
 import system.chrono;
 import arch;
 import std;

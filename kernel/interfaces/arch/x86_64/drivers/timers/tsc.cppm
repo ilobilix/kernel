@@ -2,7 +2,7 @@
 
 export module x86_64.drivers.timers.tsc;
 
-import system.cpu.self;
+import system.cpu.local;
 import lib;
 import std;
 

@@ -7,7 +7,7 @@ import x86_64.system.gdt;
 import x86_64.system.idt;
 import system.interrupts;
 import system.memory;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import magic_enum;
 import arch;

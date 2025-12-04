@@ -6,7 +6,7 @@ import x86_64.system.lapic;
 import x86_64.system.gdt;
 import system.memory.virt;
 import system.memory.phys;
-import system.cpu.self;
+import system.cpu.local;
 import system.chrono;
 import system.acpi;
 import magic_enum;
