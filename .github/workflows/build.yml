@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         ilobilix_arch: [x86_64, aarch64]
+      fail-fast: false
 
     steps:
       - name: Update and install dependencies
