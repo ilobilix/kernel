@@ -47,6 +47,10 @@
 	url = https://codeberg.org/Limine/Limine
 	shallow = true
 	branch = v10.x-binary
+[submodule "dependencies/limine-protocol/limine-protocol"]
+	path = dependencies/limine-protocol/limine-protocol
+	url = https://codeberg.org/Limine/limine-protocol
+	shallow = true
 [submodule "dependencies/demangler/demangler"]
 	path = dependencies/demangler/demangler
 	url = https://github.com/ilobilo/demangler
