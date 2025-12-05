@@ -436,7 +436,7 @@ namespace vfs
         return std::unexpected(ret.error());
     }
 
-    bool check_access(uid_t uid, gid_t gid, const ::stat &stat, int mode)
+    bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const ::stat &stat, int mode)
     {
         if (mode == f_ok)
             return true;
@@ -462,11 +462,27 @@ namespace vfs
             wbit = s_iwusr;
             xbit = s_ixusr;
         }
-        else if (gid == stat.st_gid)
+        else
         {
-            rbit = s_irgrp;
-            wbit = s_iwgrp;
-            xbit = s_ixgrp;
+            bool is_group = (gid == stat.st_gid);
+            if (!is_group)
+            {
+                for (const auto &supgid : supgids)
+                {
+                    if (supgid == stat.st_gid)
+                    {
+                        is_group = true;
+                        break;
+                    }
+                }
+            }
+
+            if (is_group)
+            {
+                rbit = s_irgrp;
+                wbit = s_iwgrp;
+                xbit = s_ixgrp;
+            }
         }
 
         if ((mode & r_ok) && !(stat.st_mode & rbit))
@@ -477,15 +493,6 @@ namespace vfs
             return false;
 
         return true;
-    }
-
-    auto stat(std::optional<path> parent, lib::path path) -> expect<::stat>
-    {
-        auto res = resolve(parent, path);
-        if (!res)
-            return std::unexpected(res.error());
-
-        return res->target.dentry->inode->stat;
     }
 
     bool populate(path parent, std::string_view name)
