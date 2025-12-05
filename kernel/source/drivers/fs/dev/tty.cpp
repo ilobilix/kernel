@@ -6,7 +6,7 @@ import drivers.fs.devtmpfs;
 import system.memory.virt;
 import system.scheduler;
 import system.vfs;
-import system.dev;
+import system.vfs.dev;
 import arch;
 import lib;
 import std;
@@ -93,8 +93,6 @@ namespace fs::dev::tty
         }
     } // namespace
 
-    using namespace ::dev;
-
     std::ssize_t default_ldisc::read(lib::maybe_uspan<std::byte> buffer)
     {
         lib::unused(buffer);
@@ -170,6 +168,8 @@ namespace fs::dev::tty
         test_driver() : driver { "tty-test", 4, 0, ktermios::standard() } { }
     };
 
+    using namespace vfs::dev;
+
     struct ops : vfs::ops
     {
         static std::shared_ptr<ops> singleton()
@@ -180,8 +180,8 @@ namespace fs::dev::tty
 
         bool open(std::shared_ptr<vfs::file> self, int flags) override
         {
-            lib::bug_on(self->private_data != nullptr);
-            lib::bug_on(!self || !self->path.dentry || !self->path.dentry->inode);
+            lib::bug_on(!self || self->private_data != nullptr);
+            lib::bug_on(!self->path.dentry || !self->path.dentry->inode);
 
             const auto rdev = self->path.dentry->inode->stat.st_rdev;
             auto drv = get_driver(major(rdev));
@@ -280,14 +280,6 @@ namespace fs::dev::tty
             lib::unused(file, size);
             return true;
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     struct current_ops : vfs::ops
@@ -300,6 +292,7 @@ namespace fs::dev::tty
 
         bool open(std::shared_ptr<vfs::file> self, int flags) override
         {
+            lib::bug_on(!self || self->private_data != nullptr);
             lib::unused(flags);
 
             const auto proc = sched::proc_for(self->pid);
@@ -353,14 +346,6 @@ namespace fs::dev::tty
             lib::unused(file, size);
             return true;
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     lib::initgraph::stage *registered_stage()

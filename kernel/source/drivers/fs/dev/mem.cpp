@@ -4,8 +4,8 @@ module drivers.fs.dev.mem;
 
 import drivers.fs.devtmpfs;
 import system.memory.virt;
-import system.dev;
 import system.vfs;
+import system.vfs.dev;
 import boot;
 import lib;
 import std;
@@ -173,7 +173,7 @@ namespace fs::dev::mem
         lib::initgraph::require { devtmpfs::mounted_stage() },
         lib::initgraph::entail { registered_stage() },
         [] {
-            using namespace ::dev;
+            using namespace vfs::dev;
             register_cdev(null_ops::singleton(), makedev(1, 3));
             register_cdev(zero_ops::singleton(), makedev(1, 5));
             register_cdev(full_ops::singleton(), makedev(1, 7));

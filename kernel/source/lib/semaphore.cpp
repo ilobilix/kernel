@@ -25,20 +25,21 @@ namespace lib
         return ret;
     }
 
-    void semaphore::wait()
+    bool semaphore::wait()
     {
         const bool ints = arch::int_switch_status(false);
         lock.lock();
 
         auto me = sched::this_thread();
 
+        std::size_t reason = 0;
         if (--signals < 0)
         {
             threads.push_back(me);
             me->prepare_sleep();
             lock.unlock();
 
-            if (sched::yield())
+            if ((reason = sched::yield()))
             {
                 lock.lock();
                 auto it = std::remove(threads.begin(), threads.end(), me);
@@ -47,14 +48,18 @@ namespace lib
                     threads.erase(it);
                     signals++;
                 }
+                else reason = sched::wake_reason::success;
+
                 lock.unlock();
             }
             arch::int_switch(ints);
-            return;
+            return reason == sched::wake_reason::success;
         }
 
         lock.unlock();
         arch::int_switch(ints);
+
+        return reason == sched::wake_reason::success;
     }
 
     bool semaphore::wait_for(std::size_t ms)
@@ -97,5 +102,27 @@ namespace lib
 
         if (thread)
             thread->wake_up(0);
+    }
+
+    void semaphore::signal_all()
+    {
+        const bool ints = arch::int_switch_status(false);
+        lock.lock();
+
+        std::list<sched::thread_base *> temp_threads;
+
+        while (!threads.empty())
+        {
+            bug_on(signals >= 0);
+            temp_threads.push_back(threads.front());
+            threads.pop_front();
+            signals++;
+        }
+
+        lock.unlock();
+        arch::int_switch(ints);
+
+        for (auto &thread : temp_threads)
+            static_cast<sched::thread *>(thread)->wake_up(0);
     }
 } // namespace lib

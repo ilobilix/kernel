@@ -1,12 +1,12 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module system.dev;
+export module system.vfs.dev;
 
 import system.vfs;
 import lib;
 import std;
 
-export namespace dev
+export namespace vfs::dev
 {
     inline constexpr std::uint32_t major(dev_t dev)
     {
@@ -33,4 +33,4 @@ export namespace dev
 
     bool register_cdev(std::shared_ptr<vfs::ops> ops, dev_t dev);
     std::shared_ptr<vfs::ops> get_cdev_ops(dev_t dev);
-} // export namespace dev
+} // export namespace vfs::dev

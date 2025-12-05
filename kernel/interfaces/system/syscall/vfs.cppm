@@ -7,9 +7,9 @@ import std;
 
 export namespace syscall::vfs
 {
+    int openat(int dirfd, const char __user *pathname, int flags, mode_t mode);
     int open(const char __user *pathname, int flags, mode_t mode);
     int creat(const char __user *pathname, mode_t mode);
-    int openat(int dirfd, const char __user *pathname, int flags, mode_t mode);
 
     int close(int fd);
 
@@ -43,4 +43,7 @@ export namespace syscall::vfs
     int dup3(int oldfd, int newfd, int flags);
 
     char *getcwd(char __user *buf, std::size_t size);
+
+    int pipe2(int __user *pipefd, int flags);
+    int pipe(int __user *pipefd);
 } // export namespace syscall::vfs

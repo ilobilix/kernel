@@ -3,8 +3,8 @@
 module drivers.initramfs;
 
 import drivers.fs.dev;
-import system.dev;
 import system.vfs;
+import system.vfs.dev;
 import magic_enum;
 import boot;
 import lib;
@@ -68,7 +68,7 @@ namespace initramfs
 
                 const auto devmajor = lib::oct2int<time_t>(current->devmajor);
                 const auto devminor = lib::oct2int<time_t>(current->devminor);
-                const dev_t dev = dev::makedev(devmajor, devminor);
+                const dev_t dev = vfs::dev::makedev(devmajor, devminor);
 
                 std::shared_ptr<vfs::inode> inode;
 
