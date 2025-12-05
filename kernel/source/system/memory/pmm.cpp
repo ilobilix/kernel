@@ -285,7 +285,7 @@ namespace pmm
 
         constinit allocator<page_size, lib::mib(1)> sub1mib { };
         constinit allocator<lib::mib(1), lib::gib(4)> sub4gib { };
-        constinit allocator<lib::gib(4), std::numeric_limits<std::uintptr_t>::max()> normal { };
+        constinit allocator<lib::gib(4), (1ul << paddr_bits)> normal { };
 
         void add_range(std::uintptr_t base, std::size_t size, bool freeing)
         {
