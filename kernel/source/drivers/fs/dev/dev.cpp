@@ -3,8 +3,8 @@
 module drivers.fs.dev;
 
 import drivers.initramfs;
-import system.dev;
 import system.vfs;
+import system.vfs.dev;
 import magic_enum;
 import lib;
 import std;
@@ -62,7 +62,7 @@ namespace fs::dev
                 );
             };
 
-            using namespace ::dev;
+            using namespace vfs::dev;
             create("/dev/null", stat::s_ifchr | 0666, makedev(1, 3));
             create("/dev/zero", stat::s_ifchr | 0666, makedev(1, 5));
             create("/dev/full", stat::s_ifchr | 0666, makedev(1, 7));
