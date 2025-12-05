@@ -321,6 +321,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
@@ -331,7 +335,6 @@ namespace syscall::vfs
 
         // TODO: sync
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::modify | stat::time::status);
         return ret;
     }
@@ -376,6 +379,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
@@ -384,7 +391,6 @@ namespace syscall::vfs
         if (ret < 0)
             return (errno = -ret, -1);
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::modify | stat::time::status);
         return ret;
     }
@@ -407,11 +413,15 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return (errno = EFAULT, -1);
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
@@ -428,9 +438,7 @@ namespace syscall::vfs
             total_read += static_cast<std::size_t>(ret);
         }
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::access);
-
         return static_cast<std::ssize_t>(total_read);
     }
 
@@ -446,11 +454,15 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return (errno = EFAULT, -1);
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
@@ -464,9 +476,7 @@ namespace syscall::vfs
             total_written += static_cast<std::size_t>(ret);
         }
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::modify | stat::time::status);
-
         return static_cast<std::ssize_t>(total_written);
     }
 
@@ -482,11 +492,15 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return (errno = EFAULT, -1);
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
@@ -504,9 +518,7 @@ namespace syscall::vfs
             offset += static_cast<off_t>(ret);
         }
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::access);
-
         return static_cast<std::ssize_t>(total_read);
     }
 
@@ -522,11 +534,15 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return (errno = EFAULT, -1);
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
@@ -541,9 +557,7 @@ namespace syscall::vfs
             offset += static_cast<off_t>(ret);
         }
 
-        auto &stat = file->path.dentry->inode->stat;
         stat.update_time(stat::time::modify | stat::time::status);
-
         return static_cast<std::ssize_t>(total_written);
     }
 
@@ -648,7 +662,8 @@ namespace syscall::vfs
         if ((mode & (x_ok | w_ok | r_ok)) == 0)
             return (errno = EINVAL, -1);
 
-        if (!vfs::check_access(uid, gid, target->dentry->inode->stat, mode))
+        const auto supgids = proc->supplementary_gids.read_lock();
+        if (!vfs::check_access(uid, gid, *supgids, target->dentry->inode->stat, mode))
             return (errno = EACCES, -1);
 
         return 0;
