@@ -6,14 +6,21 @@ import system.scheduler.base;
 import std;
 
 import :spinlock;
+import :list;
 
 export namespace lib
 {
     struct semaphore
     {
         private:
+        struct locate
+        {
+            lib::intrusive_list_hook<sched::thread_base> &operator()(sched::thread_base &x);
+        };
         spinlock lock;
-        std::list<sched::thread_base *> threads;
+        lib::intrusive_list_locate<
+            sched::thread_base, locate
+        > threads;
         std::ssize_t signals;
 
         bool test();

@@ -4,7 +4,6 @@ export module drivers.fs.dev.tty;
 
 import system.vfs;
 import lib;
-import frigg;
 import std;
 
 export namespace fs::dev::tty
@@ -251,8 +250,6 @@ export namespace fs::dev::tty
 
         std::weak_ptr<instance> link;
 
-        frg::default_list_hook<instance> hook;
-
         instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc);
 
         virtual ~instance() = default;
@@ -305,7 +302,7 @@ export namespace fs::dev::tty
             >, lib::mutex
         > instances;
 
-        frg::default_list_hook<driver> hook;
+        lib::intrusive_list_hook<driver> hook;
 
         driver(std::string_view name, std::uint32_t major, std::uint32_t minor_start, const ktermios &init_termios)
             : name { name }, major { major }, minor_start { minor_start }, init_termios { init_termios } { }

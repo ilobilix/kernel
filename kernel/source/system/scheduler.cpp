@@ -54,14 +54,7 @@ namespace sched
         thread *idle_thread;
         thread *reaper_thread;
 
-        frg::intrusive_list<
-            thread,
-            frg::locate_member<
-                thread,
-                frg::default_list_hook<thread>,
-                &thread::list_hook
-            >
-        > dead_threads;
+        lib::intrusive_list<thread, &thread::list_hook> dead_threads;
 
         std::atomic_size_t preemption = 0;
         std::atomic_bool in_scheduler = false;
@@ -542,9 +535,7 @@ namespace sched
             yield();
 
             disable();
-            decltype(percpu::dead_threads) list;
-            while (!dead.empty())
-                list.push_back(dead.pop_front());
+            auto list = std::move(dead);
             enable();
 
             while (!list.empty())
