@@ -7,6 +7,7 @@ list(REMOVE_DUPLICATES _module_arches)
 
 set(_module_output_dir ${CMAKE_BINARY_DIR}/modules/modules)
 set(_module_targets)
+set(_module_objects)
 
 set(_internal_module_targets)
 set(_internal_module_objects)
@@ -81,11 +82,15 @@ foreach(_arch IN LISTS _module_arches)
         endif()
 
         list(APPEND _module_targets ${_target})
+        list(APPEND _module_objects "$<TARGET_FILE:${_target}>")
     endforeach()
 endforeach()
 
 set(INTERNAL_MODULE_TARGETS ${_internal_module_targets} PARENT_SCOPE)
 set(INTERNAL_MODULE_OBJECTS ${_internal_module_objects} PARENT_SCOPE)
+
+set(EXTERNAL_MODULE_TARGETS ${_module_targets} PARENT_SCOPE)
+set(EXTERNAL_MODULE_OBJECTS ${_module_objects} PARENT_SCOPE)
 
 if(_module_targets)
     add_custom_target(kernel_external_modules ALL DEPENDS ${_module_targets})

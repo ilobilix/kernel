@@ -6,12 +6,16 @@ include(${CMAKE_SOURCE_DIR}/cmake/config.cmake)
 
 set(_C_CXX_ASM_FLAGS
     "--target=${ILOBILIX_ARCH}-elf"
+
     "-ffreestanding"
     "-nostdinc"
+
     "-fno-stack-protector"
     "-fstrict-vtable-pointers"
     "-funsigned-char"
+
     "-mgeneral-regs-only"
+
     "-Wall" "-Wextra"
     "-Wno-c23-extensions"
     "-Wno-c99-designator"
