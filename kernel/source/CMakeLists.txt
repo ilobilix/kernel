@@ -4,6 +4,9 @@ include(${CMAKE_SOURCE_DIR}/cmake/kernel-toolchain.cmake)
 
 find_program(LLVM_NM_EXECUTABLE llvm-nm REQUIRED)
 find_program(SED_EXECUTABLE sed REQUIRED)
+find_program(GREP_EXECUTABLE grep REQUIRED)
+find_program(SORT_EXECUTABLE sort REQUIRED)
+find_program(AWK_EXECUTABLE awk REQUIRED)
 
 file(GLOB_RECURSE KERNEL_SOURCE_FILES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
@@ -46,6 +49,31 @@ set(KERNEL_TMPDIR ${CMAKE_CURRENT_BINARY_DIR}/kallsyms.tmp)
 string(STRIP "${CMAKE_ASM_FLAGS}" KERNEL_ASM_FLAGS)
 string(STRIP "${CMAKE_EXE_LINKER_FLAGS}" KERNEL_LINK_FLAGS)
 
+set(KERNEL_EXTRA_DEPENDS "")
+
+if(_ILOBILIX_ENABLE_LTO)
+    set(RETAIN_SYMBOLS_FILE "${CMAKE_CURRENT_BINARY_DIR}/modules.retain.txt")
+
+    add_custom_command(
+        OUTPUT ${RETAIN_SYMBOLS_FILE}
+        COMMAND ${CMAKE_COMMAND} -E echo "Generating symbol retention file..."
+        COMMAND ${LLVM_NM_EXECUTABLE} --defined-only --extern-only --format=just-symbols ${_kernel_objects} | sort -u > ${CMAKE_CURRENT_BINARY_DIR}/kernel.defined.txt
+        COMMAND ${LLVM_NM_EXECUTABLE} -u ${EXTERNAL_MODULE_OBJECTS} | ${AWK_EXECUTABLE} "/ U / {print \$NF}" | ${SORT_EXECUTABLE} -u > ${CMAKE_CURRENT_BINARY_DIR}/modules.needed.txt
+        COMMAND ${GREP_EXECUTABLE} -Fxf ${CMAKE_CURRENT_BINARY_DIR}/kernel.defined.txt ${CMAKE_CURRENT_BINARY_DIR}/modules.needed.txt | ${SED_EXECUTABLE} "s/^/-Wl,--undefined=/" | tr "\\n" " " > ${RETAIN_SYMBOLS_FILE}
+        DEPENDS kernel_objs ${EXTERNAL_MODULE_TARGETS}
+        COMMENT "Generating LTO symbol retention response file"
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+    )
+
+    string(APPEND KERNEL_LINK_FLAGS " @${RETAIN_SYMBOLS_FILE}")
+
+    add_custom_target(retain_symbols ALL
+        DEPENDS ${RETAIN_SYMBOLS_FILE}
+    )
+    list(APPEND KERNEL_EXTRA_DEPENDS retain_symbols)
+endif()
+
 add_custom_command(
     OUTPUT ${KERNEL_OUTPUT_ELF} ${KERNEL_OUTPUT_SYMS}
     COMMAND ${CMAKE_COMMAND}
@@ -68,6 +96,7 @@ add_custom_command(
         ${_kernel_objects}
         kernel_objs
         kallsyms
+        ${KERNEL_EXTRA_DEPENDS}
         ${KERNEL_LINK_LIBS}
         ${INTERNAL_MODULE_TARGETS}
     BYPRODUCTS
