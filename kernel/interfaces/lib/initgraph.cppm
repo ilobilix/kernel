@@ -3,9 +3,9 @@
 export module lib:initgraph;
 
 import :log;
+import :list;
 import :bug_on;
 import :panic;
-import frigg;
 import std;
 
 // this code is yoinked from managarm
@@ -34,8 +34,8 @@ export namespace lib::initgraph
         node *_source;
         node *_target;
 
-        frg::default_list_hook<edge> _outhook;
-        frg::default_list_hook<edge> _inhook;
+        lib::intrusive_list_hook<edge> _outhook;
+        lib::intrusive_list_hook<edge> _inhook;
 
         public:
         edge(node *source, node *target)
@@ -59,26 +59,11 @@ export namespace lib::initgraph
         engine *_engine;
         std::string_view _name;
 
-        frg::intrusive_list<
-            edge,
-            frg::locate_member<
-                edge,
-                frg::default_list_hook<edge>,
-                &edge::_outhook
-            >
-        > _outlist;
+        lib::intrusive_list<edge, &edge::_outhook> _outlist;
+        lib::intrusive_list<edge, &edge::_inhook> _inlist;
 
-        frg::intrusive_list<
-            edge,
-            frg::locate_member<
-                edge,
-                frg::default_list_hook<edge>,
-                &edge::_inhook
-            >
-        > _inlist;
-
-        frg::default_list_hook<node> _nodeshook;
-        frg::default_list_hook<node> _queuehook;
+        lib::intrusive_list_hook<node> _nodeshook;
+        lib::intrusive_list_hook<node> _queuehook;
 
         bool _wanted = false;
         bool _done = false;
@@ -108,23 +93,8 @@ export namespace lib::initgraph
         friend void realise_node(node *node);
 
         private:
-        frg::intrusive_list<
-            node,
-            frg::locate_member<
-                node,
-                frg::default_list_hook<node>,
-                &node::_nodeshook
-            >
-        > _nodes;
-
-        frg::intrusive_list<
-            node,
-            frg::locate_member<
-                node,
-                frg::default_list_hook<node>,
-                &node::_queuehook
-            >
-        > _pending;
+        lib::intrusive_list<node, &node::_nodeshook> _nodes;
+        lib::intrusive_list<node, &node::_queuehook> _pending;
 
         std::string_view _name;
 
@@ -173,16 +143,16 @@ export namespace lib::initgraph
             if constexpr (debug)
                 lib::debug("initgraph: running engine '{}'", _name);
 
-            for (auto node : _nodes)
-                node->_wanted = true;
+            for (auto &node : _nodes)
+                node._wanted = true;
 
-            for (auto node : _nodes)
+            for (auto &node : _nodes)
             {
-                if (!node->_wanted || node->_done)
+                if (!node._wanted || node._done)
                     continue;
 
-                if (node->unsatisfied == 0)
-                    _pending.push_back(node);
+                if (node.unsatisfied == 0)
+                    _pending.push_back(std::addressof(node));
             }
 
             while (!_pending.empty())
@@ -199,9 +169,9 @@ export namespace lib::initgraph
                 if constexpr (debug)
                     post_activate(current);
 
-                for (auto edge : current->_outlist)
+                for (auto &edge : current->_outlist)
                 {
-                    auto successor = edge->_target;
+                    auto successor = edge._target;
                     lib::bug_on(successor->unsatisfied == 0);
                     successor->unsatisfied--;
 
@@ -211,12 +181,12 @@ export namespace lib::initgraph
             }
 
             std::uint32_t unreached = 0;
-            for (auto node : _nodes)
+            for (auto &node : _nodes)
             {
-                if (!node->_wanted || node->_done)
+                if (!node._wanted || node._done)
                     continue;
 
-                report_unreached(node);
+                report_unreached(std::addressof(node));
                 unreached++;
             }
 
@@ -245,7 +215,8 @@ export namespace lib::initgraph
         edge->_target->_inlist.push_back(edge);
         edge->_target->unsatisfied++;
 
-        // edge->source()->engine()->on_realise_edge(edge);
+        // if constexpr (debug)
+        //     edge->source()->engine()->on_realise_edge(edge);
     }
 
     struct stage final : public node

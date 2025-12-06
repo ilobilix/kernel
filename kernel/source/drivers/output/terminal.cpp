@@ -69,7 +69,7 @@ namespace output::term
     void early_init()
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
-        auto frm = boot::requests::framebuffer.response->framebuffers[0];
+        const auto frm = boot::requests::framebuffer.response->framebuffers[0];
         early = flanterm_fb_init(
             nullptr, nullptr,
             reinterpret_cast<std::uint32_t *>(early_addr = frm->address),
@@ -92,7 +92,7 @@ namespace output::term
     void init()
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
-        for (auto &frm : frm::framebuffers)
+        for (const auto &frm : frm::framebuffers)
         {
             if (frm.address == early_addr)
             {

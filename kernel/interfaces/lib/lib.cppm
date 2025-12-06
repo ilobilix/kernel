@@ -12,6 +12,7 @@ export import :errno;
 export import :hash;
 export import :initgraph;
 export import :io;
+export import :list;
 export import :locker;
 export import :log;
 export import :map;

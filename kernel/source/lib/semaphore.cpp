@@ -8,6 +8,11 @@ import std;
 
 namespace lib
 {
+    lib::intrusive_list_hook<sched::thread_base> &semaphore::locate::operator()(sched::thread_base &x)
+    {
+        return static_cast<sched::thread *>(std::addressof(x))->semaphore_list_hook;
+    }
+
     bool semaphore::test()
     {
         const bool ints = arch::int_switch_status(false);
@@ -42,10 +47,9 @@ namespace lib
             if ((reason = sched::yield()))
             {
                 lock.lock();
-                auto it = std::remove(threads.begin(), threads.end(), me);
-                if (it != threads.end())
+                if (const auto it = threads.find(me); it != threads.end())
                 {
-                    threads.erase(it);
+                    threads.remove(it);
                     signals++;
                 }
                 else reason = sched::wake_reason::success;
@@ -109,20 +113,14 @@ namespace lib
         const bool ints = arch::int_switch_status(false);
         lock.lock();
 
-        std::list<sched::thread_base *> temp_threads;
-
-        while (!threads.empty())
-        {
-            bug_on(signals >= 0);
-            temp_threads.push_back(threads.front());
-            threads.pop_front();
-            signals++;
-        }
+        bug_on(signals >= 0);
+        auto temp_threads = std::move(threads);
+        signals += static_cast<std::ssize_t>(temp_threads.size());
 
         lock.unlock();
         arch::int_switch(ints);
 
         for (auto &thread : temp_threads)
-            static_cast<sched::thread *>(thread)->wake_up(0);
+            static_cast<sched::thread *>(std::addressof(thread))->wake_up(0);
     }
 } // namespace lib
