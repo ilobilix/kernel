@@ -50,6 +50,9 @@ namespace x86_64::syscall
         [32] = { "dup", vfs::dup },
         [33] = { "dup2", vfs::dup2 },
         [39] = { "getpid", proc::getpid },
+        [56] = { "clone", proc::clone },
+        [57] = { "fork", proc::fork },
+        [58] = { "vfork", proc::vfork },
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl },
         [79] = { "getcwd", vfs::getcwd, [](std::uintptr_t val) { return val == 0; } },
@@ -86,6 +89,7 @@ namespace x86_64::syscall
         [302] = { "prlimit", proc::prlimit },
         [318] = { "getrandom", misc::getrandom },
         [334] = { "rseq", proc::rseq },
+        [435] = { "clone3", proc::clone3 }
     };
 
     cpu_local<bool> in_syscall;
