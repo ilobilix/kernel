@@ -167,51 +167,50 @@ namespace vmm
         const auto startp = address / psize;
         const auto endp = lib::div_roundup(address + length, psize);
 
-        const auto overlapping = std::ranges::to<std::vector<mapping>>(
-            std::views::filter(*locked, [startp, endp](const auto &entry) {
-                return startp < entry.endp && entry.startp < endp;
-            })
+        const auto overlapping = std::ranges::to<std::vector<mapping *>>(
+            locked->overlapping(startp, endp) |
+            std::views::transform([](auto &entry) { return std::addressof(entry); })
         );
 
-        for (const auto &entry : overlapping)
+        for (const auto entry : overlapping)
         {
-            if (entry.flags & flag::untouchable)
+            if (entry->flags & flag::untouchable)
                 return std::unexpected { error::addr_in_use };
 
-            locked->erase(entry);
-
-            if (startp <= entry.startp && entry.endp <= endp)
+            if (startp <= entry->startp && entry->endp <= endp)
             {
-                const auto addr = entry.startp * psize;
-                const auto sz = entry.endp * psize - addr;
+                const auto addr = entry->startp * psize;
+                const auto sz = entry->endp * psize - addr;
                 lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
             }
             else
             {
-                const auto addr = std::max(startp, entry.startp) * psize;
-                const auto sz = std::min(endp, entry.endp) * psize - addr;
+                const auto addr = std::max(startp, entry->startp) * psize;
+                const auto sz = std::min(endp, entry->endp) * psize - addr;
                 lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
 
-                const auto headp = startp < entry.startp ? 0 : startp - entry.startp;
-                const auto tailp = endp >= entry.endp ? 0 : entry.endp - endp;
+                const auto headp = startp < entry->startp ? 0 : startp - entry->startp;
+                const auto tailp = endp >= entry->endp ? 0 : entry->endp - endp;
 
                 if (headp != 0)
                 {
                     locked->emplace(
-                        entry.startp, entry.startp + headp,
-                        entry.obj, entry.offsetp,
-                        entry.prot, entry.flags
+                        entry->startp, entry->startp + headp,
+                        entry->obj, entry->offsetp,
+                        entry->prot, entry->flags
                     );
                 }
                 if (endp != 0)
                 {
                     locked->emplace(
-                        entry.endp - tailp, entry.endp,
-                        entry.obj, entry.offsetp + headp + (endp - startp),
-                        entry.prot, entry.flags
+                        entry->endp - tailp, entry->endp,
+                        entry->obj, entry->offsetp + headp + (endp - startp),
+                        entry->prot, entry->flags
                     );
                 }
             }
+
+            locked->remove(entry);
         };
 
         locked->emplace(
@@ -244,48 +243,50 @@ namespace vmm
 
         const auto locked = tree.write_lock();
 
-        const auto overlapping = std::ranges::to<std::vector<mapping>>(
-            std::views::filter(*locked, [startp, endp](const auto &entry) {
-                return startp < entry.endp && entry.startp < endp && !(entry.flags & flag::untouchable);
-            })
+        const auto overlapping = std::ranges::to<std::vector<mapping *>>(
+            locked->overlapping(startp, endp) |
+            std::views::filter([](const auto &entry) {
+                return !(entry.flags & flag::untouchable);
+            }) |
+            std::views::transform([](auto &entry) { return std::addressof(entry); })
         );
 
-        for (const auto &entry : overlapping)
+        for (const auto entry : overlapping)
         {
-            locked->erase(entry);
-
-            if (startp <= entry.startp && entry.endp <= endp)
+            if (startp <= entry->startp && entry->endp <= endp)
             {
-                const auto addr = entry.startp * psize;
-                const auto sz = entry.endp * psize - addr;
+                const auto addr = entry->startp * psize;
+                const auto sz = entry->endp * psize - addr;
                 lib::panic_if(!pmap->unmap(addr, sz, page_size::small));
-                continue;
             }
-
-            const auto headp = startp > entry.startp ? startp - entry.startp : 0;
-            const auto tailp = endp < entry.endp ? entry.endp - endp : 0;
-
-            if (headp != 0)
+            else
             {
-                locked->emplace(
-                    entry.startp, entry.startp + headp,
-                    entry.obj, entry.offsetp,
-                    entry.prot, entry.flags
-                );
-            }
+                const auto headp = startp > entry->startp ? startp - entry->startp : 0;
+                const auto tailp = endp < entry->endp ? entry->endp - endp : 0;
 
-            if (tailp != 0)
-            {
-                locked->emplace(
-                    entry.endp - tailp, entry.endp,
-                    entry.obj, entry.offsetp + (entry.endp - entry.startp) - tailp,
-                    entry.prot, entry.flags
-                );
-            }
+                if (headp != 0)
+                {
+                    locked->emplace(
+                        entry->startp, entry->startp + headp,
+                        entry->obj, entry->offsetp,
+                        entry->prot, entry->flags
+                    );
+                }
 
-            const auto addr = std::max(startp, entry.startp) * psize;
-            const auto sz = std::min(endp, entry.endp) * psize - addr;
-            lib::panic_if(!pmap->unmap(addr, sz), "vmm: could not unmap region");
+                if (tailp != 0)
+                {
+                    locked->emplace(
+                        entry->endp - tailp, entry->endp,
+                        entry->obj, entry->offsetp + (entry->endp - entry->startp) - tailp,
+                        entry->prot, entry->flags
+                    );
+                }
+
+                const auto addr = std::max(startp, entry->startp) * psize;
+                const auto sz = std::min(endp, entry->endp) * psize - addr;
+                lib::panic_if(!pmap->unmap(addr, sz), "vmm: could not unmap region");
+            }
+            locked->remove(entry);
         };
 
         return { };
@@ -298,19 +299,20 @@ namespace vmm
         const auto psize = default_page_size();
         const auto locked = tree.write_lock();
 
-        const auto overlapping = std::ranges::to<std::vector<mapping>>(
+        const auto overlapping = std::ranges::to<std::vector<mapping *>>(
             std::views::filter(*locked, [obj](const auto &entry) {
                 return entry.obj == obj && !(entry.flags & flag::untouchable);
-            })
+            }) |
+            std::views::transform([](auto &entry) { return std::addressof(entry); })
         );
 
-        for (const auto &entry : overlapping)
+        for (const auto entry : overlapping)
         {
-            locked->erase(entry);
-
-            const auto addr = entry.startp * psize;
-            const auto sz = (entry.endp - entry.startp) * psize;
+            const auto addr = entry->startp * psize;
+            const auto sz = (entry->endp - entry->startp) * psize;
             lib::panic_if(!pmap->unmap(addr, sz), "vmm: could not unmap region");
+
+            locked->remove(entry);
         };
 
         return { };
@@ -339,61 +341,62 @@ namespace vmm
 
         const auto locked = tree.write_lock();
 
-        const auto overlapping = std::ranges::to<std::vector<mapping>>(
-            std::views::filter(*locked, [startp, endp](const auto &entry) {
-                return startp < entry.endp && entry.startp < endp && !(entry.flags & flag::untouchable);
-            })
+        const auto overlapping = std::ranges::to<std::vector<mapping *>>(
+            locked->overlapping(startp, endp) |
+            std::views::filter([](const auto &entry) {
+                return !(entry.flags & flag::untouchable);
+            }) |
+            std::views::transform([](auto &entry) { return std::addressof(entry); })
         );
 
         for (const auto &entry : overlapping)
         {
-            locked->erase(entry);
-
-            if (startp <= entry.startp && entry.endp <= endp)
+            if (startp <= entry->startp && entry->endp <= endp)
             {
                 locked->emplace(
-                    entry.startp, entry.endp,
-                    entry.obj, entry.offsetp,
-                    prot, entry.flags
+                    entry->startp, entry->endp,
+                    entry->obj, entry->offsetp,
+                    prot, entry->flags
                 );
 
-                const auto addr = entry.startp * psize;
-                const auto sz = (entry.endp - entry.startp) * psize;
+                const auto addr = entry->startp * psize;
+                const auto sz = (entry->endp - entry->startp) * psize;
                 lib::panic_if(!pmap->protect(addr, sz, pflags), "vmm: could not change protection flags");
-
-                continue;
             }
-
-            const auto headp = startp > entry.startp ? startp - entry.startp : 0;
-            const auto tailp = endp < entry.endp ? entry.endp - endp : 0;
-
-            if (headp != 0)
+            else
             {
+                const auto headp = startp > entry->startp ? startp - entry->startp : 0;
+                const auto tailp = endp < entry->endp ? entry->endp - endp : 0;
+
+                if (headp != 0)
+                {
+                    locked->emplace(
+                        entry->startp, entry->startp + headp,
+                        entry->obj, entry->offsetp,
+                        entry->prot, entry->flags
+                    );
+                }
+
+                if (tailp != 0)
+                {
+                    locked->emplace(
+                        entry->endp - tailp, entry->endp,
+                        entry->obj, entry->offsetp + (entry->endp - entry->startp) - tailp,
+                        entry->prot, entry->flags
+                    );
+                }
+
                 locked->emplace(
-                    entry.startp, entry.startp + headp,
-                    entry.obj, entry.offsetp,
-                    entry.prot, entry.flags
+                    std::max(startp, entry->startp), std::min(endp, entry->endp),
+                    entry->obj, entry->offsetp + headp,
+                    prot, entry->flags
                 );
+
+                const auto addr = std::max(startp, entry->startp) * psize;
+                const auto sz = std::min(endp, entry->endp) * psize - addr;
+                lib::panic_if(!pmap->protect(addr, sz, pflags), "vmm: could not change protection flags");
             }
-
-            if (tailp != 0)
-            {
-                locked->emplace(
-                    entry.endp - tailp, entry.endp,
-                    entry.obj, entry.offsetp + (entry.endp - entry.startp) - tailp,
-                    entry.prot, entry.flags
-                );
-            }
-
-            locked->emplace(
-                std::max(startp, entry.startp), std::min(endp, entry.endp),
-                entry.obj, entry.offsetp + headp,
-                prot, entry.flags
-            );
-
-            const auto addr = std::max(startp, entry.startp) * psize;
-            const auto sz = std::min(endp, entry.endp) * psize - addr;
-            lib::panic_if(!pmap->protect(addr, sz, pflags), "vmm: could not change protection flags");
+            locked->remove(entry);
         };
 
         return { };

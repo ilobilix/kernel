@@ -95,7 +95,7 @@ export namespace sched
 
         errnos err = no_error;
 
-        lib::rbtree_hook rbtree_hook;
+        lib::rbtree_hook<thread> rbtree_hook;
         lib::intrusive_list_hook<thread> list_hook;
         lib::intrusive_list_hook<thread_base> semaphore_list_hook;
 

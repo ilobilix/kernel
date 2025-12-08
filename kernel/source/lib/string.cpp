@@ -24,6 +24,7 @@ namespace lib
         }
 
         str.resize(length);
-        copy_from_user(str.data(), ustr, length);
+        if (!copy_from_user(str.data(), ustr, length))
+            str = "";
     }
 } // namespace lib
