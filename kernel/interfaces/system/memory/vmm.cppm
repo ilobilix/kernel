@@ -74,6 +74,9 @@ export namespace vmm
         std::uint8_t prot;
         std::uint8_t flags;
 
+        lib::rbtree_hook<mapping> rbtree_hook;
+        lib::interval_hook<std::uintptr_t> interval_hook;
+
         friend bool operator<(const mapping &lhs, const mapping &rhs)
         {
             return lhs.startp < rhs.startp;
@@ -84,7 +87,14 @@ export namespace vmm
     {
         std::shared_ptr<pagemap> pmap;
         lib::locker<
-            lib::btree::multiset<mapping>,
+            lib::interval_tree_alloc<
+                mapping,
+                std::uintptr_t,
+                &mapping::startp,
+                &mapping::endp,
+                &mapping::rbtree_hook,
+                &mapping::interval_hook
+            >,
             lib::rwmutex
         > tree;
 
