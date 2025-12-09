@@ -57,11 +57,11 @@ if(_ILOBILIX_ENABLE_LTO)
     add_custom_command(
         OUTPUT ${RETAIN_SYMBOLS_FILE}
         COMMAND ${CMAKE_COMMAND} -E echo "Generating symbol retention file..."
-        COMMAND ${LLVM_NM_EXECUTABLE} --defined-only --extern-only --format=just-symbols ${_kernel_objects} | sort -u > ${CMAKE_CURRENT_BINARY_DIR}/kernel.defined.txt
+        COMMAND ${LLVM_NM_EXECUTABLE} --defined-only --extern-only --format=just-symbols ${_kernel_objects} | ${SORT_EXECUTABLE} -u > ${CMAKE_CURRENT_BINARY_DIR}/kernel.defined.txt
         COMMAND ${LLVM_NM_EXECUTABLE} -u ${EXTERNAL_MODULE_OBJECTS} | ${AWK_EXECUTABLE} "/ U / {print \$NF}" | ${SORT_EXECUTABLE} -u > ${CMAKE_CURRENT_BINARY_DIR}/modules.needed.txt
         COMMAND ${GREP_EXECUTABLE} -Fxf ${CMAKE_CURRENT_BINARY_DIR}/kernel.defined.txt ${CMAKE_CURRENT_BINARY_DIR}/modules.needed.txt | ${SED_EXECUTABLE} "s/^/-Wl,--undefined=/" | tr "\\n" " " > ${RETAIN_SYMBOLS_FILE}
         DEPENDS kernel_objs ${EXTERNAL_MODULE_TARGETS}
-        COMMENT "Generating LTO symbol retention response file"
+        COMMENT "Generating LTO symbol retention file"
         VERBATIM
         COMMAND_EXPAND_LISTS
     )

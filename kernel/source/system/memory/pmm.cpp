@@ -19,7 +19,7 @@ namespace pmm
         constinit memory mem;
         constinit bool initialised = false;
 
-        void *bootstrap_alloc(std::size_t npages);
+        std::uintptr_t bootstrap_alloc(std::size_t npages);
 
         template<std::uintptr_t Start, std::uintptr_t End>
         struct allocator
@@ -135,7 +135,7 @@ namespace pmm
 
                 while (current > target)
                 {
-                    const auto pg = reinterpret_cast<list *>(rem(current));
+                    const auto pg = static_cast<list *>(rem(current));
                     const auto pgaddr = reinterpret_cast<std::uintptr_t>(pg);
 
                     current--;
@@ -224,30 +224,30 @@ namespace pmm
                 }
             }
 
-            std::size_t free(void *ptr, std::size_t npages)
+            std::size_t free(std::uintptr_t addr, std::size_t npages)
             {
                 const auto size = npages * page_size;
                 const auto order = next_order_from(size);
                 if (order < 0 || static_cast<std::size_t>(order) > max_order)
                     return 0;
 
-                const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ptr));
+                const auto pg = page_for(addr);
                 lib::bug_on(pg->allocated == 0);
                 lib::bug_on(pg->order != order);
                 pg->allocated = 0;
 
-                put(order, static_cast<list *>(lib::tohh(ptr)));
+                put(order, reinterpret_cast<list *>(lib::tohh(addr)));
                 return size;
             }
 
-            std::pair<void *, std::size_t> alloc(std::size_t npages)
+            std::pair<std::uintptr_t, std::size_t> alloc(std::size_t npages)
             {
                 const auto size = npages * page_size;
                 const auto order = next_order_from(size);
                 const auto real_size = page_size * lib::pow2(order);
 
                 if (order < 0 || static_cast<std::size_t>(order) > max_order)
-                    return { nullptr, 0 };
+                    return { 0, 0 };
 
                 if (!has_pages(order))
                 {
@@ -255,7 +255,7 @@ namespace pmm
                     {
                         coalesce_to(max_order);
                         if (!has_pages(order))
-                            return { nullptr, 0 };
+                            return { 0, 0 };
                         goto found;
                     }
                     split_to(order);
@@ -265,16 +265,16 @@ namespace pmm
                         {
                             coalesce_to(order);
                             if (!has_pages(order))
-                                return { nullptr, 0 };
+                                return { 0, 0 };
                             goto found;
                         }
-                        return { nullptr, 0 };
+                        return { 0, 0 };
                     }
                 }
                 found:
-                const auto ret = rem(order);
+                const auto ret = reinterpret_cast<std::uintptr_t>(rem(order));
 
-                const auto pg = page_for(reinterpret_cast<std::uintptr_t>(ret));
+                const auto pg = page_for(ret);
                 lib::bug_on(pg->allocated == 1);
                 lib::bug_on(pg->order != order);
                 pg->allocated = 1;
@@ -343,7 +343,7 @@ namespace pmm
         std::size_t bootstrap_memmap_idx = -1;
         boot::limine_memmap_entry bootstrap_memmap;
 
-        void *bootstrap_alloc(std::size_t npages)
+        std::uintptr_t bootstrap_alloc(std::size_t npages)
         {
             lib::bug_on(npages != 1);
 
@@ -387,7 +387,7 @@ namespace pmm
 #endif
             bootstrap_memmap.length -= npages * page_size;
 
-            return reinterpret_cast<void *>(lib::tohh(ret));
+            return lib::tohh(ret);
         }
 
         void pfndb_add(std::size_t idx)
@@ -412,7 +412,7 @@ namespace pmm
                 if (const auto ret = vmm::kernel_pagemap->translate(vaddr, psize); ret && ret.value() != 0)
                     continue;
 
-                const auto paddr = alloc<std::uintptr_t>(1, true);
+                const auto paddr = alloc(1, true);
                 if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, page_size, flags, psize); !ret)
                     lib::panic("pmm: could not map pfndb: {}", magic_enum::enum_name(ret.error()));
             }
@@ -433,15 +433,15 @@ namespace pmm
     }
 
     [[nodiscard]]
-    void *alloc(std::size_t npages, bool clear, type tp)
+    std::uintptr_t alloc(std::size_t npages, bool clear, type tp)
     {
         if (npages == 0)
-            return nullptr;
+            return 0;
 
         const std::unique_lock _ { lock };
         const auto size = npages * page_size;
 
-        std::pair<void *, std::size_t> ret { nullptr, 0 };
+        std::pair<std::uintptr_t, std::size_t> ret { 0, 0 };
         if (initialised)
         {
             switch (tp)
@@ -478,29 +478,29 @@ namespace pmm
         }
 
         if (clear)
-            std::memset(ret.first, 0, size);
+            std::memset(reinterpret_cast<void *>(ret.first), 0, size);
 
         mem.used += ret.second;
         return lib::fromhh(ret.first);
     }
 
-    void free(void *ptr, std::size_t npages)
+    void free(std::uintptr_t addr, std::size_t npages)
     {
-        if (npages == 0 || ptr == nullptr)
+        if (npages == 0 || addr == 0)
             return;
 
         if (initialised)
         {
             const std::unique_lock _ { lock };
 
-            if (sub1mib.in_range(ptr))
-                mem.used -= sub1mib.free(ptr, npages);
-            else if (sub4gib.in_range(ptr))
-                mem.used -= sub4gib.free(ptr, npages);
-            else if (normal.in_range(ptr))
-                mem.used -= normal.free(ptr, npages);
+            if (sub1mib.in_range(addr))
+                mem.used -= sub1mib.free(addr, npages);
+            else if (sub4gib.in_range(addr))
+                mem.used -= sub4gib.free(addr, npages);
+            else if (normal.in_range(addr))
+                mem.used -= normal.free(addr, npages);
             else
-                lib::panic("pmm: attempted to free memory outside managed ranges: 0x{:X}", reinterpret_cast<std::uintptr_t>(ptr));
+                lib::panic("pmm: attempted to free memory outside managed ranges: 0x{:X}", addr);
         }
         else lib::panic("pmm: attempted to free bootstrap memory");
     }

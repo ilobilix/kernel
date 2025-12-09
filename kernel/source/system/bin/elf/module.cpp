@@ -204,7 +204,7 @@ namespace bin::elf::mod
 
             for (std::size_t i = 0; i < max_size; i += npsize)
             {
-                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+                const auto paddr = pmm::alloc(npages, true);
                 if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize); !ret)
                     lib::panic("could not map memory for a module: {}", magic_enum::enum_name(ret.error()));
 

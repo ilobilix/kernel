@@ -132,7 +132,7 @@ namespace vmm
 
         for (std::size_t i = 0; i < length; i += npsize)
         {
-            const auto paddr = pmm::alloc<std::uintptr_t>(npages, false);
+            const auto paddr = pmm::alloc(npages, false);
             const auto pg = reinterpret_cast<page *>(lib::tohh(paddr));
 
             if (!head.next)
@@ -152,7 +152,7 @@ namespace vmm
                 while (current)
                 {
                     const auto next = current->next;
-                    pmm::free(current, npages);
+                    pmm::free(reinterpret_cast<std::uintptr_t>(current), npages);
                     current = next;
                 }
                 return std::unexpected { ret.error() };

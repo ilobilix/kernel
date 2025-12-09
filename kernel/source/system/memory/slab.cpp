@@ -16,7 +16,7 @@ namespace slab
         // TODO: some issues on a certain laptop
         std::uintptr_t map(std::size_t length)
         {
-            // return lib::tohh(pmm::alloc<std::uintptr_t>(lib::div_roundup(length, pmm::page_size)));
+            // return lib::tohh(pmm::alloc(lib::div_roundup(length, pmm::page_size)));
             const auto pages = lib::div_roundup(length, pmm::page_size);
             const auto vaddr = vmm::alloc_vspace(pages);
 
