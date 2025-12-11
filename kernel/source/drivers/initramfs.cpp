@@ -14,7 +14,7 @@ namespace initramfs
 {
     namespace ustar
     {
-        constexpr std::string_view magic { "ustar", 6 };
+        // constexpr std::string_view magic { "ustar", 6 };
         // constexpr std::string_view version { "00", 2 };
 
         enum types : char
@@ -52,22 +52,47 @@ namespace initramfs
             char prefix[155];
         };
 
-        bool load(void *ptr)
+        template<typename Type> requires std::is_array_v<Type>
+        constexpr std::string_view get_string(const Type &member)
+        {
+            return std::string_view {
+                member, std::strnlen(member, sizeof(member))
+            };
+        }
+
+        bool load(std::span<std::byte> data)
         {
             lib::info("ustar: extracting initramfs");
 
-            auto current = static_cast<header *>(ptr);
-            while (magic == std::string_view { current->magic, 6 })
+            auto current = reinterpret_cast<header *>(data.data());
+            // while (magic == std::string_view { current->magic, 6 })
+            while (current < reinterpret_cast<header *>(data.data() + data.size()))
             {
-                const std::string_view name { current->name };
-                const std::string_view linkname { current->linkname };
+                if (current->name[0] == '\0')
+                    break;
 
-                const auto mode = lib::oct2int<mode_t>(current->mode);
-                const auto size = lib::oct2int<std::size_t>(current->size);
-                const auto mtim = lib::oct2int<time_t>(current->mtime);
+                std::string name_buf;
+                std::string_view name;
 
-                const auto devmajor = lib::oct2int<time_t>(current->devmajor);
-                const auto devminor = lib::oct2int<time_t>(current->devminor);
+                if (current->prefix[0] != '\0')
+                {
+                    const auto prefix = get_string(current->prefix);
+                    const auto nam = get_string(current->name);
+
+                    name_buf.reserve(prefix.length() + 1 + nam.length());
+                    name_buf.append(prefix).append("/").append(nam);
+                    name = name_buf;
+                }
+                else name = get_string(current->name);
+
+                const auto linkname { get_string(current->linkname) };
+
+                const auto mode = lib::oct2int<mode_t>(get_string(current->mode));
+                const auto size = lib::oct2int<std::size_t>(get_string(current->size));
+                const auto mtim = lib::oct2int<time_t>(get_string(current->mtime));
+
+                const auto devmajor = lib::oct2int<time_t>(get_string(current->devmajor));
+                const auto devminor = lib::oct2int<time_t>(get_string(current->devminor));
                 const dev_t dev = vfs::dev::makedev(devmajor, devminor);
 
                 std::shared_ptr<vfs::inode> inode;
@@ -185,6 +210,13 @@ namespace initramfs
                     case types::fifo:
                         lib::panic("ustar: TODO: fifo");
                         break;
+                    case types::xhd:
+                    case types::xgl:
+                        lib::panic("ustar: TODO: extended header");
+                        break;
+                    default:
+                        lib::error("ustar: unknown typeflag '{}' for file '{}'", current->typeflag, name);
+                        break;
                 }
 
                 if (inode != nullptr)
@@ -221,7 +253,12 @@ namespace initramfs
             if (module == nullptr)
                 lib::panic("could not find initramfs");
 
-            if (!ustar::load(lib::tohh(module->address)))
+            std::span<std::byte> data {
+                reinterpret_cast<std::byte *>(lib::tohh(module->address)),
+                module->size
+            };
+
+            if (!ustar::load(data))
                 lib::panic("could not load initramfs as ustar archive");
         }
     };
