@@ -142,13 +142,14 @@ namespace fs::dev::tty
 
         std::shared_ptr<instance> create_instance(std::uint32_t minor) override
         {
-            lib::debug("tty: creating test instance with minor {}", minor);
+            // lib::debug("tty: creating test instance with minor {}", minor);
             return std::make_shared<test_instance>(this, minor);
         }
 
         void destroy_instance(std::shared_ptr<instance> inst) override
         {
-            lib::debug("tty: destroying test instance with minor {}", inst->minor);
+            lib::unused(inst);
+            // lib::debug("tty: destroying test instance with minor {}", inst->minor);
         }
 
         int ioctl(std::shared_ptr<instance> inst, unsigned long request, lib::uptr_or_addr argp) override
@@ -206,7 +207,7 @@ namespace fs::dev::tty
             }
             self->private_data = inst;
 
-            lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            // lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
         }
 
@@ -239,8 +240,8 @@ namespace fs::dev::tty
             }
             self->private_data.reset();
 
-            const auto rdev = self->path.dentry->inode->stat.st_rdev;
-            lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            // const auto rdev = self->path.dentry->inode->stat.st_rdev;
+            // lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
         }
 

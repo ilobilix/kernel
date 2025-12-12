@@ -532,11 +532,15 @@ namespace pmm
         for (std::size_t i = 0; i < num; i++)
         {
             const auto memmap = memmaps[i];
+            const auto type = static_cast<boot::memmap>(memmap->type);
+
             const std::uintptr_t end = memmap->base + memmap->length;
             mem.top = std::max(mem.top, end);
 
-            if (static_cast<boot::memmap>(memmap->type) == boot::memmap::usable)
-                mem.usable_top = std::max(mem.usable_top, end);
+            if (type != boot::memmap::usable && type != boot::memmap::bootloader && type != boot::memmap::kernel_and_modules)
+                continue;
+
+            mem.usable_top = std::max(mem.usable_top, end);
         }
 
         std::size_t pfndb_used_total = 0;
@@ -559,7 +563,7 @@ namespace pmm
                 const auto memmap = memmaps[i];
                 const auto type = static_cast<boot::memmap>(memmap->type);
 
-                if (type != boot::memmap::usable && type != boot::memmap::bootloader)
+                if (type != boot::memmap::usable && type != boot::memmap::bootloader && type != boot::memmap::kernel_and_modules)
                     continue;
 
                 pfndb_add(i);
@@ -575,11 +579,11 @@ namespace pmm
                 continue;
 
             const auto memmap = memmaps[i];
-
             const auto type = static_cast<boot::memmap>(memmap->type);
+
             if (type != boot::memmap::usable)
             {
-                if (type == boot::memmap::kernel_and_modules || type == boot::memmap::bootloader)
+                if (type == boot::memmap::bootloader || type == boot::memmap::kernel_and_modules)
                 {
                     mem.used += memmap->length;
                     mem.usable += memmap->length;

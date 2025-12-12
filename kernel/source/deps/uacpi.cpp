@@ -240,8 +240,8 @@ extern "C"
     {
         auto &pmap = vmm::kernel_pagemap;
 
-        // const auto psize = vmm::pagemap::max_page_size(len);
-        const auto psize = vmm::page_size::small;
+        const auto psize = vmm::pagemap::max_page_size(addr, len);
+        // const auto psize = vmm::page_size::small;
         const auto npsize = vmm::pagemap::from_page_size(psize);
 
         const auto paddr = lib::align_down(addr, npsize);

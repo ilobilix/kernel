@@ -129,22 +129,22 @@ namespace sched
 
     bool is_initialised() { return initialised; }
 
-    group *create_group(process *proc)
+    group *create_group(pid_t pgid)
     {
-        auto grp = new group { };
-        grp->pgid = proc->pgid = proc->pid;
-        grp->members.write_lock().value()[proc->pid] = proc;
-        groups.write_lock().value()[grp->pgid] = grp;
-        return grp;
+        return groups.write_lock().value()[pgid] = new group {
+            .pgid = pgid,
+            .sid = 0,
+            .members = { }
+        };
     }
 
-    session *create_session(group *grp)
+    session *create_session(pid_t sid)
     {
-        auto sess = new session { };
-        sess->sid = grp->pgid;
-        sess->members.write_lock().value()[grp->pgid] = grp;
-        sessions.write_lock().value()[sess->sid] = sess;
-        return sess;
+        return sessions.write_lock().value()[sid] = new session {
+            .sid = sid,
+            .members = { },
+            .controlling_tty = nullptr
+        };
     }
 
     bool change_group(process *proc, group *grp)
@@ -338,9 +338,15 @@ namespace sched
             if (proc->pid == 1)
             {
                 lib::bug_on(parent != nullptr);
-                // proc->pgid is set in create_group
-                auto grp = create_group(proc);
-                grp->sid = proc->sid = create_session(grp)->sid;
+                auto grp = new group { };
+                grp->pgid = proc->pgid = proc->pid;
+                grp->members.write_lock().value()[proc->pid] = proc;
+                groups.write_lock().value()[grp->pgid] = grp;
+
+                auto sess = new session { };
+                proc->sid = grp->sid = sess->sid = grp->pgid;
+                sess->members.write_lock().value()[grp->pgid] = grp;
+                sessions.write_lock().value()[sess->sid] = sess;
             }
             else if (parent)
             {

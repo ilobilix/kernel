@@ -144,13 +144,14 @@ export namespace lib
     }
 
     template<typename Type>
-    constexpr Type oct2int(std::string_view str)
+    constexpr Type oct2int(std::span<char> data)
     {
         Type value = 0;
-        auto ptr = str.data();
-        auto len = str.length();
+        auto ptr = data.data();
+        auto len = data.size_bytes();
 
-        while (ptr < str.end() && *ptr && len > 0)
+        const auto end = ptr + len;
+        while (ptr < end && *ptr && len > 0)
         {
             value = value * 8 + (*ptr++ - '0');
             len--;

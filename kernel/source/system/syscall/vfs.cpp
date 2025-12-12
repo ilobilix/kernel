@@ -842,4 +842,10 @@ namespace syscall::vfs
     {
         return pipe2(pipefd, 0);
     }
+
+    int socket(int domain, int type, int protocol)
+    {
+        lib::unused(domain, type, protocol);
+        return (errno = ENOSYS, -1);
+    }
 } // namespace syscall::vfs
