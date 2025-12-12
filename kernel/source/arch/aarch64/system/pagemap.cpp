@@ -55,6 +55,11 @@ namespace vmm
     const std::uintptr_t pagemap::valid_table_flags = arch::valid | arch::table;
     const std::uintptr_t pagemap::new_table_flags = arch::valid | arch::table;
 
+    bool pagemap::entry::accessor::is_large() const
+    {
+        return !(value & arch::page);
+    }
+
     struct arch_table { pagemap::table *ttbr1; };
     arch_table accessor;
 

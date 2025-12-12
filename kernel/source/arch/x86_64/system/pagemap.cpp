@@ -47,6 +47,11 @@ namespace vmm
     const std::uintptr_t pagemap::valid_table_flags = arch::flag::present;
     const std::uintptr_t pagemap::new_table_flags = arch::flag::present | arch::flag::write | arch::flag::user;
 
+    bool pagemap::entry::accessor::is_large() const
+    {
+        return (value & arch::flag::lpages) != 0;
+    }
+
     extern "C" constinit bool pagemap_use_lowmem = false;
     auto pagemap::new_table() -> table *
     {
@@ -149,9 +154,9 @@ namespace vmm
 
         auto cache = caching::normal;
         {
-            bool is_pat = (psize == page_size::small) ? (flags & arch::flag::pat) : (flags & arch::flag::lpat);
-            bool is_pcd = (flags & arch::flag::pcd);
-            bool is_pwt = (flags & arch::flag::pwt);
+            const bool is_pat = (psize == page_size::small) ? (flags & arch::flag::pat) : (flags & arch::flag::lpat);
+            const bool is_pcd = (flags & arch::flag::pcd);
+            const bool is_pwt = (flags & arch::flag::pwt);
 
             if (!is_pat && !is_pcd && !is_pwt)
                 cache = caching::write_back;
@@ -199,9 +204,9 @@ namespace vmm
 
     [[gnu::pure]] page_size pagemap::max_page_size(std::size_t size)
     {
-        if (size > arch::page_sizes[2])
+        if (size >= arch::page_sizes[2])
             return page_size::large;
-        else if (size > arch::page_sizes[1])
+        else if (size >= arch::page_sizes[1])
             return page_size::medium;
 
         return page_size::small;
@@ -224,7 +229,7 @@ namespace vmm
             // pre-allocate higher half
             auto table = lib::tohh(_table);
             for (std::size_t i = 256; i < 512; i++)
-                getlvl(table->entries[i], true);
+                getlvl(table->entries[i], true, false, static_cast<page_size>(levels - 1));
         }
         else
         {
