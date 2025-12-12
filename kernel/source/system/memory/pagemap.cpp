@@ -320,7 +320,7 @@ namespace vmm
                 if (memmap->length == 0)
                     continue;
 
-                const auto psize = pagemap::max_page_size(memmap->length);
+                const auto psize = pagemap::max_page_size(memmap->base, memmap->length);
                 const auto npsize = pagemap::from_page_size(psize);
 
                 const auto base = lib::align_down(memmap->base, npsize);

@@ -66,7 +66,7 @@ namespace initramfs
 
             auto current = reinterpret_cast<header *>(data.data());
             while (magic == std::string_view { current->magic, 6 } &&
-                current < reinterpret_cast<header *>(data.data() + data.size()))
+                current <= reinterpret_cast<header *>(data.data() + data.size() - sizeof(header)))
             {
                 if (current->name[0] == '\0')
                     break;
@@ -87,12 +87,12 @@ namespace initramfs
 
                 const auto linkname { get_string(current->linkname) };
 
-                const auto mode = lib::oct2int<mode_t>(get_string(current->mode));
-                const auto size = lib::oct2int<std::size_t>(get_string(current->size));
-                const auto mtim = lib::oct2int<time_t>(get_string(current->mtime));
+                const auto mode = lib::oct2int<mode_t>(current->mode);
+                const auto size = lib::oct2int<std::size_t>(current->size);
+                const auto mtim = lib::oct2int<time_t>(current->mtime);
 
-                const auto devmajor = lib::oct2int<time_t>(get_string(current->devmajor));
-                const auto devminor = lib::oct2int<time_t>(get_string(current->devminor));
+                const auto devmajor = lib::oct2int<time_t>(current->devmajor);
+                const auto devminor = lib::oct2int<time_t>(current->devminor);
                 const dev_t dev = vfs::dev::makedev(devmajor, devminor);
 
                 std::shared_ptr<vfs::inode> inode;
@@ -223,7 +223,10 @@ namespace initramfs
                     inode->stat.st_mtim = timespec { mtim, 0 };
 
                 next:
-                current = reinterpret_cast<header *>(reinterpret_cast<std::uintptr_t>(current) + 512 + lib::align_up(size, 512zu));
+                current = reinterpret_cast<header *>(
+                    reinterpret_cast<std::uintptr_t>(current) +
+                    512 + lib::align_up(size, 512zu)
+                );
             }
             return true;
         }
@@ -254,7 +257,7 @@ namespace initramfs
                 lib::panic("could not find initramfs");
 
             std::span<std::byte> data {
-                reinterpret_cast<std::byte *>(lib::tohh(module->address)),
+                reinterpret_cast<std::byte *>(module->address),
                 module->size
             };
 

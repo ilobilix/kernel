@@ -198,8 +198,8 @@ export namespace sched
     group *group_for(pid_t pgid);
     session *session_for(pid_t sid);
 
-    group *create_group(process *proc);
-    session *create_session(group *grp);
+    group *create_group(pid_t pgid);
+    session *create_session(pid_t sid);
 
     bool change_group(process *proc, group *grp);
     bool change_session(group *grp, session *sess);
