@@ -1,8 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
-
-module;
-
-#include <arch/aarch64/system/cpu.hpp>
+// Copyright (C) 2024-2026  ilobilo
 
 module system.memory.virt;
 
@@ -198,13 +194,13 @@ namespace vmm
                 return (value & (vbit - 1)) << bottom;
             };
 
-            std::uint64_t sctlr_el1 = mrs(sctlr_el1);
+            std::uint64_t sctlr_el1 = cpu::mrs<"sctlr_el1">();
             sctlr_el1 &= ~(1 << 1); // disable alignment check
             sctlr_el1 |= (1 << 2);
             sctlr_el1 |= (1 << 12);
-            msr(sctlr_el1, sctlr_el1);
+            cpu::msr<"sctlr_el1">(sctlr_el1);
 
-            std::uint64_t tcr_el1 = mrs(tcr_el1);
+            std::uint64_t tcr_el1 = cpu::mrs<"tcr_el1">();
             tcr_el1 |= bits(34, 32, 0b011); // ips: 4 tib
             // ttbr1_el1
             tcr_el1 |= bits(29, 28, 0b11); // sh1: ish
@@ -217,13 +213,13 @@ namespace vmm
             tcr_el1 |= bits(11, 10, 0b01); // orgn0: wbwa
             tcr_el1 |= bits(9, 8, 0b01); // irgn0: wbwa
             tcr_el1 |= bits(5, 0, 16); // t0sz: 48 bits
-            msr(tcr_el1, tcr_el1);
+            cpu::msr<"tcr_el1">(tcr_el1);
 
             std::uint64_t mair_el1 = 0;
             mair_el1 |= (0xFF << (0 * 8)); // normal
             mair_el1 |= (0x40 << (1 * 8)); // non-cachable
             mair_el1 |= (0x00 << (2 * 8)); // nGnRnE
-            msr(mair_el1, mair_el1);
+            cpu::msr<"mair_el1">(mair_el1);
 
             asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(accessor.ttbr1)) : "memory");
             n++;
@@ -238,7 +234,7 @@ namespace vmm
             // assume currently initialising the kernel_pagemap
             accessor.ttbr1 = new_table();
 
-            std::uint64_t tcr_el1 = mrs(tcr_el1);
+            std::uint64_t tcr_el1 = cpu::mrs<"tcr_el1">();
             const auto tg1 = (tcr_el1 >> 30) & 0b11;
             std::size_t psize = 0;
             if (tg1 == 0b10)

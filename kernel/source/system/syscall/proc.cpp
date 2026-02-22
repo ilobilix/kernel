@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 module system.syscall.proc;
 
@@ -201,7 +201,7 @@ namespace syscall::proc
 
     int set_tid_address(int __user *tidptr)
     {
-        auto thread = sched::this_thread();
+        const auto thread = sched::this_thread();
         thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(tidptr);
         return thread->tid;
     }
@@ -429,7 +429,6 @@ namespace syscall::proc
             clone_clear_sighand = 0x100000000ull, // clear any signal handler and reset to SIG_DFL.
             clone_into_cgroup = 0x200000000ull, // clone into a specific cgroup given the right permissions.
             clone_newtime = 0x00000080 // new time namespace
-
         };
 
         pid_t kclone(const kclone_args &args)
@@ -493,10 +492,10 @@ namespace syscall::proc
             return (errno = EINVAL, -1);
 
         if ((uargs.exit_signal & ~csignal) || uargs.exit_signal > 64 /* _NSIG */)
-		    return -EINVAL;
+            return -EINVAL;
 
         if ((uargs.flags & clone_into_cgroup) && (uargs.cgroup > std::numeric_limits<int>::max() || size < sizeof(clone_args)))
-		    return -EINVAL;
+            return -EINVAL;
 
         kclone_args kargs
         {

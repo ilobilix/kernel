@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 export module lib;
 
@@ -6,7 +6,6 @@ export import :bitmap;
 export import :btree;
 export import :buffer;
 export import :bug_on;
-export import :containers;
 export import :endian;
 export import :errno;
 export import :hash;

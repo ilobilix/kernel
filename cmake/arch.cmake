@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
 
 if(NOT DEFINED ILOBILIX_ARCH OR ILOBILIX_ARCH STREQUAL "")
     set(ILOBILIX_ARCH "x86_64" CACHE STRING "Target architecture")

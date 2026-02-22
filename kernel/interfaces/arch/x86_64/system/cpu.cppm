@@ -1,23 +1,29 @@
-// Copyright (C) 2024-2025  ilobilo
-
-module;
-
-#include <arch/x86_64/system/cpu.hpp>
+// Copyright (C) 2024-2026  ilobilo
 
 export module system.cpu.arch:impl;
+export import system.cpu.regs;
+
+import lib;
+import fmt;
 import std;
 
 export namespace cpu
 {
-    struct registers
+    template<lib::comptime_string Reg>
+    std::uint64_t read_reg()
     {
-        std::uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-        std::uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
-        std::uint64_t vector, error_code, rip, cs, rflags, rsp, ss;
+        using namespace fmt::literals;
+        std::uint64_t ret;
+        asm volatile ((fmt::format("mov %0, {}"_cf, Reg.value)) : "=r"(ret));
+        return ret;
+    }
 
-        std::uintptr_t fp() { return rbp; }
-        std::uintptr_t ip() { return rip; }
-    };
+    template<lib::comptime_string Reg, lib::comptime_string Cns = "r">
+    void write_reg(std::uint64_t val)
+    {
+        using namespace fmt::literals;
+        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) :: (Cns)(val));
+    }
 
     struct extra_regs
     {
@@ -25,7 +31,7 @@ export namespace cpu
 
         static extra_regs read()
         {
-            return { rdreg(cr2), rdreg(cr3), rdreg(cr4) };
+            return { read_reg<"cr2">(), read_reg<"cr3">(), read_reg<"cr4">() };
         }
     };
 

@@ -1,8 +1,4 @@
-// Copyright (C) 2022-2024  ilobilo
-
-module;
-
-#include <arch/x86_64/system/cpu.hpp>
+// Copyright (C) 2024-2026  ilobilo
 
 module system.cpu.arch;
 
@@ -175,13 +171,13 @@ namespace cpu
 
             // SSE
             {
-                auto cr0 = rdreg(cr0);
+                auto cr0 = read_reg<"cr0">();
                 cr0 = (cr0 & ~(1 << 2)) | (1 << 1);
-                wrreg(cr0, cr0);
+                write_reg<"cr0">(cr0);
 
-                auto cr4 = rdreg(cr4);
+                auto cr4 = read_reg<"cr4">();
                 cr4 |= (1 << 9) | (1 << 10);
-                wrreg(cr4, cr4);
+                write_reg<"cr4">(cr4);
             }
 
             cpu::id_res res1;
@@ -197,7 +193,7 @@ namespace cpu
             // UMIP SMEP SMAP INVPCID
             if (cached7)
             {
-                auto cr4 = rdreg(cr4);
+                auto cr4 = read_reg<"cr4">();
                 {
                     if (res7.c & (1 << 2))
                         cr4 |= (1 << 11);
@@ -217,20 +213,20 @@ namespace cpu
                         has_pcids = true;
                     }
                 }
-                wrreg(cr4, cr4);
+                write_reg<"cr4">(cr4);
             }
 
-            // // TSC in ring 0
+            // // TSC in ring 0 only
             // {
-            //     auto cr4 = rdreg(cr4);
+            //     auto cr4 = read_reg<"cr4">();
             //     cr4 |= (1 << 2);
-            //     wrreg(cr4, cr4);
+            //     write_reg<"cr4">(cr4);
             // }
 
             if (cached1 && (res1.c & (1 << 26)))
             {
                 // xsave
-                wrreg(cr4, rdreg(cr4) | (1 << 18));
+                write_reg<"cr4">(read_reg<"cr4">() | (1 << 18));
 
                 // x87 and SSE
                 std::uint64_t xcr0 = 0b11;

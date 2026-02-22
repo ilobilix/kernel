@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2024  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 module system.memory.slab;
 

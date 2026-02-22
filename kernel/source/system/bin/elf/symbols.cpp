@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 module;
 
@@ -136,7 +136,7 @@ namespace bin::elf::sym
             }
 
             while (low && sym_addr(low - 1) == sym_addr(low))
-		        low--;
+                low--;
 
             sym_start = sym_addr(low);
 

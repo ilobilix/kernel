@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 module arch;
 
@@ -16,9 +16,13 @@ namespace arch
         if (ints)
         {
             while (true)
-                asm volatile ("wfi");
+                wfi();
         }
-        else asm volatile ("msr daifclr, #0b1111; wfi");
+        else
+        {
+            cpu::msr<"daifclr", "i">(0b1111);
+            wfi();
+        }
         std::unreachable();
     }
 
@@ -31,16 +35,14 @@ namespace arch
     void int_switch(bool on)
     {
         if (on)
-            asm volatile ("msr daifclr, #0b1111");
+            cpu::msr<"daifclr", "i">(0b1111);
         else
-            asm volatile ("msr daifset, #0b1111");
+            cpu::msr<"daifset", "i">(0b1111);
     }
 
     bool int_status()
     {
-        std::uint64_t val = 0;
-        asm volatile ("mrs %0, daif" : "=r"(val));
-        return val == 0;
+        return cpu::mrs<"daif">() == 0;
     }
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log_level lvl)

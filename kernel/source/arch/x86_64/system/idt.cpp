@@ -1,8 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
-
-module;
-
-#include <arch/x86_64/system/cpu.hpp>
+// Copyright (C) 2024-2026  ilobilo
 
 module x86_64.system.idt;
 
@@ -113,7 +109,7 @@ namespace x86_64::idt
             if (vector == 14 && (regs->cs & 0x03 || x86_64::syscall::is_in_syscall()))
             {
                 const bool by_write = (regs->error_code & (1 << 2)) != 0;
-                if (vmm::handle_pfault(rdreg(cr2), by_write))
+                if (vmm::handle_pfault(cpu::read_reg<"cr2">(), by_write))
                     goto end;
             }
 
