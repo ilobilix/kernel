@@ -34,9 +34,9 @@ namespace chrono
 
     void register_clock(clock &clock)
     {
-        lib::info("time: registering clock source '{}'", clock.name);
+        lib::info("chrono: registering clock source '{}'", clock.name);
         clocks.push(&clock);
-        lib::debug("time: main clock is set to '{}'", (main = clocks.top())->name);
+        lib::debug("chrono: main clock is set to '{}'", (main = clocks.top())->name);
     }
 
     clock *main_clock()

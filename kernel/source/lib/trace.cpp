@@ -26,7 +26,7 @@ namespace lib
         if (!frame)
             return;
 
-        auto print = [prefix](std::uintptr_t ip) -> bool
+        auto print = [prefix, &frame](std::uintptr_t ip) -> bool
         {
             std::array<char, KSYM_NAME_LEN> namebuf { "unknown" };
             auto ret = bin::elf::sym::lookup(ip, namebuf);
@@ -53,7 +53,10 @@ namespace lib
             }
 
             auto [offset, where] = ret.value_or(bin::elf::sym::lookup_result { 0, "unknown" });
-            lib::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
+
+            const bool is_last = !frame || !frame->ip;
+            if (!is_last || where != "unknown")
+                lib::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
 
             if (ptr)
                 lib::free(ptr);
@@ -70,10 +73,10 @@ namespace lib
             if (!frame || !frame->ip)
                 break;
 
-            if (!print(frame->ip))
-                break;
-
+            ip = frame->ip;
             frame = frame->next;
+            if (!print(ip))
+                break;
         }
     }
 } // namespace lib
