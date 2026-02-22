@@ -7,6 +7,8 @@ include(${CMAKE_SOURCE_DIR}/cmake/config.cmake)
 set(_C_CXX_ASM_FLAGS
     "--target=${ILOBILIX_ARCH}-elf"
 
+    "-fcolor-diagnostics"
+
     "-ffreestanding"
     "-nostdinc"
 
