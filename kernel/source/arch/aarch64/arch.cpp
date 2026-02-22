@@ -6,6 +6,7 @@ import system.scheduler;
 import drivers.timers;
 import drivers.output;
 import system.cpu;
+import system.cpu.local;
 import std;
 
 namespace arch
@@ -78,12 +79,17 @@ namespace arch
     {
         void entry(std::uintptr_t addr)
         {
+            auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
+            ptr->online = true;
             sched::start();
         }
+
         void bsp(std::uintptr_t addr)
         {
+            auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
+            ptr->online = true;
         }
     } // namespace core
 } // namespace arch

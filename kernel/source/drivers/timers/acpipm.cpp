@@ -143,6 +143,8 @@ namespace timers::acpipm
         [] {
             auto pmtimer = supported();
             lib::info("acpipm: timer supported: {}", pmtimer);
+            if (!pmtimer)
+                return;
 
             if (const auto clock = chrono::main_clock())
                 offset = time_ns() - clock->ns();
