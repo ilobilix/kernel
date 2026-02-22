@@ -1,4 +1,4 @@
-# Copyright (C) 2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
 
 set(CMAKE_GENERATOR "Ninja" CACHE INTERNAL "" FORCE)
 

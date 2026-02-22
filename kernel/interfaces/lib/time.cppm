@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 export module lib:time;
 
@@ -16,8 +16,8 @@ export
 
     struct timezone
     {
-        int	tz_minuteswest;
-        int	tz_dsttime;
+        int tz_minuteswest;
+        int tz_dsttime;
     };
 
     struct timespec

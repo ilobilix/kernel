@@ -1,6 +1,6 @@
-# Copyright (C) 2024-2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
 
-.include "arch/x86_64/system/cpu.inc"
+.include "arch/x86_64/system/cpu.S"
 
 .extern isr_handler
 isr_common_stub:

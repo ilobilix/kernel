@@ -1,23 +1,47 @@
-// Copyright (C) 2024-2025  ilobilo
-
-module;
-
-#include <arch/aarch64/system/cpu.hpp>
+// Copyright (C) 2024-2026  ilobilo
 
 export module system.cpu.arch:impl;
+export import system.cpu.regs;
+
+import lib;
+import fmt;
 import std;
 
 // TODO: everything
 
 export namespace cpu
 {
-    struct registers
+    template<lib::comptime_string Reg>
+    std::uint64_t mrs()
     {
-        std::uint64_t x[31];
+        using namespace fmt::literals;
+        std::uint64_t ret;
+        asm volatile ((fmt::format("mrs %0, {}"_cf, Reg.value)) : "=r"(ret));
+        return ret;
+    }
 
-        std::uintptr_t fp() { return 0; }
-        std::uintptr_t ip() { return 0; }
-    };
+    template<lib::comptime_string Reg, lib::comptime_string Cns = "r">
+    void msr(std::uint64_t val)
+    {
+        using namespace fmt::literals;
+        asm volatile ((fmt::format("msr {}, %0"_cf, Reg.value)) :: (Cns)(val));
+    }
+
+    template<lib::comptime_string Reg>
+    std::uint64_t read_reg()
+    {
+        using namespace fmt::literals;
+        std::uint64_t ret;
+        asm volatile ((fmt::format("mov %0, {}"_cf, Reg.value)) : "=r"(ret));
+        return ret;
+    }
+
+    template<lib::comptime_string Reg, lib::comptime_string Cns = "r">
+    void write_reg(std::uint64_t val)
+    {
+        using namespace fmt::literals;
+        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) :: (Cns)(val));
+    }
 
     struct extra_regs
     {
@@ -34,22 +58,22 @@ export namespace cpu
 
     void write_el1_base(std::uintptr_t base)
     {
-        msr(tpidr_el1, base);
+        msr<"tpidr_el1">(base);
     }
 
     std::uintptr_t read_el1_base()
     {
-        return mrs(tpidr_el1);
+        return mrs<"tpidr_el1">();
     }
 
     void write_el0_base(std::uintptr_t base)
     {
-        msr(tpidr_el0, base);
+        msr<"tpidr_el0">(base);
     }
 
     std::uintptr_t read_el0_base()
     {
-        return mrs(tpidr_el0);
+        return mrs<"tpidr_el0">();
     }
 
     std::uintptr_t self_addr() { return read_el1_base(); }

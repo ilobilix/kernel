@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
 
 # a clanker generated this file from my previous xmake.lua script
 

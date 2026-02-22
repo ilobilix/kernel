@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 module lib;
 
@@ -7,10 +7,11 @@ import std;
 
 void stat::update_time(std::uint8_t flags)
 {
+    const auto now = ::chrono::now();
     if (flags & time::access)
-        st_atim = ::chrono::now();
+        st_atim = now;
     if (flags & time::modify)
-        st_mtim = ::chrono::now();
+        st_mtim = now;
     if (flags & time::status)
-        st_ctim = ::chrono::now();
+        st_ctim = now;
 }
