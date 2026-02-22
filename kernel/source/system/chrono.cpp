@@ -47,7 +47,7 @@ namespace chrono
     bool stall_ns(std::uint64_t ns)
     {
         if (main == nullptr)
-            return false;
+            lib::panic("chrono: no clock available");
 
         const auto target = main->ns() + ns;
         while (main->ns() < target)
@@ -62,7 +62,7 @@ namespace chrono
         lib::unused(clockid);
 
         if (main == nullptr)
-            return timespec { };
+            lib::panic("chrono: no clock available");
 
         const auto boot_time_s = boot::time();
         const auto clock_ns = main->ns();
