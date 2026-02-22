@@ -8,6 +8,7 @@ set(_C_CXX_ASM_FLAGS
     "--target=${ILOBILIX_ARCH}-elf"
 
     "-fcolor-diagnostics"
+    "-fmacro-prefix-map=${PROJECT_SOURCE_DIR}/="
 
     "-ffreestanding"
     "-nostdinc"
