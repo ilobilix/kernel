@@ -54,7 +54,16 @@ namespace lib
 #if ILOBILIX_EXTRA_PANIC_MSG
 #  if !ILOBILIX_MAX_UACPI_POINTS
         if (auto ctx = output::term::main())
-            output::term::write(ctx, nooo_ascii);
+        {
+            bool first = true;
+            for (const auto seg : nooo_ascii | std::views::split('\n'))
+            {
+                if (!first)
+                    output::term::write(ctx, "\r\n");
+                first = false;
+                output::term::write(ctx, std::string_view { seg });
+            }
+        }
 #  endif
         for (auto chr : nooo_unicode)
             output::serial::printc(chr);

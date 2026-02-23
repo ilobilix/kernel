@@ -50,18 +50,6 @@ namespace uacpi
         }
     }
 
-    void notify_worker()
-    {
-        worker_caller(notify);
-        arch::halt(true);
-    }
-
-    void gpe_worker()
-    {
-        worker_caller(gpe);
-        arch::halt(true);
-    }
-
     lib::initgraph::task uacpi_task
     {
         "acpi.create-workers",
@@ -69,8 +57,14 @@ namespace uacpi
         lib::initgraph::require { sched::pid0_initialised_stage(), acpi::initialised_stage() },
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
-            sched::spawn(0, reinterpret_cast<std::uintptr_t>(notify_worker));
-            sched::spawn(0, reinterpret_cast<std::uintptr_t>(gpe_worker));
+            sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
+                worker_caller(notify);
+                arch::halt(true);
+            }));
+            sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
+                worker_caller(gpe);
+                arch::halt(true);
+            }));
         }
     };
 } // namespace uacpi

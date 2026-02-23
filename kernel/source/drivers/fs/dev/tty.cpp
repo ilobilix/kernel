@@ -18,6 +18,8 @@ namespace fs::dev::tty
 {
     namespace
     {
+        constexpr bool debug = false;
+
         lib::intrusive_list<driver, &driver::hook> drivers;
 
         driver *get_driver(dev_t major)
@@ -85,21 +87,292 @@ namespace fs::dev::tty
         }
     } // namespace
 
+    default_ldisc::default_ldisc(instance *inst) : line_discipline { inst }
+    {
+        sched::spawn(0, reinterpret_cast<std::uintptr_t>(worker), reinterpret_cast<std::uintptr_t>(this), -10);
+    }
+
+    [[noreturn]]
+    void default_ldisc::worker(default_ldisc *self)
+    {
+        using enum ktermios::iflag;
+        using enum ktermios::oflag;
+        // using enum ktermios::cflag;
+        // using enum ktermios::baud;
+        using enum ktermios::lflag;
+        using enum ktermios::cc;
+
+        const auto is_control = [](char chr)
+        {
+            return chr < ' ' || chr == 0x7F;
+        };
+
+        ktermios termios;
+        const auto push_to_echo = [&](char chr)
+        {
+            if (!(termios.c_oflag & opost))
+            {
+                self->echo_buffer.push(chr);
+                self->echo_sem.signal(true);
+                return;
+            }
+
+            if (chr == '\n' && (termios.c_oflag & onlcr))
+            {
+                self->echo_buffer.push('\r');
+                self->echo_buffer.push('\n');
+                self->echo_sem.signal(true);
+                return;
+            }
+
+            if (chr == '\r' && (termios.c_oflag & onlret))
+                return;
+
+            if (termios.c_oflag & olcuc)
+                chr = std::toupper(chr);
+
+            self->echo_buffer.push(chr);
+            self->echo_sem.signal(true);
+        };
+
+        const auto move_cooked = [&](auto &wlocked)
+        {
+            for (std::size_t i = 0; i < wlocked->size; i++)
+            {
+                self->in_buffer.push(wlocked->buffer[i]);
+                self->in_sem.signal(true);
+            }
+            wlocked->size = 0;
+        };
+
+        const auto erase_cooked = [&](auto &wlocked, bool erase)
+        {
+            if (wlocked->size > 0)
+            {
+                auto vwidth = 1;
+                wlocked->size--;
+                if (is_control(wlocked->buffer[wlocked->size]))
+                    vwidth = 2;
+                wlocked->buffer[wlocked->size] = 0;
+                if (termios.c_lflag & echo)
+                {
+                    if (erase)
+                    {
+                        for (auto i = 0; i < vwidth; i++)
+                        {
+                            push_to_echo('\b');
+                            push_to_echo(' ');
+                            push_to_echo('\b');
+                        }
+                    }
+                }
+            }
+        };
+
+        bool next_is_verbatim = false;
+        while (true)
+        {
+            auto ret = self->raw_buffer.pop();
+            if (!ret.has_value())
+            {
+                self->raw_sem.wait();
+                continue;
+            }
+            auto chr = static_cast<char>(ret.value());
+
+            termios = self->inst->termios.read_lock().value();
+            if (next_is_verbatim)
+            {
+                next_is_verbatim = false;
+                auto wlocked = self->cooked_buffer.write_lock();
+                if (wlocked->size < cooked_t::cap)
+                {
+                    wlocked->buffer[wlocked->size] = chr;
+                    wlocked->size++;
+                }
+
+                if (termios.c_lflag & echo)
+                {
+                    if ((termios.c_lflag & echoctl) && is_control(chr))
+                    {
+                        push_to_echo('^');
+                        push_to_echo((chr + '@') % 128);
+                    }
+                    else push_to_echo(chr);
+                }
+                continue;
+            }
+
+            if (termios.c_lflag & isig)
+            {
+                // TODO: signals
+            }
+
+            if (termios.c_iflag & ixon)
+            {
+                if (chr == termios.c_cc[vstop])
+                {
+                    self->stopped.store(true, std::memory_order_relaxed);
+                    continue;
+                }
+                else if (chr == termios.c_cc[vstart])
+                {
+                    self->stopped.store(false, std::memory_order_relaxed);
+                    continue;
+                }
+            }
+
+            if ((termios.c_lflag & ixany) && self->stopped.load(std::memory_order_relaxed))
+                self->stopped.store(false, std::memory_order_relaxed);
+
+            if (termios.c_iflag & istrip)
+                chr &= 0x7F;
+
+            if (termios.c_iflag & igncr && chr == '\r')
+                continue;
+
+            if (termios.c_iflag & inlcr && chr == '\n')
+                chr = '\r';
+            else if (termios.c_iflag & icrnl && chr == '\r')
+                chr = '\n';
+
+            if (termios.c_iflag & iuclc)
+                chr = std::tolower(chr);
+
+            if (termios.c_lflag & icanon)
+            {
+                if (chr == termios.c_cc[vlnext] && (termios.c_lflag & iexten))
+                {
+                    next_is_verbatim = true;
+                    push_to_echo('^');
+                    push_to_echo('\b');
+                    continue;
+                }
+
+                if (chr == termios.c_cc[vkill])
+                {
+                    {
+                        auto wlocked = self->cooked_buffer.write_lock();
+                        while (wlocked->size > 0)
+                            erase_cooked(wlocked, termios.c_lflag & echok);
+                    }
+
+                    if ((termios.c_lflag & echo) && !(termios.c_lflag & echok))
+                    {
+                        if ((termios.c_lflag & echoctl) && is_control(chr))
+                        {
+                            push_to_echo('^');
+                            push_to_echo((chr + '@') % 128);
+                        }
+                        else push_to_echo(chr);
+                    }
+                    continue;
+                }
+
+                if (chr == termios.c_cc[verase])
+                {
+                    {
+                        auto wlocked = self->cooked_buffer.write_lock();
+                        erase_cooked(wlocked, termios.c_lflag & echoe);
+                    }
+
+                    if ((termios.c_lflag & echo) && !(termios.c_lflag & echoe))
+                    {
+                        if ((termios.c_lflag & echoctl) && is_control(chr))
+                        {
+                            push_to_echo('^');
+                            push_to_echo((chr + '@') % 128);
+                        }
+                        else push_to_echo(chr);
+                    }
+                    continue;
+                }
+
+                if (chr == termios.c_cc[vwerase] && (termios.c_lflag & iexten))
+                {
+                    {
+                        auto wlocked = self->cooked_buffer.write_lock();
+                        while (wlocked->size > 0 && wlocked->buffer[wlocked->size - 1] == ' ')
+                            erase_cooked(wlocked, termios.c_lflag & echoe);
+                        while (wlocked->size > 0 && wlocked->buffer[wlocked->size - 1] != ' ')
+                            erase_cooked(wlocked, termios.c_lflag & echoe);
+                    }
+
+                    if ((termios.c_lflag & echo) && !(termios.c_lflag & echoe))
+                    {
+                        if ((termios.c_lflag & echoctl) && is_control(chr))
+                        {
+                            push_to_echo('^');
+                            push_to_echo((chr + '@') % 128);
+                        }
+                        else push_to_echo(chr);
+                    }
+                    continue;
+                }
+
+                {
+                    auto wlocked = self->cooked_buffer.write_lock();
+                    if (chr == termios.c_cc[veof])
+                    {
+                        move_cooked(wlocked);
+                        continue;
+                    }
+
+                    if (wlocked->size < cooked_t::cap)
+                    {
+                        wlocked->buffer[wlocked->size] = chr;
+                        wlocked->size++;
+                    }
+                }
+
+                if (termios.c_lflag & echo)
+                {
+                    if ((termios.c_lflag & echoctl) && is_control(chr) && chr != '\n')
+                    {
+                        push_to_echo('^');
+                        push_to_echo((chr + '@') % 128);
+                    }
+                    else push_to_echo(chr);
+                }
+
+                if (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]))
+                {
+                    if (!(termios.c_lflag & echo) && (termios.c_lflag & echonl))
+                        push_to_echo(chr);
+                    auto wlocked = self->cooked_buffer.write_lock();
+                    wlocked->buffer[wlocked->size - 1] = chr;
+                    move_cooked(wlocked);
+                    continue;
+                }
+                continue;
+            }
+            else if (termios.c_lflag & echo)
+            {
+                if ((termios.c_lflag & echoctl) && is_control(chr) && chr != '\n')
+                {
+                    push_to_echo('^');
+                    push_to_echo((chr + '@') % 128);
+                }
+                else push_to_echo(chr);
+            }
+
+            self->in_buffer.push(chr);
+            self->in_sem.signal(true);
+        }
+    }
+
     std::ssize_t default_ldisc::read(lib::maybe_uspan<std::byte> buffer)
     {
+        // TODO
         lib::unused(buffer);
         return -1;
     }
 
     std::ssize_t default_ldisc::write(lib::maybe_uspan<std::byte> buffer)
     {
+        // TODO
         lib::bug_on(!inst);
         return inst->transmit(buffer);
-    }
-
-    void default_ldisc::receive(std::span<std::byte> buffer)
-    {
-        lib::unused(buffer);
     }
 
     instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
@@ -142,14 +415,16 @@ namespace fs::dev::tty
 
         std::shared_ptr<instance> create_instance(std::uint32_t minor) override
         {
-            // lib::debug("tty: creating test instance with minor {}", minor);
+            if constexpr (debug)
+                lib::debug("tty: creating test instance with minor {}", minor);
             return std::make_shared<test_instance>(this, minor);
         }
 
         void destroy_instance(std::shared_ptr<instance> inst) override
         {
             lib::unused(inst);
-            // lib::debug("tty: destroying test instance with minor {}", inst->minor);
+            if constexpr (debug)
+                lib::debug("tty: destroying test instance with minor {}", inst->minor);
         }
 
         int ioctl(std::shared_ptr<instance> inst, unsigned long request, lib::uptr_or_addr argp) override
@@ -207,7 +482,8 @@ namespace fs::dev::tty
             }
             self->private_data = inst;
 
-            // lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            if constexpr (debug)
+                lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
             return true;
         }
 
@@ -240,8 +516,11 @@ namespace fs::dev::tty
             }
             self->private_data.reset();
 
-            // const auto rdev = self->path.dentry->inode->stat.st_rdev;
-            // lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            if constexpr (debug)
+            {
+                const auto rdev = self->path.dentry->inode->stat.st_rdev;
+                lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            }
             return true;
         }
 
@@ -302,7 +581,8 @@ namespace fs::dev::tty
             ctty.value()->ref.fetch_add(1, std::memory_order_acq_rel);
             self->private_data = ctty.value();
 
-            lib::debug("tty: opened (5, 0) for pid {}", self->pid);
+            if constexpr (debug)
+                lib::debug("tty: opened (5, 0) for pid {}", self->pid);
             return true;
         }
 
