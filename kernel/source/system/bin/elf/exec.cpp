@@ -212,7 +212,7 @@ namespace bin::elf::exec
             // TODO: fix
             proc->vmspace->init_brk(std::max(exec_base, interp_base) + lib::mib(16));
 
-            auto thread = sched::thread::create(proc, entry, true);
+            auto thread = sched::thread::create(proc, entry, 0, true);
 
             lib::bug_on(thread->ustack_obj.expired());
             const auto obj = thread->ustack_obj.lock();

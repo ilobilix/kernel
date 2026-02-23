@@ -17,7 +17,7 @@ export namespace fs::dev::tty
 
     struct ktermios
     {
-        enum /* iflag */ : tcflag_t
+        enum iflag : tcflag_t
         {
             ignbrk  = 0000001, // ignore break condition
             brkint  = 0000002, // signal interrupt on break
@@ -36,7 +36,7 @@ export namespace fs::dev::tty
             iutf8   = 0040000, // input is UTF8 (not in POSIX)
         };
 
-        enum /* oflag */ : tcflag_t
+        enum oflag : tcflag_t
         {
             opost  = 0000001, // post-process output
             olcuc  = 0000002, // map lowercase to uppercase on output (not in POSIX)
@@ -54,7 +54,7 @@ export namespace fs::dev::tty
             ffdly  = 0100000
         };
 
-        enum /* cflag */ : tcflag_t
+        enum cflag : tcflag_t
         {
             csize  = 0000060,
             cs5    = 0000000,
@@ -69,7 +69,7 @@ export namespace fs::dev::tty
             clocal = 0004000,
         };
 
-        enum /* baud */ : tcflag_t
+        enum baud : tcflag_t
         {
             b0     = 0u, // hang up or ispeed == ospeed
             b50    = 50u,
@@ -89,7 +89,7 @@ export namespace fs::dev::tty
             b38400 = 38400u,
         };
 
-        enum /* lflag */ : tcflag_t
+        enum lflag : tcflag_t
         {
             isig    = 0000001, // enable signals
             icanon  = 0000002, // canonical input (erase and kill processing)
@@ -111,7 +111,7 @@ export namespace fs::dev::tty
             iexten  = 0100000  // enable implementation-defined input processing
         };
 
-        enum /* cc */ : cc_t
+        enum cc : cc_t
         {
             vintr = 0,
             vquit = 1,
@@ -217,15 +217,40 @@ export namespace fs::dev::tty
 
     struct default_ldisc : line_discipline
     {
-        lib::rbspmco<char, 4096> raw_buffer;
-        lib::rbspmco<std::string, 4096> cooked_buffer;
+        static inline constexpr std::size_t buffer_size = 4096;
 
-        default_ldisc(instance *inst) : line_discipline { inst } { }
+        lib::rbspmco<std::byte, buffer_size> raw_buffer;
+        lib::semaphore raw_sem;
+
+        lib::rbspmco<char, buffer_size> in_buffer;
+        lib::semaphore in_sem;
+
+        lib::rbspmco<char, buffer_size> echo_buffer;
+        lib::semaphore echo_sem;
+
+        struct cooked_t
+        {
+            static inline constexpr std::size_t cap = buffer_size - 2;
+            std::array<char, cap> buffer;
+            std::size_t size;
+        };
+        lib::locker<cooked_t, lib::rwmutex> cooked_buffer;
+
+        std::atomic_bool stopped;
+
+        default_ldisc(instance *inst);
+
+        [[noreturn]]
+        static void worker(default_ldisc *self);
 
         std::ssize_t read(lib::maybe_uspan<std::byte> buffer) override;
         std::ssize_t write(lib::maybe_uspan<std::byte> buffer) override;
 
-        void receive(std::span<std::byte> buffer) override;
+        void receive(std::span<std::byte> buffer) override
+        {
+            raw_buffer.push(buffer);
+            raw_sem.signal_all();
+        }
     };
 
     struct driver;
