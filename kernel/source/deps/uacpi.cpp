@@ -382,6 +382,18 @@ extern "C"
         return reinterpret_cast<uacpi_thread_id>(1);
     }
 
+    uacpi_interrupt_state uacpi_kernel_disable_interrupts()
+    {
+        auto state = arch::int_status();
+        arch::int_switch(false);
+        return static_cast<uacpi_interrupt_state>(state);
+    }
+
+    void uacpi_kernel_restore_interrupts(uacpi_interrupt_state state)
+    {
+        arch::int_switch(static_cast<bool>(state));
+    }
+
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
         auto *mutex = reinterpret_cast<lib::mutex *>(handle);

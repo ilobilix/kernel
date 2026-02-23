@@ -40,11 +40,11 @@ export namespace boot
         bootloader = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE,
         kernel_and_modules = LIMINE_MEMMAP_EXECUTABLE_AND_MODULES,
         framebuffer = LIMINE_MEMMAP_FRAMEBUFFER,
-        acpi_tables = LIMINE_MEMMAP_ACPI_TABLES
+        reserved_mapped = LIMINE_MEMMAP_RESERVED_MAPPED
     };
 
     [[gnu::used, gnu::section(".limine_requests")]]
-    volatile std::uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(4);
+    volatile std::uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(5);
 
     namespace requests
     {

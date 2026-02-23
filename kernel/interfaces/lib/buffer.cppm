@@ -69,12 +69,12 @@ export namespace lib
         }
 
         template<typename Self>
-        auto maybe_uspan(this Self &&self)
+        std::optional<maybe_uspan<Type>> maybe_uspan(this Self &&self)
         {
             return lib::maybe_uspan<Type>::create(
                 std::forward<Self>(self)._ptr,
                 std::forward<Self>(self)._count
-            ).value();
+            );
         }
 
         template<typename Self>

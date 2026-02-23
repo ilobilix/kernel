@@ -40,7 +40,16 @@ namespace output::term
     void write(flanterm_context *ctx, std::string_view str)
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
-        flanterm_write(ctx, str.data(), str.length());
+        bool first = true;
+        for (const auto seg : str | std::views::split('\n'))
+        {
+            if (!first)
+                flanterm_write(ctx, "\r\n", 2);
+            first = false;
+
+            std::string_view sv { seg };
+            flanterm_write(ctx, sv.data(), sv.length());
+        }
 #else
         lib::unused(ctx, str);
 #endif
@@ -49,6 +58,8 @@ namespace output::term
     void write(flanterm_context *ctx, char chr)
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
+        if (chr == '\n')
+            write(ctx, '\r');
         flanterm_write(ctx, &chr, 1);
 #else
         lib::unused(ctx, chr);
@@ -80,7 +91,7 @@ namespace output::term
             nullptr, ansi_colours, ansi_bright_colours,
             nullptr, nullptr, nullptr, nullptr,
             font, 8, 16, 1,
-            0, 0, 0
+            0, 0, 0, FLANTERM_FB_ROTATE_0
         );
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
@@ -110,7 +121,7 @@ namespace output::term
                 nullptr, ansi_colours, ansi_bright_colours,
                 nullptr, nullptr, nullptr, nullptr,
                 font, 8, 16, 1,
-                0, 0, 0
+                0, 0, 0, FLANTERM_FB_ROTATE_0
             );
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");

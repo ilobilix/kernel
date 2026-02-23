@@ -141,7 +141,14 @@ namespace bin::elf::mod
 
             auto &inode = file->path.dentry->inode;
             lib::membuffer buffer { static_cast<std::size_t>(inode->stat.st_size) };
-            if (file->pread(0, buffer.maybe_uspan()) != inode->stat.st_size)
+            const auto buffer_uspan = buffer.maybe_uspan();
+            if (!buffer_uspan.has_value())
+            {
+                lib::error("elf: module: could not create a buffer");
+                return false;
+            }
+
+            if (file->pread(0, buffer_uspan.value()) != inode->stat.st_size)
             {
                 lib::error("elf: module: could not read the module file");
                 return false;

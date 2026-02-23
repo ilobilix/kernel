@@ -83,12 +83,15 @@ namespace bin::elf::exec
                         auto obj = std::make_shared<vmm::memobject>();
 
                         lib::membuffer file_buffer { phdr.p_filesz };
+                        const auto file_uspan = file_buffer.maybe_uspan();
+                        lib::panic_if(!file_uspan.has_value());
+
                         lib::panic_if(file->pread(
-                            phdr.p_offset, file_buffer.maybe_uspan()
+                            phdr.p_offset, file_uspan.value()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz));
 
                         lib::panic_if(obj->write(
-                            misalign, file_buffer.maybe_uspan()
+                            misalign, file_uspan.value()
                         ) != phdr.p_filesz);
 
                         if (phdr.p_memsz > phdr.p_filesz)
@@ -97,8 +100,11 @@ namespace bin::elf::exec
                             lib::membuffer zeroes { zeroes_len };
                             std::memset(zeroes.data(), 0, zeroes.size());
 
+                            const auto zeroes_uspan = zeroes.maybe_uspan();
+                            lib::panic_if(!zeroes_uspan.has_value());
+
                             lib::panic_if(obj->write(
-                                misalign + phdr.p_filesz, zeroes.maybe_uspan()
+                                misalign + phdr.p_filesz, zeroes_uspan.value()
                             ) != zeroes_len);
                         }
 
@@ -116,8 +122,11 @@ namespace bin::elf::exec
                     case PT_INTERP:
                     {
                         lib::membuffer buffer { phdr.p_filesz - 1 };
+                        const auto buffer_uspan = buffer.maybe_uspan();
+                        lib::panic_if(!buffer_uspan.has_value());
+
                         lib::panic_if(file->pread(
-                            phdr.p_offset, buffer.maybe_uspan()
+                            phdr.p_offset, buffer_uspan.value()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz - 1));
 
                         std::string_view path {
@@ -241,6 +250,9 @@ namespace bin::elf::exec
             lib::membuffer stack_buffer { required_size };
             std::memset(stack_buffer.data(), 0, stack_buffer.size());
 
+            const auto stack_buffer_uspan = stack_buffer.maybe_uspan();
+            lib::panic_if(!stack_buffer_uspan.has_value());
+
             auto offset = stack_size;
             const auto sptr = [&] {
                 return reinterpret_cast<std::uintptr_t *>(
@@ -345,7 +357,7 @@ namespace bin::elf::exec
             lib::bug_on((stack_size - offset) != required_size);
 
             lib::panic_if(obj->write(
-                offset, stack_buffer.maybe_uspan()
+                offset, stack_buffer_uspan.value()
             ) != stack_buffer.size());
 
             thread->update_ustack(addr_bottom + offset);

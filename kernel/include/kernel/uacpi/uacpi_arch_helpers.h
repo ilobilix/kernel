@@ -9,6 +9,8 @@
 #endif
 
 typedef unsigned long uacpi_cpu_flags;
+typedef unsigned long uacpi_interrupt_state;
+
 typedef void *uacpi_thread_id;
 
 #define UACPI_ATOMIC_LOAD_THREAD_ID(ptr) ((uacpi_thread_id)uacpi_atomic_load_ptr(ptr))
