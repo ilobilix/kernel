@@ -95,6 +95,8 @@ namespace fs::dev::tty
     [[noreturn]]
     void default_ldisc::worker(default_ldisc *self)
     {
+        // based on https://github.com/klange/toaruos/blob/master/kernel/vfs/tty.c
+
         using enum ktermios::iflag;
         using enum ktermios::oflag;
         // using enum ktermios::cflag;
