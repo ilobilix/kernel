@@ -88,12 +88,20 @@ namespace fs::devtmpfs
         lib::initgraph::entail { mounted_stage() },
         [] {
             const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);
-            lib::panic_if(
-                !cerr && cerr.error() != vfs::error::already_exists,
-                "devtmpfs: failed to create directory '/dev': {}", magic_enum::enum_name(cerr.error())
-            );
-            const auto merr = vfs::mount("", "/dev", "devtmpfs", 0);
-            lib::panic_if(!merr, "devtmpfs: failed to mount devtmpfs at '/dev': {}", magic_enum::enum_name(merr.error()));
+            if (!cerr && cerr.error() != vfs::error::already_exists)
+            {
+                lib::panic(
+                    "devtmpfs: failed to create directory '/dev': {}",
+                    magic_enum::enum_name(cerr.error())
+                );
+            }
+            if (const auto merr = vfs::mount("", "/dev", "devtmpfs", 0); !merr)
+            {
+                lib::panic(
+                    "devtmpfs: failed to mount devtmpfs at '/dev': {}",
+                    magic_enum::enum_name(merr.error())
+                );
+            }
         }
     };
 } // namespace fs::devtmpfs

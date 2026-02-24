@@ -270,7 +270,8 @@ namespace pci
     std::shared_ptr<configio> getio(std::uint16_t seg, std::uint8_t bus)
     {
         const std::uint32_t idx = (seg << 8 | bus);
-        lib::bug_on(!ios.contains(idx));
+        if (!ios.contains(idx))
+            return nullptr;
         return ios[idx];
     }
 

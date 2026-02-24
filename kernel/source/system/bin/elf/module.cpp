@@ -48,7 +48,8 @@ namespace bin::elf::mod
         void log_entry(auto &entry)
         {
             auto ptr = entry.header;
-            lib::info("elf: - description: '{}'", ptr->description);
+            const std::string_view desc { ptr->description };
+            lib::info("elf: - description: '{}'", desc);
 
             std::visit(
                 lib::overloaded {
@@ -89,21 +90,34 @@ namespace bin::elf::mod
                     continue;
                 }
 
+                const auto ptr = reinterpret_cast<base_type *>(current);
+
+                const std::string_view version = ptr->version;
+                if (version != base_type::build_version)
+                {
+                    lib::error(
+                        "elf: module: incompatible build version: '{}' (expected '{}')",
+                        version, base_type::build_version
+                    );
+                    lib::bug_on(nmod != 0);
+                    return 0;
+                }
+
                 nmod++;
 
-                const auto ptr = reinterpret_cast<base_type *>(current);
                 const auto ndeps = ptr->dependencies.ndeps;
-                const auto deps = reinterpret_cast<const char *const *>(ptr->dependencies.list);
+                const auto deps = ptr->dependencies.list;
 
-                lib::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", ptr->name);
+                const std::string_view name { ptr->name };
+                lib::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", name);
 
                 entry *entryptr;
                 {
                     auto locked = modules.write_lock();
-                    if (locked->contains(ptr->name))
-                        lib::panic("a module with the same name already exists");
+                    if (locked->contains(name))
+                        lib::panic("elf: a module with the same name already exists");
 
-                    entryptr = std::addressof(locked.value()[ptr->name]);
+                    entryptr = std::addressof(locked.value()[name]);
                 }
                 auto &entry = *entryptr;
 
