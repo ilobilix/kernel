@@ -346,7 +346,14 @@ namespace pci::acpi
                     uacpi_eval_simple_integer(node, "_SEG", &seg);
                     uacpi_eval_simple_integer(node, "_BBN", &bus);
 
-                    auto rbus = std::make_shared<pci::bus>(seg, bus, getio(seg, bus));
+                    auto io = getio(seg, bus);
+                    if (io == nullptr)
+                    {
+                        lib::error("pci: could not get io for {}:{}", seg, bus);
+                        return UACPI_ITERATION_DECISION_CONTINUE;
+                    }
+
+                    auto rbus = std::make_shared<pci::bus>(seg, bus, std::move(io));
                     rbus->router = std::make_shared<router>(nullptr, rbus, node);
                     addrb(rbus);
 

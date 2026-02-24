@@ -14,7 +14,6 @@ import std;
 
 namespace output::term
 {
-#if !ILOBILIX_MAX_UACPI_POINTS
     namespace
     {
         std::uint32_t ansi_colours[] {
@@ -35,40 +34,28 @@ namespace output::term
         constinit flanterm_context *early = nullptr;
         std::vector<flanterm_context *> contexts;
     } // namespace
-#endif
 
     void write(flanterm_context *ctx, std::string_view str)
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         flanterm_write(ctx, str.data(), str.length());
-#else
-        lib::unused(ctx, str);
-#endif
     }
 
     void write(flanterm_context *ctx, char chr)
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         flanterm_write(ctx, &chr, 1);
-#else
-        lib::unused(ctx, chr);
-#endif
     }
 
     flanterm_context *main()
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         if (!contexts.empty())
             return contexts.back();
         else if (early)
             return early;
-#endif
         return nullptr;
     }
 
     void early_init()
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         const auto frm = boot::requests::framebuffer.response->framebuffers[0];
         early = flanterm_fb_init(
             nullptr, nullptr,
@@ -86,12 +73,10 @@ namespace output::term
             lib::panic("could not initialise flanterm");
 
         lib::info("initialised the graphical terminal");
-#endif
     }
 
     void init()
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         for (const auto &frm : frm::framebuffers)
         {
             if (frm.address == early_addr)
@@ -117,6 +102,5 @@ namespace output::term
 
             contexts.push_back(ctx);
         }
-#endif
     }
 } // namespace output::term

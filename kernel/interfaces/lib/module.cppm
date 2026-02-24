@@ -24,7 +24,7 @@ export namespace mod
     {
         static inline constexpr std::size_t count = NDeps;
         const std::size_t ndeps = NDeps;
-        const char *list[NDeps];
+        const char *const list[NDeps];
 
         consteval deps(const deps &) = default;
 
@@ -38,10 +38,15 @@ export namespace mod
     struct declare
     {
         static inline constexpr std::uint64_t header_magic = 0x737BDF086B7EF53C;
-        const std::uint64_t magic = header_magic;
+        static inline constexpr std::string_view build_version {
+            ILOBILIX_VERSION "-" ILOBILIX_COMMIT
+        };
 
-        const char *name;
-        const char *description;
+        const std::uint64_t magic = header_magic;
+        const char *const version = build_version.data();
+
+        const char *const name;
+        const char *const description;
         const std::variant<
             generic,
             pci,

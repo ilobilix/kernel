@@ -10,6 +10,8 @@ import std;
 
 import :pagemap;
 
+// TODO: rewrite this shite
+
 namespace vmm
 {
     std::size_t default_page_size()

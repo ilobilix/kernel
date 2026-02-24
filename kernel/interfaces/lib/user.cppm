@@ -48,10 +48,6 @@ export namespace lib
     bool fill_user(void __user *dest, int value, std::size_t len);
     std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 
-    bool maybe_copy_to_user(void *dest, const void *src, std::size_t len);
-    bool maybe_copy_from_user(void *dest, const void *src, std::size_t len);
-    bool maybe_fill_user(void *dest, int value, std::size_t len);
-
     template<typename Type>
     inline Type __user *uptr_add(Type __user *ptr, std::ptrdiff_t offset)
     {
@@ -200,9 +196,17 @@ export namespace lib
 
     struct uptr_or_addr
     {
+        private:
         void __user *ptr;
 
+        public:
         uptr_or_addr(void __user *ptr) : ptr { ptr } { }
+
+        uptr_or_addr(const uptr_or_addr &) = default;
+        uptr_or_addr(uptr_or_addr &&) = default;
+
+        uptr_or_addr &operator=(const uptr_or_addr &) = default;
+        uptr_or_addr &operator=(uptr_or_addr &&) = default;
 
         std::uintptr_t address() const
         {
@@ -210,17 +214,15 @@ export namespace lib
         }
 
         template<typename Type> requires std::is_trivially_copyable_v<Type>
-        Type read() const
+        bool read(Type &val) const
         {
-            Type val;
-            lib::maybe_copy_from_user(&val, remove_user_cast<void>(ptr), sizeof(Type));
-            return val;
+            return lib::copy_from_user(&val, remove_user_cast<void>(ptr), sizeof(Type));
         }
 
         template<typename Type> requires std::is_trivially_copyable_v<Type>
-        void write(const Type &val) const
+        bool write(const Type &val) const
         {
-            lib::maybe_copy_to_user(remove_user_cast<void>(ptr), &val, sizeof(Type));
+            return lib::copy_to_user(remove_user_cast<void>(ptr), &val, sizeof(Type));
         }
     };
 } // export namespace lib

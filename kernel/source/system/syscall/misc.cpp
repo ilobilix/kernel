@@ -28,9 +28,9 @@ namespace syscall::misc
         {
             .sysname = "Ilobilix",
             .nodename = "ilobilix",
-            .release = "0.0.1",
-            .version = __DATE__ " " __TIME__,
-            .machine = "x86_64",
+            .release = ILOBILIX_VERSION,
+            .version = ILOBILIX_COMMIT,
+            .machine = ILOBILIX_ARCH,
             .domainname = "(none)"
         };
         if (!lib::copy_to_user(buf, &kbuf, sizeof(utsname)))
@@ -87,7 +87,7 @@ namespace syscall::misc
         if (buflen == 0)
             return 0;
 
-        auto uspan = lib::maybe_uspan<std::byte>::create(lib::remove_user_cast<std::byte>(buf), buflen);
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf, buflen);
         if (!uspan)
             return (errno = EFAULT, -1);
         return lib::random_bytes(uspan.value());

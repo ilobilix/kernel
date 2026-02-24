@@ -13,6 +13,9 @@ set(_C_CXX_ASM_FLAGS
     "-ffreestanding"
     "-nostdinc"
 
+    # TODO: remove me when cfi unwinding is implemented
+    "-fno-omit-frame-pointer"
+
     "-fno-stack-protector"
     "-fstrict-vtable-pointers"
     "-funsigned-char"
@@ -61,10 +64,6 @@ if(ILOBILIX_UBSAN)
     list(APPEND _C_CXX_ASM_FLAGS "-fsanitize=undefined")
 endif()
 
-if(NOT ILOBILIX_MAX_UACPI_POINTS)
-    list(APPEND _C_CXX_ASM_FLAGS "-fno-omit-frame-pointer")
-endif()
-
 if(CMAKE_BUILD_TYPE MATCHES "^(ReleaseDbg|Release)$")
     list(APPEND _C_CXX_ASM_FLAGS "-O3")
 endif()
@@ -76,9 +75,14 @@ else()
 endif()
 
 set(_ILOBILIX_ENABLE_LTO FALSE)
-if(CMAKE_BUILD_TYPE STREQUAL "Release" AND ILOBILIX_MAX_UACPI_POINTS)
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND ILOBILIX_LTO)
     set(_ILOBILIX_ENABLE_LTO TRUE)
-    list(APPEND _C_CXX_ASM_FLAGS "-flto=full" "-funified-lto")
+    list(APPEND _C_CXX_ASM_FLAGS
+        "-flto=full"
+        "-funified-lto"
+        "-ffunction-sections"
+        "-fdata-sections"
+    )
     list(APPEND _CXX_FLAGS "-fwhole-program-vtables")
 endif()
 
@@ -87,8 +91,6 @@ list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_SYSNAME='\"${ILOBILIX_SYSNAME}\"'")
 
 set(_ILOBILIX_BOOL_DEFINES
     "ILOBILIX_SYSCALL_LOG:ILOBILIX_SYSCALL_LOG"
-    "ILOBILIX_EXTRA_PANIC_MSG:ILOBILIX_EXTRA_PANIC_MSG"
-    "ILOBILIX_MAX_UACPI_POINTS:ILOBILIX_MAX_UACPI_POINTS"
     "ILOBILIX_LIMINE_MP:ILOBILIX_LIMINE_MP"
     "ILOBILIX_UBSAN:ILOBILIX_UBSAN"
 )
@@ -106,11 +108,16 @@ foreach(_define ${_ILOBILIX_BOOL_DEFINES})
 endforeach()
 
 set(_ILOBILIX_DEFINES
+    "ILOBILIX_VERSION=\"${CMAKE_PROJECT_VERSION}\""
+
     "LIMINE_API_REVISION=2"
+
     "UACPI_OVERRIDE_LIBC"
     "UACPI_OVERRIDE_ARCH_HELPERS"
+
     "MAGIC_ENUM_NO_STREAMS=1"
     "MAGIC_ENUM_ENABLE_HASH=1"
+
     "FMT_THROW(x)=abort()"
     "FMT_USE_CONSTEVAL=1"
     "FMT_USE_CONSTEXPR_STRING=1"
@@ -118,23 +125,24 @@ set(_ILOBILIX_DEFINES
     "FMT_OPTIMIZE_SIZE=2"
     "FMT_BUILTIN_TYPES=0"
     "FMT_FULLY_FREESTANDING=1"
+
     "__user=__attribute__((address_space(1)))"
     "__force=__attribute__((force))"
-    "cpu_local=\
-        [[gnu::section(\".percpu\")]] \
-        ::cpu::local::storage"
-    "cpu_local_init(name, ...)=\
-        void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { \
-            name.initialise_base(base __VA_OPT__(,) __VA_ARGS__)^ \
-        }^ \
-        [[gnu::section(\".percpu_init\"), gnu::used]] \
-        const auto name ## _init_ptr__ = name ## _init_func__"
 )
 
 foreach(_define ${_ILOBILIX_DEFINES})
     string (REPLACE "^" "\;" _replaced_define "${_define}")
     list(APPEND _C_CXX_ASM_FLAGS "-D'${_replaced_define}'")
 endforeach()
+
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_COMMIT='\"${GIT_COMMIT_HASH}\"'")
 
 string(JOIN " " _C_CXX_ASM_FLAGS_STR ${_C_CXX_ASM_FLAGS})
 string(JOIN " " _CXX_FLAGS_STR ${_CXX_FLAGS})
@@ -157,6 +165,7 @@ if(_ILOBILIX_ENABLE_LTO)
         "-flto=full"
         "-funified-lto"
         "-Wl,--lto=full"
+        "-Wl,--gc-sections"
     )
 endif()
 

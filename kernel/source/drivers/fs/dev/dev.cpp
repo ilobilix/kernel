@@ -55,11 +55,14 @@ namespace fs::dev
         [] {
             auto create = [](std::string_view path, mode_t mode, dev_t dev)
             {
-                auto ret = vfs::create(std::nullopt, path, mode, dev);
-                lib::panic_if(
-                    !ret && ret.error() != vfs::error::already_exists,
-                    "dev: failed to create a character device file '{}': {}", path, magic_enum::enum_name(ret.error())
-                );
+                const auto ret = vfs::create(std::nullopt, path, mode, dev);
+                if (!ret && ret.error() != vfs::error::already_exists)
+                {
+                    lib::panic(
+                        "dev: failed to create a character device file '{}': {}",
+                        path, magic_enum::enum_name(ret.error())
+                    );
+                }
             };
 
             using namespace vfs::dev;

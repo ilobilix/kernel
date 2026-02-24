@@ -641,8 +641,13 @@ namespace fs::dev::tty
         lib::initgraph::entail { registered_stage() },
         [] {
             register_cdev(current_ops::singleton(), makedev(5, 0));
-            auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0));
-            lib::panic_if(!ret.has_value(), "tty: could not create /dev/tty: {}", magic_enum::enum_name(ret.error()));
+            if (const auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
+            {
+                lib::panic(
+                    "tty: could not create /dev/tty: {}",
+                    magic_enum::enum_name(ret.error())
+                );
+            }
 
             const auto test_drv = new test_driver { };
             drivers.push_back(test_drv);

@@ -31,10 +31,13 @@ namespace slab
                     pmm::page_size, flags, psize,
                     vmm::caching::normal
                 );
-                lib::panic_if(!ret,
-                    "slab: could not map page: {}",
-                    magic_enum::enum_name(ret.error())
-                );
+                if (!ret)
+                {
+                    lib::panic(
+                        "slab: could not map page: {}",
+                        magic_enum::enum_name(ret.error())
+                    );
+                }
             }
 
             return vaddr;
@@ -47,17 +50,22 @@ namespace slab
             {
                 const auto vaddr = addr + offset;
                 const auto ret = vmm::kernel_pagemap->translate(vaddr, vmm::page_size::small);
-                lib::panic_if(!ret,
-                    "slab: could not translate page: {}",
-                    magic_enum::enum_name(ret.error())
-                );
+                if (!ret)
+                {
+                    lib::panic(
+                        "slab: could not translate page: {}",
+                        magic_enum::enum_name(ret.error())
+                    );
+                }
 
                 const auto paddr = ret.value();
-                const auto uret = vmm::kernel_pagemap->unmap(vaddr, pmm::page_size, vmm::page_size::small);
-                lib::panic_if(!uret,
-                    "slab: could not unmap page: {}",
-                    magic_enum::enum_name(uret.error())
-                );
+                if (const auto uret = vmm::kernel_pagemap->unmap(vaddr, pmm::page_size, vmm::page_size::small); !uret)
+                {
+                    lib::panic(
+                        "slab: could not unmap page: {}",
+                        magic_enum::enum_name(uret.error())
+                    );
+                }
 
                 pmm::free(paddr, 1);
             }
