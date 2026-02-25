@@ -725,7 +725,7 @@ namespace fs::dev::tty
                 lib::debug("tty: destroying test instance with minor {}", inst->minor);
         }
 
-        test_driver() : driver { "tty-test", 4, 0, 3, ktermios::standard() } { }
+        test_driver() : driver { "tty-test", 4, 0, 4, ktermios::standard() } { }
     };
 
     using namespace vfs::dev;

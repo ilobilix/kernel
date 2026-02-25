@@ -200,16 +200,16 @@ namespace syscall::vfs
         if (fd < 0)
             return (errno = EMFILE, -1);
 
-        if (!fdesc->file->open(flags))
+        if (const auto ret = fdesc->file->open(flags); !ret)
         {
             fdt.close(fd);
-            return (errno = EIO, -1);
+            return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (flags & o_trunc)
         {
-            if (!fdesc->file->trunc(0))
-                return (errno = EINVAL, -1);
+            if (const auto ret = fdesc->file->trunc(0); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
 
             stat.update_time(stat::time::modify | stat::time::status);
         }
@@ -238,8 +238,8 @@ namespace syscall::vfs
         if (fdesc->file->ref.fetch_sub(1) == 1)
         {
             lib::bug_on(!proc->fdt.close(fd));
-            if (!fdesc->file->close())
-                return (errno = EIO, -1);
+            if (const auto ret = fdesc->file->close(); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
         return 0;
     }
@@ -765,10 +765,10 @@ namespace syscall::vfs
         if (fds[0] < 0)
             return (errno = EMFILE, -1);
 
-        if (!rfdesc->file->open(flags | o_rdonly))
+        if (const auto ret = rfdesc->file->open(flags | o_rdonly); !ret)
         {
             fdt.close(fds[0]);
-            return (errno = EIO, -1);
+            return (errno = lib::map_error(ret.error()), -1);
         }
 
         const auto wdentry = std::make_shared<dentry>();
@@ -790,11 +790,11 @@ namespace syscall::vfs
         }
 
         wfdesc->file->private_data = rfdesc->file->private_data;
-        if (!wfdesc->file->open(flags | o_wronly))
+        if (const auto ret = wfdesc->file->open(flags | o_wronly); !ret)
         {
             fdt.close(fds[0]);
             fdt.close(fds[1]);
-            return (errno = EIO, -1);
+            return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (!lib::copy_to_user(pipefd, fds.data(), sizeof(int) * 2))

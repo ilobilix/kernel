@@ -346,7 +346,7 @@ export namespace fs::dev::tty
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->read(std::move(file), buffer);
-            return std::unexpected { lib::err::io };
+            return std::unexpected { lib::err::io_error };
         }
 
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
@@ -354,7 +354,7 @@ export namespace fs::dev::tty
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->write(std::move(file), buffer);
-            return std::unexpected { lib::err::io };
+            return std::unexpected { lib::err::io_error };
         }
 
         // send to hardware
@@ -369,8 +369,13 @@ export namespace fs::dev::tty
 
         virtual std::size_t can_transmit() = 0;
 
-        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self) = 0;
-        virtual lib::expect<void> close() = 0;
+        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self)
+        {
+            lib::unused(self);
+            return { };
+        }
+
+        virtual lib::expect<void> close() { return { }; };
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
     };
@@ -394,9 +399,9 @@ export namespace fs::dev::tty
         lib::intrusive_list_hook<driver> hook;
 
         driver(std::string_view name, std::uint32_t major,
-            std::uint32_t minor_start, std::uint32_t minor_end, const ktermios &init_termios)
+            std::uint32_t minor_start, std::uint32_t num_devices, const ktermios &init_termios)
             : name { name }, major { major }, minor_start { minor_start },
-              minor_end { minor_end }, init_termios { init_termios } { }
+              minor_end { minor_start + num_devices - 1 }, init_termios { init_termios } { }
 
         virtual ~driver() = default;
 
