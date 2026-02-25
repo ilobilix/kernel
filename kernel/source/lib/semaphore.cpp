@@ -113,7 +113,7 @@ namespace lib
         const bool ints = arch::int_switch_status(false);
         lock.lock();
 
-        bug_on(signals >= 0);
+        bug_on(signals > 0);
         auto temp_threads = std::move(threads);
         signals += static_cast<std::ssize_t>(temp_threads.size());
 

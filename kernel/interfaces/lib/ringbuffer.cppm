@@ -53,7 +53,7 @@ export namespace lib
         cell_t *_storage;
 
         template<typename Func>
-        std::pair<std::size_t, bool> _emplace_batch(std::size_t count, Func &&func)
+        std::pair<bool, bool> _emplace_batch(std::size_t count, Func &&func)
         {
             bug_on(count == 0 || count > capacity, "ringbuffer::_emplace_batch(): invalid count");
 
@@ -82,7 +82,7 @@ export namespace lib
                                 func(i, reinterpret_cast<void *>(cell.data));
                                 cell.sequence.store(pos + i + 1, std::memory_order_release);
                             }
-                            return { count, overwritten };
+                            return { true, overwritten };
                         }
                     }
                     else if (dif_first < 0 || dif_last < 0)
@@ -107,7 +107,7 @@ export namespace lib
                             }
                             pos = _head.value.load(std::memory_order_relaxed);
                         }
-                        else return { 0, true };
+                        else return { false, false };
                     }
                     else pos = _head.value.load(std::memory_order_relaxed);
                 }
@@ -127,7 +127,7 @@ export namespace lib
                 if (count > avail)
                 {
                     if constexpr (mode == rb_mode::discard)
-                        return { 0, true };
+                        return { false, false };
 
                     lib::bug_on(mode != rb_mode::overwrite);
 
@@ -164,15 +164,14 @@ export namespace lib
                 }
                 _head.value += count;
 
-                return { count, overwritten };
+                return { true, overwritten };
             }
         }
 
         template<typename Func>
-        bool _emplace(Func &&func)
+        std::pair<bool, bool> _emplace(Func &&func)
         {
-            const auto [_, ovr_dsc] = _emplace_batch(1, [&](std::size_t, void *slot) { func(slot); });
-            return ovr_dsc;
+            return _emplace_batch(1, [&](std::size_t, void *slot) { func(slot); });
         }
 
         template<typename Func>
@@ -298,35 +297,34 @@ export namespace lib
         ringbuffer &operator=(const ringbuffer &) = delete;
         ringbuffer &operator=(ringbuffer &&) = delete;
 
-        bool push(const value_type &value)
+        std::pair<bool, bool> push(const value_type &value)
         {
             return _emplace([&](void *slot) {
                 new (slot) value_type { value };
             });
         }
 
-        bool push(value_type &&value)
+        std::pair<bool, bool> push(value_type &&value)
         {
             return _emplace([&](void *slot) {
                 new (slot) value_type { std::move(value) };
             });
         }
 
-        std::size_t push(std::span<const value_type> values)
+        std::pair<bool, bool> push(std::span<const value_type> values)
         {
-            const auto [cnt, _] = _emplace_batch(values.size(), [&](std::size_t i, void *slot) {
+            return _emplace_batch(values.size(), [&](std::size_t i, void *slot) {
                 new (slot) value_type { values[i] };
             });
-            return cnt;
         }
 
-        std::size_t push(const value_type *values, std::size_t count)
+        std::pair<bool, bool> push(const value_type *values, std::size_t count)
         {
             return push(std::span<const value_type> { values, count });
         }
 
         template<typename... Args>
-        bool emplace(Args &&...args)
+        std::pair<bool, bool> emplace(Args &&...args)
         {
             return _emplace([&](void *slot) {
                 new (slot) value_type { std::forward<Args>(args)... };
