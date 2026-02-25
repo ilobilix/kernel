@@ -203,7 +203,7 @@ export namespace lib::initgraph
 
     inline void realise_node(node *node)
     {
-        node->_engine->_nodes.push_back(node);
+        node->engine()->_nodes.push_back(node);
 
         if constexpr (debug)
             node->engine()->on_realise_node(node);

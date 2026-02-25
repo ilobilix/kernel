@@ -65,7 +65,11 @@ namespace syscall::memory
             if (!fdesc)
                 return (errno = EBADF, invalid_addr);
 
-            obj = fdesc->file->map(priv);
+            const auto ret = fdesc->file->map(priv);
+            if (!ret.has_value())
+                return (errno = lib::map_error(ret.error()), invalid_addr);
+
+            obj = *ret;
             if (!obj)
                 return (errno = ENODEV, invalid_addr);
         }

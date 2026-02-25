@@ -5,7 +5,6 @@ module system.vfs;
 import system.scheduler;
 import system.cpu.local;
 import system.vfs.dev;
-import system.vfs.pipe;
 import drivers.fs;
 import lib;
 import std;
@@ -18,7 +17,7 @@ namespace vfs
             auto root = std::make_shared<dentry>();
             root->name = "/";
             root->parent = root;
-            root->inode = std::make_shared<inode>(nullptr);
+            root->inode = std::make_shared<inode>();
             root->inode->stat.st_mode = stat::s_ifdir;
             return root;
         } ();
@@ -38,6 +37,27 @@ namespace vfs
     } // namespace
 
     filesystem::instance::instance() : dev_id { allocate_dev() } { }
+
+    auto file::get_ops() const -> lib::expect<std::shared_ptr<ops>>
+    {
+        lib::bug_on(!path.dentry || !path.dentry->inode);
+
+        auto &inode = path.dentry->inode;
+        dev_t dev, rdev; mode_t mode;
+        {
+            std::unique_lock _ { inode->lock };
+            auto &stat = inode->stat;
+            dev = stat.st_dev;
+            rdev = stat.st_rdev;
+            mode = stat.st_mode;
+        }
+
+        auto ops = dev::get_ops(dev, rdev, mode);
+        if (!ops.has_value())
+            return std::unexpected { ops.error() };
+
+        return *ops;
+    }
 
     path get_root(bool absolute)
     {
@@ -62,12 +82,12 @@ namespace vfs
         return true;
     }
 
-    auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
+    auto find_fs(std::string_view name) -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
     {
         auto locked = filesystems.lock();
         if (auto it = locked->find(name); it != locked->end())
             return it->second;
-        return std::unexpected(error::invalid_filesystem);
+        return std::unexpected { lib::err::invalid_filesystem };
     }
 
     std::shared_ptr<dentry> dentry::root(bool absolute)
@@ -105,18 +125,18 @@ namespace vfs
         return result;
     }
 
-    auto path_for(lib::path _path) -> expect<path>
+    auto path_for(lib::path _path) -> lib::expect<path>
     {
         std::optional<path> parent { };
         if (sched::is_initialised())
             parent = sched::this_thread()->parent->root;
         auto res = resolve(parent, _path);
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
         return res->target;
     }
 
-    auto resolve(std::optional<path> parent, lib::path _path) -> expect<resolve_res>
+    auto resolve(std::optional<path> parent, lib::path _path) -> lib::expect<resolve_res>
     {
         if (!parent || _path.is_absolute())
             parent = get_root(false);
@@ -193,12 +213,12 @@ namespace vfs
                     {
                         const auto reduced = reduce(current, next);
                         if (!reduced)
-                            return std::unexpected(reduced.error());
+                            return std::unexpected { reduced.error() };
                         next = reduced.value();
                     }
 
                     if (next.dentry->inode->stat.type() != stat::type::s_ifdir)
-                        return std::unexpected(error::not_a_dir);
+                        return std::unexpected { lib::err::not_a_dir };
 
                     current = next;
                     continue;
@@ -210,10 +230,10 @@ namespace vfs
 
             break;
         }
-        return std::unexpected(error::not_found);
+        return std::unexpected { lib::err::not_found };
     }
 
-    auto reduce(path parent, path src, std::size_t symlink_depth) -> expect<path>
+    auto reduce(path parent, path src, std::size_t symlink_depth) -> lib::expect<path>
     {
         const auto is_symlink = [&src]
         {
@@ -231,7 +251,7 @@ namespace vfs
 
             const auto ret = resolve(parent, src.dentry->symlinked_to);
             if (!ret || ret->target.dentry == src.dentry)
-                return std::unexpected(error::invalid_symlink);
+                return std::unexpected { lib::err::invalid_symlink };
 
             parent = ret->parent;
             src = ret->target;
@@ -239,43 +259,43 @@ namespace vfs
         }
 
         if (og && symlink_depth == 0 && is_symlink())
-            return std::unexpected(error::symloop_max);
+            return std::unexpected { lib::err::symloop_max };
 
         return src;
     }
 
-    auto mount(lib::path source_path, lib::path target_path, std::string_view fstype, int flags) -> expect<void>
+    auto mount(lib::path source_path, lib::path target_path, std::string_view fstype, int flags) -> lib::expect<void>
     {
         // TODO
         lib::unused(flags);
 
         auto fs = find_fs(fstype);
         if (!fs)
-            return std::unexpected(fs.error());
+            return std::unexpected { fs.error() };
 
         std::optional<path> source { };
         if (!source_path.empty())
         {
             auto ret = path_for(source_path);
             if (!ret)
-                return std::unexpected(ret.error());
+                return std::unexpected { ret.error() };
 
             source = ret.value();
             if (source->dentry->inode->stat.type() != stat::type::s_ifblk)
-                return std::unexpected(error::not_a_block);
+                return std::unexpected { lib::err::not_a_block };
         }
 
         auto ret = path_for(target_path);
         if (!ret)
-            return std::unexpected(ret.error());
+            return std::unexpected { ret.error() };
 
         auto target = ret.value();
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
-            return std::unexpected(error::not_a_dir);
+            return std::unexpected { lib::err::not_a_dir };
 
         auto mnt = fs->get()->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { });
         if (!mnt)
-            return std::unexpected(mnt.error());
+            return std::unexpected { mnt.error() };
 
         mnt.value()->mounted_on = target;
         target.dentry->child_mounts.push_back(mnt.value());
@@ -285,50 +305,26 @@ namespace vfs
         return { };
     }
 
-    auto unmount(lib::path target) -> expect<void>
+    auto unmount(lib::path target) -> lib::expect<void>
     {
         lib::unused(target);
-        return std::unexpected(error::todo);
+        return std::unexpected { lib::err::todo };
     }
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev) -> expect<path>
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev) -> lib::expect<path>
     {
-        std::shared_ptr<vfs::ops> ops { };
-        switch (stat::type(mode))
-        {
-            case stat::type::s_ifchr:
-            case stat::type::s_ifblk:
-                if (rdev == 0)
-                    return std::unexpected(error::invalid_device);
-                ops = dev::get_cdev_ops(rdev);
-                if (!ops)
-                    return std::unexpected(error::invalid_device);
-                break;
-            case stat::type::s_ififo:
-                ops = pipe::get_ops();
-                break;
-            case stat::type::s_ifsock:
-                return std::unexpected(error::todo);
-            case stat::type::s_ifreg:
-            case stat::type::s_ifdir:
-            case stat::type::s_iflnk:
-                break;
-            default:
-                return std::unexpected(error::invalid_type);
-        }
-
         auto res = resolve(parent, _path);
         if (res)
-            return std::unexpected(error::already_exists);
+            return std::unexpected { lib::err::already_exists };
 
         res = resolve(parent, _path.dirname());
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
 
         const auto real_parent = res->target;
         const auto name = _path.basename();
 
-        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev, ops);
+        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev);
         if (ret)
         {
             auto dentry = std::make_shared<vfs::dentry>();
@@ -339,18 +335,18 @@ namespace vfs
             real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
             return path { real_parent.mnt, dentry };
         }
-        return std::unexpected(ret.error());
+        return std::unexpected { ret.error() };
     }
 
-    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>
+    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>
     {
         auto res = resolve(parent, src);
         if (res)
-            return std::unexpected(error::already_exists);
+            return std::unexpected { lib::err::already_exists };
 
         res = resolve(parent, src.dirname());
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
 
         const auto real_parent = res->target;
         const auto name = src.basename();
@@ -367,25 +363,25 @@ namespace vfs
             real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
             return path { real_parent.mnt, dentry };
         }
-        return std::unexpected(ret.error());
+        return std::unexpected { ret.error() };
     }
 
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links) -> expect<path>
+    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links) -> lib::expect<path>
     {
         auto res = resolve(parent, src);
         if (res)
-            return std::unexpected(error::already_exists);
+            return std::unexpected { lib::err::already_exists };
 
         res = resolve(parent, src.dirname());
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
 
         const auto real_parent = res->target;
         const auto name = src.basename();
 
         res = resolve(tgtparent, target);
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
 
         const auto tgt = res->target;
         const auto type = tgt.dentry->inode->stat.type();
@@ -393,15 +389,15 @@ namespace vfs
         {
             const auto reduced = reduce(res->parent, res->target);
             if (!reduced)
-                return std::unexpected(reduced.error());
+                return std::unexpected { reduced.error() };
             res->target = reduced.value();
         }
 
         if (tgt.dentry->inode->stat.type() == stat::type::s_ifdir)
-            return std::unexpected(error::target_is_a_dir);
+            return std::unexpected { lib::err::target_is_a_dir };
 
         if (real_parent.mnt != tgt.mnt)
-            return std::unexpected(error::different_filesystem);
+            return std::unexpected { lib::err::different_filesystem };
 
         auto ret = real_parent.mnt->fs.lock()->link(real_parent.dentry->inode, name, tgt.dentry->inode);
         if (ret)
@@ -414,14 +410,14 @@ namespace vfs
             real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
             return path { real_parent.mnt, dentry };
         }
-        return std::unexpected(ret.error());
+        return std::unexpected { ret.error() };
     }
 
-    auto unlink(std::optional<path> parent, lib::path path) -> expect<void>
+    auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>
     {
         const auto res = resolve(parent, path);
         if (!res)
-            return std::unexpected(res.error());
+            return std::unexpected { res.error() };
 
         const auto real_parent = res->parent.dentry;
         const auto name = path.basename();
@@ -429,13 +425,13 @@ namespace vfs
         if (res->target.dentry->inode->stat.type() == stat::s_ifdir)
         {
             if (res->target.dentry == res->target.mnt->root)
-                return std::unexpected(error::target_is_busy);
+                return std::unexpected { lib::err::target_is_busy };
 
             if (!res->target.dentry->children.read_lock()->empty())
-                return std::unexpected(error::dir_not_empty);
+                return std::unexpected { lib::err::dir_not_empty };
             populate(res->target);
             if (!res->target.dentry->children.read_lock()->empty())
-                return std::unexpected(error::dir_not_empty);
+                return std::unexpected { lib::err::dir_not_empty };
         }
 
         auto ret = res->target.mnt->fs.lock()->unlink(res->target.dentry->inode);
@@ -447,7 +443,7 @@ namespace vfs
             wlocked->erase(it);
             return { };
         }
-        return std::unexpected(ret.error());
+        return std::unexpected { ret.error() };
     }
 
     bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const ::stat &stat, int mode)

@@ -148,7 +148,7 @@ namespace vmm
             pmm::free(page);
     }
 
-    std::expected<void, error> map_internal(
+    lib::expect<void> map_internal(
             auto &locked, auto &pmap,
             std::uintptr_t address, std::size_t length,
             std::uint8_t prot, std::uint8_t flags,
@@ -159,10 +159,10 @@ namespace vmm
 
         const auto psize = default_page_size();
         if (address % psize)
-            return std::unexpected { error::addr_not_aligned };
+            return std::unexpected { lib::err::addr_not_aligned };
 
         if (offset % psize)
-            return std::unexpected { error::addr_not_aligned };
+            return std::unexpected { lib::err::addr_not_aligned };
 
         const auto offsetp = offset / psize;
 
@@ -177,7 +177,7 @@ namespace vmm
         for (const auto entry : overlapping)
         {
             if (entry->flags & flag::untouchable)
-                return std::unexpected { error::addr_in_use };
+                return std::unexpected { lib::err::addr_in_use };
 
             if (startp <= entry->startp && entry->endp <= endp)
             {
@@ -224,7 +224,7 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> vmspace::map(
+    lib::expect<void> vmspace::map(
             std::uintptr_t address, std::size_t length,
             std::uint8_t prot, std::uint8_t flags,
             std::shared_ptr<object> obj, off_t offset
@@ -234,11 +234,11 @@ namespace vmm
         return map_internal(locked, pmap, address, length, prot, flags, obj, offset);
     }
 
-    std::expected<void, error> vmspace::unmap(std::uintptr_t address, std::size_t length)
+    lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
     {
         const auto psize = default_page_size();
         if (address % psize)
-            return std::unexpected { error::addr_not_aligned };
+            return std::unexpected { lib::err::addr_not_aligned };
 
         const auto startp = address / psize;
         const auto endp = lib::div_roundup(address + length, psize);
@@ -294,7 +294,7 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> vmspace::unmap(std::shared_ptr<object> obj)
+    lib::expect<void> vmspace::unmap(std::shared_ptr<object> obj)
     {
         lib::bug_on(obj == nullptr);
 
@@ -320,11 +320,11 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> vmspace::protect(std::uintptr_t address, std::size_t length, std::uint8_t prot)
+    lib::expect<void> vmspace::protect(std::uintptr_t address, std::size_t length, std::uint8_t prot)
     {
         const auto psize = default_page_size();
         if (address % psize)
-            return std::unexpected { error::addr_not_aligned };
+            return std::unexpected { lib::err::addr_not_aligned };
 
         const auto pflags = [prot] {
             auto ret = pflag::user;

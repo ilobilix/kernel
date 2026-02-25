@@ -37,7 +37,7 @@ namespace fs::dev
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
             mem::registered_stage(),
-            tty::registered_stage()
+            tty::current_registered_stage()
         },
         lib::initgraph::entail { registered_stage() },
         [] { }
@@ -56,7 +56,7 @@ namespace fs::dev
             auto create = [](std::string_view path, mode_t mode, dev_t dev)
             {
                 const auto ret = vfs::create(std::nullopt, path, mode, dev);
-                if (!ret && ret.error() != vfs::error::already_exists)
+                if (!ret && ret.error() != lib::err::already_exists)
                 {
                     lib::panic(
                         "dev: failed to create a character device file '{}': {}",

@@ -105,14 +105,14 @@ export namespace vmm
             brk_start = brk = addr;
         }
 
-        std::expected<void, error> map(
+        lib::expect<void> map(
             std::uintptr_t address, std::size_t length,
             std::uint8_t prot, std::uint8_t flags,
             std::shared_ptr<object> obj, off_t offset
         );
-        std::expected<void, error> unmap(std::uintptr_t address, std::size_t length);
-        std::expected<void, error> unmap(std::shared_ptr<object> obj);
-        std::expected<void, error> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
+        lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
+        lib::expect<void> unmap(std::shared_ptr<object> obj);
+        lib::expect<void> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);
         std::optional<std::uintptr_t> find_free_region(std::size_t length);

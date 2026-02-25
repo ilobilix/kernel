@@ -3,8 +3,13 @@
 module x86_64.drivers.output.com;
 
 import drivers.output.serial;
+import drivers.fs.dev.tty;
+import system.vfs;
+import system.vfs.dev;
+import magic_enum;
 import arch;
 import lib;
+import fmt;
 import std;
 
 namespace x86_64::output::com
@@ -49,7 +54,7 @@ namespace x86_64::output::com
         init_port(COM1);
 
         using namespace ::output::serial;
-        static constinit printer printer { printc };
-        register_printer(printer);
+        static constinit logger log { printc };
+        register_logger(log);
     }
 } // namespace x86_64::output::com

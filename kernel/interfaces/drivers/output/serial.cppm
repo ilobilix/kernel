@@ -4,15 +4,15 @@ export module drivers.output.serial;
 
 export namespace output::serial
 {
-    struct printer
+    struct logger
     {
         void (*printc)(char);
-        printer *next;
+        logger *next;
 
-        constexpr printer(void (*func)(char))
+        constexpr logger(void (*func)(char))
             : printc { func }, next { nullptr } { }
     };
-    void register_printer(printer &prn);
+    void register_logger(logger &prn);
 
     void printc(char chr);
 } // export namespace output::serial
