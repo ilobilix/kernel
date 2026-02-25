@@ -341,7 +341,7 @@ export namespace fs::dev::tty
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
-                return rlocked.value()->read(file, buffer);
+                return rlocked.value()->read(std::move(file), buffer);
             return -1;
         }
 
@@ -349,7 +349,7 @@ export namespace fs::dev::tty
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
-                return rlocked.value()->write(file, buffer);
+                return rlocked.value()->write(std::move(file), buffer);
             return -1;
         }
 

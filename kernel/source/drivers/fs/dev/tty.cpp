@@ -816,7 +816,7 @@ namespace fs::dev::tty
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(file, buffer);
+            return inst->read(std::move(file), buffer);
         }
 
         std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
@@ -824,7 +824,7 @@ namespace fs::dev::tty
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(file, buffer);
+            return inst->write(std::move(file), buffer);
         }
 
         int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::uptr_or_addr argp) override
@@ -875,7 +875,7 @@ namespace fs::dev::tty
 
         bool close(std::shared_ptr<vfs::file> self) override
         {
-            return tty::ops::singleton()->close(self);
+            return tty::ops::singleton()->close(std::move(self));
         }
 
         std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
@@ -883,7 +883,7 @@ namespace fs::dev::tty
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(file, buffer);
+            return inst->read(std::move(file), buffer);
         }
 
         std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
@@ -891,7 +891,7 @@ namespace fs::dev::tty
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
             const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(file, buffer);
+            return inst->write(std::move(file), buffer);
         }
 
         int ioctl(std::shared_ptr<vfs::file> file, unsigned long request, lib::uptr_or_addr argp) override

@@ -313,11 +313,11 @@ namespace syscall::proc
             );
 
             if (kreadfds.has_value())
-                copy_to(readfds, kreadfds.value());
+                copy_to(readfds, std::move(*kreadfds));
             if (kwritefds.has_value())
-                copy_to(writefds, kwritefds.value());
+                copy_to(writefds, std::move(*kwritefds));
             if (kexceptfds.has_value())
-                copy_to(exceptfds, kexceptfds.value());
+                copy_to(exceptfds, std::move(*kexceptfds));
 
             return ret;
         }

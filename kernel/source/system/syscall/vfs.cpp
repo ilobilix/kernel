@@ -78,15 +78,15 @@ namespace syscall::vfs
 
         std::optional<resolve_res> resolve_from(sched::process *proc, int dirfd, lib::path_view path)
         {
-            const auto parent = get_parent(proc, dirfd, path);
+            auto parent = get_parent(proc, dirfd, path);
             if (!parent.has_value())
                 return std::nullopt;
 
-            auto res = resolve(parent, path);
-            if (!res)
+            auto res = resolve(std::move(parent), path);
+            if (!res.has_value())
                 return (errno = map_error(res.error()), std::nullopt);
 
-            return std::move(res.value());
+            return *res;
         }
 
         std::optional<lib::path> get_path(const char __user *pathname)
@@ -109,7 +109,7 @@ namespace syscall::vfs
                 return (errno = EFAULT, std::nullopt);
 
             path.normalise();
-            return std::move(path);
+            return path;
         }
 
         std::optional<path> get_target(sched::process *proc, int dirfd, const char __user *pathname, bool follow_links, bool empty_path)
@@ -126,11 +126,11 @@ namespace syscall::vfs
                 return fd->file->path;
             }
 
-            const auto val = get_path(pathname);
+            auto val = get_path(pathname);
             if (!val.has_value())
                 return std::nullopt;
 
-            auto res = resolve_from(proc, dirfd, val.value());
+            auto res = resolve_from(proc, dirfd, std::move(*val));
             if (!res.has_value())
                 return std::nullopt;
 
@@ -139,10 +139,10 @@ namespace syscall::vfs
 
             if (follow_links)
             {
-                auto reduced = reduce(res->parent, target);
+                auto reduced = reduce(std::move(res->parent), std::move(target));
                 if (!reduced.has_value())
                     return (errno = map_error(reduced.error()), std::nullopt);
-                target = std::move(reduced.value());
+                target = std::move(*reduced);
             }
             return target;
         }
@@ -165,11 +165,11 @@ namespace syscall::vfs
         // ignore other bits
         mode &= (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
-        const auto val = get_path(pathname);
+        auto val = get_path(pathname);
         if (!val.has_value())
             return -1;
 
-        const auto pathstr = val.value();
+        const auto pathstr = std::move(*val);
 
         path target { };
         auto res = resolve_from(proc, dirfd, pathstr);
@@ -200,7 +200,7 @@ namespace syscall::vfs
             else
                 stat.st_gid = proc->egid;
 
-            target = std::move(created.value());
+            target = std::move(*created);
         }
         else if ((flags & o_excl) && (flags & o_creat))
         {
@@ -217,7 +217,7 @@ namespace syscall::vfs
                 auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
                     return (errno = map_error(reduced.error()), -1);
-                target = std::move(reduced.value());
+                target = std::move(*reduced);
             }
         }
 
@@ -299,7 +299,7 @@ namespace syscall::vfs
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->read(uspan.value());
+        const auto ret = fdesc->file->read(*uspan);
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -327,7 +327,7 @@ namespace syscall::vfs
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->write(uspan.value());
+        const auto ret = fdesc->file->write(*uspan);
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -357,7 +357,7 @@ namespace syscall::vfs
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), uspan.value());
+        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -385,7 +385,7 @@ namespace syscall::vfs
         if (!uspan.has_value())
             return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), uspan.value());
+        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -426,7 +426,7 @@ namespace syscall::vfs
             if (!uspan.has_value())
                 return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->read(uspan.value());
+            const auto ret = fdesc->file->read(*uspan);
             if (ret < 0)
                 return (errno = -ret, -1);
 
@@ -467,7 +467,7 @@ namespace syscall::vfs
             if (!uspan.has_value())
                 return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->write(uspan.value());
+            const auto ret = fdesc->file->write(*uspan);
             if (ret < 0)
                 return (errno = -ret, -1);
 
@@ -505,7 +505,7 @@ namespace syscall::vfs
             if (!uspan.has_value())
                 return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), uspan.value());
+            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
             if (ret < 0)
                 return (errno = -ret, -1);
 
@@ -547,7 +547,7 @@ namespace syscall::vfs
             if (!uspan.has_value())
                 return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), uspan.value());
+            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
             if (ret < 0)
                 return (errno = -ret, -1);
 
