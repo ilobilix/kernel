@@ -16,18 +16,23 @@ import fmt;
 
 namespace fs::dev::tty
 {
+    using namespace vfs::dev;
     namespace
     {
         constexpr bool debug = false;
 
         lib::intrusive_list<driver, &driver::hook> drivers;
 
-        driver *get_driver(dev_t major)
+        driver *get_driver(dev_t rdev)
         {
-            if (const auto it = drivers.find_if([major](const auto &drv) {
-                return drv.major == major;
+            const auto maj = major(rdev);
+            const auto min = minor(rdev);
+
+            if (const auto it = drivers.find_if([&](const auto &drv) {
+                return drv.major == maj && drv.minor_start <= min && min <= drv.minor_end;
             }); it != drivers.end())
                 return it.value();
+
             return nullptr;
         }
 
@@ -728,15 +733,13 @@ namespace fs::dev::tty
         test_driver() : driver { "tty-test", 4, 0, 4, ktermios::standard() } { }
     };
 
-    using namespace vfs::dev;
-
     lib::expect<void> ops::open(std::shared_ptr<vfs::file> self, int flags)
     {
         lib::bug_on(!self || self->private_data != nullptr);
         lib::bug_on(!self->path.dentry || !self->path.dentry->inode);
 
         const auto rdev = self->path.dentry->inode->stat.st_rdev;
-        auto drv = get_driver(major(rdev));
+        auto drv = get_driver(rdev);
         if (!drv)
             return std::unexpected { lib::err::invalid_device };
 
