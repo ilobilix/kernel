@@ -144,7 +144,7 @@ namespace vfs::pipe
                     const auto pushed = pdata->buffer.push({
                         const_cast<const char *>(buf.data()) + chunk_written,
                         current_chunk - chunk_written
-                    });
+                    }).first;
 
                     if (pushed > 0)
                     {

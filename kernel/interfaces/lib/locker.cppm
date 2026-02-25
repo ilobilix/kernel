@@ -34,45 +34,23 @@ namespace lib::detail
         requires (is_lock<Lock> || is_rwlock<Lock>)
     class locked
     {
-        // template<typename, typename ULock, bool>
-        //     requires (is_lock<ULock> || is_rwlock<ULock>)
-        // friend class locked;
-
         private:
         Type *_ptr;
         Lock &_lock;
+        bool _locked;
 
         using ret_type = std::conditional_t<Write, Type, const Type>;
 
-        // locked(Type *ptr, Lock &lock, bool) requires detail::is_rwlock<Lock>
-        //     : _ptr { ptr }, _lock { lock } { _lock.upgrade(); }
-
         public:
-        locked(Type *ptr, Lock &lock) : _ptr { ptr }, _lock { lock }
+        locked(Type *_ptr, Lock &_lock)
+            : _ptr { _ptr }, _lock { _lock }, _locked { false }
         {
-            if constexpr (is_rwlock<Lock>)
-            {
-                if constexpr (Write)
-                    _lock.write_lock();
-                else
-                    _lock.read_lock();
-            }
-            else _lock.lock();
+            lock();
         }
 
         ~locked()
         {
-            // if (_ptr == nullptr)
-            //     return;
-
-            if constexpr (is_rwlock<Lock>)
-            {
-                if constexpr (Write)
-                    _lock.write_unlock();
-                else
-                    _lock.read_unlock();
-            }
-            else _lock.unlock();
+            unlock();
         }
 
         locked &operator=(const locked &) = delete;
@@ -94,12 +72,39 @@ namespace lib::detail
         [[nodiscard]] ret_type &operator*() const & { return *_ptr; }
         [[nodiscard]] ret_type *operator->() const & { return _ptr; }
 
-        // auto upgrade() & requires (detail::is_rwlock<Lock> && Write == false)
-        // {
-        //     const auto ptr = _ptr;
-        //     _ptr = nullptr;
-        //     return locked<Type, Lock, true> { ptr, _lock, true };
-        // }
+        bool lock()
+        {
+            if (_locked)
+                return false;
+
+            if constexpr (is_rwlock<Lock>)
+            {
+                if constexpr (Write)
+                    _lock.write_lock();
+                else
+                    _lock.read_lock();
+            }
+            else _lock.lock();
+
+            return _locked = true;
+        }
+
+        bool unlock()
+        {
+            if (!_locked)
+                return false;
+
+            if constexpr (is_rwlock<Lock>)
+            {
+                if constexpr (Write)
+                    _lock.write_unlock();
+                else
+                    _lock.read_unlock();
+            }
+            else _lock.unlock();
+
+            return !(_locked = false);
+        }
     };
 
     enum class make_locked_tag_t { };
