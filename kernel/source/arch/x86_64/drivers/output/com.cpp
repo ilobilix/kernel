@@ -3,7 +3,10 @@
 module x86_64.drivers.output.com;
 
 import drivers.output.serial;
+import drivers.output.terminal;
 import drivers.fs.dev.tty;
+import system.interrupts;
+import system.cpu;
 import system.vfs;
 import system.vfs.dev;
 import magic_enum;
@@ -20,19 +23,80 @@ namespace x86_64::output::com
         {
             COM1 = 0x3F8,
             COM2 = 0x2F8,
-            COM3 = 0x3E8,
-            COM4 = 0x2E8
+            // COM3 = 0x3E8,
+            // COM4 = 0x2E8,
+            // COM5 = 0x5F8,
+            // COM6 = 0x4F8,
+            // COM7 = 0x5E8,
+            // COM8 = 0x4E8,
         };
+
+        constexpr std::size_t num_coms = 2;
+
+        constexpr COM nth_com(std::size_t idx)
+        {
+            switch (idx)
+            {
+                case 1:
+                    return COM1;
+                case 2:
+                    return COM2;
+                // case 3:
+                //     return COM3;
+                // case 4:
+                //     return COM4;
+                // case 5:
+                //     return COM5;
+                // case 6:
+                //     return COM6;
+                // case 7:
+                //     return COM7;
+                // case 8:
+                //     return COM8;
+            }
+            lib::panic("invalid com {}", idx);
+            std::unreachable();
+        }
+
+        constinit std::array<bool, num_coms> usable { };
+        std::array<std::function<void (char)>, num_coms> hooks;
+
+        void irq_handler(cpu::registers *regs)
+        {
+            std::size_t idx = 0;
+            if (regs->vector == 0x24)
+                idx = 1;
+            else if (regs->vector == 0x23)
+                idx = 2;
+            else
+                lib::panic("invalid com irq vector {}", regs->vector);
+
+            lib::bug_on(!usable[idx - 1]);
+
+            const auto com = nth_com(idx);
+
+            const auto iir = lib::io::in<8>(com + 2);
+            const bool data = ((iir >> 1) & 0b11) == 0b10;
+            if (!data)
+                return;
+
+            while (lib::io::in<8>(com + 5) & 1)
+            {
+                auto chr = lib::io::in<8>(com);
+                if (hooks[idx - 1])
+                    hooks[idx - 1](chr);
+            }
+        }
 
         void printc(char chr, COM com)
         {
-            while (not (lib::io::in<8>(com + 5) & (1 << 5)))
+            while (!(lib::io::in<8>(com + 5) & (1 << 5)))
                 arch::pause();
 
             lib::io::out<8>(com, chr);
         }
 
-        void init_port(COM com)
+        bool init_port(COM com)
         {
             lib::io::out<8>(com + 1, 0x00);
             lib::io::out<8>(com + 3, 0x80);
@@ -41,6 +105,15 @@ namespace x86_64::output::com
             lib::io::out<8>(com + 3, 0x03);
             lib::io::out<8>(com + 2, 0xC7);
             lib::io::out<8>(com + 4, 0x0B);
+
+            lib::io::out<8>(com + 4, 0x1E);
+            lib::io::out<8>(com + 0, 0xAE);
+            if (lib::io::in<8>(com + 0) != 0xAE)
+                return false;
+
+            lib::io::out<8>(com + 4, 0x0F);
+            lib::io::out<8>(com + 1, 0x01);
+            return true;
         }
     } // namespace
 
@@ -51,10 +124,115 @@ namespace x86_64::output::com
 
     void init()
     {
-        init_port(COM1);
+        for (std::size_t i = 0; i < num_coms; i++)
+            usable[i] = init_port(nth_com(i + 1));
 
         using namespace ::output::serial;
         static constinit logger log { printc };
         register_logger(log);
     }
+
+    namespace tty = fs::dev::tty;
+
+    struct com_driver : tty::driver
+    {
+        struct com_instance : tty::instance
+        {
+            std::size_t transmit(std::span<std::byte> buffer) override
+            {
+                for (const auto byte : buffer)
+                {
+                    const auto chr = static_cast<char>(byte);
+                    printc(chr);
+
+                    //! TODO: TEMPORARY - FOR TESTING
+                    namespace term = ::output::term;
+                    const auto ctx = term::main();
+                    if (chr == '\n')
+                        term::write(ctx, '\r');
+                    term::write(ctx, chr);
+                }
+                return buffer.size_bytes();
+            }
+
+            std::size_t can_transmit() override
+            {
+                return std::numeric_limits<std::size_t>::max();
+            }
+
+            lib::expect<void> open(std::shared_ptr<vfs::file> self) override
+            {
+                lib::unused(self);
+                if (usable[minor - 64])
+                {
+                    hooks[minor - 64] = [this](char chr) {
+                        receive(std::span { reinterpret_cast<std::byte *>(&chr), 1 });
+                    };
+                }
+                return { };
+            }
+
+            lib::expect<void> close() override
+            {
+                hooks[minor - 64] = nullptr;
+                return { };
+            };
+
+            com_instance(driver *drv, std::uint32_t minor)
+                : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }
+        };
+
+        std::shared_ptr<tty::instance> create_instance(std::uint32_t minor) override
+        {
+            return std::make_shared<com_instance>(this, minor);
+        }
+
+        void destroy_instance(std::shared_ptr<tty::instance> inst) override
+        {
+            lib::unused(inst);
+        }
+
+        com_driver() : driver { "com", 4, 64, num_coms, tty::ktermios::standard() } { }
+    };
+
+    lib::initgraph::task com_task
+    {
+        "output.arch.com.tty.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { tty::current_registered_stage() },
+        [] {
+            const auto com_drv = new com_driver { };
+            tty::register_driver(com_drv);
+
+            const auto add_com_tty = [&](std::size_t idx, std::uint32_t minor)
+            {
+                using namespace vfs::dev;
+                register_dev_ops(makedev(com_drv->major, minor), tty::ops::singleton());
+
+                const auto name = fmt::format("/dev/ttyS{}", idx);
+                auto ret = vfs::create(
+                    std::nullopt, name, stat::s_ifchr | 0666,
+                    makedev(com_drv->major, minor)
+                );
+
+                if (!ret.has_value())
+                {
+                    lib::error(
+                        "tty: could not create '{}': {}",
+                        name, magic_enum::enum_name(ret.error())
+                    );
+                }
+
+                if (usable[idx])
+                {
+                    auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x24 - idx).value();
+                    handler.set(irq_handler);
+                    interrupts::unmask(vector);
+                }
+            };
+
+            for (std::size_t i = com_drv->minor_start; i <= com_drv->minor_end; i++)
+                add_com_tty(i - com_drv->minor_start, i);
+        }
+    };
 } // namespace x86_64::output::com
