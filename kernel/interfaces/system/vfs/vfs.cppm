@@ -11,31 +11,6 @@ export namespace vfs
     inline constexpr std::size_t symloop_max = 40;
     inline constexpr std::size_t path_max = 4096;
 
-    enum class error
-    {
-        todo,
-        already_exists,
-
-        not_found,
-        not_a_dir,
-        not_a_block,
-
-        symloop_max,
-
-        target_is_a_dir,
-        target_is_busy,
-
-        dir_not_empty,
-
-        different_filesystem,
-
-        invalid_filesystem,
-        invalid_mount,
-        invalid_symlink,
-        invalid_device,
-        invalid_type
-    };
-
     enum openflags : int
     {
 #if defined(__x86_64__)
@@ -124,41 +99,38 @@ export namespace vfs
 
     // stat and s_* bits are defined in lib/types.cppm
 
-    template<typename Type>
-    using expect = std::expected<Type, error>;
-
     struct file;
     struct ops
     {
-        virtual bool open(std::shared_ptr<file> self, int flags)
+        virtual lib::expect<void> open(std::shared_ptr<file> self, int flags)
         {
             lib::unused(self, flags);
-            return true;
+            return { };
         }
 
-        virtual bool close(std::shared_ptr<file> self)
+        virtual lib::expect<void> close(std::shared_ptr<file> self)
         {
             lib::unused(self);
-            return true;
+            return { };
         }
 
-        virtual std::ssize_t read(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual std::ssize_t write(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual bool trunc(std::shared_ptr<file> self, std::size_t size) = 0;
+        virtual lib::expect<std::size_t> read(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> write(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<void> trunc(std::shared_ptr<file> self, std::size_t size) = 0;
 
-        virtual int ioctl(std::shared_ptr<file> self, unsigned long request, lib::uptr_or_addr argp)
+        virtual lib::expect<int> ioctl(std::shared_ptr<file> self, std::uint64_t request, lib::uptr_or_addr argp)
         {
             lib::unused(self, request, argp);
-            return (errno = ENOTTY, -1);
+            return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<file> self, bool priv)
+        virtual lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<file> self, bool priv)
         {
             lib::unused(self, priv);
-            return nullptr;
+            return std::unexpected { lib::err::mapping_unsupported };
         }
 
-        virtual bool sync() { return true; }
+        virtual lib::expect<void> sync() { return { }; }
 
         virtual ~ops() = default;
     };
@@ -182,13 +154,13 @@ export namespace vfs
             std::atomic<ino_t> next_inode = 1;
             dev_t dev_id;
 
-            virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, dev_t rdev, std::shared_ptr<ops> ops) -> expect<std::shared_ptr<inode>> = 0;
+            virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, dev_t rdev) -> lib::expect<std::shared_ptr<inode>> = 0;
 
-            virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<inode>> = 0;
-            virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> expect<std::shared_ptr<inode>> = 0;
-            virtual auto unlink(std::shared_ptr<inode> &inode) -> expect<void> = 0;
+            virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> lib::expect<std::shared_ptr<inode>> = 0;
+            virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> lib::expect<std::shared_ptr<inode>> = 0;
+            virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
-            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
+            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
@@ -197,7 +169,7 @@ export namespace vfs
             instance();
         };
 
-        virtual auto mount(std::shared_ptr<dentry> src) const -> expect<std::shared_ptr<mount>> = 0;
+        virtual auto mount(std::shared_ptr<dentry> src) const -> lib::expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -213,12 +185,7 @@ export namespace vfs
     struct inode
     {
         lib::mutex lock;
-        std::shared_ptr<ops> op;
         stat stat;
-
-        inode(std::shared_ptr<ops> op) : op { op }, stat { } { }
-
-        virtual ~inode() = default;
     };
 
     struct dentry : std::enable_shared_from_this<dentry>
@@ -243,13 +210,7 @@ export namespace vfs
 
     struct file : std::enable_shared_from_this<file>
     {
-        inline std::shared_ptr<ops> &get_ops() const
-        {
-            lib::bug_on(!path.dentry || !path.dentry->inode);
-            auto &inode = path.dentry->inode;
-            lib::bug_on(!inode->op);
-            return inode->op;
-        }
+        auto get_ops() const -> lib::expect<std::shared_ptr<ops>>;
 
         lib::mutex lock;
         std::atomic<std::uint32_t> ref;
@@ -260,57 +221,91 @@ export namespace vfs
 
         std::shared_ptr<void> private_data;
 
-        bool open(int flags)
+        lib::expect<void> open(int flags)
         {
-            return get_ops()->open(shared_from_this(), flags);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+            return ops->get()->open(shared_from_this(), flags);
         }
 
-        bool close()
+        lib::expect<void> close()
         {
-            return get_ops()->close(shared_from_this());
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+            return ops->get()->close(shared_from_this());
         }
 
-        std::ssize_t read(lib::maybe_uspan<std::byte> buffer)
+        lib::expect<std::size_t> read(lib::maybe_uspan<std::byte> buffer)
         {
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
             std::unique_lock _ { lock };
-            const auto ret = get_ops()->read(shared_from_this(), offset, buffer);
-            if (ret > 0)
-                offset += static_cast<std::size_t>(ret);
+            const auto ret = ops->get()->read(shared_from_this(), offset, buffer);
+            if (ret.has_value())
+                offset += *ret;
             return ret;
         }
 
-        std::ssize_t write(lib::maybe_uspan<std::byte> buffer)
+        lib::expect<std::size_t> write(lib::maybe_uspan<std::byte> buffer)
         {
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
             std::unique_lock _ { lock };
-            const auto ret = get_ops()->write(shared_from_this(), offset, buffer);
-            if (ret > 0)
-                offset += static_cast<std::size_t>(ret);
+            const auto ret = ops->get()->write(shared_from_this(), offset, buffer);
+            if (ret.has_value())
+                offset += *ret;
             return ret;
         }
 
-        std::ssize_t pread(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+        lib::expect<std::size_t> pread(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
-            return get_ops()->read(shared_from_this(), offset, buffer);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            return ops->get()->read(shared_from_this(), offset, buffer);
         }
 
-        std::ssize_t pwrite(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+        lib::expect<std::size_t> pwrite(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
-            return get_ops()->write(shared_from_this(), offset, buffer);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            return ops->get()->write(shared_from_this(), offset, buffer);
         }
 
-        bool trunc(std::size_t size)
+        lib::expect<void> trunc(std::size_t size)
         {
-            return get_ops()->trunc(shared_from_this(), size);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            return ops->get()->trunc(shared_from_this(), size);
         }
 
-        int ioctl(unsigned long request, lib::uptr_or_addr argp)
+        lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp)
         {
-            return get_ops()->ioctl(shared_from_this(), request, argp);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            return ops->get()->ioctl(shared_from_this(), request, argp);
         }
 
-        std::shared_ptr<vmm::object> map(bool priv)
+        lib::expect<std::shared_ptr<vmm::object>> map(bool priv)
         {
-            return get_ops()->map(shared_from_this(), priv);
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            return ops->get()->map(shared_from_this(), priv);
         }
 
         static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags, pid_t pid)
@@ -348,21 +343,21 @@ export namespace vfs
     path get_root(bool absolute);
 
     bool register_fs(std::unique_ptr<filesystem> fs);
-    auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
+    auto find_fs(std::string_view name) -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
 
     std::string pathname_from(path path);
 
-    auto path_for(lib::path _path) -> expect<path>;
-    auto resolve(std::optional<path> parent, lib::path path) -> expect<resolve_res>;
-    auto reduce(path parent, path src, std::size_t symlink_depth = symloop_max) -> expect<path>;
+    auto path_for(lib::path _path) -> lib::expect<path>;
+    auto resolve(std::optional<path> parent, lib::path path) -> lib::expect<resolve_res>;
+    auto reduce(path parent, path src, std::size_t symlink_depth = symloop_max) -> lib::expect<path>;
 
-    auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> expect<void>;
-    auto unmount(lib::path target) -> expect<void>;
+    auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> lib::expect<void>;
+    auto unmount(lib::path target) -> lib::expect<void>;
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0) -> expect<path>;
-    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>;
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
-    auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0) -> lib::expect<path>;
+    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
+    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> lib::expect<path>;
+    auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
 
     bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const stat &stat, int mode);
 

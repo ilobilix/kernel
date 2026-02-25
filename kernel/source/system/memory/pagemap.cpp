@@ -72,7 +72,7 @@ namespace vmm
         return lib::tohh(ret);
     }
 
-    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> std::expected<std::reference_wrapper<entry>, error>
+    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>
     {
         static constexpr std::uintptr_t bits = 0b111111111;
         static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
@@ -92,14 +92,14 @@ namespace vmm
             const auto current_psize = static_cast<page_size>(levels - i - 1);
             pml = getlvl(entry, allocate, split, current_psize);
             if (pml == nullptr)
-                return std::unexpected { error::invalid_entry };
+                return std::unexpected { lib::err::invalid_entry };
 
             shift -= 9;
         }
         std::unreachable();
     }
 
-    std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
+    lib::expect<void> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
 
@@ -111,7 +111,7 @@ namespace vmm
 
             const auto npsize = from_page_size(psize.value());
             if (paddr % npsize || vaddr % npsize)
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
         }
 
         const std::unique_lock _ { _lock };
@@ -127,7 +127,7 @@ namespace vmm
             const auto npsize = from_page_size(use_psize);
 
             if (use_psize > max_psize)
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
 
             const auto aflags = to_arch(flags, cache, use_psize);
 
@@ -145,7 +145,7 @@ namespace vmm
             const bool needs_invl = addr && is_canonical(addr);
 
             if (accessor.getflags(valid_table_flags) && needs_invl)
-                return std::unexpected { error::addr_in_use };
+                return std::unexpected { lib::err::addr_in_use };
 
             accessor.clear()
                 .setaddr(current_paddr)
@@ -163,7 +163,7 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
+    lib::expect<void> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
 
@@ -173,7 +173,7 @@ namespace vmm
 
             psize = fixpsize(psize.value());
             if (vaddr % from_page_size(psize.value()))
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
         }
 
         const std::unique_lock _ { _lock };
@@ -188,7 +188,7 @@ namespace vmm
             const auto npsize = from_page_size(use_psize);
 
             if (use_psize > max_psize)
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
 
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
@@ -198,7 +198,7 @@ namespace vmm
             auto accessor = pte.access();
 
             if (use_psize != page_size::small && !accessor.is_large())
-                return std::unexpected { error::addr_in_use };
+                return std::unexpected { lib::err::addr_in_use };
 
             accessor.clearflags()
                 .setflags(to_arch(flags, cache, use_psize), true)
@@ -211,7 +211,7 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> pagemap::unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
+    lib::expect<void> pagemap::unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
     {
         std::uintptr_t current_vaddr = vaddr;
         std::size_t remaining = lib::align_up(length, pmm::page_size);
@@ -223,7 +223,7 @@ namespace vmm
             const auto npsize = from_page_size(use_psize);
 
             if (use_psize > max_psize)
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
 
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
@@ -244,7 +244,7 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
+    lib::expect<void> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
     {
         if (psize.has_value())
         {
@@ -252,14 +252,14 @@ namespace vmm
 
             psize = fixpsize(psize.value());
             if (vaddr % from_page_size(psize.value()))
-                return std::unexpected { error::addr_not_aligned };
+                return std::unexpected { lib::err::addr_not_aligned };
         }
 
         const std::unique_lock _ { _lock };
         return unmap_internal(vaddr, length, psize);
     }
 
-    std::expected<std::uintptr_t, error> pagemap::translate(std::uintptr_t vaddr, page_size psize)
+    lib::expect<std::uintptr_t> pagemap::translate(std::uintptr_t vaddr, page_size psize)
     {
         lib::bug_on(!magic_enum::enum_contains(psize));
 
@@ -267,7 +267,7 @@ namespace vmm
 
         psize = fixpsize(psize);
         if (vaddr % from_page_size(psize))
-            return std::unexpected { error::addr_not_aligned };
+            return std::unexpected { lib::err::addr_not_aligned };
 
         const auto ret = getpte(vaddr, psize, false, false);
         if (!ret.has_value())
@@ -275,7 +275,7 @@ namespace vmm
 
         const auto addr = ret->get().access().getaddr();
         if (!is_canonical(addr))
-            return std::unexpected { error::invalid_entry };
+            return std::unexpected { lib::err::invalid_entry };
 
         return addr;
     }

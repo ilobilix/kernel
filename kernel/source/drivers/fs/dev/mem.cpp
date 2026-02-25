@@ -20,31 +20,23 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return 0;
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(file, size);
-            return true;
+            return { };
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     struct zero_ops : vfs::ops
@@ -55,32 +47,24 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
             buffer.fill(0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(file, size);
-            return true;
+            return { };
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     struct full_ops : vfs::ops
@@ -91,32 +75,24 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
             buffer.fill(0, buffer.size_bytes());
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
-            return (errno = ENOSPC, -1);
+            return std::unexpected { lib::err::no_space_left };
         }
 
-        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(file, size);
-            return true;
+            return { };
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     // TODO
@@ -128,32 +104,24 @@ namespace fs::dev::mem
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset);
             lib::random_bytes(buffer);
             return buffer.size_bytes();
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(file, offset, buffer);
             return buffer.size_bytes();
         }
 
-        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(file, size);
-            return true;
+            return { };
         }
-
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override
-        {
-            lib::unused(file, priv);
-            return nullptr;
-        }
-
-        bool sync() override { return true; }
     };
 
     lib::initgraph::stage *registered_stage()
@@ -174,13 +142,13 @@ namespace fs::dev::mem
         lib::initgraph::entail { registered_stage() },
         [] {
             using namespace vfs::dev;
-            register_cdev(null_ops::singleton(), makedev(1, 3));
-            register_cdev(zero_ops::singleton(), makedev(1, 5));
-            register_cdev(full_ops::singleton(), makedev(1, 7));
+            register_dev_ops(makedev(1, 3), null_ops::singleton());
+            register_dev_ops(makedev(1, 5), zero_ops::singleton());
+            register_dev_ops(makedev(1, 7), full_ops::singleton());
 
             const auto rand = random_dev::singleton();
-            register_cdev(rand, makedev(1, 8));
-            register_cdev(rand, makedev(1, 9));
+            register_dev_ops(makedev(1, 8), rand);
+            register_dev_ops(makedev(1, 9), rand);
         }
     };
 } // namespace fs::dev::mem

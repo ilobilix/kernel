@@ -58,14 +58,6 @@ export namespace vmm
         large
     };
 
-    enum class error
-    {
-        addr_not_aligned,
-        addr_in_use,
-        not_mapped,
-        invalid_entry
-    };
-
     using magic_enum::bitwise_operators::operator~;
     using magic_enum::bitwise_operators::operator&;
     using magic_enum::bitwise_operators::operator&=;
@@ -162,9 +154,9 @@ export namespace vmm
 
         static auto getlvl(entry &entry, bool allocate, bool split, page_size psize) -> table *;
 
-        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> std::expected<std::reference_wrapper<entry>, error>;
+        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>;
 
-        std::expected<void, error> unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize);
+        lib::expect<void> unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize);
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
@@ -185,11 +177,11 @@ export namespace vmm
             return ret;
         }
 
-        std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
-        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
-        std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize = std::nullopt);
+        lib::expect<void> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
+        lib::expect<void> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
+        lib::expect<void> unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize = std::nullopt);
 
-        std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize);
+        lib::expect<std::uintptr_t> translate(std::uintptr_t vaddr, page_size psize);
 
         void load() const;
 

@@ -162,7 +162,8 @@ namespace bin::elf::mod
                 return false;
             }
 
-            if (file->pread(0, buffer_uspan.value()) != inode->stat.st_size)
+            if (const auto ret = file->pread(0, buffer_uspan.value());
+                !ret.has_value() || *ret != static_cast<std::size_t>(inode->stat.st_size))
             {
                 lib::error("elf: module: could not read the module file");
                 return false;

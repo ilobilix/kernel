@@ -15,9 +15,9 @@ namespace x86_64::output::e9
     void init()
     {
         using namespace ::output::serial;
-        static constinit printer printer { printc };
+        static constinit logger printer { printc };
 
         if (lib::io::in<8>(0xE9) == 0xE9)
-            register_printer(printer);
+            register_logger(printer);
     }
 } // namespace x86_64::output::e9

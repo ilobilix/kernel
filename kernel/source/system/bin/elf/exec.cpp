@@ -10,6 +10,7 @@ import system.bin.exec;
 import system.scheduler;
 import system.memory;
 import system.vfs;
+import magic_enum;
 import boot;
 import lib;
 import std;
@@ -34,11 +35,16 @@ namespace bin::elf::exec
             -> std::optional<std::pair<auxval, std::shared_ptr<vfs::file>>>
         {
             Elf64_Ehdr ehdr;
-            lib::panic_if(file->pread(
-                0, lib::maybe_uspan<std::byte>::create(
-                    reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
-                ).value()
-            ) != sizeof(ehdr));
+            auto hdruspan = lib::maybe_uspan<std::byte>::create(
+                reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
+            );
+            lib::bug_on(!hdruspan.has_value());
+
+            const auto ret = file->pread(0, std::move(*hdruspan));
+            if (!ret.has_value())
+                lib::panic("elf: could not read header: {}", magic_enum::enum_name(ret.error()));
+            if (*ret != sizeof(ehdr))
+                lib::panic("elf: header size mismatch: {} != {}", *ret, sizeof(ehdr));
 
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
@@ -56,12 +62,16 @@ namespace bin::elf::exec
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
-                lib::panic_if(file->pread(
-                    ehdr.e_phoff + i * ehdr.e_phentsize,
-                    lib::maybe_uspan<std::byte>::create(
-                        reinterpret_cast<std::byte *>(&phdr), sizeof(phdr)
-                    ).value()
-                ) != sizeof(phdr));
+                auto phdruspan = lib::maybe_uspan<std::byte>::create(
+                    reinterpret_cast<std::byte *>(&phdr), sizeof(phdr)
+                );
+                lib::bug_on(!phdruspan.has_value());
+
+                const auto ret = file->pread(ehdr.e_phoff + i * ehdr.e_phentsize, std::move(*phdruspan));
+                if (!ret.has_value())
+                    lib::panic("elf: could not read phdr: {}", magic_enum::enum_name(ret.error()));
+                if (*ret != sizeof(phdr))
+                    lib::panic("elf: phdr size mismatch: {} != {}", *ret, sizeof(phdr));
 
                 switch (phdr.p_type)
                 {
@@ -86,9 +96,11 @@ namespace bin::elf::exec
                         const auto file_uspan = file_buffer.maybe_uspan();
                         lib::panic_if(!file_uspan.has_value());
 
-                        lib::panic_if(file->pread(
-                            phdr.p_offset, file_uspan.value()
-                        ) != static_cast<std::ssize_t>(phdr.p_filesz));
+                        const auto ret = file->pread(phdr.p_offset, file_uspan.value());
+                        if (!ret.has_value())
+                            lib::panic("elf: could not read phdr data: {}", magic_enum::enum_name(ret.error()));
+                        if (*ret != phdr.p_filesz)
+                            lib::panic("elf: phdr data size mismatch: {} != {}", *ret, phdr.p_filesz);
 
                         lib::panic_if(obj->write(
                             misalign, file_uspan.value()
@@ -125,9 +137,11 @@ namespace bin::elf::exec
                         const auto buffer_uspan = buffer.maybe_uspan();
                         lib::panic_if(!buffer_uspan.has_value());
 
-                        lib::panic_if(file->pread(
-                            phdr.p_offset, buffer_uspan.value()
-                        ) != static_cast<std::ssize_t>(phdr.p_filesz - 1));
+                        const auto ret = file->pread(phdr.p_offset, buffer_uspan.value());
+                        if (!ret.has_value())
+                            lib::panic("elf: could not read interpreter path: {}", magic_enum::enum_name(ret.error()));
+                        if (*ret != phdr.p_filesz - 1)
+                            lib::panic("elf: interpreter path size mismatch: {} != {}", *ret, phdr.p_filesz - 1);
 
                         std::string_view path {
                             reinterpret_cast<const char *>(buffer.data()),
@@ -136,21 +150,21 @@ namespace bin::elf::exec
 
                         lib::panic_if(lib::path_view { path } .is_absolute() == false);
 
-                        auto ret = vfs::resolve(file->path, path);
-                        if (!ret.has_value())
+                        auto rret = vfs::resolve(file->path, path);
+                        if (!rret.has_value())
                         {
                             lib::error("elf: could not resolve interpreter path '{}'", path);
                             return std::nullopt;
                         }
 
-                        auto res = vfs::reduce(ret->parent, ret->target);
+                        auto res = vfs::reduce(std::move(rret->parent), std::move(rret->target));
                         if (!res.has_value())
                         {
                             lib::error("elf: could not reduce interpreter path '{}'", path);
                             return std::nullopt;
                         }
 
-                        interp = vfs::file::create(res.value(), 0, 0, 0);
+                        interp = vfs::file::create(std::move(*res), 0, 0, 0);
                         break;
                     }
                     default:
@@ -167,11 +181,17 @@ namespace bin::elf::exec
         bool identify(const std::shared_ptr<vfs::file> &file) const override
         {
             Elf64_Ehdr ehdr;
-            lib::bug_on(file->pread(
-                0, lib::maybe_uspan<std::byte>::create(
-                    reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
-                ).value()
-            ) != sizeof(ehdr));
+            auto ehdruspan = lib::maybe_uspan<std::byte>::create(
+                reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
+            );
+            if (!ehdruspan.has_value())
+                return false;
+
+            const auto ret = file->pread(0, std::move(*ehdruspan));
+            if (!ret.has_value())
+                return false;
+            if (*ret != sizeof(ehdr))
+                return false;
 
             return std::memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0 &&
                 ehdr.e_ident[EI_CLASS] == ELFCLASS64 &&
@@ -303,7 +323,7 @@ namespace bin::elf::exec
             const auto write_auxv = [&](int type, std::uint64_t value)
             {
                 if (num++ == num_auxvals)
-                    lib::panic("you froggot to update num_auxvals");
+                    lib::panic("you frogot to update num_auxvals");
 
                 offset -= 8;
                 *sptr() = value;
@@ -331,7 +351,7 @@ namespace bin::elf::exec
             write_auxv(AT_BASE_PLATFORM, platform_offset);
 
             if (num != num_auxvals)
-                lib::panic("you froggot to update num_auxvals");
+                lib::panic("you frogot to update num_auxvals");
 
             offset -= 8;
             *sptr() = 0;

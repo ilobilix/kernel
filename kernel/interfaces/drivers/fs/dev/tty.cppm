@@ -206,8 +206,10 @@ export namespace fs::dev::tty
 
         virtual ~line_discipline() { close(); }
 
-        virtual std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+
+        virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
 
@@ -307,8 +309,10 @@ export namespace fs::dev::tty
 
         void receive(std::span<std::byte> buffer) override;
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
-        std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+
+        lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
     };
 
     struct driver;
@@ -337,20 +341,20 @@ export namespace fs::dev::tty
 
         virtual ~instance() = default;
 
-        virtual std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->read(std::move(file), buffer);
-            return -1;
+            return std::unexpected { lib::err::io };
         }
 
-        virtual std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->write(std::move(file), buffer);
-            return -1;
+            return std::unexpected { lib::err::io };
         }
 
         // send to hardware
@@ -365,20 +369,21 @@ export namespace fs::dev::tty
 
         virtual std::size_t can_transmit() = 0;
 
-        virtual bool open(std::shared_ptr<vfs::file> self) = 0;
-        virtual bool close() = 0;
+        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self) = 0;
+        virtual lib::expect<void> close() = 0;
 
-        virtual int ioctl(unsigned long request, lib::uptr_or_addr argp) = 0;
+        virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
     };
 
     struct driver
     {
         const std::string name;
-        std::uint32_t major, minor_start;
+        std::uint32_t major;
+        std::uint32_t minor_start, minor_end;
 
         const ktermios init_termios;
 
-        std::weak_ptr<driver> other;
+        driver *other;
         lib::locker<
             lib::map::flat_hash<
                 std::uint32_t,
@@ -388,15 +393,67 @@ export namespace fs::dev::tty
 
         lib::intrusive_list_hook<driver> hook;
 
-        driver(std::string_view name, std::uint32_t major, std::uint32_t minor_start, const ktermios &init_termios)
-            : name { name }, major { major }, minor_start { minor_start }, init_termios { init_termios } { }
+        driver(std::string_view name, std::uint32_t major,
+            std::uint32_t minor_start, std::uint32_t minor_end, const ktermios &init_termios)
+            : name { name }, major { major }, minor_start { minor_start },
+              minor_end { minor_end }, init_termios { init_termios } { }
 
         virtual ~driver() = default;
 
         virtual std::shared_ptr<instance> create_instance(std::uint32_t minor) = 0;
         virtual void destroy_instance(std::shared_ptr<instance> inst) = 0;
-        virtual int ioctl(std::shared_ptr<instance> inst, unsigned long request, lib::uptr_or_addr argp) = 0;
+
+        // called from instance
+        virtual lib::expect<int> ioctl(instance *inst, std::uint64_t request, lib::uptr_or_addr argp)
+        {
+            lib::bug_on(!inst);
+            lib::unused(request, argp);
+            return std::unexpected { lib::err::inappropriate_ioctl };
+        }
     };
 
-    lib::initgraph::stage *registered_stage();
+    struct ops : vfs::ops
+    {
+        static std::shared_ptr<ops> singleton()
+        {
+            static auto instance = std::make_shared<ops>();
+            return instance;
+        }
+
+        lib::expect<void> open(std::shared_ptr<vfs::file> self, int flags) override;
+        lib::expect<void> close(std::shared_ptr<vfs::file> self) override;
+
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::unused(offset);
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->read(std::move(file), buffer);
+        }
+
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        {
+            lib::unused(offset);
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->write(std::move(file), buffer);
+        }
+
+        lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
+        {
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->ioctl(request, argp);
+        }
+
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        {
+            lib::unused(file, size);
+            return { };
+        }
+    };
+
+    void register_driver(driver *drv);
+
+    lib::initgraph::stage *current_registered_stage();
 } // export namespace fs::dev::tty
