@@ -58,7 +58,7 @@ namespace output::serial
         serial_driver(serial::driver &drv) : tty::driver {
             drv.driver_name, drv.name, drv.name_base,
             drv.major, drv.minor_start, drv.num_devices,
-            tty::type::serial, tty::subtype::none,
+            drv.flags, tty::type::serial, tty::subtype::none,
             tty::ktermios::standard()
         }, drv { drv } { }
     };

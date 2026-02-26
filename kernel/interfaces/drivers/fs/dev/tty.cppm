@@ -149,7 +149,7 @@ export namespace fs::dev::tty
 
         static constexpr ktermios standard()
         {
-            ktermios t;
+            ktermios t { };
             {
                 t.c_iflag = icrnl | ixon;
                 t.c_oflag = opost | onlcr;
@@ -406,15 +406,24 @@ export namespace fs::dev::tty
         pty_slave
     };
 
+    enum flag
+    {
+        none = 0,
+        unnumbered = (1 << 0),
+        dynamic = (1 << 1)
+    };
+
     struct driver
     {
         const std::string driver_name;
         const std::string name;
-        const std::ssize_t name_base;
+        const std::size_t name_base;
 
         const std::uint32_t major;
         const std::uint32_t minor_start;
         const std::uint32_t num_devices;
+
+        const flag flags;
 
         const type typ;
         const subtype subtyp;
@@ -431,11 +440,11 @@ export namespace fs::dev::tty
 
         lib::intrusive_list_hook<driver> hook;
 
-        driver(std::string_view driver_name, std::string_view name, std::ssize_t name_base,
-            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices,
+        driver(std::string_view driver_name, std::string_view name, std::size_t name_base,
+            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices, flag flags,
             type typ, subtype subtyp, const ktermios &init_termios)
             : driver_name { driver_name }, name { name }, name_base { name_base },
-              major { major }, minor_start { minor_start }, num_devices { num_devices },
+              major { major }, minor_start { minor_start }, num_devices { num_devices }, flags { flags },
               typ { typ }, subtyp { subtyp },
               init_termios { init_termios } { }
 

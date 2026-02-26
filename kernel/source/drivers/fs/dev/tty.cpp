@@ -955,6 +955,9 @@ namespace fs::dev::tty
         lib::debug("tty: registering driver '{}'", drv->driver_name);
         drivers.push_back(drv);
 
+        if (drv->flags & dynamic)
+            return;
+
         const auto add_one = [&](std::size_t idx, std::uint32_t minor)
         {
             using namespace vfs::dev;
@@ -971,7 +974,7 @@ namespace fs::dev::tty
                     ptychar[i >> 4 & 0xF], i & 0xF
                 );
             }
-            else if (drv->name_base >= 0)
+            else if (!(drv->flags & unnumbered))
                 name = fmt::format("{}{}", drv->name, idx + drv->name_base);
             else
                 name = drv->name;
