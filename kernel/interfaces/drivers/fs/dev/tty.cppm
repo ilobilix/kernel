@@ -214,6 +214,8 @@ export namespace fs::dev::tty
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
+
+        virtual void hangup() = 0;
     };
 
     struct default_ldisc : line_discipline
@@ -300,9 +302,13 @@ export namespace fs::dev::tty
 
         sched::thread_base *worker_thread;
         std::atomic_bool should_work;
+        lib::semaphore hung_sem;
 
         default_ldisc(instance *inst);
         ~default_ldisc();
+
+        void open() override;
+        void hangup() override;
 
         bool output_append(const ktermios &termios, char chr);
         void output_flush();
@@ -311,8 +317,6 @@ export namespace fs::dev::tty
         static void worker(default_ldisc *self);
 
         void receive(std::span<std::byte> buffer) override;
-
-        void open() override;
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
         lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
@@ -325,8 +329,9 @@ export namespace fs::dev::tty
     {
         driver *drv;
         std::uint32_t minor;
-
         std::atomic<std::uint32_t> ref;
+
+        std::atomic_bool hung_up;
 
         lib::locker<std::unique_ptr<line_discipline>, lib::rwmutex> ldisc;
 
@@ -343,7 +348,6 @@ export namespace fs::dev::tty
         std::weak_ptr<instance> link;
 
         instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc);
-
         virtual ~instance() = default;
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
@@ -362,29 +366,58 @@ export namespace fs::dev::tty
             return std::unexpected { lib::err::io_error };
         }
 
-        // send to hardware
         virtual std::size_t transmit(std::span<std::byte> buffer) = 0;
-        // called by hardware
-        void receive(std::span<std::byte> buffer)
-        {
-            const auto rlocked = ldisc.read_lock();
-            if (rlocked.value())
-                rlocked.value()->receive(buffer);
-        }
-
         virtual std::size_t can_transmit() = 0;
 
         virtual lib::expect<void> open(std::shared_ptr<vfs::file> self) = 0;
         virtual lib::expect<void> close() = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
+
+        // called by hardware
+        bool receive(std::span<std::byte> buffer)
+        {
+            const auto rlocked = ldisc.read_lock();
+            if (rlocked.value())
+            {
+                rlocked.value()->receive(buffer);
+                return true;
+            }
+            return false;
+        }
+
+        void hangup();
+    };
+
+    enum class type
+    {
+        system,
+        console,
+        serial,
+        pty
+    };
+
+    enum class subtype
+    {
+        none,
+        syscons,
+        tty,
+        pty_master,
+        pty_slave
     };
 
     struct driver
     {
+        const std::string driver_name;
         const std::string name;
-        std::uint32_t major;
-        std::uint32_t minor_start, minor_end;
+        const std::ssize_t name_base;
+
+        const std::uint32_t major;
+        const std::uint32_t minor_start;
+        const std::uint32_t num_devices;
+
+        const type typ;
+        const subtype subtyp;
 
         const ktermios init_termios;
 
@@ -398,10 +431,13 @@ export namespace fs::dev::tty
 
         lib::intrusive_list_hook<driver> hook;
 
-        driver(std::string_view name, std::uint32_t major,
-            std::uint32_t minor_start, std::uint32_t num_devices, const ktermios &init_termios)
-            : name { name }, major { major }, minor_start { minor_start },
-              minor_end { minor_start + num_devices - 1 }, init_termios { init_termios } { }
+        driver(std::string_view driver_name, std::string_view name, std::ssize_t name_base,
+            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices,
+            type typ, subtype subtyp, const ktermios &init_termios)
+            : driver_name { driver_name }, name { name }, name_base { name_base },
+              major { major }, minor_start { minor_start }, num_devices { num_devices },
+              typ { typ }, subtyp { subtyp },
+              init_termios { init_termios } { }
 
         virtual ~driver() = default;
 

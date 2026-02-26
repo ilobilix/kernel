@@ -4,12 +4,11 @@ module x86_64.drivers.output.com;
 
 import drivers.output.serial;
 import drivers.output.terminal;
-import drivers.fs.dev.tty;
 import drivers.fs.devtmpfs;
+import drivers.fs.dev.tty;
 import system.interrupts;
 import system.cpu;
 import system.vfs;
-import system.vfs.dev;
 import magic_enum;
 import arch;
 import lib;
@@ -134,10 +133,11 @@ namespace x86_64::output::com
     }
 
     namespace tty = fs::dev::tty;
+    using namespace ::output;
 
-    struct com_driver : tty::driver
+    struct serial_driver : serial::driver
     {
-        struct com_instance : tty::instance
+        struct serial_instance : tty::instance
         {
             std::size_t transmit(std::span<std::byte> buffer) override
             {
@@ -186,21 +186,37 @@ namespace x86_64::output::com
                 return { };
             };
 
-            com_instance(driver *drv, std::uint32_t minor)
+            serial_instance(tty::driver *drv, std::uint32_t minor)
                 : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }
         };
 
-        std::shared_ptr<tty::instance> create_instance(std::uint32_t minor) override
+        // lib::map::flat_hash<std::uint32_t, std::shared_ptr<serial_instance>> instances;
+
+        std::shared_ptr<fs::dev::tty::instance> create_instance(tty::driver *drv, std::uint32_t minor) override
         {
-            return std::make_shared<com_instance>(this, minor);
+            // if (instances.contains(minor))
+            //     return nullptr;
+            // return instances.emplace(minor, std::make_shared<serial_instance>(drv, minor)).first->second;
+
+            return std::make_shared<serial_instance>(drv, minor);
         }
 
-        void destroy_instance(std::shared_ptr<tty::instance> inst) override
+        void destroy_instance(tty::driver *drv, std::shared_ptr<fs::dev::tty::instance> inst) override
         {
-            lib::unused(inst);
+            // lib::unused(drv);
+            // instances.erase(inst->minor);
+
+            lib::unused(drv, inst);
         }
 
-        com_driver() : driver { "com", 4, 64, num_coms, tty::ktermios::standard() } { }
+        serial_driver(std::string_view driver_name, std::string_view name, std::ssize_t name_base,
+            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices)
+            : driver { driver_name, name, name_base, major, minor_start, num_devices } { }
+    };
+
+    serial_driver driver {
+        "serial", "ttyS", 0,
+        4, 64, num_coms
     };
 
     lib::initgraph::task com_task
@@ -209,38 +225,18 @@ namespace x86_64::output::com
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::devtmpfs::mounted_stage() },
         [] {
-            const auto com_drv = new com_driver { };
-            tty::register_driver(com_drv);
 
-            const auto add_com_tty = [&](std::size_t idx, std::uint32_t minor)
+            for (std::size_t i = 0; i < num_coms; i++)
             {
-                using namespace vfs::dev;
-                register_dev_ops(makedev(com_drv->major, minor), tty::ops::singleton());
-
-                const auto name = fmt::format("/dev/ttyS{}", idx);
-                auto ret = vfs::create(
-                    std::nullopt, name, stat::s_ifchr | 0666,
-                    makedev(com_drv->major, minor)
-                );
-
-                if (!ret.has_value())
+                if (usable[i])
                 {
-                    lib::error(
-                        "tty: could not create '{}': {}",
-                        name, magic_enum::enum_name(ret.error())
-                    );
-                }
-
-                if (usable[idx])
-                {
-                    auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x24 - idx).value();
+                    auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x24 - i).value();
                     handler.set(irq_handler);
                     interrupts::unmask(vector);
                 }
-            };
+            }
 
-            for (std::size_t i = com_drv->minor_start; i <= com_drv->minor_end; i++)
-                add_com_tty(i - com_drv->minor_start, i);
+            serial::register_driver(driver);
         }
     };
 } // namespace x86_64::output::com
