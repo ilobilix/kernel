@@ -209,15 +209,12 @@ namespace x86_64::output::com
             lib::unused(drv, inst);
         }
 
-        serial_driver(std::string_view driver_name, std::string_view name, std::ssize_t name_base,
-            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices)
-            : driver { driver_name, name, name_base, major, minor_start, num_devices } { }
+        serial_driver(std::string_view driver_name, std::string_view name, std::size_t name_base,
+            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices, tty::flag flags)
+            : driver { driver_name, name, name_base, major, minor_start, num_devices, flags } { }
     };
 
-    serial_driver driver {
-        "serial", "ttyS", 0,
-        4, 64, num_coms
-    };
+    serial_driver driver { "serial", "ttyS", 0, 4, 64, num_coms, tty::flag::none };
 
     lib::initgraph::task com_task
     {
