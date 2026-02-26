@@ -301,7 +301,7 @@ namespace pci
             static lib::initgraph::stage stage
             {
                 "pci.arch.rbs-discovered",
-                lib::initgraph::presched_init_engine
+                lib::initgraph::postsched_init_engine
             };
             return &stage;
         }
@@ -328,7 +328,7 @@ namespace pci
         static lib::initgraph::stage stage
         {
             "pci.rbs-discovered",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -348,7 +348,7 @@ namespace pci
     lib::initgraph::task rbs_task
     {
         "pci.discover-rbs",
-        lib::initgraph::presched_init_engine,
+        lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
             acpi::rbs_discovered_stage(),
             arch::rbs_discovered_stage()
@@ -362,7 +362,7 @@ namespace pci
         static lib::initgraph::stage stage
         {
             "pci.enumerated",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -370,7 +370,7 @@ namespace pci
     lib::initgraph::task pci_task
     {
         "pci.enumerate",
-        lib::initgraph::presched_init_engine,
+        lib::initgraph::postsched_init_engine,
         lib::initgraph::require { ios_discovered_stage(), rbs_discovered_stage() },
         lib::initgraph::entail { enumerated_stage() },
         [] {

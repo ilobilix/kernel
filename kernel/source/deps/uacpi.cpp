@@ -53,8 +53,7 @@ namespace uacpi
     lib::initgraph::task uacpi_task
     {
         "acpi.create-workers",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require { sched::pid0_initialised_stage(), acpi::initialised_stage() },
+        lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
@@ -315,10 +314,7 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        if (sched::is_initialised())
-            sched::sleep_for(msec);
-        else
-            uacpi_kernel_stall(msec * 1'000);
+        sched::sleep_for(msec);
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
@@ -361,15 +357,10 @@ extern "C"
 
     uacpi_thread_id uacpi_kernel_get_thread_id()
     {
-        if (sched::is_initialised())
-        {
-            const auto thread = sched::this_thread();
-            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(
-                static_cast<std::size_t>(thread->tid), static_cast<std::size_t>(thread->parent->pid)
-            ));
-        }
-
-        return reinterpret_cast<uacpi_thread_id>(1);
+        const auto thread = sched::this_thread();
+        return reinterpret_cast<uacpi_thread_id>(lib::unique_from(
+            static_cast<std::size_t>(thread->tid), static_cast<std::size_t>(thread->parent->pid)
+        ));
     }
 
     uacpi_interrupt_state uacpi_kernel_disable_interrupts()
