@@ -2,6 +2,7 @@
 
 export module drivers.fs.dev.tty;
 
+import system.scheduler.base;
 import system.vfs;
 import lib;
 import std;
@@ -202,9 +203,10 @@ export namespace fs::dev::tty
     {
         instance *inst;
 
-        line_discipline(instance *inst) : inst { inst } { open(); }
+        line_discipline(instance *inst) : inst { inst } { }
+        virtual ~line_discipline() = default;
 
-        virtual ~line_discipline() { close(); }
+        virtual void open() = 0;
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
@@ -212,9 +214,6 @@ export namespace fs::dev::tty
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
-
-        virtual void open() { }
-        virtual void close() { }
     };
 
     struct default_ldisc : line_discipline
@@ -299,7 +298,11 @@ export namespace fs::dev::tty
 
         std::atomic_bool stopped;
 
+        sched::thread_base *worker_thread;
+        std::atomic_bool should_work;
+
         default_ldisc(instance *inst);
+        ~default_ldisc();
 
         bool output_append(const ktermios &termios, char chr);
         void output_flush();
@@ -308,6 +311,8 @@ export namespace fs::dev::tty
         static void worker(default_ldisc *self);
 
         void receive(std::span<std::byte> buffer) override;
+
+        void open() override;
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
         lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
@@ -454,6 +459,4 @@ export namespace fs::dev::tty
     };
 
     void register_driver(driver *drv);
-
-    lib::initgraph::stage *current_registered_stage();
 } // export namespace fs::dev::tty

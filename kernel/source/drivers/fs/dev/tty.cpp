@@ -36,35 +36,37 @@ namespace fs::dev::tty
             return nullptr;
         }
 
-        lib::expect<void> generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst, int flags)
+        lib::expect<void> generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst, int flags, bool inst_opened)
         {
-            if (auto locked = inst->ctrl.lock(); !locked->pgid || !locked->sid)
+            if (!inst_opened)
             {
-                lib::bug_on(locked->pgid || locked->sid);
-
-                const auto proc = sched::proc_for(self->pid);
-                lib::bug_on(!proc);
-
-                locked->pgid = proc->pgid;
-                locked->sid = proc->sid;
+                if (const auto ret = inst->open(self); !ret)
+                    return ret;
             }
 
-            if (!(flags & vfs::o_noctty))
+            const auto proc = sched::proc_for(self->pid);
+            lib::bug_on(!proc);
+
+            if (!(flags & vfs::o_noctty) && (proc->pid == proc->sid)) // is leader
             {
-                const auto proc = sched::proc_for(self->pid);
-                lib::bug_on(!proc);
+                auto locked = inst->ctrl.lock();
+                if (locked->sid == 0)
+                {
+                    const auto sess = sched::session_for(proc->sid);
+                    lib::bug_on(!sess);
 
-                if (self->pid != proc->sid)
-                    goto skip;
+                    auto ctty_locked = sess->controlling_tty.lock();
+                    if (!ctty_locked.value())
+                    {
+                        ctty_locked.value() = inst;
 
-                const auto sess = sched::session_for(proc->sid);
-                lib::bug_on(!sess);
-
-                sess->controlling_tty.lock().value() = inst;
+                        locked->pgid = proc->pgid;
+                        locked->sid = proc->sid;
+                    }
+                }
             }
-            skip:
 
-            return inst->open(std::move(self));
+            return { };
         }
 
         lib::expect<void> generic_close(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst)
@@ -92,9 +94,43 @@ namespace fs::dev::tty
 
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
         raw_buffer { }, raw_sem { }, in_buffer { }, in_sem { },
-        out_buffer { }, out_sem { }, stopped { false }
+        out_buffer { }, out_sem { }, stopped { false },
+        worker_thread { }, should_work { false }, hung_sem { } { }
+
+    void default_ldisc::open()
     {
-        sched::spawn(0, reinterpret_cast<std::uintptr_t>(worker), reinterpret_cast<std::uintptr_t>(this), -10);
+        should_work.store(true, std::memory_order_relaxed);
+        worker_thread = sched::spawn(
+            0, reinterpret_cast<std::uintptr_t>(worker),
+            reinterpret_cast<std::uintptr_t>(this), -10
+        );
+        lib::bug_on(!worker_thread);
+    }
+
+    void default_ldisc::hangup()
+    {
+        in_sem.signal_all();
+        out_sem.signal_all();
+        raw_sem.signal_all();
+    }
+
+    default_ldisc::~default_ldisc()
+    {
+        if (!should_work.load(std::memory_order_relaxed))
+        {
+            lib::bug_on(worker_thread != nullptr);
+            return;
+        }
+
+        if constexpr (debug)
+            lib::debug("tty: stopping worker thread in ({}, {})", inst->drv->major, inst->minor);
+
+        should_work.store(false, std::memory_order_relaxed);
+        raw_sem.signal(true);
+        if (inst->hung_up.load(std::memory_order_relaxed))
+            hung_sem.signal();
+        while (!should_work.load(std::memory_order_relaxed)) // ehhhhhh
+            sched::yield();
     }
 
     bool default_ldisc::output_append(const ktermios &termios, char chr)
@@ -154,6 +190,14 @@ namespace fs::dev::tty
     {
         // based on https://github.com/klange/toaruos/blob/master/kernel/vfs/tty.c
 
+        if constexpr (debug)
+        {
+            lib::debug(
+                "tty: started worker thread in ({}, {})",
+                self->inst->drv->major, self->inst->minor
+            );
+        }
+
         using enum ktermios::iflag;
         using enum ktermios::oflag;
         // using enum ktermios::cflag;
@@ -187,9 +231,42 @@ namespace fs::dev::tty
             }
         };
 
+        lib::bug_on(sched::this_thread() != self->worker_thread);
+
         bool next_is_verbatim = false;
         while (true)
         {
+            if (!self->should_work.load(std::memory_order_relaxed))
+            {
+                if constexpr (debug)
+                {
+                    lib::debug(
+                        "tty: worker thread in ({}, {}) got told to kys, day ruined",
+                        self->inst->drv->major, self->inst->minor
+                    );
+                }
+
+                self->should_work.store(true, std::memory_order_relaxed);
+                sched::this_thread()->status = sched::status::killed;
+                sched::yield();
+                std::unreachable();
+            }
+
+            if (self->inst->hung_up.load(std::memory_order_relaxed))
+            {
+                if constexpr (debug)
+                {
+                    lib::debug(
+                        "tty: hung up! worker thread in ({}, {}) is waiting for sweet release of death",
+                        self->inst->drv->major, self->inst->minor
+                    );
+                }
+                // presumably SIGHUP will be sent to everything that has this tty open
+                // and once said ttys are closed, this ldisc will be destructed and worker - killed
+                self->hung_sem.wait();
+                continue;
+            }
+
             auto ret = self->raw_buffer.pop();
             if (!ret.has_value())
             {
@@ -464,7 +541,7 @@ namespace fs::dev::tty
         // vtime resolution is 100ms
         const auto ms = time * 100;
 
-        // TODO: handle terminal disconnecting
+        // TODO: handle terminal disconnecting/closing
 
         if (nonblock)
         {
@@ -487,6 +564,9 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available == 0)
                 {
+                    if (inst->hung_up.load(std::memory_order_relaxed))
+                        return 0;
+
                     in_locked.unlock();
                     in_sem.wait();
                     in_locked.lock();
@@ -543,6 +623,9 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available < min)
                 {
+                    if (inst->hung_up.load(std::memory_order_relaxed))
+                        return 0;
+
                     in_locked.unlock();
                     in_sem.wait();
                     in_locked.lock();
@@ -560,6 +643,9 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 if (available == 0)
                 {
+                    if (inst->hung_up.load(std::memory_order_relaxed))
+                        return 0;
+
                     in_locked.unlock();
                     in_sem.wait_for(ms);
                     in_locked.lock();
@@ -583,6 +669,9 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available == 0)
                 {
+                    if (inst->hung_up.load(std::memory_order_relaxed))
+                        return 0;
+
                     in_locked.unlock();
                     in_sem.wait();
                     in_locked.lock();
@@ -596,6 +685,9 @@ namespace fs::dev::tty
                     available = get_available(in_locked);
                     while (available == 0)
                     {
+                        if (inst->hung_up.load(std::memory_order_relaxed))
+                            return 0;
+
                         in_locked.unlock();
                         bool interrupted = in_sem.wait_for(ms);
                         in_locked.lock();
@@ -613,6 +705,9 @@ namespace fs::dev::tty
     lib::expect<std::size_t> default_ldisc::write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
     {
         lib::bug_on(!inst);
+
+        if (inst->hung_up.load(std::memory_order_relaxed))
+            return std::unexpected { lib::err::io_error };
 
         const auto size = buffer.size();
         if (size == 0)
@@ -653,6 +748,8 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::try_again };
 
                 out_sem.wait();
+                if (inst->hung_up.load(std::memory_order_relaxed))
+                    return std::unexpected { lib::err::io_error };
                 goto again;
             }
         }
@@ -671,7 +768,7 @@ namespace fs::dev::tty
     }
 
     instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
-        : drv { drv }, minor { minor }, ref { 0 }, ldisc { std::move(ldisc) },
+        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
           termios { drv->init_termios }, winsize { }, ctrl { }
     { lib::bug_on(drv == nullptr); }
 
@@ -693,7 +790,7 @@ namespace fs::dev::tty
         const auto rdev = self->path.dentry->inode->stat.st_rdev;
         auto drv = get_driver(rdev);
         if (!drv)
-            return std::unexpected { lib::err::invalid_device };
+            return std::unexpected { lib::err::no_such_device };
 
         std::shared_ptr<instance> inst;
         {
@@ -702,21 +799,24 @@ namespace fs::dev::tty
             {
                 // found an already open instance
                 inst = it->second;
+                if (const auto ret = generic_open(self, inst, flags, true); !ret)
+                    return ret;
                 inst->ref.fetch_add(1, std::memory_order_acq_rel);
             }
             else
             {
                 inst = drv->create_instance(minor(rdev));
                 if (!inst)
-                    return std::unexpected { lib::err::invalid_device };
+                    return std::unexpected { lib::err::no_such_device };
 
-                if (const auto ret = generic_open(self, inst, flags); !ret)
+                if (const auto ret = generic_open(self, inst, flags, false); !ret)
                 {
                     drv->destroy_instance(inst);
                     return ret;
                 }
                 inst->ref.store(1, std::memory_order_relaxed);
                 locked->emplace(minor(rdev), inst);
+                inst->ldisc.read_lock()->get()->open();
             }
         }
         self->private_data = inst;
@@ -837,28 +937,18 @@ namespace fs::dev::tty
         drivers.push_back(drv);
     }
 
-    lib::initgraph::stage *current_registered_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "vfs.dev.tty.current-registered",
-            lib::initgraph::postsched_init_engine
-        };
-        return &stage;
-    }
-
     lib::initgraph::task tty_task
     {
         "vfs.dev.tty.current.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::mounted_stage() },
-        lib::initgraph::entail { current_registered_stage() },
         [] {
             register_dev_ops(makedev(5, 0), current_ops::singleton());
+
             if (const auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
             {
                 lib::panic(
-                    "tty: could not create /dev/tty: {}",
+                    "tty: failed to create '/dev/tty': {}",
                     magic_enum::enum_name(ret.error())
                 );
             }

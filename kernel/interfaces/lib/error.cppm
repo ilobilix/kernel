@@ -28,7 +28,7 @@ export namespace lib
         different_filesystem,
 
         invalid_filesystem,
-        invalid_device,
+        no_such_device,
         invalid_device_or_address,
         invalid_mount,
         invalid_symlink,
@@ -78,7 +78,7 @@ export namespace lib
             case err::different_filesystem:
                 return EXDEV;
             case err::invalid_filesystem:
-            case err::invalid_device:
+            case err::no_such_device:
                 return ENODEV;
             case err::invalid_device_or_address:
                 return ENXIO;
