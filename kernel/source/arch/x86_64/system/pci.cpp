@@ -150,7 +150,7 @@ namespace pci
         lib::initgraph::task rbs_task
         {
             "pci.arch.discover-rbs",
-            lib::initgraph::presched_init_engine,
+            lib::initgraph::postsched_init_engine,
             lib::initgraph::require { acpi::rbs_discovered_stage() },
             lib::initgraph::entail { rbs_discovered_stage() },
             [] {

@@ -265,7 +265,7 @@ namespace pci::acpi
         static lib::initgraph::stage stage
         {
             "pci.acpi.rbs-discovered",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -322,8 +322,8 @@ namespace pci::acpi
     lib::initgraph::task rbs_task
     {
         "pci.acpi.discover-rbs",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::acpi::initialised_stage(), pci::ios_discovered_stage() },
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { ::acpi::initialised_stage() },
         lib::initgraph::entail { rbs_discovered_stage() },
         [] {
             static constexpr const char *root_ids[]

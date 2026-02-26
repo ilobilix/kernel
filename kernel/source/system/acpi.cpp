@@ -102,7 +102,7 @@ namespace acpi
         static lib::initgraph::stage stage
         {
             "acpi.initialised",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -112,7 +112,7 @@ namespace acpi
         static lib::initgraph::stage stage
         {
             "acpi.workers-created",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -120,8 +120,8 @@ namespace acpi
     lib::initgraph::task full_task
     {
         "acpi.initialise",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require { tables_stage(), timers::initialised_stage() },
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { workers_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
             delete[] early_table_buffer;
