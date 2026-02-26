@@ -74,7 +74,9 @@ extern "C"
         thread->status = sched::status::ready;
         sched::enqueue(thread, sched::allocate_cpu());
 
-        arch::halt();
+        sched::this_thread()->status = sched::status::killed;
+        sched::yield();
+        std::unreachable();
     }
 
     [[noreturn]]
@@ -90,7 +92,7 @@ extern "C"
 
         lib::initgraph::presched_init_engine.run();
 
-        sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread));
+        sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread), 0, -19);
         sched::start();
     }
 } // extern "C"
