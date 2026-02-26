@@ -2,7 +2,6 @@
 
 module drivers.initramfs;
 
-import drivers.fs.dev;
 import system.vfs;
 import system.vfs.dev;
 import magic_enum;
@@ -97,7 +96,7 @@ namespace initramfs
 
                 std::shared_ptr<vfs::inode> inode;
 
-                if (name == "./")
+                if (name == "./" || name.ends_with("/.keep"))
                     goto next;
 
                 switch (current->typeflag)
@@ -250,10 +249,7 @@ namespace initramfs
     {
         "vfs.initramfs.extract",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            vfs::root_mounted_stage(),
-            fs::dev::registered_stage()
-        },
+        lib::initgraph::require { vfs::root_mounted_stage() },
         lib::initgraph::entail { extracted_stage() },
         [] {
             auto module = boot::find_module("initramfs");

@@ -6,6 +6,7 @@ import drivers.fs.devtmpfs;
 import system.memory.virt;
 import system.vfs;
 import system.vfs.dev;
+import magic_enum;
 import boot;
 import lib;
 import std;
@@ -149,6 +150,25 @@ namespace fs::dev::mem
             const auto rand = random_dev::singleton();
             register_dev_ops(makedev(1, 8), rand);
             register_dev_ops(makedev(1, 9), rand);
+
+            auto create = [](std::string_view path, mode_t mode, dev_t dev)
+            {
+                const auto ret = vfs::create(std::nullopt, path, mode, dev);
+                if (!ret && ret.error() != lib::err::already_exists)
+                {
+                    lib::panic(
+                        "mem: failed to create '{}': {}",
+                        path, magic_enum::enum_name(ret.error())
+                    );
+                }
+            };
+
+            using namespace vfs::dev;
+            create("/dev/null", stat::s_ifchr | 0666, makedev(1, 3));
+            create("/dev/zero", stat::s_ifchr | 0666, makedev(1, 5));
+            create("/dev/full", stat::s_ifchr | 0666, makedev(1, 7));
+            create("/dev/random", stat::s_ifchr | 0666, makedev(1, 8));
+            create("/dev/urandom", stat::s_ifchr | 0666, makedev(1, 9));
         }
     };
 } // namespace fs::dev::mem

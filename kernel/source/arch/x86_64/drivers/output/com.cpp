@@ -5,6 +5,7 @@ module x86_64.drivers.output.com;
 import drivers.output.serial;
 import drivers.output.terminal;
 import drivers.fs.dev.tty;
+import drivers.fs.devtmpfs;
 import system.interrupts;
 import system.cpu;
 import system.vfs;
@@ -140,10 +141,15 @@ namespace x86_64::output::com
         {
             std::size_t transmit(std::span<std::byte> buffer) override
             {
+                const auto idx = minor - 64;
+                if (!usable[idx])
+                    return 0;
+
+                const auto com = nth_com(idx + 1);
                 for (const auto byte : buffer)
                 {
                     const auto chr = static_cast<char>(byte);
-                    printc(chr);
+                    printc(chr, com);
 
                     //! TODO: TEMPORARY - FOR TESTING
                     namespace term = ::output::term;
@@ -163,13 +169,15 @@ namespace x86_64::output::com
             lib::expect<void> open(std::shared_ptr<vfs::file> self) override
             {
                 lib::unused(self);
-                if (usable[minor - 64])
+                const auto idx = minor - 64;
+                if (usable[idx])
                 {
-                    hooks[minor - 64] = [this](char chr) {
+                    hooks[idx] = [this](char chr) {
                         receive(std::span { reinterpret_cast<std::byte *>(&chr), 1 });
                     };
+                    return { };
                 }
-                return { };
+                return std::unexpected { lib::err::invalid_device_or_address };
             }
 
             lib::expect<void> close() override
@@ -199,7 +207,7 @@ namespace x86_64::output::com
     {
         "output.arch.com.tty.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { tty::current_registered_stage() },
+        lib::initgraph::require { fs::devtmpfs::mounted_stage() },
         [] {
             const auto com_drv = new com_driver { };
             tty::register_driver(com_drv);
