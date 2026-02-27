@@ -73,6 +73,8 @@ namespace x86_64::syscall
         [118] = { "getresuid", proc::getresuid },
         [120] = { "getresgid", proc::getresgid },
         [121] = { "getpgid", proc::getpgid },
+        [122] = { "setfsuid", proc::setfsuid },
+        [123] = { "setfsgid", proc::setfsgid },
         [158] = { "arch_prctl", arch::arch_prctl },
         [164] = { "settimeofday", chrono::settimeofday },
         [169] = { "reboot", misc::reboot },
@@ -95,7 +97,8 @@ namespace x86_64::syscall
         [302] = { "prlimit", proc::prlimit },
         [318] = { "getrandom", misc::getrandom },
         [334] = { "rseq", proc::rseq },
-        [435] = { "clone3", proc::clone3 }
+        [435] = { "clone3", proc::clone3 },
+        [439] = { "faccessat2", vfs::faccessat2 }
     };
 
     cpu_local<bool> in_syscall;

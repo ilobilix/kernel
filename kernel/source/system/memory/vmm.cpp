@@ -118,11 +118,17 @@ namespace vmm
 
             const auto our_page = get_page(idx);
             if (our_page == 0)
-                break;
+            {
+                progress += csize;
+                continue;
+            }
 
             const auto their_page = other.get_page(idx);
             if (their_page == 0)
-                break;
+            {
+                progress += csize;
+                continue;
+            }
 
             std::memcpy(
                 reinterpret_cast<void *>(lib::tohh(their_page) + misalign),
@@ -493,7 +499,7 @@ namespace vmm
                 {
                     obj.reset(new memobject { });
                     entry.obj->copy_to(*obj,
-                        (entry.startp + entry.offsetp) * psize,
+                        entry.offsetp * psize,
                         (entry.endp - entry.startp) * psize
                     );
                     lib::panic_if(

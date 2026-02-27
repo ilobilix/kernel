@@ -604,7 +604,7 @@ namespace syscall::vfs
         return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow);
     }
 
-    int faccessat(int dirfd, const char __user *pathname, int mode, int flags)
+    int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
     {
         const auto proc = sched::this_thread()->parent;
 
@@ -632,9 +632,14 @@ namespace syscall::vfs
         return 0;
     }
 
+    int faccessat(int dirfd, const char __user *pathname, int mode)
+    {
+        return faccessat2(dirfd, pathname, mode, 0);
+    }
+
     int access(const char __user *pathname, int mode)
     {
-        return faccessat(at_fdcwd, pathname, mode, 0);
+        return faccessat2(at_fdcwd, pathname, mode, 0);
     }
 
     int ioctl(int fd, unsigned long request, void __user *argp)

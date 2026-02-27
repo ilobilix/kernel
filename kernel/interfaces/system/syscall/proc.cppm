@@ -26,6 +26,9 @@ export namespace syscall::proc
 
     pid_t setsid();
 
+    int setfsuid(uid_t fsuid);
+    int setfsgid(gid_t fsgid);
+
     int getgroups(int size, gid_t __user *list);
     int setgroups(std::size_t size, const gid_t __user *list);
 
