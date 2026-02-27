@@ -150,11 +150,12 @@ namespace syscall::vfs
             if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
                 return (errno = ENOTDIR, -1);
 
-            auto created = create(parent->target, pathstr.basename(), (mode & ~proc->umask));
+            const auto cmode = (mode & ~proc->umask) | stat::type::s_ifreg;
+            auto created = create(parent->target, pathstr.basename(), cmode);
             if (!created.has_value())
                 return (errno = lib::map_error(created.error()), -1);
 
-            lib::bug_on(!created->dentry || created->dentry->inode);
+            lib::bug_on(!created->dentry || !created->dentry->inode);
 
             const auto &parent_stat = parent->target.dentry->inode->stat;
             auto &stat = created->dentry->inode->stat;

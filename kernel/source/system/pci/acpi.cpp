@@ -330,7 +330,7 @@ namespace pci::acpi
             {
                 "PNP0A03", // PCI
                 "PNP0A08", // PCIe
-                nullptr,
+                nullptr
             };
 
             std::size_t num = 0;
