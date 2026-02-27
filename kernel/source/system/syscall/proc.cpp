@@ -167,6 +167,20 @@ namespace syscall::proc
         return proc->sid;
     }
 
+    int setfsuid(uid_t fsuid)
+    {
+        // TODO
+        lib::unused(fsuid);
+        return (errno = ENOSYS, -1);
+    }
+
+    int setfsgid(gid_t fsgid)
+    {
+        // TODO
+        lib::unused(fsgid);
+        return (errno = ENOSYS, -1);
+    }
+
     int getgroups(int size, gid_t __user *list)
     {
         if (size < 0)

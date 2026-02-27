@@ -46,10 +46,11 @@ export
 
         dev_t st_dev;
         ino_t st_ino;
-        mode_t st_mode;
         nlink_t st_nlink;
+        mode_t st_mode;
         uid_t st_uid;
         gid_t st_gid;
+        std::uint32_t pad0;
         dev_t st_rdev;
         off_t st_size;
         blksize_t st_blksize;
@@ -58,6 +59,7 @@ export
         timespec st_atim;
         timespec st_mtim;
         timespec st_ctim;
+        std::int64_t pad1[3];
 
         static constexpr type type(mode_t mode)
         {
