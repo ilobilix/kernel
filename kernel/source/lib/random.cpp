@@ -17,17 +17,25 @@ namespace lib
         static mutex lock;
         const std::unique_lock _ { lock };
 
-        membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
-        std::size_t progress = 0;
-        while (progress < buffer.size_bytes())
+        if (buffer.is_user())
         {
-            const auto chunk_size = std::min(buffer.size_bytes() - progress, buf.size_bytes());
-            for (std::size_t i = 0; i < chunk_size; i++)
-                buf.data()[i] = static_cast<std::byte>(dist(rng));
-            if (!buffer.subspan(progress, chunk_size).copy_from(buf.data()))
-                return -1;
-            progress += chunk_size;
+            membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
+            std::size_t progress = 0;
+            while (progress < buffer.size_bytes())
+            {
+                const auto chunk_size = std::min(buffer.size_bytes() - progress, buf.size_bytes());
+                for (std::size_t i = 0; i < chunk_size; i++)
+                    buf.data()[i] = static_cast<std::byte>(dist(rng));
+                if (!buffer.subspan(progress, chunk_size).copy_from(buf.data()))
+                    return -1;
+                progress += chunk_size;
+            }
+            return static_cast<std::ssize_t>(progress);
         }
-        return static_cast<std::ssize_t>(progress);
+
+        for (std::size_t i = 0; i < buffer.size_bytes(); i++)
+            buffer.span()[i] = static_cast<std::byte>(dist(rng));
+
+        return buffer.size_bytes();
     }
 } // namespace lib

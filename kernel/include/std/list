@@ -417,10 +417,16 @@ namespace std
         void pop_front() { erase(begin()); }
 
         template<typename ...Args>
-        reference emplace_back(Args &&...args);
+        reference emplace_back(Args &&...args)
+        {
+            return *create_before(end(), forward<Args>(args)...);
+        }
 
         template<typename ...Args>
-        reference emplace_front(Args &&...args);
+        reference emplace_front(Args &&...args)
+        {
+            return *create_before(begin(), forward<Args>(args)...);
+        }
 
         template<detail::container_compatible_range<value_type> Range>
         void append_range(Range &&rg) { insert_range(end(), forward<Range>(rg)); }

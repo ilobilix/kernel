@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module;
-
-#include <cerrno>
-
 export module system.cpu.local;
 
 import system.cpu.arch;
@@ -25,7 +21,6 @@ export namespace cpu
 
         std::atomic_bool in_interrupt;
 
-        errnos err = no_error;
         std::atomic_bool online = false;
     };
 

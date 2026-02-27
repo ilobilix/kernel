@@ -36,6 +36,9 @@ export namespace lib
         invalid_type,
         invalid_entry,
         invalid_address,
+        invalid_fd,
+
+        buffer_too_small,
 
         no_space_left,
         no_readers,
@@ -86,11 +89,14 @@ export namespace lib
             case err::invalid_mount:
             case err::invalid_symlink:
             case err::invalid_flags:
+            case err::buffer_too_small:
                 return EINVAL;
             // case err::invalid_entry:
             //     return ;
             case err::invalid_address:
                 return EFAULT;
+            case err::invalid_fd:
+                return EBADF;
             case err::no_space_left:
                 return ENOSPC;
             case err::no_readers:

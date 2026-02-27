@@ -136,9 +136,9 @@ namespace x86_64::output::uart8250
                 return std::numeric_limits<std::size_t>::max();
             }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> self) override
+            lib::expect<void> open(std::shared_ptr<vfs::file> file) override
             {
-                lib::unused(self);
+                lib::unused(file);
 
                 const auto idx = minor - 64;
                 if (!usable[idx])

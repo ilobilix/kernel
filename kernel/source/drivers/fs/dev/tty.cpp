@@ -37,15 +37,15 @@ namespace fs::dev::tty
             return nullptr;
         }
 
-        lib::expect<void> generic_open(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst, int flags, bool inst_opened)
+        lib::expect<void> generic_open(std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst, int flags, bool inst_opened)
         {
             if (!inst_opened)
             {
-                if (const auto ret = inst->open(self); !ret)
+                if (const auto ret = inst->open(file); !ret)
                     return ret;
             }
 
-            const auto proc = sched::proc_for(self->pid);
+            const auto proc = sched::proc_for(file->pid);
             lib::bug_on(!proc);
 
             const bool noctty = !(flags & vfs::o_noctty) ||
@@ -75,9 +75,9 @@ namespace fs::dev::tty
             return { };
         }
 
-        lib::expect<void> generic_close(std::shared_ptr<vfs::file> self, std::shared_ptr<instance> inst)
+        lib::expect<void> generic_close(std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst)
         {
-            lib::unused(self);
+            lib::unused(file);
 
             if (const auto ret = inst->close(); !ret)
                 return ret;
@@ -118,6 +118,9 @@ namespace fs::dev::tty
         in_sem.signal_all();
         out_sem.signal_all();
         raw_sem.signal_all();
+
+        in_poll_wq.wake_all();
+        out_poll_wq.wake_all();
     }
 
     default_ldisc::~default_ldisc()
@@ -132,7 +135,7 @@ namespace fs::dev::tty
             lib::debug("tty: stopping worker thread in ({}, {})", inst->drv->major, inst->minor);
 
         should_work.store(false, std::memory_order_relaxed);
-        raw_sem.signal(true);
+        raw_sem.signal();
         if (inst->hung_up.load(std::memory_order_relaxed))
             hung_sem.signal();
         while (!should_work.load(std::memory_order_relaxed)) // ehhhhhh
@@ -182,6 +185,7 @@ namespace fs::dev::tty
                 break;
 
             out_sem.signal_all();
+            out_poll_wq.wake_all();
 
             auto span = std::span { buffer.data(), num_chars };
             const auto res = inst->transmit(std::move(span));
@@ -429,8 +433,15 @@ namespace fs::dev::tty
                     auto in_locked = self->in_buffer.lock();
                     if (chr == termios.c_cc[veof])
                     {
+                        // if (!in_locked->push(chr))
+                        // {
+                        //     echo_out('\a');
+                        //     continue;
+                        // }
+
                         in_locked->commit();
                         self->in_sem.signal_all();
+                        self->in_poll_wq.wake_all();
                         continue;
                     }
 
@@ -444,6 +455,7 @@ namespace fs::dev::tty
                     {
                         in_locked->commit();
                         self->in_sem.signal_all();
+                        self->in_poll_wq.wake_all();
                     }
                 }
 
@@ -470,7 +482,8 @@ namespace fs::dev::tty
                 if (!in_locked->full())
                 {
                     in_locked->push(chr);
-                    self->in_sem.signal(true);
+                    self->in_sem.signal_all();
+                    self->in_poll_wq.wake_all();
 
                     if (termios.c_lflag & echo)
                     {
@@ -802,6 +815,44 @@ namespace fs::dev::tty
         return std::unexpected { lib::err::inappropriate_ioctl };
     }
 
+    lib::expect<std::uint16_t> default_ldisc::poll(vfs::poll_table *pt)
+    {
+        using enum vfs::pollevents;
+        lib::bug_on(!inst);
+
+        std::uint16_t mask = 0;
+        if (pt != nullptr)
+        {
+            pt->queue_wait(&in_poll_wq);
+            pt->queue_wait(&out_poll_wq);
+        }
+
+        if (inst->hung_up.load(std::memory_order_relaxed))
+        {
+            mask |= (pollhup | pollin | pollout);
+            return mask;
+        }
+
+        const auto termios = inst->termios.read_lock().value();
+        const bool is_cooked = (termios.c_lflag & ktermios::lflag::icanon) != 0;
+
+        std::size_t available = 0;
+        {
+            auto in_locked = in_buffer.lock();
+            available = is_cooked
+                ? (in_locked->cooked_head - in_locked->read_tail)
+                : (in_locked->read_head - in_locked->read_tail);
+        }
+
+        if (available > 0)
+            mask |= pollin;
+
+        if (!out_buffer.full())
+            mask |= pollout;
+
+        return mask;
+    }
+
     instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
           termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { }
@@ -815,6 +866,11 @@ namespace fs::dev::tty
 
         lib::bug_on(!drv);
         return drv->ioctl(this, request, argp);
+    }
+
+    lib::expect<std::uint16_t> instance::poll(vfs::poll_table *pt)
+    {
+        return ldisc.read_lock()->get()->poll(pt);
     }
 
     void instance::hangup()
@@ -832,12 +888,12 @@ namespace fs::dev::tty
         ldisc_locked.value()->hangup();
     }
 
-    lib::expect<void> ops::open(std::shared_ptr<vfs::file> self, int flags)
+    lib::expect<void> ops::open(std::shared_ptr<vfs::file> file, int flags)
     {
-        lib::bug_on(!self || self->private_data != nullptr);
-        lib::bug_on(!self->path.dentry || !self->path.dentry->inode);
+        lib::bug_on(!file || file->private_data != nullptr);
+        lib::bug_on(!file->path.dentry || !file->path.dentry->inode);
 
-        const auto rdev = self->path.dentry->inode->stat.st_rdev;
+        const auto rdev = file->path.dentry->inode->stat.st_rdev;
         auto drv = get_driver(rdev);
         if (!drv)
             return std::unexpected { lib::err::no_such_device };
@@ -849,7 +905,7 @@ namespace fs::dev::tty
             {
                 // found an already open instance
                 inst = it->second;
-                if (const auto ret = generic_open(self, inst, flags, true); !ret)
+                if (const auto ret = generic_open(file, inst, flags, true); !ret)
                     return ret;
                 inst->ref.fetch_add(1, std::memory_order_acq_rel);
             }
@@ -859,7 +915,7 @@ namespace fs::dev::tty
                 if (!inst)
                     return std::unexpected { lib::err::no_such_device };
 
-                if (const auto ret = generic_open(self, inst, flags, false); !ret)
+                if (const auto ret = generic_open(file, inst, flags, false); !ret)
                 {
                     drv->destroy_instance(inst);
                     return ret;
@@ -869,17 +925,17 @@ namespace fs::dev::tty
                 inst->ldisc.read_lock()->get()->open();
             }
         }
-        self->private_data = inst;
+        file->private_data = inst;
 
         if constexpr (debug)
-            lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), file->pid);
         return { };
     }
 
-    lib::expect<void> ops::close(std::shared_ptr<vfs::file> self)
+    lib::expect<void> ops::close(std::shared_ptr<vfs::file> file)
     {
-        lib::bug_on(!self || !self->private_data);
-        const auto inst = std::static_pointer_cast<instance>(self->private_data);
+        lib::bug_on(!file || !file->private_data);
+        const auto inst = std::static_pointer_cast<instance>(file->private_data);
 
         const auto prev = inst->ref.fetch_sub(1, std::memory_order_acq_rel);
         lib::bug_on(prev == 0);
@@ -893,7 +949,7 @@ namespace fs::dev::tty
                 if (inst->ref.load(std::memory_order_acquire) != 0)
                     return { };
 
-                if (const auto ret = generic_close(self, inst); !ret)
+                if (const auto ret = generic_close(file, inst); !ret)
                 {
                     // can't even close ttys properly smh
                     inst->ref.fetch_add(1, std::memory_order_relaxed);
@@ -903,12 +959,12 @@ namespace fs::dev::tty
             }
             drv->destroy_instance(inst);
         }
-        self->private_data.reset();
+        file->private_data.reset();
 
         if constexpr (debug)
         {
-            const auto rdev = self->path.dentry->inode->stat.st_rdev;
-            lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), self->pid);
+            const auto rdev = file->path.dentry->inode->stat.st_rdev;
+            lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), file->pid);
         }
         return { };
     }
@@ -921,12 +977,12 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> self, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override
         {
-            lib::bug_on(!self || self->private_data != nullptr);
+            lib::bug_on(!file || file->private_data != nullptr);
             lib::unused(flags);
 
-            const auto proc = sched::proc_for(self->pid);
+            const auto proc = sched::proc_for(file->pid);
             lib::bug_on(!proc);
 
             auto sess = sched::session_for(proc->sid);
@@ -938,16 +994,16 @@ namespace fs::dev::tty
 
             // it's already open so just increment the ref count
             ctty.value()->ref.fetch_add(1, std::memory_order_acq_rel);
-            self->private_data = ctty.value();
+            file->private_data = ctty.value();
 
             if constexpr (debug)
-                lib::debug("tty: opened (5, 0) for pid {}", self->pid);
+                lib::debug("tty: opened (5, 0) for pid {}", file->pid);
             return { };
         }
 
-        lib::expect<void> close(std::shared_ptr<vfs::file> self) override
+        lib::expect<void> close(std::shared_ptr<vfs::file> file) override
         {
-            return tty::ops::singleton()->close(std::move(self));
+            return tty::ops::singleton()->close(std::move(file));
         }
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
@@ -977,6 +1033,13 @@ namespace fs::dev::tty
         {
             lib::unused(file, size);
             return { };
+        }
+
+        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+        {
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->poll(pt);
         }
     };
 

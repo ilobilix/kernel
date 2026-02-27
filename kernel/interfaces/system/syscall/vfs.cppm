@@ -52,4 +52,10 @@ export namespace syscall::vfs
     int pipe(int __user *pipefd);
 
     int socket(int domain, int type, int protocol);
+
+    int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
+
+    struct fd_set;
+    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout);
+    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const struct sigset_t __user *sigmask);
 } // export namespace syscall::vfs

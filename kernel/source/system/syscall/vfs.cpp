@@ -4,9 +4,11 @@ module system.syscall.vfs;
 
 import system.scheduler;
 import system.memory.virt;
+import system.chrono;
 import system.vfs;
 import system.vfs.pipe;
 import magic_enum;
+import arch;
 import lib;
 import std;
 
@@ -121,7 +123,7 @@ namespace syscall::vfs
         const bool follow_links = (flags & o_nofollow) == 0;
         const bool write = is_write(flags);
 
-        if ((flags & o_tmpfile) && !write)
+        if (((flags & o_tmpfile) == o_tmpfile) && !write)
             return (errno = EINVAL, -1);
 
         if ((flags & o_directory) && (flags & o_creat))
@@ -178,8 +180,11 @@ namespace syscall::vfs
             target = std::move(res->target);
             lib::bug_on(!target.dentry || !target.dentry->inode);
 
-            if (follow_links)
+            if (target.dentry->inode->stat.type() == stat::type::s_iflnk)
             {
+                if (!follow_links)
+                    return (errno = ELOOP, -1);
+
                 auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
                     return (errno = lib::map_error(reduced.error()), -1);
@@ -207,7 +212,7 @@ namespace syscall::vfs
             return (errno = lib::map_error(ret.error()), -1);
         }
 
-        if (flags & o_trunc)
+        if ((flags & o_trunc) && write)
         {
             if (const auto ret = fdesc->file->trunc(0); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
@@ -851,5 +856,330 @@ namespace syscall::vfs
     {
         lib::unused(domain, type, protocol);
         return (errno = ENOSYS, -1);
+    }
+
+    struct dirent64
+    {
+        std::uint64_t d_ino;
+        std::int64_t d_off;
+        unsigned short d_reclen;
+        unsigned char d_type;
+        char d_name[];
+    };
+
+    int getdents64(int fd, vfs::dirent64 __user *buf, std::size_t count)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        const auto fdesc = get_fd(proc, fd);
+        if (fdesc == nullptr)
+            return -1;
+
+        const auto &stat = fdesc->file->path.dentry->inode->stat;
+        if (stat.type() != stat::type::s_ifdir)
+            return (errno = ENOTDIR, -1);
+
+        const auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+        if (!uspan.has_value())
+            return (errno = EFAULT, -1);
+
+        const auto ret = fdesc->file->getdents(*uspan);
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
+
+        return static_cast<int>(ret.value());
+    }
+
+    constexpr int FD_SETSIZE = 1024;
+    struct [[aligned(alignof(long))]] fd_set
+    {
+        std::uint8_t fds_bits[FD_SETSIZE / 8];
+    };
+    static_assert(sizeof(fd_set) == FD_SETSIZE / 8);
+
+    struct sigset_t
+    {
+        unsigned long sig[1024 / (8 * sizeof(long))];
+    };
+
+    namespace
+    {
+        // inline void FD_CLR(int fd, fd_set *set)
+        // {
+        //     lib::bug_on(fd >= FD_SETSIZE);
+        //     set->fds_bits[fd / 8] &= ~(1 << (fd % 8));
+        // }
+
+        inline int FD_ISSET(int fd, const fd_set *set)
+        {
+            lib::bug_on(fd >= FD_SETSIZE);
+            return set->fds_bits[fd / 8] & (1 << (fd % 8));
+        }
+
+        inline void FD_SET(int fd, fd_set *set) {
+            lib::bug_on(fd >= FD_SETSIZE);
+            set->fds_bits[fd / 8] |= 1 << (fd % 8);
+        }
+
+        inline void FD_ZERO(fd_set *set)
+        {
+            std::memset(set->fds_bits, 0, sizeof(fd_set));
+        }
+
+        struct select_poll_table : poll_table
+        {
+            std::list<lib::wait_queue_entry> wait_nodes;
+            sched::thread *current;
+
+            select_poll_table(sched::thread *current) : current { current } { }
+            ~select_poll_table() override { unregister_all(); }
+
+            void queue_wait(lib::wait_queue *wq) override
+            {
+                wq->add(&wait_nodes.emplace_back(static_cast<sched::thread_base *>(current)));
+            }
+
+            void unregister_all()
+            {
+                for (auto &node : wait_nodes)
+                {
+                    if (node.queue)
+                        node.queue->remove(&node);
+                }
+                wait_nodes.clear();
+            }
+        };
+
+        // TODO: ugh
+        int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
+        {
+            // TODO
+            lib::unused(sigmask);
+
+            const auto me = sched::this_thread();
+            const auto proc = me->parent;
+
+            std::optional<std::size_t> timeout_ms { };
+            if (timeout)
+                timeout_ms = timeout->to_ms();
+
+            const auto start_time = chrono::now().to_ns();
+
+            const auto check_files = [&](select_poll_table *table, bool write_back) -> lib::expect<int>
+            {
+                int events = 0;
+
+                fd_set out_read, out_write, out_except;
+                FD_ZERO(&out_read); FD_ZERO(&out_write); FD_ZERO(&out_except);
+
+                for (int i = 0; i < nfds; i++)
+                {
+                    if (!(
+                        (readfds ? FD_ISSET(i, readfds) : 0) |
+                        (writefds ? FD_ISSET(i, writefds) : 0) |
+                        (exceptfds ? FD_ISSET(i, exceptfds) : 0)
+                    )) continue;
+
+                    auto fd = proc->fdt.get(i);
+                    if (!fd || !fd->file)
+                        return std::unexpected { lib::err::invalid_fd };
+
+                    const auto pres = fd->file->poll(table);
+                    if (!pres.has_value())
+                        continue;
+
+                    if (readfds && FD_ISSET(i, readfds) && (*pres & pollin))
+                    {
+                        FD_SET(i, &out_read);
+                        events++;
+                    }
+                    if (writefds && FD_ISSET(i, writefds) && (*pres & pollout))
+                    {
+                        FD_SET(i, &out_write);
+                        events++;
+                    }
+                    if (exceptfds && FD_ISSET(i, exceptfds) && (*pres & pollpri))
+                    {
+                        FD_SET(i, &out_except);
+                        events++;
+                    }
+                }
+
+                if (write_back)
+                {
+                    if (events > 0)
+                    {
+                        if (readfds)
+                            std::memcpy(readfds, &out_read, sizeof(fd_set));
+                        if (writefds)
+                            std::memcpy(writefds, &out_write, sizeof(fd_set));
+                        if (exceptfds)
+                            std::memcpy(exceptfds, &out_except, sizeof(fd_set));
+                    }
+                    else
+                    {
+                        if (readfds)
+                            FD_ZERO(readfds);
+                        if (writefds)
+                            FD_ZERO(writefds);
+                        if (exceptfds)
+                            FD_ZERO(exceptfds);
+                    }
+                }
+                return events;
+            };
+
+            select_poll_table table { me };
+
+            auto events = check_files(&table, false);
+            if (!events.has_value())
+                return (errno = lib::map_error(events.error()), -1);
+            if (*events > 0)
+            {
+                if (const auto ret = check_files(nullptr, true); !ret.has_value())
+                    return (errno = lib::map_error(ret.error()), -1);
+                goto exit;
+            }
+
+            while (true)
+            {
+                for (auto &node : table.wait_nodes)
+                    node.triggered.store(false, std::memory_order_seq_cst);
+
+                events = check_files(nullptr, false);
+                if (!events.has_value())
+                    return (errno = lib::map_error(events.error()), -1);
+
+                if (*events > 0)
+                {
+                    if (const auto ret = check_files(nullptr, true); !ret.has_value())
+                        return (errno = lib::map_error(ret.error()), -1);
+                    goto exit;
+                }
+
+                if (timeout_ms.has_value())
+                {
+                    const auto now = chrono::now().to_ns();
+                    const auto elapsed_ms = (now - start_time) / 1'000'000;
+                    if (elapsed_ms >= *timeout_ms)
+                    {
+                        events = 0;
+                        if (const auto ret = check_files(nullptr, true); !ret.has_value())
+                            return (errno = lib::map_error(ret.error()), -1);
+                        goto exit;
+                    }
+                    me->prepare_sleep(*timeout_ms - elapsed_ms);
+                }
+                else me->prepare_sleep();
+
+                bool race = false;
+                for (auto &node : table.wait_nodes)
+                {
+                    if (node.triggered.load(std::memory_order_seq_cst))
+                    {
+                        race = true;
+                        break;
+                    }
+                }
+
+                if (race)
+                {
+                    me->status = sched::status::running;
+                    me->sleep_lock.unlock();
+                    arch::int_switch(me->sleep_ints);
+                    continue;
+                }
+                sched::yield();
+            }
+
+            exit:
+            if (update_timeout && timeout != nullptr && timeout_ms.has_value())
+            {
+                const auto elapsed_ns = chrono::now().to_ns() - start_time;
+                const auto orig_ns = *timeout_ms * 1'000'000;
+                const auto remaining_ns = (orig_ns > elapsed_ns) ? (orig_ns - elapsed_ns) : 0;
+
+                timeout->tv_sec = remaining_ns / 1'000'000'000;
+                timeout->tv_nsec = remaining_ns % 1'000'000'000;
+            }
+            return *events;
+        }
+
+        int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timespec *timeout, bool update_timeout, const sigset_t __user *sigmask)
+        {
+            fd_set kreadfds, kwritefds, kexceptfds;
+            sigset_t ksigmask;
+
+            if (readfds && !lib::copy_from_user(&kreadfds, readfds, sizeof(fd_set)))
+                    return (errno = EFAULT, -1);
+            if (writefds && !lib::copy_from_user(&kwritefds, writefds, sizeof(fd_set)))
+                    return (errno = EFAULT, -1);
+            if (exceptfds && !lib::copy_from_user(&kexceptfds, exceptfds, sizeof(fd_set)))
+                    return (errno = EFAULT, -1);
+            if (sigmask && !lib::copy_from_user(&ksigmask, sigmask, sizeof(sigset_t)))
+                    return (errno = EFAULT, -1);
+
+            const auto ret = pselect(nfds,
+                readfds ? &kreadfds : nullptr,
+                writefds ? &kwritefds : nullptr,
+                exceptfds ? &kexceptfds : nullptr,
+                timeout, update_timeout,
+                sigmask ? &ksigmask : nullptr
+            );
+
+            if (ret >= 0)
+            {
+                if (readfds && !lib::copy_to_user(readfds, &kreadfds, sizeof(fd_set)))
+                    return (errno = EFAULT, -1);
+                if (writefds && !lib::copy_to_user(writefds, &kwritefds, sizeof(fd_set)))
+                        return (errno = EFAULT, -1);
+                if (exceptfds && !lib::copy_to_user(exceptfds, &kexceptfds, sizeof(fd_set)))
+                        return (errno = EFAULT, -1);
+            }
+
+            return ret;
+        }
+    } // namespace
+
+    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout)
+    {
+        timespec ktimeout;
+        if (timeout != nullptr)
+        {
+            timeval ktimeval;
+            if (!lib::copy_from_user(&ktimeval, timeout, sizeof(timeval)))
+                return (errno = EFAULT, -1);
+            ktimeout = timespec::from_timeval(ktimeval);
+        }
+
+        const auto ret = pselect(
+            nfds, readfds, writefds, exceptfds,
+            timeout ? &ktimeout : nullptr,
+            (timeout != nullptr), nullptr
+        );
+
+        if (ret >= 0 && timeout != nullptr)
+        {
+            const auto ktimeval = ktimeout.to_timeval();
+            if (!lib::copy_to_user(timeout, &ktimeval, sizeof(timeval)))
+                return (errno = EFAULT, -1);
+        }
+        return ret;
+    }
+
+    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const sigset_t __user *sigmask)
+    {
+        timespec ktimeout;
+        if (timeout != nullptr)
+        {
+            if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
+                return (errno = EFAULT, -1);
+        }
+
+        return pselect(
+            nfds, readfds, writefds, exceptfds,
+            timeout ? &ktimeout : nullptr,
+            false, sigmask
+        );
     }
 } // namespace syscall::vfs

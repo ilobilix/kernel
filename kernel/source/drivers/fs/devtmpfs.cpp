@@ -37,6 +37,7 @@ namespace fs::devtmpfs
                 locked->dev_id, 0, locked->next_inode++,
                 static_cast<mode_t>(stat::type::s_ifdir)
             );
+            root->parent = root;
 
             vfs::dev::register_fs_ops(locked->dev_id, tmpfs::ops::singleton());
         }

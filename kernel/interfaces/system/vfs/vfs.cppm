@@ -2,6 +2,7 @@
 
 export module system.vfs;
 
+import system.scheduler.base;
 import system.memory.virt;
 import lib;
 import std;
@@ -13,19 +14,10 @@ export namespace vfs
 
     enum openflags : int
     {
-#if defined(__x86_64__)
         o_direct = 040000,
         o_largefile = 0100000,
         o_directory = 0200000,
         o_nofollow = 0400000,
-#elif defined(__aarch64__)
-        o_directory = 040000,
-        o_nofollow = 0100000,
-        o_direct = 0200000,
-        o_largefile = 0400000,
-#else
-#  error "unsupported architecture"
-#endif
 
         o_path = 010000000,
 
@@ -99,34 +91,107 @@ export namespace vfs
 
     // stat and s_* bits are defined in lib/types.cppm
 
+    struct [[gnu::packed]] dirent64
+    {
+        std::uint64_t d_ino;
+        std::int64_t d_off;
+        std::uint16_t d_reclen;
+        std::uint8_t d_type;
+        char d_name[];
+    };
+
+    enum dts : std::uint8_t
+    {
+        dt_unknown = 0,
+        dt_fifo = 1,
+        dt_chr = 2,
+        dt_dir = 4,
+        dt_blk = 6,
+        dt_reg = 8,
+        dt_lnk = 10,
+        dt_sock = 12,
+        dt_wht = 14
+    };
+
+    inline constexpr dts stat_to_dt(enum stat::type type)
+    {
+        switch (type)
+        {
+            case stat::type::s_ififo:
+                return dts::dt_fifo;
+            case stat::type::s_ifchr:
+                return dts::dt_chr;
+            case stat::type::s_ifdir:
+                return dts::dt_dir;
+            case stat::type::s_ifblk:
+                return dts::dt_blk;
+            case stat::type::s_ifreg:
+                return dts::dt_reg;
+            case stat::type::s_iflnk:
+                return dts::dt_lnk;
+            case stat::type::s_ifsock:
+                return dts::dt_sock;
+            default:
+                return dts::dt_unknown;
+        }
+    }
+
+    enum pollevents : std::uint16_t
+    {
+        pollin   = 0x001, // there is data to read
+        pollpri  = 0x002, // there is urgent data to read
+        pollout  = 0x004, // writing now will not block
+        pollerr  = 0x008, // error condition
+        pollhup  = 0x010, // hung up
+        pollnval = 0x020  // invalid request
+    };
+
+    struct poll_table
+    {
+        virtual void queue_wait(lib::wait_queue *wq) = 0;
+        virtual ~poll_table() = default;
+    };
+
     struct file;
     struct ops
     {
-        virtual lib::expect<void> open(std::shared_ptr<file> self, int flags)
+        virtual lib::expect<void> open(std::shared_ptr<file> file, int flags)
         {
-            lib::unused(self, flags);
+            lib::unused(file, flags);
             return { };
         }
 
-        virtual lib::expect<void> close(std::shared_ptr<file> self)
+        virtual lib::expect<void> close(std::shared_ptr<file> file)
         {
-            lib::unused(self);
+            lib::unused(file);
             return { };
         }
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual lib::expect<std::size_t> write(std::shared_ptr<file> self, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual lib::expect<void> trunc(std::shared_ptr<file> self, std::size_t size) = 0;
+        virtual lib::expect<std::size_t> read(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> write(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
 
-        virtual lib::expect<int> ioctl(std::shared_ptr<file> self, std::uint64_t request, lib::uptr_or_addr argp)
+        virtual lib::expect<std::size_t> getdents(std::shared_ptr<file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer)
         {
-            lib::unused(self, request, argp);
+            lib::unused(file, offset, buffer);
+            return std::unexpected { lib::err::not_a_dir };
+        }
+
+        virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt)
+        {
+            lib::unused(file, pt);
+            return pollin | pollout;
+        }
+
+        virtual lib::expect<int> ioctl(std::shared_ptr<file> file, std::uint64_t request, lib::uptr_or_addr argp)
+        {
+            lib::unused(file, request, argp);
             return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<file> self, bool priv)
+        virtual lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<file> file, bool priv)
         {
-            lib::unused(self, priv);
+            lib::unused(file, priv);
             return std::unexpected { lib::err::mapping_unsupported };
         }
 
@@ -192,18 +257,104 @@ export namespace vfs
     {
         static std::shared_ptr<dentry> root(bool absolute);
 
+        struct children
+        {
+            public:
+            struct node
+            {
+                std::shared_ptr<dentry> dentry;
+                std::size_t cookie;
+            };
+
+            private:
+            std::list<node> _child_list { };
+
+            lib::map::flat_hash<
+                std::string_view,
+                std::list<node>::iterator
+            > _child_map { };
+
+            lib::btree::map<
+                std::size_t,
+                std::list<node>::iterator
+            > _offset_map;
+
+            std::size_t _next_cookie = 3;
+
+            public:
+            children() = default;
+
+            void insert(std::shared_ptr<dentry> dentry)
+            {
+                lib::bug_on(_child_map.contains(dentry->name));
+                _child_list.push_back({ dentry, _next_cookie++ });
+                auto it = std::prev(_child_list.end());
+                _child_map.insert({ dentry->name, it });
+                _offset_map.insert({ it->cookie, it });
+            }
+
+            bool erase(std::string_view name)
+            {
+                const auto it = _child_map.find(name);
+                if (it == _child_map.end())
+                    return false;
+                _offset_map.erase(it->second->cookie);
+                _child_list.erase(it->second);
+                _child_map.erase(it);
+                return true;
+            }
+
+            std::shared_ptr<dentry> lookup(std::string_view name) const
+            {
+                const auto it = _child_map.find(name);
+                if (it == _child_map.end())
+                    return nullptr;
+                return it->second->dentry;
+            }
+
+            std::list<node>::iterator begin_at(std::size_t offset) const
+            {
+                const auto it = _offset_map.lower_bound(offset);
+                if (it == _offset_map.end())
+                    return _child_list.end();
+                return it->second;
+            }
+
+            template<typename Type>
+            auto begin(this Type &&self)
+            {
+                return std::forward<Type>(self)._child_list.begin();
+            }
+
+            template<typename Type>
+            auto end(this Type &&self)
+            {
+                return std::forward<Type>(self)._child_list.end();
+            }
+
+            std::size_t size() const
+            {
+                const auto ret = _child_list.size();
+                lib::bug_on(ret != _child_map.size() || ret != _offset_map.size());
+                return ret;
+            }
+
+            bool empty() const
+            {
+                const auto ret = _child_list.empty();
+                lib::bug_on(ret != _child_map.empty() || ret != _offset_map.empty());
+                return ret;
+            }
+        };
+
         std::string name;
         std::string symlinked_to;
 
         std::shared_ptr<inode> inode;
 
         std::weak_ptr<dentry> parent;
-        lib::locker<
-            lib::map::flat_hash<
-                std::string_view,
-                std::shared_ptr<dentry>
-            >, lib::rwmutex
-        > children;
+
+        lib::locker<children, lib::rwmutex> children;
 
         std::list<std::weak_ptr<mount>> child_mounts;
     };
@@ -268,7 +419,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-
             return ops->get()->read(shared_from_this(), offset, buffer);
         }
 
@@ -277,7 +427,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-
             return ops->get()->write(shared_from_this(), offset, buffer);
         }
 
@@ -286,8 +435,17 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-
             return ops->get()->trunc(shared_from_this(), size);
+        }
+
+        lib::expect<std::size_t> getdents(lib::maybe_uspan<std::byte> buffer);
+
+        lib::expect<std::uint16_t> poll(poll_table *pt)
+        {
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+            return ops->get()->poll(shared_from_this(), pt);
         }
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp)
@@ -295,7 +453,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-
             return ops->get()->ioctl(shared_from_this(), request, argp);
         }
 
@@ -304,7 +461,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-
             return ops->get()->map(shared_from_this(), priv);
         }
 

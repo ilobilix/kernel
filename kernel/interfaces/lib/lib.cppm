@@ -40,3 +40,4 @@ export import :trace;
 export import :types;
 export import :unused;
 export import :user;
+export import :wq;
