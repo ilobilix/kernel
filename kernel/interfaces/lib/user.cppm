@@ -216,13 +216,13 @@ export namespace lib
         template<typename Type> requires std::is_trivially_copyable_v<Type>
         bool read(Type &val) const
         {
-            return lib::copy_from_user(&val, remove_user_cast<void>(ptr), sizeof(Type));
+            return lib::copy_from_user(&val, ptr, sizeof(Type));
         }
 
         template<typename Type> requires std::is_trivially_copyable_v<Type>
         bool write(const Type &val) const
         {
-            return lib::copy_to_user(remove_user_cast<void>(ptr), &val, sizeof(Type));
+            return lib::copy_to_user(ptr, &val, sizeof(Type));
         }
     };
 } // export namespace lib

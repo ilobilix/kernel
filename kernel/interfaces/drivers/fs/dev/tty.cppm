@@ -13,8 +13,7 @@ export namespace fs::dev::tty
     using speed_t = std::uint32_t;
     using tcflag_t = std::uint32_t;
 
-    inline constexpr std::size_t knccs = 19;
-    inline constexpr std::size_t unccs = 17;
+    inline constexpr std::size_t nccs = 19;
 
     struct ktermios
     {
@@ -138,7 +137,7 @@ export namespace fs::dev::tty
         tcflag_t c_cflag;
         tcflag_t c_lflag;
         cc_t c_line;
-        cc_t c_cc[knccs];
+        cc_t c_cc[nccs];
         speed_t c_ispeed;
         speed_t c_ospeed;
 
@@ -187,7 +186,7 @@ export namespace fs::dev::tty
         tcflag_t c_cflag;
         tcflag_t c_lflag;
         cc_t c_line;
-        cc_t c_cc[unccs];
+        cc_t c_cc[nccs];
     };
 
     struct winsize
@@ -196,6 +195,26 @@ export namespace fs::dev::tty
         std::uint16_t ws_col;
         std::uint16_t ws_xpixel;
         std::uint16_t ws_ypixel;
+
+        static constexpr winsize standard()
+        {
+            return {
+                .ws_row = 24,
+                .ws_col = 80,
+                .ws_xpixel = 0,
+                .ws_ypixel = 0
+            };
+        }
+    };
+
+    enum ioctl
+    {
+        tiocgpgrp = 0x540F,
+        tiocspgrp = 0x5410,
+        tiocgwinsz = 0x5413,
+        tiocswinsz = 0x5414,
+        tcgets2 = 0x802C542A,
+        tcsetsw2 = 0x402C542C
     };
 
     struct instance;

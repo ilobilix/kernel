@@ -41,7 +41,7 @@ namespace syscall::memory
 
         if (fixed == true)
         {
-            if (address == 0 || address % psize != 0)
+            if (address < vmm::vmspace::mmap_min || address % psize != 0)
                 return (errno = EINVAL, invalid_addr);
 
             if (vmspace->is_mapped(address, length) && !vmspace->unmap(address, length))
