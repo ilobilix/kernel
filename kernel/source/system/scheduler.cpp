@@ -65,6 +65,8 @@ namespace sched
 
     namespace arch
     {
+        using namespace ::arch;
+
         void init();
         void reschedule(std::size_t ms);
 
@@ -123,7 +125,7 @@ namespace sched
 
         void idle()
         {
-            ::arch::halt(true);
+            arch::halt(true);
         }
 
         thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
@@ -246,7 +248,7 @@ namespace sched
 
     void thread::prepare_sleep(std::size_t ms)
     {
-        sleep_ints = ::arch::int_switch_status(false);
+        sleep_ints = arch::int_switch_status(false);
         sleep_lock.lock();
         status = status::sleeping;
 
@@ -258,13 +260,13 @@ namespace sched
 
     bool thread::wake_up(std::size_t reason)
     {
-        const bool ints = ::arch::int_switch_status(false);
+        const bool ints = arch::int_switch_status(false);
         sleep_lock.lock();
 
         if (status != status::sleeping)
         {
             sleep_lock.unlock();
-            ::arch::int_switch(ints);
+            arch::int_switch(ints);
             return false;
         }
 
@@ -272,7 +274,7 @@ namespace sched
         wake_reason = reason;
 
         sleep_lock.unlock();
-        ::arch::int_switch(ints);
+        arch::int_switch(ints);
         return true;
     }
 
@@ -456,7 +458,7 @@ namespace sched
         auto thread = this_thread();
 
         const bool eeping = thread->status == status::sleeping;
-        const bool old = eeping ? thread->sleep_ints : ::arch::int_switch_status(false);
+        const bool old = eeping ? thread->sleep_ints : arch::int_switch_status(false);
 
         if (eeping)
         {
@@ -469,9 +471,9 @@ namespace sched
             percpu->sleep_queue.insert(thread);
         }
 
-        ::arch::int_switch(true);
+        arch::int_switch(true);
         arch::reschedule(0);
-        ::arch::int_switch(old);
+        arch::int_switch(old);
 
         return eeping ? thread->wake_reason : wake_reason::success;
     }
@@ -765,7 +767,7 @@ namespace sched
     {
         "sched.pid0.initialise",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::arch::cpus_stage(), timers::initialised_stage() },
+        lib::initgraph::require { arch::cpus_stage(), timers::initialised_stage() },
         lib::initgraph::entail { pid0_initialised_stage() },
         [] {
             auto proc = process::create(
@@ -792,7 +794,7 @@ namespace sched
                 std::memory_order_acq_rel, std::memory_order_relaxed
             )
         ) {
-            ::arch::pause();
+            arch::pause();
         }
     }
 
@@ -829,7 +831,7 @@ namespace sched
         percpu->idle_thread = idle_thread;
 
         arch::init();
-        ::arch::int_switch(true);
+        arch::int_switch(true);
 
         if (self->idx == cpu::bsp_idx())
         {
@@ -845,9 +847,9 @@ namespace sched
         }
 
         while (!should_start)
-            ::arch::pause();
+            arch::pause();
 
         arch::reschedule(0);
-        ::arch::halt(true);
+        arch::halt(true);
     }
 } // namespace sched

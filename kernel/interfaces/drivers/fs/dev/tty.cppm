@@ -232,6 +232,8 @@ export namespace fs::dev::tty
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
+        virtual lib::expect<std::uint16_t> poll(vfs::poll_table *pt) = 0;
+
         virtual void receive(std::span<std::byte> buffer) = 0;
 
         virtual void hangup() = 0;
@@ -313,9 +315,11 @@ export namespace fs::dev::tty
 
         lib::locker<in_buffer_t, lib::mutex> in_buffer;
         lib::semaphore in_sem;
+        lib::wait_queue in_poll_wq;
 
         lib::rbmpscd<char, buffer_size> out_buffer;
         lib::semaphore out_sem;
+        lib::wait_queue out_poll_wq;
 
         std::atomic_bool stopped;
 
@@ -341,6 +345,8 @@ export namespace fs::dev::tty
         lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
+
+        lib::expect<std::uint16_t> poll(vfs::poll_table *pt) override;
     };
 
     struct driver;
@@ -388,10 +394,12 @@ export namespace fs::dev::tty
         virtual std::size_t transmit(std::span<std::byte> buffer) = 0;
         virtual std::size_t can_transmit() = 0;
 
-        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self) = 0;
+        virtual lib::expect<void> open(std::shared_ptr<vfs::file> file) = 0;
         virtual lib::expect<void> close() = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
+
+        virtual lib::expect<std::uint16_t> poll(vfs::poll_table *pt);
 
         // called by hardware
         bool receive(std::span<std::byte> buffer)
@@ -489,8 +497,8 @@ export namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> self, int flags) override;
-        lib::expect<void> close(std::shared_ptr<vfs::file> self) override;
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override;
+        lib::expect<void> close(std::shared_ptr<vfs::file> file) override;
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
@@ -519,6 +527,13 @@ export namespace fs::dev::tty
         {
             lib::unused(file, size);
             return { };
+        }
+
+        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+        {
+            lib::bug_on(!file || !file->private_data);
+            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            return inst->poll(pt);
         }
     };
 

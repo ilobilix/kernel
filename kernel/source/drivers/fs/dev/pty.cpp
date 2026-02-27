@@ -48,9 +48,9 @@ namespace fs::dev::pty
                 return std::numeric_limits<std::size_t>::max();
             }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> self) override
+            lib::expect<void> open(std::shared_ptr<vfs::file> file) override
             {
-                lib::unused(self);
+                lib::unused(file);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
@@ -94,9 +94,9 @@ namespace fs::dev::pty
                 return std::numeric_limits<std::size_t>::max();
             }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> self) override
+            lib::expect<void> open(std::shared_ptr<vfs::file> file) override
             {
-                lib::unused(self);
+                lib::unused(file);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 

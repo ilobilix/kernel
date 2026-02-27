@@ -26,8 +26,6 @@ export
         long tv_nsec;
 
         constexpr timespec() : tv_sec { 0 }, tv_nsec { 0 } { }
-        constexpr timespec(timeval tv)
-            : tv_sec { tv.tv_sec }, tv_nsec { static_cast<long>(tv.tv_usec) * 1'000 } { }
 
         constexpr timespec(time_t sec, long nsec)
             : tv_sec { sec }, tv_nsec { nsec } { }
@@ -39,8 +37,13 @@ export
         constexpr timespec(const timespec &other) = default;
         constexpr timespec(timespec &&other) = default;
 
-        constexpr timespec &operator=(const timespec &other)= default;
-        constexpr timespec &operator=(timespec &&other)= default;
+        static constexpr timespec from_timeval(const timeval &tv)
+        {
+            return timespec { tv.tv_sec, static_cast<long>(tv.tv_usec) * 1'000 };
+        }
+
+        constexpr timespec &operator=(const timespec &other) = default;
+        constexpr timespec &operator=(timespec &&other) = default;
 
         constexpr timespec &operator+=(const timespec &other)
         {
@@ -87,9 +90,14 @@ export
             return tv_nsec <=> other.tv_nsec;
         }
 
-        constexpr long to_ns() const
+        constexpr std::uint64_t to_ns() const
         {
             return tv_sec * 1'000'000'000 + tv_nsec;
+        }
+
+        constexpr std::uint64_t to_ms() const
+        {
+            return tv_sec * 1000 + tv_nsec / 1'000'000;
         }
 
         constexpr timeval to_timeval() const

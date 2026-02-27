@@ -91,6 +91,55 @@ namespace fs::tmpfs
         return { };
     }
 
+    lib::expect<std::size_t> ops::getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer)
+    {
+        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
+
+        if (inod->stat.type() != stat::type::s_ifdir)
+            return std::unexpected { lib::err::not_a_dir };
+
+        auto rlocked = file->path.dentry->children.read_lock();
+
+        std::size_t progress = 0;
+        for (auto it = rlocked->begin_at(offset); it != rlocked->end(); it++)
+        {
+            const auto &[dentry, cookie] = *it;
+            const auto reclen = (sizeof(vfs::dirent64) + dentry->name.length() + 1 + 7) & ~7;
+
+            if (reclen + progress > buffer.size())
+            {
+                if (progress == 0)
+                    return std::unexpected { lib::err::buffer_too_small };
+                break;
+            }
+
+            const auto &stat = dentry->inode->stat;
+
+            offset = cookie + 1;
+            vfs::dirent64 dirent
+            {
+                .d_ino = stat.st_ino,
+                .d_off = static_cast<std::int64_t>(offset),
+                .d_reclen = static_cast<std::uint16_t>(reclen),
+                .d_type = vfs::stat_to_dt(stat.type())
+            };
+
+            buffer.subspan(progress, sizeof(vfs::dirent64))
+                .copy_from(reinterpret_cast<std::byte *>(&dirent));
+
+            const std::span name {
+                reinterpret_cast<std::byte *>(dentry->name.data()),
+                dentry->name.length() + 1
+            };
+            buffer.subspan(progress + sizeof(vfs::dirent64), dentry->name.length() + 1)
+                .copy_from(name);
+
+            progress += reclen;
+        }
+        return progress;
+    }
+
     lib::expect<std::shared_ptr<vmm::object>> ops::map(std::shared_ptr<vfs::file> file, bool priv)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
@@ -158,6 +207,7 @@ namespace fs::tmpfs
             dev_id, 0, locked->next_inode++,
             static_cast<mode_t>(stat::type::s_ifdir)
         );
+        root->parent = root;
 
         vfs::dev::register_fs_ops(dev_id, ops::singleton());
 

@@ -192,6 +192,12 @@ export namespace lib
             lib::bug_on(offset + length > _span.size());
             return maybe_uspan<Type> { _is_user, _span.subspan(offset, length) };
         }
+
+        maybe_uspan<Type> subspan(std::size_t offset) const
+        {
+            lib::bug_on(offset > _span.size());
+            return maybe_uspan<Type> { _is_user, _span.subspan(offset) };
+        }
     };
 
     struct uptr_or_addr

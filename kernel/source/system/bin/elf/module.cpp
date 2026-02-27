@@ -459,9 +459,9 @@ namespace bin::elf::mod
                 auto dir = ret->target;
                 vfs::populate(dir);
 
-                for (const auto &[name, child] : dir.dentry->children.read_lock().value())
+                for (const auto &[child, _] : dir.dentry->children.read_lock().value())
                 {
-                    if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
+                    if (!child->name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
                         continue;
 
                     load(path, vfs::file::create({

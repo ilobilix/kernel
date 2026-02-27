@@ -34,6 +34,17 @@ namespace vfs
         {
             return next_dev.fetch_add(1, std::memory_order_relaxed);
         }
+
+        path resolve_mounts(path path)
+        {
+            while (path.mnt != nullptr && path.dentry == path.mnt->root)
+            {
+                if (!path.mnt->mounted_on.has_value())
+                    break;
+                path = path.mnt->mounted_on.value();
+            }
+            return path;
+        };
     } // namespace
 
     filesystem::instance::instance() : dev_id { allocate_dev() } { }
@@ -59,15 +70,102 @@ namespace vfs
         return *ops;
     }
 
+    lib::expect<std::size_t> file::getdents(lib::maybe_uspan<std::byte> buffer)
+    {
+        const auto ops = get_ops();
+        if (!ops.has_value())
+            return std::unexpected { ops.error() };
+
+        std::unique_lock _ { lock };
+        std::size_t progress = 0;
+        if (offset < 3)
+        {
+            if (offset == 0)
+                offset++;
+
+            if (offset == 1)
+            {
+                static const std::span<std::byte> dotstr {
+                    reinterpret_cast<std::byte *>(const_cast<char *>(".")), 2
+                };
+                static const std::size_t reclen = (sizeof(vfs::dirent64) + dotstr.size() + 7) & ~7;
+
+                if (progress + reclen > buffer.size())
+                    return std::unexpected { lib::err::buffer_too_small };
+
+                const auto ino = path.dentry->inode->stat.st_ino;
+                vfs::dirent64 dot
+                {
+                    .d_ino = ino,
+                    .d_off = 2,
+                    .d_reclen = static_cast<std::uint16_t>(reclen),
+                    .d_type = vfs::stat_to_dt(stat::type::s_ifdir)
+                };
+
+                buffer.subspan(progress, sizeof(vfs::dirent64))
+                    .copy_from(reinterpret_cast<std::byte *>(&dot));
+                buffer.subspan(progress + sizeof(vfs::dirent64), 2)
+                    .copy_from(dotstr);
+
+                progress += reclen;
+                offset++;
+            }
+
+            if (offset == 2)
+            {
+                static const std::span<std::byte> dotdotstr {
+                    reinterpret_cast<std::byte *>(const_cast<char *>("..")), 3
+                };
+                static const std::size_t reclen = (sizeof(vfs::dirent64) + dotdotstr.size() + 7) & ~7;
+
+                if (progress + reclen > buffer.size())
+                {
+                    if (progress == 0)
+                        return std::unexpected { lib::err::buffer_too_small };
+                    return progress;
+                }
+
+                const auto parent_ino = resolve_mounts(path).dentry->parent.lock()->inode->stat.st_ino;
+
+                vfs::dirent64 dotdot
+                {
+                    .d_ino = parent_ino,
+                    .d_off = 3,
+                    .d_reclen = static_cast<std::uint16_t>(reclen),
+                    .d_type = vfs::stat_to_dt(stat::type::s_ifdir)
+                };
+
+                buffer.subspan(progress, sizeof(vfs::dirent64))
+                    .copy_from(reinterpret_cast<std::byte *>(&dotdot));
+                buffer.subspan(progress + sizeof(vfs::dirent64), 3)
+                    .copy_from(dotdotstr);
+
+                progress += reclen;
+                offset++;
+            }
+        }
+
+        const auto res = ops->get()->getdents(shared_from_this(), offset, buffer.subspan(progress));
+        if (!res.has_value())
+        {
+            if (res.error() == lib::err::buffer_too_small && progress > 0)
+                return progress;
+            return std::unexpected { res.error() };
+        }
+        return progress + *res;
+    }
+
     path get_root(bool absolute)
     {
-        if (!absolute && sched::is_initialised())
+        if (!absolute)
             return sched::this_thread()->parent->root;
 
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
-        // hmmmm is this correct? what about multiple mounts?
-        if (!ret.dentry->child_mounts.empty())
-            ret.mnt = ret.dentry->child_mounts.front().lock();
+        while (!ret.dentry->child_mounts.empty())
+        {
+            ret.mnt = ret.dentry->child_mounts.back().lock();
+            ret.dentry = ret.mnt->root;
+        }
         return ret;
     }
 
@@ -92,7 +190,7 @@ namespace vfs
 
     std::shared_ptr<dentry> dentry::root(bool absolute)
     {
-        if (!absolute && sched::is_initialised())
+        if (!absolute)
             return sched::this_thread()->parent->root.dentry;
         return vfs::root;
     }
@@ -101,25 +199,31 @@ namespace vfs
     {
         std::size_t len = 0;
         std::vector<std::string_view> segments;
+
         while (true)
         {
-            while (path.dentry == path.mnt->root)
-                path = path.mnt->mounted_on.value();
+            path = resolve_mounts(path);
+            if (path.dentry == nullptr || path.dentry == vfs::root)
+                break;
 
-            if (path.dentry == vfs::root)
+            auto parent = path.dentry->parent.lock();
+            if (path.dentry == parent)
                 break;
 
             segments.push_back(path.dentry->name);
             len += path.dentry->name.size();
-            path.dentry = path.dentry->parent.lock();
+            path.dentry = parent;
         }
+
         std::string result;
         result.reserve(std::max(1zu, len + segments.size()));
+
         for (auto it = segments.rbegin(); it != segments.rend(); it++)
         {
             result += '/';
             result += *it;
         }
+
         if (result.empty())
             result = "/";
         return result;
@@ -127,10 +231,7 @@ namespace vfs
 
     auto path_for(lib::path _path) -> lib::expect<path>
     {
-        std::optional<path> parent { };
-        if (sched::is_initialised())
-            parent = sched::this_thread()->parent->root;
-        auto res = resolve(parent, _path);
+        auto res = resolve(sched::this_thread()->parent->root, _path);
         if (!res)
             return std::unexpected { res.error() };
         return res->target;
@@ -163,12 +264,13 @@ namespace vfs
 
             if (segment == "..")
             {
-                auto resolve_mounts = [](auto path)
+                auto proc_root = get_root(false);
+                if (current.dentry == proc_root.dentry && current.mnt == proc_root.mnt)
                 {
-                    while (path.dentry == path.mnt->root)
-                        path = path.mnt->mounted_on.value();
-                    return path;
-                };
+                    if (last)
+                        return resolve_res { current, current };
+                    continue;
+                }
 
                 current = resolve_mounts(current);
                 current.dentry = current.dentry->parent.lock();
@@ -187,9 +289,8 @@ namespace vfs
             try_again:
             {
                 const auto &rlocked = current.dentry->children.read_lock();
-                if (auto it = rlocked->find(segment); it != rlocked->end())
+                if (auto dentry = rlocked->lookup(segment); dentry != nullptr)
                 {
-                    auto dentry = it->second;
                     auto mnt = current.mnt;
 
                     again:
@@ -332,7 +433,7 @@ namespace vfs
             dentry->name = name;
             dentry->inode = ret.value();
 
-            real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
+            real_parent.dentry->children.write_lock()->insert(dentry);
             return path { real_parent.mnt, dentry };
         }
         return std::unexpected { ret.error() };
@@ -360,7 +461,7 @@ namespace vfs
             dentry->symlinked_to = target.str();
             dentry->inode = ret.value();
 
-            real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
+            real_parent.dentry->children.write_lock()->insert(dentry);
             return path { real_parent.mnt, dentry };
         }
         return std::unexpected { ret.error() };
@@ -407,7 +508,7 @@ namespace vfs
             dentry->name = name;
             dentry->inode = ret.value();
 
-            real_parent.dentry->children.write_lock().value()[dentry->name] = dentry;
+            real_parent.dentry->children.write_lock()->insert(dentry);
             return path { real_parent.mnt, dentry };
         }
         return std::unexpected { ret.error() };
@@ -438,9 +539,7 @@ namespace vfs
         if (ret)
         {
             auto wlocked = real_parent->children.write_lock();
-            auto it = wlocked->find(name);
-            lib::bug_on(it == wlocked->end());
-            wlocked->erase(it);
+            lib::bug_on(!wlocked->erase(name));
             return { };
         }
         return std::unexpected { ret.error() };
@@ -522,7 +621,7 @@ namespace vfs
                 dentry->name = name;
                 dentry->inode = inode;
 
-                wlocked.value()[dentry->name] = dentry;
+                wlocked->insert(dentry);
             }
             return true;
         }

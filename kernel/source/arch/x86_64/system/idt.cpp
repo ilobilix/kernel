@@ -118,7 +118,7 @@ namespace x86_64::idt
                 if (sched::is_initialised())
                 {
                     const auto thread = sched::this_thread();
-                    lib::panic(regs, "exception {}: '{}' on cpu {} on thread [{}:{}]",
+                    lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
                         vector, exception_messages[vector],
                         self->idx, thread->parent->pid, thread->tid
                     );

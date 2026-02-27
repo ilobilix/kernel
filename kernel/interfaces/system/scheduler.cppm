@@ -1,9 +1,9 @@
 // Copyright (C) 2024-2026  ilobilo
 
 export module system.scheduler;
+export import system.scheduler.base;
 
 import drivers.fs.dev.tty;
-import system.scheduler.base;
 import system.memory.virt;
 import system.cpu;
 import system.cpu.local;
