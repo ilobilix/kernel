@@ -43,4 +43,15 @@ namespace syscall::chrono
         lib::unused(tv, tz);
         return 0;
     }
+
+    time_t time(time_t __user *tloc)
+    {
+        const time_t seconds = now().tv_sec;
+        if (tloc != nullptr)
+        {
+            if (!lib::copy_to_user(tloc, &seconds, sizeof(time_t)))
+                return (errno = EFAULT, -1);
+        }
+        return seconds;
+    }
 } // namespace syscall::chrono

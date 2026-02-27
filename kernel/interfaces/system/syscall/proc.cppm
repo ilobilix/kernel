@@ -10,6 +10,7 @@ export namespace syscall::proc
     pid_t gettid();
     pid_t getpid();
     pid_t getppid();
+    pid_t getpgrp();
 
     uid_t getuid();
     uid_t geteuid();

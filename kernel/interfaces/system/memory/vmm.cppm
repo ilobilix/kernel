@@ -98,6 +98,10 @@ export namespace vmm
             lib::rwmutex
         > tree;
 
+        static constexpr std::uintptr_t mmap_min = 0x10000;
+        static constexpr std::uintptr_t mmap_top = 0x7FFFF7000000;
+        static constexpr std::uintptr_t stack_top = 0x7FFFFFFFF000;
+
         std::uintptr_t brk_start = 0;
         std::uintptr_t brk = 0;
         inline void init_brk(std::uintptr_t addr)

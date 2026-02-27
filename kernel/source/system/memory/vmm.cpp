@@ -440,21 +440,32 @@ namespace vmm
     std::optional<std::uintptr_t> vmspace::find_free_region(std::size_t length)
     {
         const auto psize = default_page_size();
-
         const auto pages = lib::div_roundup(length, psize);
+
+        const auto mmap_min_pages = mmap_min / psize;
         const auto locked = tree.read_lock();
 
-        // TODO: set cap
-
-        std::uintptr_t last_endp = 0;
-        for (const auto &entry : *locked)
+        std::uintptr_t search_top = mmap_top / psize;
+        for (auto it = locked->rbegin(); it != locked->rend(); it++)
         {
-            if (entry.startp - last_endp >= pages)
-                return last_endp * psize;
-            last_endp = entry.endp;
+            const auto &entry = *it;
+
+            if (entry.startp >= search_top)
+                continue;
+
+            if (search_top - entry.endp >= pages)
+                return (search_top - pages) * psize;
+
+            search_top = entry.startp;
+
+            if (search_top <= mmap_min_pages)
+                break;
         }
 
-        return last_endp * psize;
+        if (search_top > mmap_min_pages && (search_top - mmap_min_pages) >= pages)
+            return (search_top - pages) * psize;
+
+        return std::nullopt;
     }
 
     bool handle_pfault(std::uintptr_t addr, bool on_write)

@@ -35,6 +35,7 @@ export namespace lib
         invalid_flags,
         invalid_type,
         invalid_entry,
+        invalid_address,
 
         no_space_left,
         no_readers,
@@ -88,6 +89,8 @@ export namespace lib
                 return EINVAL;
             // case err::invalid_entry:
             //     return ;
+            case err::invalid_address:
+                return EFAULT;
             case err::no_space_left:
                 return ENOSPC;
             case err::no_readers:

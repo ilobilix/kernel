@@ -23,8 +23,8 @@ namespace lib::syscall
                 const void *
             >,
             std::conditional_t<
-                std::is_integral_v<CType>,
-                const void *, // print numbers as hex
+                std::is_unsigned_v<CType>,
+                const void *,
                 Type
             >
         >;
@@ -32,6 +32,8 @@ namespace lib::syscall
     template<typename ...Ts>
     auto ptr(const std::tuple<Ts...> &tup)
     {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wint-to-void-pointer-cast"
         return std::apply(
             [](const auto &...args) {
                 return std::tuple {
@@ -39,6 +41,7 @@ namespace lib::syscall
                 };
             }, tup
         );
+#pragma clang diagnostic pop
     }
 
     export template<typename Type, std::size_t N>

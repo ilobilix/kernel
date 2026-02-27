@@ -32,7 +32,7 @@ namespace bin::elf::exec
         };
 
         static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr)
-            -> std::optional<std::pair<auxval, std::shared_ptr<vfs::file>>>
+            -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
         {
             Elf64_Ehdr ehdr;
             auto hdruspan = lib::maybe_uspan<std::byte>::create(
@@ -59,6 +59,7 @@ namespace bin::elf::exec
 
             std::shared_ptr<vfs::file> interp { };
 
+            std::uintptr_t max_end = 0;
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
@@ -89,6 +90,7 @@ namespace bin::elf::exec
                         const auto misalign = phdr.p_vaddr & (psize - 1);
 
                         const auto address = addr + phdr.p_vaddr - misalign;
+                        max_end = std::max(max_end, address + phdr.p_memsz + misalign);
 
                         auto obj = std::make_shared<vmm::memobject>();
 
@@ -172,7 +174,7 @@ namespace bin::elf::exec
                 }
             }
 
-            return std::make_pair(aux, interp);
+            return std::make_tuple(aux, interp, lib::align_up(max_end, vmm::default_page_size()));
         }
 
         public:
@@ -212,7 +214,7 @@ namespace bin::elf::exec
             if (!ret.has_value())
                 return nullptr;
 
-            const auto [auxv, interp] = ret.value();
+            const auto [auxv, interp, exec_end] = ret.value();
             lib::bug_on(req.interp && interp);
 
             std::uintptr_t entry = auxv.at_entry;
@@ -224,13 +226,12 @@ namespace bin::elf::exec
                     return nullptr;
 
                 lib::bug_on(interp_base == exec_base);
-                const auto [iauxv, ii] = ret.value();
+                const auto [iauxv, ii, interp_end] = ret.value();
 
                 entry = iauxv.at_entry;
                 lib::bug_on(ii != nullptr);
             }
-            // TODO: fix
-            proc->vmspace->init_brk(std::max(exec_base, interp_base) + lib::mib(16));
+            proc->vmspace->init_brk(exec_end);
 
             auto thread = sched::thread::create(proc, entry, 0, true);
 
@@ -243,7 +244,7 @@ namespace bin::elf::exec
             auto execfn_path = req.pathname.empty() ? vfs::pathname_from(req.file->path) : req.pathname;
             const std::string_view plaform_name { ILOBILIX_SYSNAME };
 
-            constexpr std::size_t num_auxvals = 16;
+            constexpr std::size_t num_auxvals = 17;
 
             const bool one_more = (req.argv.size() + req.envp.size() + 1) & 1;
             const auto required_size =
@@ -261,7 +262,7 @@ namespace bin::elf::exec
                         }
                     ) +
                     execfn_path.length() + 1 +
-                    plaform_name.length() + 1, 16
+                    plaform_name.length() + 1 + 16, 16
                 ) + (one_more ? 8 : 0) + (num_auxvals * 16) + 8 +
                 req.envp.size() * 8 + 8 + req.argv.size() * 8 + 8;
 
@@ -312,6 +313,17 @@ namespace bin::elf::exec
                 platform_offset = addr_bottom + offset;
             }
 
+            std::uintptr_t random_offset = 0;
+            {
+                offset -= 16;
+                const auto uspan = lib::maybe_uspan<std::byte>::create(
+                    reinterpret_cast<std::byte *>(sptr()), 16
+                );
+                lib::bug_on(!uspan.has_value());
+                lib::bug_on(lib::random_bytes(*uspan) != 16);
+                random_offset = addr_bottom + offset;
+            }
+
             offset = lib::align_down(offset, 16);
             if (one_more)
             {
@@ -346,7 +358,7 @@ namespace bin::elf::exec
             write_auxv(AT_PLATFORM, platform_offset);
             // write_auxv(AT_HWCAP, 0); // TODO
             write_auxv(AT_EXECFN, execfn_offset);
-            // write_auxv(AT_RANDOM, 0); // TODO
+            write_auxv(AT_RANDOM, random_offset);
             write_auxv(AT_SECURE, 0);
             write_auxv(AT_BASE_PLATFORM, platform_offset);
 

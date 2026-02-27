@@ -46,6 +46,11 @@ namespace syscall::proc
         return parent ? parent->pid : 0;
     }
 
+    pid_t getpgrp()
+    {
+        return sched::this_thread()->parent->pgid;
+    }
+
     uid_t getuid() { return sched::this_thread()->parent->ruid;}
     uid_t geteuid() { return sched::this_thread()->parent->euid; }
     gid_t getgid() { return sched::this_thread()->parent->rgid; }

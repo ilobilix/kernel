@@ -112,8 +112,6 @@ export namespace sched
 
     struct process
     {
-        static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
-
         pid_t pid, pgid, sid;
 
         gid_t rgid = 0, sgid = 0, egid = 0;
@@ -156,7 +154,7 @@ export namespace sched
         lib::map::flat_hash<pid_t, thread *> threads;
 
         std::atomic<pid_t> next_tid = 1;
-        std::uintptr_t next_stack_top = initial_stck_top;
+        std::uintptr_t next_stack_top = vmm::vmspace::stack_top;
 
         static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
 
