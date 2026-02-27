@@ -57,6 +57,8 @@ namespace x86_64::syscall
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl },
         [79] = { "getcwd", vfs::getcwd, [](std::uintptr_t val) { return val == 0; } },
+        [80] = { "chdir", vfs::chdir },
+        [81] = { "fchdir", vfs::fchdir },
         [85] = { "creat", vfs::creat },
         [95] = { "umask", proc::umask },
         [96] = { "gettimeofday", chrono::gettimeofday },
