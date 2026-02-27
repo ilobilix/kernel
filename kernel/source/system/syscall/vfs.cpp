@@ -732,6 +732,36 @@ namespace syscall::vfs
         return lib::remove_user_cast<char>(buf);
     }
 
+    int chdir(const char __user *pathname)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        const auto target = get_target(proc, at_fdcwd, pathname, true, false);
+        if (!target.has_value())
+            return -1;
+
+        if (target->dentry->inode->stat.type() != stat::type::s_ifdir)
+            return (errno = ENOTDIR, -1);
+
+        proc->cwd = *target;
+        return 0;
+    }
+
+    int fchdir(int fd)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        const auto target = get_target(proc, fd, nullptr, true, true);
+        if (!target.has_value())
+            return -1;
+
+        if (target->dentry->inode->stat.type() != stat::type::s_ifdir)
+            return (errno = ENOTDIR, -1);
+
+        proc->cwd = *target;
+        return 0;
+    }
+
     int pipe2(int __user *pipefd, int flags)
     {
         const auto proc = sched::this_thread()->parent;
