@@ -606,20 +606,20 @@ namespace vfs
 
     bool populate(path parent, std::string_view name)
     {
-        const auto ret = parent.mnt->fs.lock()->populate(parent.dentry->inode, name);
+        auto ret = parent.mnt->fs.lock()->populate(parent.dentry->inode, name);
         if (!ret.has_value())
             return false;
 
-        const auto list = ret.value();
+        auto list = std::move(*ret);
         if (!list.empty())
         {
             auto wlocked = parent.dentry->children.write_lock();
-            for (const auto [name, inode] : list)
+            for (auto &[name, inode] : list)
             {
                 auto dentry = std::make_shared<vfs::dentry>();
                 dentry->parent = parent.dentry;
-                dentry->name = name;
-                dentry->inode = inode;
+                dentry->name = std::move(name);
+                dentry->inode = std::move(inode);
 
                 wlocked->insert(dentry);
             }

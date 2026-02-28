@@ -179,7 +179,7 @@ namespace fs::tmpfs
         return { };
     }
 
-    auto fs::instance::populate(std::shared_ptr<vfs::inode> &node, std::string_view name) -> lib::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>>
+    auto fs::instance::populate(std::shared_ptr<vfs::inode> &node, std::string_view name) -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>>
     {
         lib::unused(node, name);
         return std::unexpected { lib::err::todo };

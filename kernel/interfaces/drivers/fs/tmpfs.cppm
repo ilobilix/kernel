@@ -41,7 +41,7 @@ export namespace fs::tmpfs
             auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> lib::expect<std::shared_ptr<vfs::inode>> override;
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override;
 
-            auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> lib::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override;
+            auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override;
             bool sync() override;
 
             bool unmount(std::shared_ptr<struct vfs::mount>) override;
@@ -49,7 +49,7 @@ export namespace fs::tmpfs
             ~instance() = default;
         };
 
-        mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
+        mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
         auto mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override;
 
         fs() : vfs::filesystem { "tmpfs" } { }
