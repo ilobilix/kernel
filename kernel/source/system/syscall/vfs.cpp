@@ -628,7 +628,7 @@ namespace syscall::vfs
         const auto uid = eaccess ? proc->euid : proc->ruid;
         const auto gid = eaccess ? proc->egid : proc->rgid;
 
-        if ((mode & (x_ok | w_ok | r_ok)) == 0)
+        if (mode & ~(r_ok | w_ok | x_ok))
             return (errno = EINVAL, -1);
 
         const auto supgids = proc->supplementary_gids.read_lock();
@@ -928,7 +928,7 @@ namespace syscall::vfs
 
         struct select_poll_table : poll_table
         {
-            std::list<lib::wait_queue_entry> wait_nodes;
+            lib::list<lib::wait_queue_entry> wait_nodes;
             sched::thread *current;
 
             select_poll_table(sched::thread *current) : current { current } { }

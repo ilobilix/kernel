@@ -238,6 +238,4 @@ export namespace pci
     lib::initgraph::stage *ios_discovered_stage();
     lib::initgraph::stage *rbs_discovered_stage();
     lib::initgraph::stage *enumerated_stage();
-
-    void init();
 } // export namespace pci

@@ -6,7 +6,7 @@ import system.scheduler.base;
 import std;
 
 import :spinlock;
-import :list;
+import :intrusive;
 
 export namespace lib
 {
