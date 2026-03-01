@@ -8,7 +8,7 @@ set(_C_CXX_ASM_FLAGS
     "--target=${ILOBILIX_ARCH}-elf"
 
     "-fcolor-diagnostics"
-    "-fmacro-prefix-map=${PROJECT_SOURCE_DIR}/="
+    "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
 
     "-ffreestanding"
     "-nostdinc"
@@ -135,15 +135,6 @@ foreach(_define ${_ILOBILIX_DEFINES})
     list(APPEND _C_CXX_ASM_FLAGS "-D'${_replaced_define}'")
 endforeach()
 
-execute_process(
-    COMMAND git rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_COMMIT='\"${GIT_COMMIT_HASH}\"'")
-
 string(JOIN " " _C_CXX_ASM_FLAGS_STR ${_C_CXX_ASM_FLAGS})
 string(JOIN " " _CXX_FLAGS_STR ${_CXX_FLAGS})
 
@@ -198,6 +189,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/kernel/include/libc
     ${CMAKE_SOURCE_DIR}/kernel/include/kernel
     ${CMAKE_SOURCE_DIR}/kernel/include/kernel/uacpi
+    ${CMAKE_BINARY_DIR}/generated
 )
 
 function(ilobilix_append_flags LANGUAGES)

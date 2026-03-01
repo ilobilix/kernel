@@ -1,5 +1,9 @@
 // Copyright (C) 2024-2026  ilobilo
 
+module;
+
+#include <version.h>
+
 export module lib:mod;
 import std;
 
