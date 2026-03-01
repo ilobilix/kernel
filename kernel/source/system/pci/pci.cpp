@@ -291,7 +291,7 @@ namespace pci
             static lib::initgraph::stage stage
             {
                 "pci.arch.ios-discovered",
-                lib::initgraph::presched_init_engine
+                lib::initgraph::postsched_init_engine
             };
             return &stage;
         }
@@ -313,50 +313,6 @@ namespace pci
         lib::initgraph::stage *rbs_discovered_stage();
     } // namespace acpi
 
-    lib::initgraph::stage *ios_discovered_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "pci.ios-discovered",
-            lib::initgraph::presched_init_engine
-        };
-        return &stage;
-    }
-
-    lib::initgraph::stage *rbs_discovered_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "pci.rbs-discovered",
-            lib::initgraph::postsched_init_engine
-        };
-        return &stage;
-    }
-
-    lib::initgraph::task ios_task
-    {
-        "pci.discover-ios",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            acpi::ios_discovered_stage(),
-            arch::ios_discovered_stage()
-        },
-        lib::initgraph::entail { ios_discovered_stage() },
-        [] { }
-    };
-
-    lib::initgraph::task rbs_task
-    {
-        "pci.discover-rbs",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            acpi::rbs_discovered_stage(),
-            arch::rbs_discovered_stage()
-        },
-        lib::initgraph::entail { rbs_discovered_stage() },
-        [] { }
-    };
-
     lib::initgraph::stage *enumerated_stage()
     {
         static lib::initgraph::stage stage
@@ -371,7 +327,12 @@ namespace pci
     {
         "pci.enumerate",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { ios_discovered_stage(), rbs_discovered_stage() },
+        lib::initgraph::require {
+            acpi::ios_discovered_stage(),
+            arch::ios_discovered_stage(),
+            acpi::rbs_discovered_stage(),
+            arch::rbs_discovered_stage()
+        },
         lib::initgraph::entail { enumerated_stage() },
         [] {
             lib::info("pci: enumerating devices");

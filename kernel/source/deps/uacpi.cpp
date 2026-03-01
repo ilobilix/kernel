@@ -52,8 +52,9 @@ namespace uacpi
 
     lib::initgraph::task uacpi_task
     {
-        "acpi.create-workers",
+        "uacpi.create-workers",
         lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { sched::pid0_created_stage() },
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {

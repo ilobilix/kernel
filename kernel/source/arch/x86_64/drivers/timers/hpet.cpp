@@ -10,6 +10,7 @@ module x86_64.drivers.timers.hpet;
 import system.scheduler;
 import system.memory;
 import system.chrono;
+import system.acpi;
 import drivers.timers;
 import magic_enum;
 import boot;
@@ -141,9 +142,9 @@ namespace x86_64::timers::hpet
 
     lib::initgraph::task hpet_task
     {
-        "timers.arch.hpet.initialise",
+        "timers.arch.hpet",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::require { acpi::tables_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
             lib::info("hpet: supported: {}", supported());
@@ -183,7 +184,10 @@ namespace x86_64::timers::hpet
     {
         "timers.arch.hpet.create-thread",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::initialised_stage(), sched::pid0_initialised_stage() },
+        lib::initgraph::require {
+            sched::pid0_created_stage(),
+            initialised_stage()
+        },
         [] {
             if (!is_64bit)
                 sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));

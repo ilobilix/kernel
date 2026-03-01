@@ -32,9 +32,9 @@ namespace aarch64::timers::generic
 
     lib::initgraph::task generic_task
     {
-        "timers.arch.generic.initialise",
+        "timers.arch.generic",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        // lib::initgraph::require { },
         lib::initgraph::entail { initialised_stage() },
         [] {
             // if (const auto clock = chrono::main_clock())

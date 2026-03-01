@@ -133,9 +133,9 @@ namespace x86_64::timers::kvm
 
     lib::initgraph::task kvmclock_task
     {
-        "timers.arch.kvm.initialise",
+        "timers.arch.kvm",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::require { arch::bsp_initialised_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
             init_cpu();

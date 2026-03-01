@@ -33,7 +33,7 @@ namespace timers::arch
 
     lib::initgraph::task timers_task
     {
-        "timers.arch.initialise",
+        "timers.arch",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
             // rtc::initialised_stage(),
