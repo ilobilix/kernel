@@ -50,12 +50,11 @@ namespace lib::lock
 
     void pause() { arch::pause(); }
 
-    // auto clock() -> std::uint64_t (*)();
-    std::uint64_t (*clock())()
+    std::uint64_t time()
     {
         const auto clock = chrono::main_clock();
         if (clock == nullptr)
-            return nullptr;
-        return clock->ns;
+            return static_cast<std::uint64_t>(-1);
+        return clock->ns();
     }
 } // namespace lib::lock

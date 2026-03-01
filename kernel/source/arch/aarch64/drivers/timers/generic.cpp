@@ -12,11 +12,15 @@ import std;
 
 namespace aarch64::timers::generic
 {
-    // TODO
-    std::uint64_t time_ns()
-    {
-        return 0;
-    }
+    // namespace
+    // {
+    //     bool initialised = false;
+    //     // TODO
+    //     std::uint64_t time_ns()
+    //     {
+    //         return 0;
+    //     }
+    // } // namespace
 
     lib::initgraph::stage *initialised_stage()
     {
@@ -28,8 +32,6 @@ namespace aarch64::timers::generic
         return &stage;
     }
 
-    chrono::clock clock { "generic", 0, time_ns };
-
     lib::initgraph::task generic_task
     {
         "timers.arch.generic",
@@ -37,11 +39,9 @@ namespace aarch64::timers::generic
         // lib::initgraph::require { },
         lib::initgraph::entail { initialised_stage() },
         [] {
-            // if (const auto clock = chrono::main_clock())
-            //     offset = time_ns() - clock->ns();
-
-            // chrono::register_clock(clock);
             // initialised = true;
+            // static chrono::clock clock { "generic", 0, time_ns };
+            // chrono::register_clock(clock);
         }
     };
 } // namespace aarch64::timers::generic

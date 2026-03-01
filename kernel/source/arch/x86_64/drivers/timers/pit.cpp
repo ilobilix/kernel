@@ -44,17 +44,30 @@ namespace x86_64::timers::pit
         };
         using magic_enum::bitwise_operators::operator|;
 
-        std::size_t tick = 0;
-        std::int64_t offset = 0;
+        volatile std::size_t tick = 0;
         bool initialised = false;
+
+        std::uint64_t time_ns()
+        {
+            return ((tick * 1'000) / frequency) * 1'000'000;
+        }
     } // namespace
 
     bool is_initialised() { return initialised; }
 
-    std::uint64_t time_ns()
-    {
-        return (((tick * 1'000) / frequency) * 1'000'000ul) - offset;
-    }
+    // std::size_t calibrate(std::size_t ms)
+    // {
+    //     lib::bug_on(!initialised);
+
+    //     const auto ticks = (ms * frequency) / 1000;
+    //     const auto start = tick;
+
+    //     auto current = start;
+    //     while ((current - start) < ticks)
+    //         current = tick;
+
+    //     return (current - start) * 1'000'000 / frequency;
+    // }
 
     lib::initgraph::stage *initialised_stage()
     {
@@ -65,8 +78,6 @@ namespace x86_64::timers::pit
         };
         return &stage;
     }
-
-    chrono::clock clock { "pit", 0, time_ns };
 
     lib::initgraph::task pit_task
     {
@@ -86,14 +97,13 @@ namespace x86_64::timers::pit
             lib::io::out<8>(port::channel0, high);
 
             auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x20).value();
-            handler.set([](auto) { tick++; });
+            handler.set([](auto) { tick += 1; });
             interrupts::unmask(vector);
 
-            if (const auto clock = chrono::main_clock())
-                offset = time_ns() - clock->ns();
-
-            chrono::register_clock(clock);
             initialised = true;
+
+            static chrono::clock clock { "pit", 0, time_ns };
+            chrono::register_clock(clock);
         }
     };
 } // namespace x86_64::timers::pit

@@ -24,8 +24,6 @@ namespace timers::acpipm
         uacpi_mapped_gas *mapped;
         std::size_t mask;
 
-        std::int64_t offset = 0;
-
         std::uint64_t read(bool fast = false)
         {
             const auto read_internal = [] {
@@ -73,7 +71,6 @@ namespace timers::acpipm
             uacpi_map_gas(&timer_block, &mapped);
 
             mask = (acpi::fadt->flags & (1 << 8)) ? 0xFFFFFFFF : 0xFFFFFF;
-
             return true;
         } ();
         return cached;
@@ -101,7 +98,7 @@ namespace timers::acpipm
                 std::memory_order_relaxed
             );
 
-        return freq.nanos(value) - offset;
+        return freq.nanos(value);
     }
 
     std::size_t calibrate(std::size_t ms)
@@ -114,7 +111,7 @@ namespace timers::acpipm
         const auto start = read(true);
         auto current = start;
 
-        while (current < start + ticks)
+        while ((current - start) < ticks)
         {
             current = read(true);
             if (current < start)
@@ -133,7 +130,6 @@ namespace timers::acpipm
         return &stage;
     }
 
-    chrono::clock clock { "acpipm", 25, time_ns };
     lib::initgraph::task acpipm_task
     {
         "timers.acpipm",
@@ -141,16 +137,12 @@ namespace timers::acpipm
         lib::initgraph::require { acpi::tables_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
-            auto pmtimer = supported();
+            const auto pmtimer = supported();
             lib::info("acpipm: timer supported: {}", pmtimer);
             if (!pmtimer)
                 return;
 
-            if (const auto clock = chrono::main_clock())
-                offset = time_ns() - clock->ns();
-            else
-                offset = time_ns();
-
+            static chrono::clock clock { "acpipm", 25, time_ns };
             chrono::register_clock(clock);
         }
     };

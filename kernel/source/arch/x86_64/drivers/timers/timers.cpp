@@ -10,23 +10,14 @@ namespace timers::arch
 {
     using namespace x86_64::timers;
 
-    template<auto Func>
-    std::size_t use_timer(std::size_t ms)
-    {
-        const auto start = Func();
-        const auto end = start + (ms * 1'000'000);
-        while (Func() < end) { }
-        return Func() - start;
-    }
-
     auto calibrator() -> std::size_t (*)(std::size_t ms)
     {
         if (kvm::supported())
-            return use_timer<kvm::time_ns>;
+            return kvm::calibrate;
         else if (hpet::is_initialised())
             return hpet::calibrate;
         // else if (pit::is_initialised())
-        //     return use_timer<pit::time_ns>;
+        //     return pit::calibrate;
 
         return nullptr;
     }

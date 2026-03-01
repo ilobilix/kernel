@@ -34,11 +34,32 @@ namespace x86_64::timers::kvm
             std::uint8_t flags;
             std::uint8_t pad[2];
         };
-        std::int64_t offset = 0;
-    } // namespace
 
-    cpu_local<void *> clockptr;
-    cpu_local_init(clockptr, nullptr);
+        bool initialised = false;
+
+        cpu_local<void *> clockptr;
+        cpu_local_init(clockptr, nullptr);
+
+        std::uint64_t time_ns()
+        {
+            lib::bug_on(!initialised);
+
+            volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
+
+            while (pvclock->version % 2)
+                arch::pause();
+
+            auto time = static_cast<uint128_t>(tsc::rdtsc()) - pvclock->tsc_timestamp;
+            if (pvclock->tsc_shift >= 0)
+                time <<= pvclock->tsc_shift;
+            else
+                time >>= -pvclock->tsc_shift;
+            time = (time * pvclock->tsc_to_system_mul) >> 32;
+            time = time + pvclock->system_time;
+
+            return time;
+        }
+    } // namespace
 
     bool supported()
     {
@@ -56,24 +77,6 @@ namespace x86_64::timers::kvm
         return cached;
     }
 
-    std::uint64_t time_ns()
-    {
-        volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
-
-        while (pvclock->version % 2)
-            arch::pause();
-
-        auto time = static_cast<uint128_t>(tsc::rdtsc()) - pvclock->tsc_timestamp;
-        if (pvclock->tsc_shift >= 0)
-            time <<= pvclock->tsc_shift;
-        else
-            time >>= -pvclock->tsc_shift;
-        time = (time * pvclock->tsc_to_system_mul) >> 32;
-        time = time + pvclock->system_time;
-
-        return time - offset;
-    }
-
     std::uint64_t tsc_freq()
     {
         volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
@@ -86,7 +89,19 @@ namespace x86_64::timers::kvm
         return freq;
     }
 
-    chrono::clock clock { "kvm", 100, time_ns };
+    std::size_t calibrate(std::size_t ms)
+    {
+        lib::bug_on(!initialised);
+
+        const auto start = time_ns();
+        const auto end = start + (ms * 1'000'000);
+
+        auto now = time_ns();
+        for (; now < end; now = time_ns())
+            asm volatile ("nop");
+
+        return now - start;
+    }
 
     void init_cpu()
     {
@@ -109,13 +124,9 @@ namespace x86_64::timers::kvm
         cpu::msr::write(0x4B564D01, paddr | 1);
 
         [[maybe_unused]]
-        static const auto cached = []
-        {
-            if (const auto clock = chrono::main_clock())
-                offset = time_ns() - clock->ns();
-            else
-                offset = time_ns();
-
+        static const auto cached = [] {
+            initialised = true;
+            static chrono::clock clock { "kvm", 100, time_ns };
             chrono::register_clock(clock);
             return true;
         } ();

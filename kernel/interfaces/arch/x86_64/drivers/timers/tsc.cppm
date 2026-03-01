@@ -13,7 +13,6 @@ export namespace x86_64::timers::tsc
     lib::freqfrac frequency();
 
     extern "C++" std::uint64_t rdtsc();
-    std::uint64_t time_ns();
 
     void init_cpu();
     void finalise();
