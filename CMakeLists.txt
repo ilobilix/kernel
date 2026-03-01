@@ -31,5 +31,16 @@ add_subdirectory(dependencies/limine)
 add_subdirectory(dependencies/kallsyms)
 add_subdirectory(dependencies)
 add_subdirectory(kernel/interfaces)
+
+add_custom_target(
+    generate_git_version
+    ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DSRC_DIR=${CMAKE_SOURCE_DIR}
+        -DBIN_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/git-version.cmake
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/version.h
+)
+
 add_subdirectory(modules)
 add_subdirectory(kernel/source)

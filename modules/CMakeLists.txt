@@ -43,6 +43,8 @@ foreach(_arch IN LISTS _module_arches)
 
             string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _internal_target "intmod_${_arch}_${_mod}")
             add_library(${_internal_target} OBJECT ${_sources})
+
+            add_dependencies(${_internal_target} generate_git_version)
             target_include_directories(${_internal_target} PRIVATE ${DEPENDENCY_INCLUDES})
             target_link_libraries(${_internal_target} PRIVATE $<BUILD_INTERFACE:cxx_modules>)
 
@@ -54,6 +56,7 @@ foreach(_arch IN LISTS _module_arches)
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _target "extmod_${_arch}_${_mod}")
         add_library(${_target} SHARED ${_sources})
 
+        add_dependencies(${_target} generate_git_version)
         target_compile_definitions(${_target} PRIVATE "__MODULE_NAME__=${_mod}")
         target_link_libraries(${_target} PRIVATE $<BUILD_INTERFACE:cxx_modules>)
         target_include_directories(${_target} PRIVATE ${DEPENDENCY_INCLUDES})

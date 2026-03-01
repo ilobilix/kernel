@@ -16,14 +16,17 @@ list(APPEND CXX_MODULE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/arch/arch.cppm)
 list(REMOVE_DUPLICATES CXX_MODULE_FILES)
 
 add_library(cxx_modules)
+
 set_target_properties(cxx_modules PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 target_include_directories(cxx_modules PRIVATE ${DEPENDENCY_INCLUDES})
+
 target_sources(cxx_modules
     PUBLIC
         FILE_SET cxx_modules
         TYPE CXX_MODULES
         FILES ${CXX_MODULE_FILES}
 )
+
 target_sources(cxx_modules
     PUBLIC
         FILE_SET cxx_std_modules

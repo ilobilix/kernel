@@ -108,5 +108,6 @@ add_custom_command(
 add_custom_target(kernel ALL DEPENDS ${KERNEL_OUTPUT_ELF})
 add_custom_target(kernel_elf_syms DEPENDS ${KERNEL_OUTPUT_SYMS})
 
+add_dependencies(kernel generate_git_version)
 add_dependencies(kernel kernel_elf_syms)
 add_dependencies(kernel kernel_external_modules)
