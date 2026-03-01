@@ -89,7 +89,7 @@ namespace arch
         "arch.bsp.initialise",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require { acpi::tables_stage() },
-        lib::initgraph::entail { bsp_stage() },
+        lib::initgraph::entail { bsp_initialised_stage() },
         [] {
             x86_64::apic::init_cpu();
 
@@ -103,7 +103,10 @@ namespace arch
     {
         "arch.cpus.initialise",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { bsp_stage(), timers::initialised_stage() },
+        lib::initgraph::require {
+            bsp_initialised_stage(),
+            timers::initialised_stage()
+        },
         lib::initgraph::entail { cpus_stage() },
         [] {
             x86_64::apic::calibrate_timer();

@@ -179,7 +179,7 @@ namespace x86_64::output::uart8250
 
     lib::initgraph::task com_task
     {
-        "output.arch.com.tty.register",
+        "output.arch.uart8250.tty.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::devtmpfs::mounted_stage() },
         [] {

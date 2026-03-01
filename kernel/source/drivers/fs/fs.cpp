@@ -22,7 +22,10 @@ namespace fs
     {
         "vfs.fs.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { tmpfs::registered_stage(), devtmpfs::registered_stage() },
+        lib::initgraph::require {
+            tmpfs::registered_stage(),
+            devtmpfs::registered_stage()
+        },
         lib::initgraph::entail { registered_stage() },
         [] { }
     };

@@ -7,7 +7,7 @@ import drivers.timers;
 import system.cpu.local;
 import system.cpu;
 import system.chrono;
-
+import arch;
 import lib;
 import std;
 
@@ -116,9 +116,12 @@ namespace x86_64::timers::tsc
 
     lib::initgraph::task tsc_task
     {
-        "timers.arch.tsc.initialise",
+        "timers.arch.tsc",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::can_initialise_stage(), kvm::initialised_stage() },
+        lib::initgraph::require {
+            arch::bsp_initialised_stage(),
+            kvm::initialised_stage()
+        },
         lib::initgraph::entail { initialised_stage() },
         [] {
             init_cpu();

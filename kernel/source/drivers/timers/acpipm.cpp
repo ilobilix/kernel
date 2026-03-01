@@ -136,7 +136,7 @@ namespace timers::acpipm
     chrono::clock clock { "acpipm", 25, time_ns };
     lib::initgraph::task acpipm_task
     {
-        "timers.acpipm.initialise",
+        "timers.acpipm",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require { acpi::tables_stage() },
         lib::initgraph::entail { initialised_stage() },
@@ -159,7 +159,10 @@ namespace timers::acpipm
     {
         "timers.acpipm.create-thread",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { sched::pid0_initialised_stage() },
+        lib::initgraph::require {
+            sched::pid0_created_stage(),
+            initialised_stage()
+        },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));
         }

@@ -28,8 +28,9 @@ namespace bin::script
     lib::initgraph::task script_exec_task
     {
         "bin.exec.script.register",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require { lib::initgraph::base_stage() },
-        [] { exec::register_format(std::make_shared<format>()); }
+        lib::initgraph::postsched_init_engine,
+        [] {
+            exec::register_format(std::make_shared<format>());
+        }
     };
 } // namespace bin::script

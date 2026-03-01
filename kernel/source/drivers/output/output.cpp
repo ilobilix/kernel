@@ -22,7 +22,10 @@ namespace output
     {
         "output.init",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::entail { lib::initgraph::base_stage(), initialised_stage() },
+        lib::initgraph::entail {
+            lib::initgraph::base_stage(),
+            initialised_stage()
+        },
         [] {
             arch::init();
             frm::init();

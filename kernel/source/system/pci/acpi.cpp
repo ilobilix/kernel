@@ -255,7 +255,7 @@ namespace pci::acpi
         static lib::initgraph::stage stage
         {
             "pci.acpi.ios-discovered",
-            lib::initgraph::presched_init_engine
+            lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -276,7 +276,7 @@ namespace pci::acpi
     lib::initgraph::task ios_task
     {
         "pci.acpi.discover-ios",
-        lib::initgraph::presched_init_engine,
+        lib::initgraph::postsched_init_engine,
         lib::initgraph::require { ::acpi::tables_stage() },
         lib::initgraph::entail { ios_discovered_stage() },
         [] {
