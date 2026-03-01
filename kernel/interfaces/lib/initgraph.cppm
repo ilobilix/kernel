@@ -238,8 +238,6 @@ export namespace lib::initgraph
                 {
                     for (auto &n : engine.get()._nodes)
                         n._mvisited = false;
-                    for (auto &n : engine.get()._nodes)
-                        n._mvisited = false;
                 }
 
                 start_node._mvisited = true;
