@@ -10,7 +10,6 @@ export namespace x86_64::timers::hpet
     bool supported();
     bool is_initialised();
 
-    std::uint64_t time_ns();
     std::size_t calibrate(std::size_t ms);
 
     lib::initgraph::stage *initialised_stage();

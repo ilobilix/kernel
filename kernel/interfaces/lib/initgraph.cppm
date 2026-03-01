@@ -214,10 +214,6 @@ export namespace lib::initgraph
             std::ref(postsched_init_engine)
         };
 
-        lib::println("---");
-        lib::println("config:");
-        lib::println("  layout: elk");
-        lib::println("---");
         lib::println("flowchart TD");
 
         auto print_engine_nodes = [&](engine &eng, std::string_view label)

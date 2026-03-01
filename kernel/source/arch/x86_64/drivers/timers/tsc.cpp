@@ -17,10 +17,13 @@ namespace x86_64::timers::tsc
     {
         lib::freqfrac freq;
 
-        cpu_local<std::int64_t> offset;
-        cpu_local_init(offset, 0);
-
         bool is_calibrated = false;
+
+        std::uint64_t time_ns()
+        {
+            lib::bug_on(!is_calibrated);
+            return freq.nanos(rdtsc());
+        }
     } // namespace
 
     bool supported()
@@ -42,14 +45,6 @@ namespace x86_64::timers::tsc
         std::uint32_t a = 0, d = 0;
         asm volatile ("lfence; rdtsc" : "=a"(a), "=d"(d));
         return static_cast<std::uint64_t>(a) | (static_cast<std::uint64_t>(d) << 32);
-    }
-
-    std::uint64_t time_ns()
-    {
-        if (!is_calibrated) [[unlikely]]
-            lib::panic("tsc not calibrated");
-
-        return freq.nanos(rdtsc()) - offset.get();
     }
 
     void init_cpu()
@@ -93,15 +88,6 @@ namespace x86_64::timers::tsc
             }
             else lib::debug("tsc: not calibrated");
         }
-
-        if (is_calibrated)
-        {
-            auto &ref = offset.get();
-            if (const auto clock = chrono::main_clock())
-                ref += time_ns() - clock->ns();
-            else
-                ref = time_ns();
-        }
     }
 
     lib::initgraph::stage *initialised_stage()
@@ -128,10 +114,12 @@ namespace x86_64::timers::tsc
         }
     };
 
-    chrono::clock clock { "tsc", 75, time_ns };
     void finalise()
     {
-        if (is_calibrated)
-            chrono::register_clock(clock);
+        if (!is_calibrated)
+            return;
+
+        static chrono::clock clock { "tsc", 75, time_ns };
+        chrono::register_clock(clock);
     }
 } // namespace x86_64::timers::tsc

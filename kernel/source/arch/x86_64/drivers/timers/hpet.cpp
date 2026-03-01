@@ -35,7 +35,6 @@ namespace x86_64::timers::hpet
         std::uintptr_t vaddr;
         bool is_64bit;
 
-        std::int64_t offset = 0;
         lib::freqfrac freq;
 
         std::uint64_t read(std::size_t offset)
@@ -83,6 +82,12 @@ namespace x86_64::timers::hpet
                 sched::sleep_for(1'000);
             }
         }
+
+        std::uint64_t time_ns()
+        {
+            lib::bug_on(!initialised);
+            return freq.nanos(read());
+        }
     } // namespace
 
     bool supported()
@@ -109,12 +114,6 @@ namespace x86_64::timers::hpet
 
     bool is_initialised() { return initialised; }
 
-    std::uint64_t time_ns()
-    {
-        lib::bug_on(!initialised);
-        return freq.nanos(read()) - offset;
-    }
-
     std::size_t calibrate(std::size_t ms)
     {
         const auto ticks = freq.ticks(ms * 1'000'000);
@@ -137,8 +136,6 @@ namespace x86_64::timers::hpet
         };
         return &stage;
     }
-
-    chrono::clock clock { "hpet", 50, time_ns };
 
     lib::initgraph::task hpet_task
     {
@@ -171,11 +168,8 @@ namespace x86_64::timers::hpet
             write(regs::cfg, 1);
 
             initialised = true;
-            if (const auto clock = chrono::main_clock())
-                offset = time_ns() - clock->ns();
-            else
-                offset = time_ns();
 
+            static chrono::clock clock { "hpet", 50, time_ns };
             chrono::register_clock(clock);
         }
     };

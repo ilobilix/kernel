@@ -14,8 +14,7 @@ namespace lib::lock
 
     void pause();
 
-    // auto clock() -> std::uint64_t (*)();
-    std::uint64_t (*clock())();
+    std::uint64_t time();
 } // namespace lib::lock
 
 namespace lib
@@ -88,12 +87,12 @@ export namespace lib
 
         bool try_lock_until(std::uint64_t ns)
         {
-            const auto clock = lock::clock();
-            if (clock == nullptr)
+            const auto time = lock::time();
+            if (time == static_cast<std::uint64_t>(-1)) [[unlikely]]
                 return try_lock();
 
-            auto target = clock() + ns;
-            while (is_locked() && clock() < target)
+            auto target = time + ns;
+            while (is_locked() && lock::time() < target)
                 lock::pause();
 
             return try_lock();
