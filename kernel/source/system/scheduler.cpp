@@ -471,7 +471,6 @@ namespace sched
             percpu->sleep_queue.insert(thread);
         }
 
-        arch::int_switch(true);
         arch::reschedule(0);
         arch::int_switch(old);
 
@@ -528,14 +527,13 @@ namespace sched
         {
             while (true)
             {
-                if (dead.empty())
-                {
-                    me->status = status::sleeping;
-                    lib::bug_on(me->sleep_until.has_value());
-                    yield();
-                    lib::bug_on(dead.empty());
-                }
-                break;
+                if (!dead.empty())
+                    break;
+
+                me->status = status::sleeping;
+                lib::bug_on(me->sleep_until.has_value());
+                yield();
+                lib::bug_on(dead.empty());
             }
 
             // for batch reaping
@@ -569,6 +567,7 @@ namespace sched
     {
         auto &eepers = percpu->sleep_queue;
         auto &dead = percpu->dead_threads;
+
         while (true)
         {
             while (true)
@@ -622,7 +621,8 @@ namespace sched
                         // do not starve out other threads
                         // if the woken one has been sleeping for too long
                         auto qlocked = percpu->queue.lock();
-                        thread->vruntime = begin->vruntime;
+                        if (!qlocked->empty())
+                            thread->vruntime = qlocked->first()->vruntime;
                         qlocked->insert(thread);
                     }
                 }
@@ -649,6 +649,18 @@ namespace sched
         const auto self = cpu::self();
         auto &dead = pcpu.dead_threads;
 
+        const auto current = pcpu.running_thread;
+        const bool is_current_idle = (current == pcpu.idle_thread);
+
+        if (current && !is_current_idle && current->status != status::killed)
+        {
+            static constexpr std::size_t weight0 = prio_to_weight(0);
+            const std::size_t exec_time = time - current->schedule_time;
+            const std::size_t weight = prio_to_weight(current->priority);
+            const std::size_t vtime = (exec_time * weight0) / weight;
+            current->vruntime += vtime;
+        }
+
         thread *next = nullptr;
         bool found_dead = false;
 
@@ -662,6 +674,11 @@ namespace sched
                 switch (thread->status)
                 {
                     case status::ready:
+                        if (current && current->status == status::running && current->vruntime <= thread->vruntime)
+                        {
+                            next = current;
+                            goto found;
+                        }
                         next = thread;
                         locked->remove(thread);
                         goto found;
@@ -686,27 +703,18 @@ namespace sched
             found:
         }
 
-        const auto current = pcpu.running_thread;
-        const bool is_current_idle = (current == pcpu.idle_thread);
-
         std::optional<pid_t> prev_pid { };
-        if (current) [[likely]]
+        if (current != nullptr) [[likely]]
         {
             if (current->status != status::killed)
             {
                 prev_pid = current->parent->pid;
                 if (!is_current_idle) [[likely]]
                 {
-                    if (next == nullptr && current->status == status::running) [[unlikely]]
+                    if (next == nullptr && current->status == status::running)
                         next = current;
                     else if (current->status == status::sleeping)
                         current->sleep_lock.unlock();
-
-                    static constexpr std::size_t weight0 = prio_to_weight(0);
-                    const std::size_t exec_time = time - current->schedule_time;
-                    const std::size_t weight = prio_to_weight(current->priority);
-                    const std::size_t vtime = (exec_time * weight0) / weight;
-                    current->vruntime += vtime;
 
                     if (next != current) [[likely]]
                     {
@@ -733,10 +741,10 @@ namespace sched
                 reaper->status = status::ready;
         }
 
-        if (next == nullptr) [[unlikely]]
+        if (next == nullptr)
             next = pcpu.idle_thread;
 
-        if (next != current) [[likely]]
+        if (next != current)
         {
             next->running_on = self->self;
             next->status = status::running;
@@ -746,7 +754,7 @@ namespace sched
             load(same_pid, next, regs);
         }
 
-        if (!is_current_idle) [[likely]]
+        if (next != pcpu.idle_thread)
             next->schedule_time = clock->ns();
 
         arch::reschedule(timeslice);

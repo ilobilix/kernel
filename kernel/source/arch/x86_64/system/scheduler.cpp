@@ -34,7 +34,8 @@ namespace sched::arch
     void reschedule(std::size_t ms)
     {
         if (ms == 0)
-            x86_64::apic::ipi(x86_64::apic::shorthand::self, x86_64::apic::delivery::fixed, sched_vector);
+            asm volatile ("int %0" :: "i"(sched_vector));
+            // x86_64::apic::ipi(x86_64::apic::shorthand::self, x86_64::apic::delivery::fixed, sched_vector);
         else
             x86_64::apic::arm(ms * 1'000'000, sched_vector);
     }
