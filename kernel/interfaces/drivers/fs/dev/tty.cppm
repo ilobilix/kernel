@@ -489,53 +489,5 @@ export namespace fs::dev::tty
         }
     };
 
-    struct ops : vfs::ops
-    {
-        static std::shared_ptr<ops> singleton()
-        {
-            static auto instance = std::make_shared<ops>();
-            return instance;
-        }
-
-        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override;
-        lib::expect<void> close(std::shared_ptr<vfs::file> file) override;
-
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-        {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(std::move(file), buffer);
-        }
-
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-        {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(std::move(file), buffer);
-        }
-
-        lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->ioctl(request, argp);
-        }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
-        }
-
-        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->poll(pt);
-        }
-    };
-
     void register_driver(driver *drv);
 } // export namespace fs::dev::tty

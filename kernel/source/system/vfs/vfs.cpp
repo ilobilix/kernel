@@ -80,10 +80,7 @@ namespace vfs
         std::size_t progress = 0;
         if (offset < 3)
         {
-            if (offset == 0)
-                offset++;
-
-            if (offset == 1)
+            if (offset < 2)
             {
                 static const std::span<std::byte> dotstr {
                     reinterpret_cast<std::byte *>(const_cast<char *>(".")), 2
@@ -108,7 +105,7 @@ namespace vfs
                     .copy_from(dotstr);
 
                 progress += reclen;
-                offset++;
+                offset = 2;
             }
 
             if (offset == 2)
@@ -523,7 +520,8 @@ namespace vfs
         const auto real_parent = res->parent.dentry;
         const auto name = path.basename();
 
-        if (res->target.dentry->inode->stat.type() == stat::s_ifdir)
+        auto &inode = res->target.dentry->inode;
+        if (inode->stat.type() == stat::s_ifdir)
         {
             if (res->target.dentry == res->target.mnt->root)
                 return std::unexpected { lib::err::target_is_busy };
@@ -535,7 +533,7 @@ namespace vfs
                 return std::unexpected { lib::err::dir_not_empty };
         }
 
-        auto ret = res->target.mnt->fs.lock()->unlink(res->target.dentry->inode);
+        auto ret = res->target.mnt->fs.lock()->unlink(inode);
         if (ret)
         {
             auto wlocked = real_parent->children.write_lock();
