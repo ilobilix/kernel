@@ -61,6 +61,7 @@ namespace sched
 
         std::atomic_size_t preemption = 0;
         std::atomic_bool in_scheduler = false;
+        std::atomic_bool idling = false;
     };
 
     cpu_local<percpu> percpu;
@@ -279,9 +280,10 @@ namespace sched
         wake_reason = reason;
 
         const auto target_cpu = running_on->idx;
+        bool was_idling = false;
         {
-            auto &our_pcpu = percpu.get(cpu::local::nth_base(target_cpu));
-            auto our_qlocked = our_pcpu.queue.lock();
+            auto &pcpu = percpu.get(cpu::local::nth_base(target_cpu));
+            auto our_qlocked = pcpu.queue.lock();
             // if sleep_until isn't set, then this thread was sleeping without a timeout
             // that means that it will not be woken up by the sleeper thread
             // it's our job to insert it back in the run queue
@@ -295,7 +297,7 @@ namespace sched
             // force timeout to expire
             else sleep_until = 0;
 
-            auto &our_eeper = our_pcpu.sleeper_thread;
+            auto &our_eeper = pcpu.sleeper_thread;
             if (our_eeper->status == status::sleeping)
             {
                 our_eeper->sleep_lock.unlock();
@@ -305,12 +307,18 @@ namespace sched
                     our_eeper->vruntime = our_qlocked->first()->vruntime;
                 our_qlocked->insert(our_eeper);
             }
+
+            if (pcpu.idling.load(std::memory_order_acquire))
+            {
+                pcpu.idling.store(false, std::memory_order_release);
+                was_idling = true;
+            }
         }
 
         sleep_lock.unlock();
 
         // TODO: maybe not interrupt other cpus if they're doing stuff
-        if (target_cpu != cpu::self()->idx)
+        if (target_cpu != cpu::self()->idx || was_idling)
             arch::reschedule_other(target_cpu);
 
         arch::int_switch(ints);
@@ -539,7 +547,7 @@ namespace sched
 
     void enqueue(thread *thread, std::size_t cpu_idx)
     {
-        auto &obj = percpu.get(cpu::local::nth_base(cpu_idx));
+        auto &pcpu = percpu.get(cpu::local::nth_base(cpu_idx));
         switch (thread->status)
         {
             [[unlikely]] case status::killed:
@@ -554,7 +562,13 @@ namespace sched
                 thread->status = status::ready;
                 [[fallthrough]];
             case status::ready:
-                obj.queue.lock()->insert(thread);
+                pcpu.queue.lock()->insert(thread);
+                if (!pcpu.in_scheduler.load(std::memory_order_acquire) &&
+                     pcpu.idling.load(std::memory_order_acquire))
+                {
+                    pcpu.idling.store(false, std::memory_order_release);
+                    arch::reschedule_other(cpu_idx);
+                }
                 break;
             default:
                 std::unreachable();
@@ -693,7 +707,7 @@ namespace sched
         pcpu.in_scheduler.store(true, std::memory_order_release);
 
         const auto clock = chrono::main_clock();
-        const auto time = clock->ns();
+        auto time = clock->ns();
 
         const auto self = cpu::self();
         auto &dead = pcpu.dead_threads;
@@ -712,19 +726,21 @@ namespace sched
 
         const auto &eeper = pcpu.sleeper_thread;
         auto &eepers = pcpu.sleep_queue;
+        std::size_t earliest_wake = 0;
         {
             auto elocked = eepers.lock();
             if (eeper->status == status::sleeping && !elocked->empty())
             {
                 const auto first_eeper = elocked->first();
                 lib::bug_on(!first_eeper->sleep_until.has_value());
-                if (time >= first_eeper->sleep_until.value())
+                if (time >= *first_eeper->sleep_until)
                 {
                     eeper->sleep_lock.unlock();
                     eeper->status = status::ready;
                     eeper->wake_reason = wake_reason::success;
                     enqueue(eeper, self->idx);
                 }
+                else earliest_wake = *first_eeper->sleep_until;
             }
         }
 
@@ -830,10 +846,24 @@ namespace sched
             load(same_pid, next, regs);
         }
 
+        time = clock->ns();
         if (next != pcpu.idle_thread)
+        {
             next->schedule_time = clock->ns();
+            arch::reschedule(timeslice);
+        }
+        else // don't tick on idle cpus
+        {
+            pcpu.idling.store(true, std::memory_order_release);
+            if (!pcpu.queue.lock()->empty())
+            {
+                pcpu.idling.store(false, std::memory_order_release);
+                arch::reschedule(timeslice);
+            }
+            else if (earliest_wake > time)
+                arch::reschedule(earliest_wake - time);;
+        }
 
-        arch::reschedule(timeslice);
         pcpu.in_scheduler.store(false, std::memory_order_release);
     }
 
