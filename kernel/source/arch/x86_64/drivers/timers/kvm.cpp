@@ -66,7 +66,8 @@ namespace x86_64::timers::kvm
         static const auto cached = [] -> bool
         {
             bool kvmclock = false;
-            if (const auto base = cpu::kvm_base())
+            const auto [hv, base] = cpu::in_hypervisor();
+            if (hv == cpu::hypervisor::kvm)
             {
                 cpu::id_res res;
                 kvmclock = cpu::id(base + 1, 0, res) && (res.a & (1 << 3));

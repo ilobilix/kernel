@@ -21,6 +21,11 @@ namespace sched::arch
         lib::unused(ms);
     }
 
+    void reschedule_other(std::size_t cpu)
+    {
+        lib::unused(cpu);
+    }
+
     void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         lib::unused(proc, thread, ip, arg);

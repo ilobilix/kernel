@@ -24,9 +24,11 @@ namespace sched::arch
 {
     static constexpr std::size_t sched_vector = 0xFE;
 
+    using namespace x86_64;
+
     void init()
     {
-        x86_64::idt::table()[sched_vector].ist = 2;
+        idt::table()[sched_vector].ist = 2;
         auto [handler, _] = interrupts::allocate(cpu::self()->idx, sched_vector).value();
         handler.set(schedule);
     }
@@ -35,9 +37,19 @@ namespace sched::arch
     {
         if (ms == 0)
             asm volatile ("int %0" :: "i"(sched_vector));
-            // x86_64::apic::ipi(x86_64::apic::shorthand::self, x86_64::apic::delivery::fixed, sched_vector);
+            // apic::ipi(apic::shorthand::self, apic::delivery::fixed, sched_vector);
         else
-            x86_64::apic::arm(ms * 1'000'000, sched_vector);
+            apic::arm(ms * 1'000'000, sched_vector);
+    }
+
+    void reschedule_other(std::size_t cpu)
+    {
+        apic::ipi(
+            cpu::local::nth(cpu)->arch_id,
+            apic::destination::physical,
+            apic::delivery::fixed,
+            sched_vector
+        );
     }
 
     void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
@@ -55,8 +67,8 @@ namespace sched::arch
 
         if (thread->is_user)
         {
-            regs.cs = x86_64::gdt::segment::ucode | 0x03;
-            regs.ss = x86_64::gdt::segment::udata | 0x03;
+            regs.cs = gdt::segment::ucode | 0x03;
+            regs.ss = gdt::segment::udata | 0x03;
 
             regs.rsp = thread->ustack_top;
 
@@ -72,8 +84,8 @@ namespace sched::arch
         }
         else
         {
-            regs.cs = x86_64::gdt::segment::code;
-            regs.ss = x86_64::gdt::segment::data;
+            regs.cs = gdt::segment::code;
+            regs.ss = gdt::segment::data;
 
             regs.rsp = thread->kstack_top;
         }
@@ -101,7 +113,7 @@ namespace sched::arch
 
         if (thread->is_user)
         {
-            auto &tss = x86_64::gdt::tss::self();
+            auto &tss = gdt::tss::self();
             tss.rsp[0] = thread->kstack_top;
 
             cpu::gs::write_kernel(thread->gs_base);

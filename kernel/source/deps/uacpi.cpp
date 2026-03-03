@@ -19,7 +19,8 @@ namespace uacpi
         queue_type notify { };
         queue_type gpe { };
 
-        lib::semaphore added { };
+        lib::semaphore notify_added { };
+        lib::semaphore gpe_added { };
         lib::semaphore completed { };
 
         bool is_empty()
@@ -30,7 +31,7 @@ namespace uacpi
         }
     } // namespace
 
-    void worker_caller(queue_type &queue)
+    void worker_caller(queue_type &queue, lib::semaphore &added)
     {
         while (true)
         {
@@ -46,7 +47,7 @@ namespace uacpi
                 }
             }
             if (worked)
-                completed.signal(true);
+                completed.signal();
         }
     }
 
@@ -58,11 +59,11 @@ namespace uacpi
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
-                worker_caller(notify);
+                worker_caller(notify, notify_added);
                 arch::halt(true);
             }));
             sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
-                worker_caller(gpe);
+                worker_caller(gpe, gpe_added);
                 arch::halt(true);
             }));
         }
@@ -512,11 +513,11 @@ extern "C"
         {
             case UACPI_WORK_GPE_EXECUTION:
                 uacpi::gpe.write_lock()->emplace_back(handler, ctx);
-                uacpi::added.signal();
+                uacpi::gpe_added.signal();
                 break;
             case UACPI_WORK_NOTIFICATION:
                 uacpi::notify.write_lock()->emplace_back(handler, ctx);
-                uacpi::added.signal();
+                uacpi::notify_added.signal();
                 break;
             default:
                 return UACPI_STATUS_INVALID_ARGUMENT;
@@ -526,7 +527,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_wait_for_work_completion()
     {
-        if (!uacpi::is_empty())
+        while (!uacpi::is_empty())
             uacpi::completed.wait();
         return UACPI_STATUS_OK;
     }
