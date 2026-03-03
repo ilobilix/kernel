@@ -118,6 +118,14 @@ namespace std
     //     return FNV1a(key, len, seed);
     // }
 
+#if ILOBILIX_DEBUG
+    const char *bad_weak_ptr::what() const noexcept { std::abort(); }
+    const char *exception::what() const noexcept { std::abort(); }
+
+    bad_weak_ptr::~bad_weak_ptr() { }
+    exception::~exception() { }
+#endif
+
 #if __cplusplus >= 202400L
     bool is_debugger_present() noexcept
     {

@@ -120,13 +120,11 @@ namespace arch
         void entry(std::uintptr_t addr)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
-
             cpu::gs::write_user(addr);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
-            cpu::gs::write_user(addr);
             cpu::features::enable();
 
             x86_64::syscall::init_cpu();
@@ -149,7 +147,6 @@ namespace arch
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
-            cpu::gs::write_user(addr);
             cpu::features::enable();
             x86_64::syscall::init_cpu();
 

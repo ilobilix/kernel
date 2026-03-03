@@ -4,11 +4,11 @@ load_early:
     lgdt [rdi]
 
     mov ss, si
-    mov si, 0
-    mov ds, si
-    mov fs, si
-    mov gs, si
-    mov es, si
+    # mov si, 0
+    # mov ds, si
+    # mov fs, si
+    # mov gs, si
+    # mov es, si
 
     push rdx
     lea rax, [rip + 1f]
