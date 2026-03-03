@@ -63,11 +63,14 @@ namespace x86_64::apic
                     return false;
             }
 
-            const auto tsc_supported = timers::tsc::supported();
-            cpu::id_res res;
-            tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
+            // const auto [hv, _] = cpu::in_hypervisor();
+            // if (hv == cpu::hypervisor::none || hv == cpu::hypervisor::kvm)
+            // {
+                const auto tsc_supported = timers::tsc::supported();
+                cpu::id_res res;
+                tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
+            // }
             lib::debug("lapic: tsc deadline supported: {}", tsc_deadline);
-
             return true;
         } ();
 
@@ -141,7 +144,7 @@ namespace x86_64::apic
                 const auto count = read(reg::tcc);
                 write(reg::tic, 0);
 
-                val += ((0xFFFFFFFF - count) * 1'000'000'000) / slept_for;
+                val += ((0xFFFFFFFFul - count) * 1'000'000'000ul) / slept_for;
             }
             val /= times;
         }
