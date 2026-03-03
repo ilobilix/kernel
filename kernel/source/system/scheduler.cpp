@@ -105,6 +105,7 @@ namespace sched
         > sessions;
 
         std::atomic_bool initialised = false;
+        process *pid0 = nullptr;
 
         std::size_t alloc_pid(process *proc)
         {
@@ -133,9 +134,9 @@ namespace sched
             arch::halt(true);
         }
 
-        thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
+        thread *spawn_on(std::size_t cpu, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
         {
-            const auto thread = thread::create(processes.read_lock()->at(pid), ip, arg, false);
+            const auto thread = thread::create(pid0, ip, arg, false);
             thread->priority = priority;
             thread->status = status::ready;
             enqueue(thread, cpu);
@@ -143,12 +144,13 @@ namespace sched
         }
     } // namespace
 
-    thread *spawn(pid_t pid, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
+    thread *spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
     {
-        return spawn_on(allocate_cpu(), pid, ip, arg, priority);
+        return spawn_on(allocate_cpu(), ip, arg, priority);
     }
 
     bool is_initialised() { return initialised; }
+    process *get_pid0() { return pid0; }
 
     group *create_group(pid_t pgid)
     {
@@ -887,11 +889,11 @@ namespace sched
         },
         lib::initgraph::entail { pid0_created_stage() },
         [] {
-            auto proc = process::create(
+            pid0 = process::create(
                 nullptr,
                 std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
             );
-            lib::bug_on(proc->pid != 0);
+            lib::bug_on(!pid0 || pid0->pid != 0);
         }
     };
 
@@ -955,8 +957,8 @@ namespace sched
             for (std::size_t idx = 0; idx < cpu::count(); idx++)
             {
                 auto &obj = percpu.get(cpu::local::nth_base(idx));
-                obj.reaper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), 0, nice_t::max);
-                obj.sleeper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), 0, -5);
+                obj.reaper_thread = sched::spawn_on(idx, reinterpret_cast<std::uintptr_t>(reaper), 0, nice_t::max);
+                obj.sleeper_thread = sched::spawn_on(idx, reinterpret_cast<std::uintptr_t>(sleeper), 0, -5);
             }
 
             initialised.store(true, std::memory_order_release);
