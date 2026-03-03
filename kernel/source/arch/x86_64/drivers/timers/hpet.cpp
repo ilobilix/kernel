@@ -184,7 +184,7 @@ namespace x86_64::timers::hpet
         },
         [] {
             if (!is_64bit)
-                sched::spawn(0, reinterpret_cast<std::uintptr_t>(handle_overflow));
+                sched::spawn(reinterpret_cast<std::uintptr_t>(handle_overflow));
         }
     };
 } // namespace x86_64::timers::hpet
