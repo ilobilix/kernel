@@ -7,7 +7,7 @@ import std;
 
 void stat::update_time(std::uint8_t flags)
 {
-    const auto now = ::chrono::now();
+    const auto now = ::chrono::now(chrono::realtime);
     if (flags & time::access)
         st_atim = now;
     if (flags & time::modify)

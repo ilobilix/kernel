@@ -142,8 +142,8 @@ namespace timers::acpipm
             if (!pmtimer)
                 return;
 
-            static chrono::clock clock { "acpipm", 25, time_ns };
-            chrono::register_clock(clock);
+            static chrono::timer timer { "acpipm", 25, time_ns };
+            chrono::register_timer(timer);
         }
     };
 

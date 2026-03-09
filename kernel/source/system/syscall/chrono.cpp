@@ -12,7 +12,7 @@ namespace syscall::chrono
 
     int clock_gettime(clockid_t clockid, timespec __user *tp)
     {
-        const auto cur = now(clockid);
+        const auto cur = now(static_cast<chrono::type>(clockid));
         if (!lib::copy_to_user(tp, &cur, sizeof(timespec)))
             return (errno = EFAULT, -1);
         return 0;
@@ -20,7 +20,7 @@ namespace syscall::chrono
 
     int gettimeofday(timeval __user *tv, timezone __user *tz)
     {
-        const auto cur = now().to_timeval();
+        const auto cur = now(chrono::realtime).to_timeval();
         if (!lib::copy_to_user(tv, &cur, sizeof(timeval)))
             return (errno = EFAULT, -1);
 
@@ -46,7 +46,7 @@ namespace syscall::chrono
 
     time_t time(time_t __user *tloc)
     {
-        const time_t seconds = now().tv_sec;
+        const time_t seconds = now(chrono::realtime).tv_sec;
         if (tloc != nullptr)
         {
             if (!lib::copy_to_user(tloc, &seconds, sizeof(time_t)))
