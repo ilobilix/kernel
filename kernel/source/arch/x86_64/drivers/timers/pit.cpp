@@ -104,8 +104,8 @@ namespace x86_64::timers::pit
 
             initialised = true;
 
-            static chrono::clock clock { "pit", 0, time_ns };
-            chrono::register_clock(clock);
+            static chrono::timer timer { "pit", 0, time_ns };
+            chrono::register_timer(timer);
         }
     };
 } // namespace x86_64::timers::pit

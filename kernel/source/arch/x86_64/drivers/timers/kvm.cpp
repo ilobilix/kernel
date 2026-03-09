@@ -127,8 +127,8 @@ namespace x86_64::timers::kvm
         [[maybe_unused]]
         static const auto cached = [] {
             initialised = true;
-            static chrono::clock clock { "kvm", 100, time_ns };
-            chrono::register_clock(clock);
+            static chrono::timer timer { "kvm", 100, time_ns };
+            chrono::register_timer(timer);
             return true;
         } ();
     }

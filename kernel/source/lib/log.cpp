@@ -49,10 +49,6 @@ namespace lib::log
 
     std::uint64_t get_time()
     {
-        const auto clock = chrono::main_clock();
-        if (!clock)
-            return 0;
-
-        return clock->ns();
+        return chrono::now(chrono::monotonic).to_ns();
     }
 } // namespace lib::log

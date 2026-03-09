@@ -303,10 +303,7 @@ extern "C"
 
     uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot()
     {
-        const auto clock = chrono::main_clock();
-        if (clock == nullptr)
-            return 0;
-        return clock->ns();
+        return chrono::now(chrono::monotonic).to_ns();
     }
 
     void uacpi_kernel_stall(uacpi_u8 usec)

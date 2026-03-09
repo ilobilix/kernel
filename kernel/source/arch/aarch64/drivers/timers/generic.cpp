@@ -40,8 +40,8 @@ namespace aarch64::timers::generic
         lib::initgraph::entail { initialised_stage() },
         [] {
             // initialised = true;
-            // static chrono::clock clock { "generic", 0, time_ns };
-            // chrono::register_clock(clock);
+            // static chrono::timer timer { "generic", 0, time_ns };
+            // chrono::register_timer(timer);
         }
     };
 } // namespace aarch64::timers::generic

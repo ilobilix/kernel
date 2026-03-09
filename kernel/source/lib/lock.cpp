@@ -52,9 +52,6 @@ namespace lib::lock
 
     std::uint64_t time()
     {
-        const auto clock = chrono::main_clock();
-        if (clock == nullptr)
-            return static_cast<std::uint64_t>(-1);
-        return clock->ns();
+        return chrono::now(chrono::monotonic).to_ns();
     }
 } // namespace lib::lock

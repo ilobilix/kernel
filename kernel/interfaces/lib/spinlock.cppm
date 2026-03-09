@@ -87,11 +87,7 @@ export namespace lib
 
         bool try_lock_until(std::uint64_t ns)
         {
-            const auto time = lock::time();
-            if (time == static_cast<std::uint64_t>(-1)) [[unlikely]]
-                return try_lock();
-
-            auto target = time + ns;
+            auto target = lock::time() + ns;
             while (is_locked() && lock::time() < target)
                 lock::pause();
 

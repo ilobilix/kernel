@@ -169,8 +169,8 @@ namespace x86_64::timers::hpet
 
             initialised = true;
 
-            static chrono::clock clock { "hpet", 50, time_ns };
-            chrono::register_clock(clock);
+            static chrono::timer timer { "hpet", 50, time_ns };
+            chrono::register_timer(timer);
         }
     };
 

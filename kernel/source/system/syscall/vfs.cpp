@@ -963,7 +963,7 @@ namespace syscall::vfs
             if (timeout)
                 timeout_ms = timeout->to_ms();
 
-            const auto start_time = chrono::now().to_ns();
+            const auto start_time = chrono::now(chrono::monotonic).to_ns();
 
             const auto check_files = [&](select_poll_table *table, bool write_back) -> lib::expect<int>
             {
@@ -1059,7 +1059,7 @@ namespace syscall::vfs
 
                 if (timeout_ms.has_value())
                 {
-                    const auto now = chrono::now().to_ns();
+                    const auto now = chrono::now(chrono::monotonic).to_ns();
                     const auto elapsed_ms = (now - start_time) / 1'000'000;
                     if (elapsed_ms >= *timeout_ms)
                     {
@@ -1095,7 +1095,7 @@ namespace syscall::vfs
             exit:
             if (update_timeout && timeout != nullptr && timeout_ms.has_value())
             {
-                const auto elapsed_ns = chrono::now().to_ns() - start_time;
+                const auto elapsed_ns = chrono::now(chrono::monotonic).to_ns() - start_time;
                 const auto orig_ns = *timeout_ms * 1'000'000;
                 const auto remaining_ns = (orig_ns > elapsed_ns) ? (orig_ns - elapsed_ns) : 0;
 
