@@ -14,10 +14,12 @@ namespace lib
 
 export namespace lib
 {
-    extern "C++" [[noreturn]]
+    [[noreturn]]
     void stop_all();
 
-    extern "C++" [[noreturn]]
+    void check_if_panicking();
+
+    [[noreturn]]
     void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location);
 
     template<comptime_string Str, bool Regs, typename ...Args>

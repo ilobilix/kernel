@@ -98,15 +98,27 @@ namespace x86_64::idt
                 auto &handler = irq_handlers[idx];
                 if (handler.used()) [[likely]]
                     handler(regs);
-                // else
-                //     lib::panic(regs, "unhandled irq {}", vector);
+                else
+                    lib::panic(regs, "unhandled irq {}", vector);
             }
 
             eoi(vector);
         }
         else if (vector < irq(0))
         {
-            if (vector == 14 && (regs->cs & 0x03 || x86_64::syscall::is_in_syscall()))
+            if (vector == 2)
+            {
+                lib::check_if_panicking();
+
+                const auto status = lib::io::in<8>(0x61);
+                if (status & (1 << 7))
+                    lib::panic("nmi: parity check");
+                else if (status & (1 << 6))
+                    lib::panic("nmi: channel check");
+
+                goto end;
+            }
+            else if (vector == 14 && (regs->cs & 0x03 || x86_64::syscall::is_in_syscall()))
             {
                 const bool by_write = (regs->error_code & (1 << 2)) != 0;
                 if (vmm::handle_pfault(cpu::read_reg<"cr2">(), by_write))
@@ -153,15 +165,10 @@ namespace x86_64::idt
         if (cpu->idx == cpu::bsp_idx())
         {
             lib::info("idt: setting up irq handlers");
-
-            // page fault ist 0
-            idt[14].ist = 1;
+            idt[2].ist = 1; idt[14].ist = 2;
         }
 
         irq_handlers.get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
-
-        auto phandler = handler_at(cpu->idx, panic_int).value();
-        phandler.get().set([](cpu::registers *) { arch::halt(false); });
 
         if (cpu->idx == cpu::bsp_idx())
             early = false;
