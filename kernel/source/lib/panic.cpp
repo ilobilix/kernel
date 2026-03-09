@@ -1,12 +1,13 @@
 // Copyright (C) 2024-2026  ilobilo
 
+module lib;
+
 import drivers.output.terminal;
 import drivers.output.serial;
 
 import system.cpu;
 import boot;
 import arch;
-import lib;
 import fmt;
 import std;
 
@@ -19,6 +20,8 @@ namespace
     char nooo_ascii[] {
         #embed "../../embed/nooo.ascii"
     };
+
+    std::atomic_bool panicking = false;
 } // namespace
 
 namespace lib
@@ -31,22 +34,25 @@ namespace lib
         std::unreachable();
     }
 
+    void check_if_panicking()
+    {
+        if (panicking.load())
+        {
+            arch::halt(false);
+            std::unreachable();
+        }
+    }
+
     [[noreturn, clang::no_sanitize("undefined")]]
     void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location)
     {
+        if (panicking.exchange(true))
+            goto end;
+
         arch::halt_others();
+        log::unsafe::unlock();
 
-        static std::atomic_bool panicking = false;
-        if (panicking)
-        {
-            lib::fatal("one panic was more than enough already and now you want a second one?");
-            goto exit;
-        }
-        panicking = true;
-
-        lib::log::unsafe::unlock();
-
-        lib::println("");
+        println("");
         if (auto ctx = output::term::main())
         {
             bool first = true;
@@ -60,20 +66,20 @@ namespace lib
         }
         for (auto chr : nooo_unicode)
             output::serial::printc(chr);
-        lib::println("");
+        println("");
 
-        lib::fatal("kernel panicked with the following message:");
-        lib::fatal(fmt, args);
-        lib::fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
+        fatal("kernel panicked with the following message:");
+        fatal(fmt, args);
+        fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
 
         if (regs)
         {
-            arch::dump_regs(regs, cpu::extra_regs::read(), lib::log_level::fatal);
-            lib::trace(lib::log_level::fatal, regs->fp(), regs->ip());
+            arch::dump_regs(regs, cpu::extra_regs::read(), log_level::fatal);
+            trace(log_level::fatal, regs->fp(), regs->ip());
         }
-        else lib::trace(lib::log_level::fatal, 0, 0);
+        else trace(log_level::fatal, 0, 0);
 
-        exit:
+        end:
         arch::halt(false);
         std::unreachable();
     }
