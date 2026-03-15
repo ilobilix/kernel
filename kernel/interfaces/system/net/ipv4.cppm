@@ -33,6 +33,9 @@ namespace net::ipv4
 
         ether::packet ether;
 
+        packet(addr::ip::v4 sip, addr::ip::v4 dip, protocol proto, std::uint8_t ttl)
+            : sip { sip }, dip { dip }, proto { std::to_underlying(proto) }, ttl { ttl }, ihl { 5 } { }
+
         packet(const ether::packet &ether) : ether { ether }
         {
             const auto bytes = reinterpret_cast<std::uint8_t *>(ether.data);

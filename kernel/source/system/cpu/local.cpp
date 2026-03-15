@@ -99,12 +99,26 @@ namespace cpu
 
         processor *nth(std::size_t n)
         {
-            return bases ? std::addressof(me.get(bases[n])) : nullptr;
+            lib::bug_on(n >= count());
+            return std::addressof(me.get(bases[n]));
         }
 
         std::uintptr_t nth_base(std::size_t n)
         {
-            return bases ? bases[n] : 0;
+            lib::bug_on(n >= count() || !bases);
+            return bases[n];
+        }
+
+        std::size_t arch2idx(std::size_t arch_id)
+        {
+            lib::bug_on(!bases);
+            for (std::size_t i = 0; i < count(); i++)
+            {
+                const auto &cpu = me.get(bases[i]);
+                if (cpu.arch_id == arch_id)
+                    return cpu.idx;
+            }
+            std::unreachable();
         }
 
         bool available()

@@ -15,10 +15,13 @@ export namespace acpi
     namespace madt
     {
         std::vector<acpi_madt_lapic> lapics;
+        std::vector<acpi_madt_lapic_nmi> lapic_nmis;
         std::vector<acpi_madt_x2apic> x2apics;
+        std::vector<acpi_madt_x2apic_nmi> x2apic_nmis;
 
         std::vector<acpi_madt_ioapic> ioapics;
         std::vector<acpi_madt_interrupt_source_override> isos;
+        std::vector<acpi_madt_nmi_source> nmi_sources;
 
         acpi_madt *hdr = nullptr;
     } // namespace madt
