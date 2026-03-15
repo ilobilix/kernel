@@ -10,6 +10,7 @@ module x86_64.system.lapic;
 import drivers.timers;
 import system.interrupts;
 import system.memory;
+import system.acpi;
 import system.cpu.local;
 import system.cpu;
 import magic_enum;
@@ -51,6 +52,25 @@ namespace x86_64::apic
                 val &= ~(1 << 10);
 
             cpu::msr::write(reg::apic_base, val);
+        }
+
+        void setup_nmi(std::uint8_t lint, std::uint16_t flags)
+        {
+            if (lint > 1)
+            {
+                lib::error("lapic: firmware requested invalid lint for local nmi");
+                return;
+            }
+
+            std::uint32_t val = 0x400;
+
+            if ((flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_LOW)
+                val |= (1u << 13);
+
+            if ((flags & ACPI_MADT_TRIGGERING_MASK) == ACPI_MADT_TRIGGERING_LEVEL)
+                lib::warn("lapic: firmware requested level-triggered local nmi");
+
+            write(lint ? reg::lvt_lint1 : reg::lvt_lint0, val);
         }
     } // namespace
 
@@ -210,14 +230,14 @@ namespace x86_64::apic
         {
             const auto val = timers::tsc::rdtsc();
             const auto ticks = timers::tsc::frequency().ticks(ns);
-            write(reg::lvt, (0b10 << 17) | vector);
+            write(reg::lvt_timer, (0b10 << 17) | vector);
             asm volatile ("mfence" ::: "memory");
             cpu::msr::write(reg::deadline, val + ticks);
         }
         else
         {
             write(reg::tic, 0);
-            write(reg::lvt, vector);
+            write(reg::lvt_timer, vector);
             const auto ticks = freq.ticks(ns);
             write(reg::tic, ticks);
         }
@@ -252,9 +272,13 @@ namespace x86_64::apic
         }
     }
 
+    cpu_local<std::uint32_t> acpi_id;
+    cpu_local_init(acpi_id);
+
     void init_cpu()
     {
-        if (cpu::self()->idx != cpu::bsp_idx())
+        const auto self = cpu::self();
+        if (self->idx != cpu::bsp_idx())
         {
             auto val = cpu::msr::read(reg::apic_base);
             if (!x2apic && pmmio != (val & 0xFFFFF000))
@@ -265,17 +289,60 @@ namespace x86_64::apic
             enable(val);
         }
 
-        // Enable all external interrupts
-        write(reg::tpr, 0x00);
-
-        auto ret = interrupts::allocate(cpu::self()->idx, 0xFF);
+        const auto ret = interrupts::allocate(self->idx, 0xFF);
         lib::bug_on(!ret.has_value() || ret->second != 0xFF);
 
-        // Enable APIC and set spurious interrupt vector to 0xFF
+        write(reg::siv, 0xFF);
+        write(reg::err, 0);
+
+        if (self->idx == cpu::bsp_idx())
+        {
+            for (const auto &entry : acpi::madt::lapics)
+            {
+                if (entry.id == self->arch_id)
+                {
+                    const auto base = cpu::local::nth_base(cpu::local::arch2idx(entry.id));
+                    acpi_id.get(base) = entry.uid;
+                }
+            }
+            if (x2apic)
+            {
+                for (const auto &entry : acpi::madt::x2apics)
+                {
+                    if (entry.id == self->arch_id)
+                    {
+                        const auto base = cpu::local::nth_base(cpu::local::arch2idx(entry.id));
+                        acpi_id.get(base) = entry.uid;
+                    }
+                }
+            }
+        }
+
+        write(reg::lvt_timer, (1 << 16));
+        write(reg::lvt_lint0, (1 << 16) | 0xFF);
+        write(reg::lvt_lint1, (1 << 16) | 0xFF);
+        // write(reg::lvt_error, );
+
         write(reg::siv, (1 << 8) | 0xFF);
 
-        // nmi
-        write(reg::lint1, (1 << 10));
+        write(reg::err, 0);
+        if (const auto err = read(reg::err))
+            lib::panic("lapic: error 0x{:X} during init", err);
+
+        for (const auto &entry : acpi::madt::lapic_nmis)
+        {
+            if (entry.uid == 0xFF || entry.uid == acpi_id.get())
+                setup_nmi(entry.lint, entry.flags);
+        }
+        if (x2apic)
+        {
+            for (const auto &entry : acpi::madt::x2apic_nmis)
+            {
+                if (entry.uid == 0xFFFFFFFF || entry.uid == acpi_id.get())
+                    setup_nmi(entry.lint, entry.flags);
+            }
+        }
+
         lib::io::out<8>(0x70, lib::io::in<8>(0x70) & 0x7F);
 
         initialised = true;

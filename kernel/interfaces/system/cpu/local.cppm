@@ -68,6 +68,8 @@ export namespace cpu
         processor *nth(std::size_t n);
         std::uintptr_t nth_base(std::size_t n);
 
+        std::size_t arch2idx(std::size_t arch_id);
+
         bool available();
     } // namespace local
 
