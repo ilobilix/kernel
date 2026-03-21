@@ -34,3 +34,5 @@ target_sources(cxx_modules
         BASE_DIRS ${LIBSTDCXX_HEADERS_BASE_DIR}
         FILES ${LIBSTDCXX_HEADERS_MODULES}
 )
+
+add_dependencies(cxx_modules generate_git_version)
