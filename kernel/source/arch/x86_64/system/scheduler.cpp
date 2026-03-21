@@ -125,6 +125,13 @@ namespace sched::arch
         }
     }
 
+    extern "C" void sched_switch_context(cpu::registers *current, cpu::registers *next);
+    void ctx_switch(thread *current, thread *next)
+    {
+        lib::bug_on(!current || !next);
+        sched_switch_context(&current->regs, &next->regs);
+    }
+
     void update_stack(thread *thread, std::uintptr_t addr)
     {
         thread->regs.rsp = addr;
