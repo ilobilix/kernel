@@ -38,55 +38,91 @@ export namespace fs::dev::tty
 
         enum oflag : tcflag_t
         {
-            opost  = 0000001, // post-process output
-            olcuc  = 0000002, // map lowercase to uppercase on output (not in POSIX)
-            onlcr  = 0000004, // map NL to CR-NL on output
-            ocrnl  = 0000010, // map CR to NL on output
-            onocr  = 0000020, // no CR output at column 0
-            onlret = 0000040, // NL performs CR function
-            ofill  = 0000100, // use fill characters for delay
-            ofdel  = 0000200, // fill is DEL
-            ndly   = 0000400,
-            crdly  = 0003000,
-            tabdly = 0014000,
-            bsdly  = 0020000,
-            vtdly  = 0040000,
-            ffdly  = 0100000
+            opost  = 0x00001, // post-process output
+            ocrnl  = 0x00008, // map CR to NL on output
+            onocr  = 0x00010, // don't output CR at column 0
+            onlret = 0x00020, // don't output CR
+            ofill  = 0x00040, // send fill characters for a delay
+            ofdel  = 0x00080, // fill character is ASCII DEL
+            olcuc  = 0x00002, // map lowercase to uppercase on output (not in POSIX)
+            onlcr  = 0x00004, // map NL to CR-NL on output
+            nldly  = 0x00100, // newline delay mask
+            nl0    = 0x00000, // newline delay 0
+            nl1    = 0x00100, // newline delay 1
+            crdly  = 0x00600, // carriage return delay mask
+            cr0    = 0x00000, // carriage return delay 0
+            cr1    = 0x00200, // carriage return delay 1
+            cr2    = 0x00400, // carriage return delay 2
+            cr3    = 0x00600, // carriage return delay 3
+            tabdly = 0x01800, // horizontal tab delay mask
+            tab0   = 0x00000, // horizontal tab delay 0
+            tab1   = 0x00800, // horizontal tab delay 1
+            tab2   = 0x01000, // horizontal tab delay 2
+            tab3   = 0x01800, // expand tabs to spaces
+            xtabs  = 0x01800, // expand tabs to spaces (synonym for tab3)
+            bsdly  = 0x02000, // backspace delay mask
+            bs0    = 0x00000, // backspace delay 0
+            bs1    = 0x02000, // backspace delay 1
+            vtdly  = 0x04000, // vertical tab delay mask
+            vt0    = 0x00000, // vertical tab delay 0
+            vt1    = 0x04000, // vertical tab delay 1
+            ffdly  = 0x08000, // form feed delay mask
+            ff0    = 0x00000, // form feed delay 0
+            ff1    = 0x08000  // form feed delay 1
         };
 
         enum cflag : tcflag_t
         {
-            csize  = 0000060,
-            cs5    = 0000000,
-            cs6    = 0000020,
-            cs7    = 0000040,
-            cs8    = 0000060,
-            cstopb = 0000100,
-            cread  = 0000200,
-            parenb = 0000400,
-            parodd = 0001000,
-            hupcl  = 0002000,
-            clocal = 0004000,
+            cbaud   = 0x0000100F, // baud speed mask
+            csize   = 0x00000030, // character size mask
+            cs5     = 0x00000000, // 5 bits per byte
+            cs6     = 0x00000010, // 6 bits per byte
+            cs7     = 0x00000020, // 7 bits per byte
+            cs8     = 0x00000030, // 8 bits per byte
+            cstopb  = 0x00000040, // set two stop bits, rather than one
+            cread   = 0x00000080, // enable receiver
+            parenb  = 0x00000100, // enable parity generation and checking
+            parodd  = 0x00000200, // parity for input and output is odd
+            hupcl   = 0x00000400, // lower modem control lines after last process closes
+            clocal  = 0x00000800, // ignore modem control lines
+            cbaudex = 0x00001000, // extended baud rate mask
+            bother  = 0x00001000, // non-standard integer baud rates
+            cibaud  = 0x100f0000  // input baud rate mask
         };
 
-        enum baud : tcflag_t
+        enum baud : speed_t
         {
-            b0     = 0u, // hang up or ispeed == ospeed
-            b50    = 50u,
-            b75    = 75u,
-            b110   = 110u,
-            b134   = 134u, // really 134.5 baud by POSIX spec
-            b150   = 150u,
-            b200   = 200u,
-            b300   = 300u,
-            b600   = 600u,
-            b1200  = 1200u,
-            b1800  = 1800u,
-            b2400  = 2400u,
-            b4800  = 4800u,
-            b9600  = 9600u,
-            b19200 = 19200u,
-            b38400 = 38400u,
+            b0       = 0x00000000,
+            b50      = 0x00000001,
+            b75      = 0x00000002,
+            b110     = 0x00000003,
+            b134     = 0x00000004,
+            b150     = 0x00000005,
+            b200     = 0x00000006,
+            b300     = 0x00000007,
+            b600     = 0x00000008,
+            b1200    = 0x00000009,
+            b1800    = 0x0000000A,
+            b2400    = 0x0000000B,
+            b4800    = 0x0000000C,
+            b9600    = 0x0000000D,
+            b19200   = 0x0000000E,
+            b38400   = 0x0000000F,
+            b57600   = 0x00001001,
+            b115200  = 0x00001002,
+            b230400  = 0x00001003,
+            b460800  = 0x00001004,
+            b500000  = 0x00001005,
+            b576000  = 0x00001006,
+            b921600  = 0x00001007,
+            b1000000 = 0x00001008,
+            b1152000 = 0x00001009,
+            b1500000 = 0x0000100A,
+            b2000000 = 0x0000100B,
+            b2500000 = 0x0000100C,
+            b3000000 = 0x0000100D,
+            b3500000 = 0x0000100E,
+            b4000000 = 0x0000100F
         };
 
         enum lflag : tcflag_t
@@ -113,23 +149,23 @@ export namespace fs::dev::tty
 
         enum cc : cc_t
         {
-            vintr = 0,
-            vquit = 1,
-            verase = 2,
-            vkill = 3,
-            veof = 4,
-            vtime = 5,
-            vmin = 6,
-            vswtc = 7,
-            vstart = 8,
-            vstop = 9,
-            vsusp = 10,
-            veol = 11,
-            vreprint = 12,
-            vdiscard = 13,
-            vwerase = 14,
-            vlnext = 15,
-            veol2 = 16
+            vintr    = 0,  // interrupt character
+            vquit    = 1,  // quit character
+            verase   = 2,  // erase character
+            vkill    = 3,  // kill-line character
+            veof     = 4,  // end-of-file character
+            vtime    = 5,  // time-out value (non-canonical)
+            vmin     = 6,  // minimum number of characters (non-canonical)
+            vswtc    = 7,  // switch character
+            vstart   = 8,  // start character (XON)
+            vstop    = 9,  // stop character (XOFF)
+            vsusp    = 10, // suspend character
+            veol     = 11, // end-of-line character
+            vreprint = 12, // reprint-line character
+            vdiscard = 13, // discard character
+            vwerase  = 14, // word-erase character
+            vlnext   = 15, // literal-next character
+            veol2    = 16  // alternative end-of-line character
         };
 
         tcflag_t c_iflag;
@@ -144,6 +180,41 @@ export namespace fs::dev::tty
         static inline constexpr auto ctrl(cc_t c)
         {
             return c & 0x1F;
+        }
+
+        speed_t get_ispeed() const
+        {
+            if ((c_cflag & cbaud) == bother)
+                return c_ispeed;
+            const auto ispeed = (c_cflag & cibaud) >> 16;
+            return ispeed == 0 ? get_ospeed() : ispeed;
+        }
+
+        speed_t get_ospeed() const
+        {
+            if ((c_cflag & cbaud) == bother)
+                return c_ospeed;
+            return c_cflag & cbaud;
+        }
+
+        void set_ispeed(speed_t ispeed)
+        {
+            c_ispeed = ispeed;
+            if ((c_cflag & cbaud) != bother)
+            {
+                c_cflag &= ~cibaud;
+                c_cflag |= (ispeed << 16) & cibaud;
+            }
+        }
+
+        void set_ospeed(speed_t ospeed)
+        {
+            c_ospeed = ospeed;
+            if ((c_cflag & cbaud) != bother)
+            {
+                c_cflag &= ~cbaud;
+                c_cflag |= ospeed & cbaud;
+            }
         }
 
         static constexpr ktermios standard()
@@ -400,6 +471,11 @@ export namespace fs::dev::tty
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
 
         virtual lib::expect<std::uint16_t> poll(vfs::poll_table *pt);
+
+        virtual void set_termios(ktermios &current, const ktermios &old)
+        {
+            lib::unused(current, old);
+        };
 
         // called by hardware
         bool receive(std::span<std::byte> buffer)
