@@ -27,6 +27,7 @@ namespace lib::lock
 
         if (irq_depth->fetch_add(1, std::memory_order_acquire) == 0)
             arch::int_switch(false);
+
         return ret;
     }
 
@@ -45,8 +46,19 @@ namespace lib::lock
             arch::int_switch(old);
     }
 
-    void acquire_preempt() { sched::disable(); }
-    void release_preempt() { sched::enable(); }
+    void acquire_preempt()
+    {
+        if (!sched::is_initialised())
+            return;
+        sched::disable();
+    }
+
+    void release_preempt()
+    {
+        if (!sched::is_initialised())
+            return;
+        sched::enable();
+    }
 
     void pause() { arch::pause(); }
 
