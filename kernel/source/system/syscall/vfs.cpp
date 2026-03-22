@@ -171,7 +171,9 @@ namespace syscall::vfs
                 else
                     stat.st_gid = proc->egid;
 
-                created->dentry->inode->dirty = true;
+                auto fs = created->mnt->fs.lock();
+                if (const auto ret = fs->dirty_inode(created->dentry->inode); !ret)
+                    return (errno = lib::map_error(ret.error()), -1);
             }
 
             target = std::move(*created);
@@ -226,12 +228,15 @@ namespace syscall::vfs
             {
                 const std::unique_lock _ { target.dentry->inode->lock };
                 stat.update_time(stat::time::modify | stat::time::status);
-                target.dentry->inode->dirty = true;
+
+                auto fs = target.mnt->fs.lock();
+                if (const auto ret = fs->dirty_inode(target.dentry->inode); !ret)
+                    return (errno = lib::map_error(ret.error()), -1);
             }
 
             if (flags & (o_sync | o_dsync))
             {
-                if (auto ret = fdesc->file->sync(); !ret)
+                if (const auto ret = fdesc->file->sync(); !ret)
                     return (errno = lib::map_error(ret.error()), -1);
             }
         }
@@ -278,8 +283,10 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -294,12 +301,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -318,8 +328,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -334,12 +346,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -358,8 +373,10 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -374,12 +391,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -398,8 +418,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -414,12 +436,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -444,8 +469,10 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -473,12 +500,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -497,8 +527,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -523,12 +555,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -547,8 +582,10 @@ namespace syscall::vfs
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -577,12 +614,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -601,8 +641,10 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        auto &inode = file->path.dentry->inode;
+        auto &dentry = file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
@@ -628,12 +670,15 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
-            inode->dirty = true;
+
+            auto fs = file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
-            if (auto ret = file->sync(); !ret)
+            if (const auto ret = file->sync(); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
         }
 
@@ -985,8 +1030,10 @@ namespace syscall::vfs
         if (fdesc == nullptr)
             return -1;
 
-        auto &inode = fdesc->file->path.dentry->inode;
+        auto &dentry = fdesc->file->path.dentry;
+        auto &inode = dentry->inode;
         auto &stat = inode->stat;
+
         if (stat.type() != stat::type::s_ifdir)
             return (errno = ENOTDIR, -1);
 
@@ -1001,7 +1048,10 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
-            inode->dirty = true;
+
+            auto fs = fdesc->file->path.mnt->fs.lock();
+            if (const auto ret = fs->dirty_inode(dentry->inode); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         return static_cast<int>(ret.value());
