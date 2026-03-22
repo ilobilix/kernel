@@ -63,8 +63,7 @@ namespace sched
         std::atomic_bool idling = false;
     };
 
-    cpu_local<percpu> percpu;
-    cpu_local_init(percpu);
+    cpu_local(percpu, percpu);
 
     namespace arch
     {
@@ -223,7 +222,7 @@ namespace sched
     process *proc_for(pid_t pid)
     {
         if (pid == -1)
-            return percpu->idle_proc;
+            return percpu.read<process *, &percpu::idle_proc>();
 
         process *ret = nullptr;
         {
@@ -291,7 +290,7 @@ namespace sched
         const auto target_cpu = running_on->idx;
         bool was_idling = false;
         {
-            auto &pcpu = percpu.get(cpu::local::nth_base(target_cpu));
+            auto &pcpu = percpu.unsafe_get(cpu::local::nth_base(target_cpu));
             auto our_qlocked = pcpu.queue.lock();
             // if sleep_until isn't set, then this thread was sleeping without a timeout
             // that means that it will not be woken up by the sleeper thread
@@ -327,8 +326,11 @@ namespace sched
         sleep_lock.unlock();
 
         // TODO: maybe not interrupt other cpus if they're doing stuff
-        if (target_cpu != cpu::self()->idx || was_idling)
+        disable();
+        const auto me = cpu::self().unsafe_get().idx;
+        if (target_cpu != me || was_idling)
             arch::reschedule_other(target_cpu);
+        enable();
 
         arch::int_switch(ints);
         return true;
@@ -349,8 +351,6 @@ namespace sched
         }
 
         arch::deinitialise(parent, this);
-
-        // lib::error("TODO: thread {} deconstructor on cpu {}", tid, cpu::self()->idx);
     }
 
     thread *thread::create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user)
@@ -503,7 +503,7 @@ namespace sched
 
     thread *this_thread()
     {
-        return percpu->running_thread;
+        return percpu.read<thread *, &percpu::running_thread>();
     }
 
     std::size_t sleep_for(std::size_t ms)
@@ -528,7 +528,9 @@ namespace sched
             thread->sleep_until = timer->ns() + thread->sleep_for.value();
             thread->sleep_for = std::nullopt;
 
-            percpu->sleep_queue.lock()->insert(thread);
+            disable();
+            percpu.unsafe_get().sleep_queue.lock()->insert(thread);
+            enable();
         }
 
         schedule(nullptr);
@@ -544,7 +546,7 @@ namespace sched
 
         for (std::size_t i = 0; i < cpu::count(); i++)
         {
-            auto &obj = percpu.get(cpu::local::nth_base(i));
+            auto &obj = percpu.unsafe_get(cpu::local::nth_base(i));
             const auto size = obj.queue.lock()->size();
             if (size < min)
             {
@@ -557,7 +559,7 @@ namespace sched
 
     void enqueue(thread *thread, std::size_t cpu_idx)
     {
-        auto &pcpu = percpu.get(cpu::local::nth_base(cpu_idx));
+        auto &pcpu = percpu.unsafe_get(cpu::local::nth_base(cpu_idx));
         switch (thread->status)
         {
             [[unlikely]] case status::killed:
@@ -587,8 +589,10 @@ namespace sched
 
     void reaper()
     {
-        auto &dead = percpu->dead_threads;
-        auto &me = percpu->reaper_thread;
+        auto &pcpu = percpu.unsafe_get();
+        auto &dead = pcpu.dead_threads;
+        auto &me = pcpu.reaper_thread;
+
         while (true)
         {
             while (true)
@@ -632,9 +636,11 @@ namespace sched
 
     void sleeper()
     {
-        auto &eepers = percpu->sleep_queue;
-        auto &dead = percpu->dead_threads;
-        auto &me = percpu->sleeper_thread;
+        auto &pcpu = percpu.unsafe_get();
+        auto &queue = pcpu.queue;
+        auto &eepers = pcpu.sleep_queue;
+        auto &dead = pcpu.dead_threads;
+        auto &me = pcpu.sleeper_thread;
 
         while (true)
         {
@@ -663,7 +669,7 @@ namespace sched
                     case status::ready:
                         thread->sleep_until = std::nullopt;
                         elocked->remove(thread);
-                        percpu->queue.lock()->insert(thread);
+                        queue.lock()->insert(thread);
                         break;
                     case status::killed:
                         thread->sleep_until = std::nullopt;
@@ -682,7 +688,7 @@ namespace sched
                         thread->wake_reason = wake_reason::success;
                         {
                             // if the woken one has been sleeping for too long
-                            auto qlocked = percpu->queue.lock();
+                            auto qlocked = queue.lock();
                             if (!qlocked->empty())
                                 thread->vruntime = qlocked->first()->vruntime;
                             qlocked->insert(thread);
@@ -708,10 +714,10 @@ namespace sched
 
     void schedule(cpu::registers *regs)
     {
-        auto &pcpu = percpu.get();
+        auto &pcpu = percpu.unsafe_get();
         const auto current = pcpu.running_thread;
 
-        if (current && current->preemption > 0)
+        if (current && current->preemption != 0)
         {
             lib::bug_on(!regs);
             arch::reschedule(timeslice);
@@ -722,7 +728,7 @@ namespace sched
         const auto timer = chrono::main_timer();
         auto time = timer->ns();
 
-        const auto self = cpu::self();
+        const auto &self = cpu::self().unsafe_get();
         auto &dead = pcpu.dead_threads;
 
         const bool is_current_idle = (current == pcpu.idle_thread);
@@ -750,7 +756,7 @@ namespace sched
                     eeper->sleep_lock.unlock();
                     eeper->status = status::ready;
                     eeper->wake_reason = wake_reason::success;
-                    enqueue(eeper, self->idx);
+                    enqueue(eeper, self.idx);
                 }
                 else earliest_wake = *first_eeper->sleep_until;
             }
@@ -817,7 +823,7 @@ namespace sched
                     {
                         save(current, regs);
                         if (current->status != status::sleeping)
-                            enqueue(current, self->idx);
+                            enqueue(current, self.idx);
                     }
                 }
             }
@@ -854,7 +860,7 @@ namespace sched
 
         if (next != current)
         {
-            next->running_on = self->self;
+            next->running_on = self.self;
             next->status = status::running;
             pcpu.running_thread = next;
 
@@ -916,23 +922,36 @@ namespace sched
 
     void enable()
     {
-        lib::bug_on(!initialised);
-
-        if (percpu->in_scheduler.load(std::memory_order_acquire))
+        if (!initialised)
             return;
 
-        lib::bug_on(this_thread()->preemption == 0);
-        arch::enable();
+        arch::disable();
+        if (percpu.unsafe_get().reaper_thread->preemption < 0)
+        {
+            arch::enable();
+            return;
+        }
+
+        if (percpu.unsafe_get().in_scheduler.load(std::memory_order_acquire))
+        {
+            arch::enable();
+            return;
+        }
+
+        arch::enable(); arch::enable();
     }
 
     void disable()
     {
-        lib::bug_on(!initialised);
-
-        if (percpu->in_scheduler.load(std::memory_order_acquire))
+        if (!initialised)
             return;
 
         arch::disable();
+        if (percpu.unsafe_get().in_scheduler.load(std::memory_order_acquire))
+        {
+            arch::enable();
+            return;
+        }
     }
 
     [[noreturn]] void start()
@@ -944,7 +963,7 @@ namespace sched
             std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
         );
 
-        const auto self = cpu::self();
+        const auto &self = cpu::self().unsafe_get();
 
         const auto idle_proc = new process { };
         idle_proc->vmspace = idle_vmspace;
@@ -953,18 +972,21 @@ namespace sched
         const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), 0, false);
         idle_thread->status = status::ready;
 
-        percpu->idle_proc = idle_proc;
-        percpu->idle_thread = idle_thread;
+        auto &pcpu = percpu.unsafe_get();
+        pcpu.idle_proc = idle_proc;
+        pcpu.idle_thread = idle_thread;
 
         arch::init();
 
-        if (self->idx == cpu::bsp_idx())
+        if (self.idx == cpu::bsp_idx())
         {
             for (std::size_t idx = 0; idx < cpu::count(); idx++)
             {
-                auto &obj = percpu.get(cpu::local::nth_base(idx));
+                auto &obj = percpu.unsafe_get(cpu::local::nth_base(idx));
                 obj.reaper_thread = sched::spawn_on(idx, reinterpret_cast<std::uintptr_t>(reaper), 0, nice_t::max);
+                obj.reaper_thread->can_migrate = false;
                 obj.sleeper_thread = sched::spawn_on(idx, reinterpret_cast<std::uintptr_t>(sleeper), 0, -5);
+                obj.sleeper_thread->can_migrate = false;
             }
 
             initialised.store(true, std::memory_order_release);

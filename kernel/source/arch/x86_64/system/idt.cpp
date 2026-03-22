@@ -52,13 +52,11 @@ namespace x86_64::idt
         }
     } // namespace
 
-    cpu_local<
-        frg::small_vector<
-            interrupts::handler, x86_64::idt::num_preints,
-            frg::allocator<interrupts::handler>
-        >
-    > irq_handlers;
-    cpu_local_init(irq_handlers);
+    using irq_vec = frg::small_vector<
+        interrupts::handler, x86_64::idt::num_preints,
+        frg::allocator<interrupts::handler>
+    >;
+    cpu_local(irq_vec, irq_handlers);
 
     std::array<entry, num_ints> &table() { return idt; }
 
@@ -70,7 +68,7 @@ namespace x86_64::idt
 
         num -= irq(0);
 
-        auto &handlers = irq_handlers.get(cpu::local::nth_base(cpuidx));
+        auto &handlers = irq_handlers.unsafe_get(cpu::local::nth_base(cpuidx));
         if (num >= handlers.size())
             handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
 
@@ -87,15 +85,22 @@ namespace x86_64::idt
             std::unreachable();
         }
 
-        const auto self = cpu::self();
-        const bool old = self->in_interrupt.exchange(true, std::memory_order_acquire);
+        const bool local_available = cpu::local::available();
+        std::optional<std::reference_wrapper<cpu::processor>> self;
+        bool old = false;
+        if (local_available)
+        {
+            self = cpu::self().unsafe_get();
+            old = self->get().in_interrupt.exchange(true, std::memory_order_acquire);
+        }
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
             const auto idx = vector - irq(0);
-            if (irq_handlers->size() > idx)
+            auto &irqh = irq_handlers.unsafe_get();
+            if (irqh.size() > idx)
             {
-                auto &handler = irq_handlers[idx];
+                auto &handler = irqh[idx];
                 if (handler.used()) [[likely]]
                     handler(regs);
                 else
@@ -125,17 +130,17 @@ namespace x86_64::idt
                     goto end;
             }
 
-            if (self)
+            if (local_available)
             {
                 if (sched::is_initialised())
                 {
                     const auto thread = sched::this_thread();
                     lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
                         vector, exception_messages[vector],
-                        self->idx, thread->parent->pid, thread->tid
+                        self->get().idx, thread->parent->pid, thread->tid
                     );
                 }
-                lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
+                lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->get().idx);
             }
             lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
             std::unreachable();
@@ -147,7 +152,8 @@ namespace x86_64::idt
         }
 
         end:
-        self->in_interrupt.store(old, std::memory_order_release);
+        if (local_available)
+            self->get().in_interrupt.store(old, std::memory_order_release);
     }
 
     void init()
@@ -168,7 +174,7 @@ namespace x86_64::idt
             idt[2].ist = 1; idt[14].ist = 2;
         }
 
-        irq_handlers.get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
+        irq_handlers.unsafe_get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
 
         if (cpu->idx == cpu::bsp_idx())
             early = false;

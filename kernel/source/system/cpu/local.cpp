@@ -2,6 +2,7 @@
 
 module system.cpu.local;
 
+import system.scheduler;
 import system.cpu;
 import system.memory;
 import magic_enum;
@@ -83,7 +84,7 @@ namespace cpu
             else lib::info("cpu: bringing up ap {}", idx);
 
             const auto base = map();
-            me.initialise_base(bases[idx] = base);
+            me.initialise(bases[idx] = base);
 
             auto proc = nth(idx);
             lib::bug_on(base != reinterpret_cast<std::uintptr_t>(proc));
@@ -100,7 +101,7 @@ namespace cpu
         processor *nth(std::size_t n)
         {
             lib::bug_on(n >= count() || !bases);
-            return std::addressof(me.get(bases[n]));
+            return std::addressof(me.unsafe_get(bases[n]));
         }
 
         std::uintptr_t nth_base(std::size_t n)
@@ -114,7 +115,7 @@ namespace cpu
             lib::bug_on(!bases);
             for (std::size_t i = 0; i < count(); i++)
             {
-                const auto &cpu = me.get(bases[i]);
+                const auto &cpu = me.unsafe_get(bases[i]);
                 if (cpu.arch_id == arch_id)
                     return cpu.idx;
             }
@@ -125,11 +126,21 @@ namespace cpu
         {
             return _available;
         }
+
+        void begin_access()
+        {
+            sched::disable();
+        }
+
+        void end_access()
+        {
+            sched::enable();
+        }
     } // namespace local
 
-    processor *self()
+    local::storage<processor> &self()
     {
         lib::bug_on(!local::bases);
-        return std::addressof(local::me.get());
+        return local::me;
     }
 } // namespace cpu

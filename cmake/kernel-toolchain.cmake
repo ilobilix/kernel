@@ -21,12 +21,11 @@ set(_KERNEL_FLAGS
 ilobilix_append_flags("C;CXX;ASM" ${_KERNEL_FLAGS})
 
 set(_ILOBILIX_KERNEL_DEFINES
-    "cpu_local=\
+    "cpu_local(Type, name, ...)=\
         [[gnu::section(\".percpu\")]] \
-        ::cpu::local::storage"
-    "cpu_local_init(name, ...)=\
+        ::cpu::local::storage<Type> name^\
         void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { \
-            name.initialise_base(base __VA_OPT__(,) __VA_ARGS__)^ \
+            name.initialise(base __VA_OPT__(,) __VA_ARGS__)^ \
         }^ \
         [[gnu::section(\".percpu_init\"), gnu::used]] \
         const auto name ## _init_ptr__ = name ## _init_func__"
