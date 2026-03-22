@@ -226,6 +226,9 @@ export namespace vfs
             virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
             virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
+
+            virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
+
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
@@ -251,6 +254,7 @@ export namespace vfs
     {
         lib::mutex lock;
         stat stat;
+        bool dirty = false;
     };
 
     struct dentry : std::enable_shared_from_this<dentry>
@@ -377,6 +381,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->open(shared_from_this(), flags);
         }
 
@@ -385,6 +390,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->close(shared_from_this());
         }
 
@@ -394,7 +400,9 @@ export namespace vfs
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
 
-            std::unique_lock _ { lock };
+            const std::unique_lock _ { lock };
+            const std::unique_lock __ { path.dentry->inode->lock };
+
             const auto ret = ops->get()->read(shared_from_this(), offset, buffer);
             if (ret.has_value())
                 offset += *ret;
@@ -407,7 +415,12 @@ export namespace vfs
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
 
-            std::unique_lock _ { lock };
+            const std::unique_lock _ { lock };
+            const std::unique_lock __ { path.dentry->inode->lock };
+
+            if (flags & o_append)
+                offset = path.dentry->inode->stat.st_size;
+
             const auto ret = ops->get()->write(shared_from_this(), offset, buffer);
             if (ret.has_value())
                 offset += *ret;
@@ -419,6 +432,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->read(shared_from_this(), offset, buffer);
         }
 
@@ -427,6 +441,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->write(shared_from_this(), offset, buffer);
         }
 
@@ -435,6 +450,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->trunc(shared_from_this(), size);
         }
 
@@ -445,6 +461,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->poll(shared_from_this(), pt);
         }
 
@@ -453,6 +470,7 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->ioctl(shared_from_this(), request, argp);
         }
 
@@ -461,7 +479,28 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
+            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->map(shared_from_this(), priv);
+        }
+
+        lib::expect<void> sync()
+        {
+            const auto ops = get_ops();
+            if (!ops.has_value())
+                return std::unexpected { ops.error() };
+
+            if (auto ret = ops->get()->sync(); !ret.has_value())
+                return ret;
+
+            auto &inode = path.dentry->inode;
+            const std::unique_lock _ { inode->lock };
+            if (inode->dirty)
+            {
+                if (auto ret = path.mnt->fs.lock()->write_inode(inode); !ret)
+                    return ret;
+                inode->dirty = false;
+            }
+            return { };
         }
 
         static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags, pid_t pid)
