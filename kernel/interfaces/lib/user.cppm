@@ -8,40 +8,16 @@ import std;
 
 namespace lib::impl
 {
-    void user_acquire();
-    void user_release();
-
-    void copy_to_user(void __user *dest, const void *src, std::size_t len);
-    void copy_from_user(void *dest, const void __user *src, std::size_t len);
-    void fill_user(void __user *dest, int value, std::size_t len);
-    std::size_t strnlen_user(const char __user *str, std::size_t len);
+    bool copy_to_user(void __user *dest, const void *src, std::size_t len);
+    bool copy_from_user(void *dest, const void __user *src, std::size_t len);
+    bool fill_user(void __user *dest, int value, std::size_t len);
+    std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 } // namespace lib::impl
 
 export namespace lib
 {
     enum class address_space { invalid, user, kernel };
     address_space classify_address(std::uintptr_t addr, std::size_t len);
-
-    struct user_guard
-    {
-        user_guard() { impl::user_acquire(); }
-        ~user_guard() { impl::user_release(); }
-    };
-
-    template<typename Func, typename ...Args>
-    auto as_user(Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
-    {
-        user_guard _ { };
-        return func(std::forward<Args>(args)...);
-    }
-
-    template<typename Func, typename ...Args>
-        requires (std::same_as<std::invoke_result_t<Func, Args...>, void>)
-    auto as_user(Func &&func, Args &&...args) -> void
-    {
-        user_guard _ { };
-        func(std::forward<Args>(args)...);
-    }
 
     bool copy_to_user(void __user *dest, const void *src, std::size_t len);
     bool copy_from_user(void *dest, const void __user *src, std::size_t len);
@@ -121,12 +97,11 @@ export namespace lib
 
             if (_is_user)
             {
-                impl::copy_from_user(
+                return impl::copy_from_user(
                     dest.data(),
                     add_user_cast<void>(_span.data()),
                     dest.size_bytes()
                 );
-                return true;
             }
 
             std::memcpy(dest.data(), _span.data(), dest.size_bytes());
@@ -142,14 +117,14 @@ export namespace lib
         {
             if (src.size_bytes() > _span.size_bytes())
                 return false;
+
             if (_is_user)
             {
-                impl::copy_to_user(
+                return impl::copy_to_user(
                     add_user_cast<void>(_span.data()),
                     src.data(),
                     src.size_bytes()
                 );
-                return true;
             }
 
             std::memcpy(_span.data(), src.data(), src.size_bytes());
@@ -163,17 +138,16 @@ export namespace lib
 
         bool fill(std::uint8_t value, std::size_t count) const
         {
-            if (count > _span.size())
+            if (count > _span.size_bytes())
                 return false;
 
             if (_is_user)
             {
-                impl::fill_user(
+                return impl::fill_user(
                     add_user_cast<void>(_span.data()),
                     static_cast<int>(value),
                     count * sizeof(Type)
                 );
-                return true;
             }
 
             std::memset(
@@ -182,6 +156,11 @@ export namespace lib
                 count * sizeof(Type)
             );
             return true;
+        }
+
+        bool fill(std::uint8_t value) const
+        {
+            return fill(value, _span.size_bytes());
         }
 
         std::size_t size() const { return _span.size(); }
