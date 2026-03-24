@@ -104,6 +104,7 @@ export namespace sched
         void update_ustack(std::uintptr_t addr);
 
         void prepare_sleep(std::size_t ms = 0);
+        void cancel_sleep();
         bool wake_up(std::size_t reason);
 
         static thread *create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user);
@@ -212,7 +213,7 @@ export namespace sched
 
     thread *this_thread();
 
-    std::size_t sleep_for(std::size_t ms);
+    std::size_t sleep(std::size_t ms = 0);
     std::size_t yield();
 
     std::size_t allocate_cpu();

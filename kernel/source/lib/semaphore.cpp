@@ -75,7 +75,7 @@ namespace lib
             ms -= eep;
 
             if (eep)
-                sched::sleep_for(eep);
+                sched::sleep(eep);
         } while (ms);
 
         return false;

@@ -187,6 +187,8 @@ export namespace lib
         std::size_t size() const { return _span.size(); }
         std::size_t size_bytes() const { return _span.size_bytes(); }
 
+        bool empty() const { return _span.empty(); }
+
         maybe_uspan<Type> subspan(std::size_t offset, std::size_t length) const
         {
             lib::bug_on(offset + length > _span.size());

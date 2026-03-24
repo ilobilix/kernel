@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2026  ilobilo
 
-export module lib:intrusive;
+export module lib:intrusive_list;
 
 import :bug_on;
 import :types;

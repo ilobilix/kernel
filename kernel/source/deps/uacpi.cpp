@@ -313,7 +313,7 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        sched::sleep_for(msec);
+        sched::sleep(msec);
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
@@ -334,11 +334,11 @@ extern "C"
         {
             while (true)
             {
-                auto value = counter.load(std::memory_order::acquire);
+                auto value = counter.load(std::memory_order_acquire);
                 if (value == 0)
                     return false;
 
-                if (counter.compare_exchange_strong(value, value - 1, std::memory_order::acq_rel, std::memory_order::acquire))
+                if (counter.compare_exchange_strong(value, value - 1, std::memory_order_acq_rel, std::memory_order_acquire))
                     return true;
             }
         }

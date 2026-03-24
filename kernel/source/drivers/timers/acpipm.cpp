@@ -52,7 +52,7 @@ namespace timers::acpipm
             while (true)
             {
                 time_ns();
-                sched::sleep_for(1'000);
+                sched::sleep(1'000);
             }
         }
     } // namespace

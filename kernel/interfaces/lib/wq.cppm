@@ -6,7 +6,7 @@ import system.scheduler.base;
 import std;
 
 import :spinlock;
-import :intrusive;
+import :intrusive_list;
 
 export namespace lib
 {
@@ -39,5 +39,4 @@ export namespace lib
         void remove(wait_queue_entry *entry);
         void wake_all(std::size_t reason = 0);
     };
-
 } // export namespace lib

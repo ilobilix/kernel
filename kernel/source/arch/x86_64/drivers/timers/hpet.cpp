@@ -79,7 +79,7 @@ namespace x86_64::timers::hpet
             while (true)
             {
                 read();
-                sched::sleep_for(1'000);
+                sched::sleep(1'000);
             }
         }
 
