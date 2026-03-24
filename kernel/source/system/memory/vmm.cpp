@@ -663,7 +663,45 @@ namespace vmm::uvm
 
                 const auto paddr = pmm::alloc(num_alloc_pages, true); // zeroed out
                 if (paddr == 0)
+                {
+                    if (i > idx)
+                    {
+                        for (std::size_t j = i; j < pages.size(); j++)
+                            pages[j] = nullptr;
+                        break;
+                    }
+
+                    for (std::size_t j = 0; j < i; j++)
+                    {
+                        auto pg = pages[j];
+                        if (!needs_fetch[j])
+                        {
+                            if (pg && pg->unref())
+                                pmm::free(paddr_from(pg), num_alloc_pages);
+                            continue;
+                        }
+
+                        auto it = locked->find(start_idx + j);
+                        const bool in_cache = (it != locked->end() && it->second == pg);
+
+                        if (in_cache)
+                        {
+                            locked->erase(it);
+                            pg->obj_ptr = nullptr;
+                        }
+
+                        pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+
+                        auto &wq = waitqueues[hash_page(pg)];
+                        wq.wake_all();
+
+                        if (pg->unref(in_cache ? 2 : 1))
+                            pmm::free(paddr_from(pg), num_alloc_pages);
+
+                        pages[j] = nullptr;
+                    }
                     return std::unexpected { lib::err::out_of_memory };
+                }
 
                 auto pg = page_for(paddr);
                 pg->refcount.store(2, std::memory_order_relaxed);
@@ -698,28 +736,31 @@ namespace vmm::uvm
                 auto locked = cache.lock();
                 for (std::size_t j = i; j < pages.size(); j++)
                 {
+                    auto pg = pages[j];
                     if (!needs_fetch[j])
                     {
-                        auto pg = pages[j];
                         if (pg->unref())
                             pmm::free(paddr_from(pg), num_alloc_pages);
                         continue;
                     }
 
-                    if (auto it = locked->find(start_idx + j); it != locked->end())
+                    auto it = locked->find(start_idx + j);
+                    const bool in_cache = (it != locked->end() && it->second == pg);
+
+                    if (in_cache)
                     {
-                        auto pg = it->second;
                         locked->erase(it);
-
                         pg->obj_ptr = nullptr;
-                        pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
-
-                        auto &wq = waitqueues[hash_page(pg)];
-                        wq.wake_all();
-
-                        if (pg->unref(2))
-                            pmm::free(paddr_from(pg), num_alloc_pages);
                     }
+
+                    pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+
+                    auto &wq = waitqueues[hash_page(pg)];
+                    wq.wake_all();
+
+                    if (pg->unref(in_cache ? 2 : 1))
+                        pmm::free(paddr_from(pg), num_alloc_pages);
+
                     pages[j] = nullptr;
                 }
 
@@ -878,13 +919,15 @@ namespace vmm::uvm
             );
             std::span<page *> pages { chunk, num_pages };
 
-            auto res = read_pages(curr_idx, pages, curr_idx, 0, 0);
+            auto res = read_pages(curr_idx, pages, 0, 0, 0);
             if (!res.has_value())
                 break;
 
             for (std::size_t i = 0; i < num_pages && remaining > 0; i++)
             {
                 auto pg = chunk[i];
+                if (!pg)
+                    return progress;
 
                 const auto vaddr = lib::tohh(paddr_from(pg));
                 const auto copy_len = std::min(psize - poffset, remaining);
@@ -904,7 +947,7 @@ namespace vmm::uvm
                 {
                     for (std::size_t j = i + 1; j < num_pages; j++)
                     {
-                        if (chunk[j]->unref())
+                        if (chunk[j] && chunk[j]->unref())
                             pmm::free(paddr_from(chunk[j]), num_alloc_pages);
                     }
                     return progress;
@@ -912,8 +955,10 @@ namespace vmm::uvm
 
                 poffset = 0;
             }
+
             curr_idx += num_pages;
         }
+
         return progress;
     }
 

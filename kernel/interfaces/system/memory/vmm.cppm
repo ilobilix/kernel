@@ -211,7 +211,7 @@ export namespace vmm::uvm
 
         bool unref(std::size_t num = 1)
         {
-            return refcount.fetch_sub(num, std::memory_order_acq_rel) == 1;
+            return refcount.fetch_sub(num, std::memory_order_acq_rel) == num;
         }
 
         struct {
