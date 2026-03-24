@@ -32,14 +32,30 @@ namespace pmm
 
             constexpr allocator() : lists { } { }
 
-            inline std::ptrdiff_t prev_order_from(std::size_t size)
+            static inline bool in_range(const auto ptr)
+            {
+                const auto addr = lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr));
+                return addr >= start && addr < end;
+            }
+
+            static inline bool in_range(std::uintptr_t rstart, std::uintptr_t rend)
+            {
+                return lib::range_overlaps(rstart, rend, start, end);
+            }
+
+            static inline std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t rstart, std::uintptr_t rend)
+            {
+                return lib::range_intersection(rstart, rend, start, end);
+            }
+
+            static inline std::ptrdiff_t prev_order_from(std::size_t size)
             {
                 if (size < page_size)
                     return -1;
                 return lib::log2(lib::pre_pow2(size)) - 12;
             }
 
-            inline std::ptrdiff_t next_order_from(std::size_t size)
+            static inline std::ptrdiff_t next_order_from(std::size_t size)
             {
                 if (size < page_size)
                     return -1;
@@ -69,22 +85,6 @@ namespace pmm
                 return lists[order].next != nullptr;
             }
 
-            inline bool in_range(const auto ptr)
-            {
-                const auto addr = lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr));
-                return addr >= start && addr < end;
-            }
-
-            inline bool in_range(std::uintptr_t rstart, std::uintptr_t rend)
-            {
-                return lib::range_overlaps(rstart, rend, start, end);
-            }
-
-            inline std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t rstart, std::uintptr_t rend)
-            {
-                return lib::range_intersection(rstart, rend, start, end);
-            }
-
             std::size_t add_range(std::uintptr_t base, std::size_t size)
             {
                 if (base < start || base + size > end)
@@ -110,8 +110,8 @@ namespace pmm
                     if (order == static_cast<std::size_t>(-1))
                         break;
 
-                    const auto pg_page = page_for(base);
-                    pg_page->order = order;
+                    const auto pg_page = vmm::page_for(base);
+                    pg_page->buddy.order = order;
 
                     put(order, pg);
 
@@ -142,17 +142,17 @@ namespace pmm
 
                     const auto buddy = reinterpret_cast<list *>(pgaddr + page_size * lib::pow2(current));
 
-                    const auto pg_page = page_for(pgaddr);
-                    const auto buddy_page = page_for(reinterpret_cast<std::uintptr_t>(buddy));
+                    const auto pg_page = vmm::page_for(pgaddr);
+                    const auto buddy_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(buddy));
 
-                    lib::bug_on(pg_page->allocated != 0);
-                    lib::bug_on(buddy_page->allocated != 0);
+                    lib::bug_on(pg_page->buddy.allocated != 0);
+                    lib::bug_on(buddy_page->buddy.allocated != 0);
 
-                    pg_page->order = current;
-                    buddy_page->order = current;
+                    pg_page->buddy.order = current;
+                    buddy_page->buddy.order = current;
 
-                    buddy_page->next_paddr = pg_page->next_paddr;
-                    pg_page->next_paddr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buddy)) >> page_bits;
+                    buddy_page->buddy.next_paddr = pg_page->buddy.next_paddr;
+                    pg_page->buddy.next_paddr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buddy)) >> page_bits;
 
                     put(current, pg);
                     put(current, buddy);
@@ -174,21 +174,22 @@ namespace pmm
 
                     while (has_pages(order))
                     {
-                        while (!page_for(curr)->next_paddr || reinterpret_cast<std::uintptr_t>(curr) % next_block_size)
+                        while (!vmm::page_for(curr)->buddy.next_paddr ||
+                            reinterpret_cast<std::uintptr_t>(curr) % next_block_size)
                         {
                             curr = curr->next;
                             if (!curr)
                                 goto end;
                         }
 
-                        const auto curr_page = page_for(curr);
-                        lib::bug_on(curr_page->allocated != 0);
-                        lib::bug_on(curr_page->order != order);
+                        const auto curr_page = vmm::page_for(curr);
+                        lib::bug_on(curr_page->buddy.allocated != 0);
+                        lib::bug_on(curr_page->buddy.order != order);
 
-                        const auto buddy_addr = lib::tohh(curr_page->next_paddr << page_bits);
-                        const auto buddy_page = page_for(buddy_addr);
+                        const auto buddy_addr = lib::tohh(curr_page->buddy.next_paddr << page_bits);
+                        const auto buddy_page = vmm::page_for(buddy_addr);
 
-                        if (buddy_page->allocated || buddy_page->order != order)
+                        if (buddy_page->buddy.allocated || buddy_page->buddy.order != order)
                         {
                             // cannot coalesce :(
                             curr = curr->next;
@@ -212,9 +213,9 @@ namespace pmm
                         remove(reinterpret_cast<list *>(buddy_addr));
 
                         const auto merged = reinterpret_cast<list *>(curr);
-                        const auto merged_page = page_for(reinterpret_cast<std::uintptr_t>(merged));
-                        merged_page->order = order + 1;
-                        merged_page->next_paddr = buddy_page->next_paddr;
+                        const auto merged_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(merged));
+                        merged_page->buddy.order = order + 1;
+                        merged_page->buddy.next_paddr = buddy_page->buddy.next_paddr;
 
                         put(order + 1, merged);
 
@@ -231,10 +232,10 @@ namespace pmm
                 if (order < 0 || static_cast<std::size_t>(order) > max_order)
                     return 0;
 
-                const auto pg = page_for(addr);
-                lib::bug_on(pg->allocated == 0);
-                lib::bug_on(pg->order != order);
-                pg->allocated = 0;
+                const auto pg = vmm::page_for(addr);
+                lib::bug_on(pg->buddy.allocated == 0);
+                lib::bug_on(pg->buddy.order != order);
+                pg->buddy.allocated = 0;
 
                 put(order, reinterpret_cast<list *>(lib::tohh(addr)));
                 return size;
@@ -274,10 +275,10 @@ namespace pmm
                 found:
                 const auto ret = reinterpret_cast<std::uintptr_t>(rem(order));
 
-                const auto pg = page_for(ret);
-                lib::bug_on(pg->allocated == 1);
-                lib::bug_on(pg->order != order);
-                pg->allocated = 1;
+                const auto pg = vmm::page_for(ret);
+                lib::bug_on(pg->buddy.allocated == 1);
+                lib::bug_on(pg->buddy.order != order);
+                pg->buddy.allocated = 1;
 
                 return { ret, real_size };
             }
@@ -395,11 +396,10 @@ namespace pmm
             const auto memmaps = boot::requests::memmap.response->entries;
             const auto memmap = memmaps[idx];
 
-            const auto pg = reinterpret_cast<std::uintptr_t>(page_for(memmap->base));
+            const auto pg = reinterpret_cast<std::uintptr_t>(vmm::page_for(memmap->base));
             const auto vstart = lib::align_down(pg, page_size);
 
-            // why doesn't this map enough memory without + page_size if struct page size is a multiple of 16 bytes?
-            const auto max_length = lib::align_up(memmap->length / page_size * sizeof(page), page_size) + page_size;
+            const auto max_length = lib::align_up(memmap->length / page_size * sizeof(vmm::page), page_size) + page_size;
 
             const auto psize = vmm::page_size::small;
             const auto flags = vmm::pflag::rwg;
@@ -419,18 +419,7 @@ namespace pmm
         };
     } // namespace
 
-    memory info()
-    {
-        const std::unique_lock _ { lock };
-        return mem;
-    }
-
-    page *page_for(std::uintptr_t addr)
-    {
-        const auto idx = lib::fromhh(addr) / page_size;
-        const auto pg = reinterpret_cast<page *>(mem.pfndb_base + idx * sizeof(page));
-        return pg;
-    }
+    memory info() { return mem; }
 
     [[nodiscard]]
     std::uintptr_t alloc(std::size_t npages, bool clear, type tp)
@@ -551,7 +540,7 @@ namespace pmm
             lib::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
 
             const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
-            mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(page);
+            mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(vmm::page);
 
             std::size_t start = mem.used;
 

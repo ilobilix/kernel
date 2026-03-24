@@ -5,12 +5,13 @@ module system.memory.virt;
 import system.memory.phys;
 import system.scheduler;
 import system.cpu;
+import magic_enum;
 import lib;
 import std;
 
 import :pagemap;
 
-// TODO: rewrite this shite
+// TODO: see WIP below
 
 namespace vmm
 {
@@ -544,3 +545,496 @@ namespace vmm
         return false;
     }
 } // namespace vmm
+
+
+
+
+
+
+
+// TODO: WIP
+namespace vmm::uvm
+{
+    using namespace magic_enum::bitwise_operators;
+
+    namespace
+    {
+        constexpr std::size_t num_waitqueues = 256;
+        lib::wait_queue waitqueues[num_waitqueues];
+
+        std::size_t hash_page(page *pg)
+        {
+            const auto addr = reinterpret_cast<std::uintptr_t>(pg);
+            return (addr >> std::countr_zero(sizeof(page))) % num_waitqueues;
+        }
+
+        void wait_on_busy_page(page *pg)
+        {
+            const auto me = sched::this_thread();
+            lib::wait_queue_entry wqe { me };
+
+            auto &wq = waitqueues[hash_page(pg)];
+            while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
+            {
+                me->prepare_sleep();
+                wq.add(&wqe);
+
+                if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
+                {
+                    wq.remove(&wqe);
+                    me->cancel_sleep();
+                    break;
+                }
+
+                sched::yield();
+                wq.remove(&wqe);
+            }
+        }
+
+        std::uintptr_t pfndb_base()
+        {
+            // doesn't change
+            static const auto cached = [] { return pmm::info().pfndb_base; } ();
+            return cached;
+        }
+    } // namespace
+
+    std::size_t default_page_size()
+    {
+        return pagemap::from_page_size(page_size::small);
+    }
+
+    page *page_for(std::uintptr_t addr)
+    {
+        const auto idx = lib::fromhh(addr) / pmm::page_size;
+        const auto pg = reinterpret_cast<page *>(pfndb_base() + idx * sizeof(page));
+        return pg;
+    }
+
+    std::uintptr_t paddr_from(page *pg)
+    {
+        const auto idx = (reinterpret_cast<std::uintptr_t>(pg) - pfndb_base()) / sizeof(page);
+        return idx * pmm::page_size;
+    }
+
+    lib::expect<void> object::read_pages(
+        off_t offp, std::span<page *> pages,
+        std::size_t idx, madv_t advise, flag_t flags
+    )
+    {
+        // TODO
+        lib::unused(advise, flags);
+
+        lib::bug_on(pages.size() > max_readahead);
+
+        const auto psize = default_page_size();
+        const auto num_alloc_pages = psize / pmm::page_size;
+
+        const auto start_idx = offp;
+
+        // max_readahead is aligned to 8
+        std::uint8_t data[max_readahead / 8] { 0 };
+        lib::bitmap needs_fetch { data, max_readahead };
+
+        {
+            auto locked = cache.lock();
+            for (std::size_t i = 0; i < pages.size(); i++)
+            {
+                if (auto it = locked->find(start_idx + i); it != locked->end())
+                {
+                    auto pg = it->second;
+                    pg->ref();
+
+                    if (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
+                    {
+                        locked.unlock();
+                        wait_on_busy_page(pg);
+                        locked.lock();
+
+                        if (pg->unref())
+                            pmm::free(paddr_from(pg), num_alloc_pages);
+
+                        i--;
+                        continue;
+                    }
+                    pages[i] = pg;
+                    continue;
+                }
+
+                const auto paddr = pmm::alloc(num_alloc_pages, true); // zeroed out
+                if (paddr == 0)
+                    return std::unexpected { lib::err::out_of_memory };
+
+                auto pg = page_for(paddr);
+                pg->refcount.store(2, std::memory_order_relaxed);
+                pg->obj_ptr = this;
+                pg->offp = start_idx + i;
+                pg->flags.store(page::flag::file | page::flag::busy, std::memory_order_relaxed);
+
+                locked->insert({ start_idx + i, pg });
+                pages[i] = pg;
+                needs_fetch[i] = true;
+            }
+        }
+
+        for (std::size_t i = 0; i < pages.size(); )
+        {
+            if (!needs_fetch[i])
+            {
+                i++;
+                continue;
+            }
+
+            std::size_t num_pages = 1;
+            while (i + num_pages < pages.size() && needs_fetch[i + num_pages])
+                num_pages++;
+
+            const auto chunk = pages.subspan(i, num_pages);
+            const auto chunk_off = offp + i;
+
+            auto res = fetch_pages(chunk_off, chunk);
+            if (!res.has_value())
+            {
+                auto locked = cache.lock();
+                for (std::size_t j = i; j < pages.size(); j++)
+                {
+                    if (!needs_fetch[j])
+                    {
+                        auto pg = pages[j];
+                        if (pg->unref())
+                            pmm::free(paddr_from(pg), num_alloc_pages);
+                        continue;
+                    }
+
+                    if (auto it = locked->find(start_idx + j); it != locked->end())
+                    {
+                        auto pg = it->second;
+                        locked->erase(it);
+
+                        pg->obj_ptr = nullptr;
+                        pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+
+                        auto &wq = waitqueues[hash_page(pg)];
+                        wq.wake_all();
+
+                        if (pg->unref(2))
+                            pmm::free(paddr_from(pg), num_alloc_pages);
+                    }
+                    pages[j] = nullptr;
+                }
+
+                if (idx >= i)
+                    return res;
+                return { };
+            }
+
+            for (const auto pg : chunk)
+            {
+                pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+                auto &wq = waitqueues[hash_page(pg)];
+                wq.wake_all();
+            }
+
+            i += num_pages;
+        }
+
+        return { };
+    }
+
+    lib::expect<void> object::write_back(off_t offp, std::size_t num_pages, flag_t flags)
+    {
+        // TODO
+        lib::unused(flags);
+
+        const auto psize = default_page_size();
+        const auto num_alloc_pages = psize / pmm::page_size;
+
+        page *chunk[max_readahead];
+
+        const auto end_idx = offp + num_pages;
+        for (std::size_t i = offp; i < end_idx; )
+        {
+            std::size_t chunk_size = 0;
+            {
+                auto locked = cache.lock();
+
+                while (i + chunk_size < end_idx && chunk_size < max_readahead)
+                {
+                    auto it = locked->find(i + chunk_size);
+                    if (it == locked->end())
+                    {
+                        if (chunk_size > 0)
+                            break;
+
+                        i++;
+                        continue;
+                    }
+
+                    auto pg = it->second;
+                    auto flags = pg->flags.load(std::memory_order_acquire);
+
+                    if (flags & page::flag::busy)
+                    {
+                        if (chunk_size > 0)
+                            break;
+
+                        locked.unlock();
+                        wait_on_busy_page(pg);
+                        locked.lock();
+                        continue;
+                    }
+
+                    if (!(flags & page::flag::dirty))
+                    {
+                        if (chunk_size > 0)
+                            break;
+                        i++;
+                        continue;
+                    }
+
+                    auto old_flags = flags;
+                    bool changed = false;
+                    while (!pg->flags.compare_exchange_weak(
+                        old_flags, (old_flags | page::flag::busy) & ~page::flag::dirty,
+                        std::memory_order_relaxed
+                    )) {
+                        if (!(old_flags & page::flag::dirty) || (old_flags & page::flag::busy))
+                        {
+                            changed = true;
+                            break;
+                        }
+                    }
+
+                    if (changed)
+                    {
+                        if (chunk_size > 0)
+                            break;
+                        continue;
+                    }
+
+                    pg->ref();
+                    chunk[chunk_size++] = pg;
+                }
+            }
+
+            if (chunk_size == 0)
+                continue;
+
+            std::span<page *> pages { chunk, chunk_size };
+            const auto chunk_off = offp + i;
+
+            auto res = write_pages(chunk_off, pages);
+            if (!res.has_value())
+            {
+                for (const auto pg : pages)
+                {
+                    pg->flags.fetch_or(page::flag::dirty, std::memory_order_relaxed);
+                    pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+
+                    auto &wq = waitqueues[hash_page(pg)];
+                    wq.wake_all();
+
+                    if (pg->unref())
+                        pmm::free(paddr_from(pg), num_alloc_pages);
+                }
+                return res;
+            }
+
+            for (const auto pg : pages)
+            {
+                pg->flags.fetch_and(~page::flag::busy, std::memory_order_release);
+
+                auto &wq = waitqueues[hash_page(pg)];
+                wq.wake_all();
+
+                if (pg->unref())
+                    pmm::free(paddr_from(pg), num_alloc_pages);
+            }
+
+            i += chunk_size;
+        }
+
+        return { };
+    }
+
+    std::size_t object::apply_func(off_t offset, std::size_t size, auto func)
+    {
+        const auto psize = default_page_size();
+        const auto num_alloc_pages = psize / pmm::page_size;
+
+        std::size_t progress = 0;
+        std::size_t remaining = size;
+
+        std::size_t curr_idx = offset / psize;
+        std::size_t poffset = offset % psize;
+
+        page *chunk[max_readahead];
+
+        while (remaining > 0)
+        {
+            const auto num_pages = std::min(
+                (poffset + remaining + psize - 1) / psize,
+                max_readahead
+            );
+            std::span<page *> pages { chunk, num_pages };
+
+            auto res = read_pages(curr_idx, pages, curr_idx, 0, 0);
+            if (!res.has_value())
+                break;
+
+            for (std::size_t i = 0; i < num_pages && remaining > 0; i++)
+            {
+                auto pg = chunk[i];
+
+                const auto vaddr = lib::tohh(paddr_from(pg));
+                const auto copy_len = std::min(psize - poffset, remaining);
+
+                bool success = func(pg, progress, vaddr + poffset, copy_len);
+
+                if (success)
+                {
+                    progress += copy_len;
+                    remaining -= copy_len;
+                }
+
+                if (pg->unref())
+                    pmm::free(paddr_from(pg), num_alloc_pages);
+
+                if (!success)
+                {
+                    for (std::size_t j = i + 1; j < num_pages; j++)
+                    {
+                        if (chunk[j]->unref())
+                            pmm::free(paddr_from(chunk[j]), num_alloc_pages);
+                    }
+                    return progress;
+                }
+
+                poffset = 0;
+            }
+            curr_idx += num_pages;
+        }
+        return progress;
+    }
+
+    std::size_t object::read(off_t offset, lib::maybe_uspan<std::byte> buffer)
+    {
+        if (buffer.empty())
+            return 0;
+
+        return apply_func(offset, buffer.size(),
+            [&buffer](page *pg, std::size_t progress, std::uintptr_t addr, std::size_t len)
+            {
+                lib::unused(pg);
+
+                const std::span<const std::byte> src {
+                    reinterpret_cast<const std::byte *>(addr), len
+                };
+                return buffer.subspan(progress, len).copy_from(src);
+            }
+        );
+    }
+
+    std::size_t object::write(off_t offset, lib::maybe_uspan<std::byte> buffer)
+    {
+        if (buffer.empty())
+            return 0;
+
+        return apply_func(offset, buffer.size(),
+            [&buffer](page *pg, std::size_t progress, std::uintptr_t addr, std::size_t len)
+            {
+                const std::span<std::byte> dest {
+                    reinterpret_cast<std::byte *>(addr), len
+                };
+                bool ret = buffer.subspan(progress, len).copy_to(dest);
+                if (ret)
+                    pg->flags.fetch_or(page::flag::dirty, std::memory_order_relaxed);
+                return ret;
+            }
+        );
+    }
+
+    std::size_t object::clear(off_t offset, std::uint8_t value, std::size_t length)
+    {
+        if (length == 0)
+            return 0;
+
+        return apply_func(offset, length,
+            [value](page *pg, std::size_t progress, std::uintptr_t addr, std::size_t len)
+            {
+                lib::unused(progress);
+
+                auto dest = reinterpret_cast<std::byte *>(addr);
+                std::memset(dest, value, len);
+
+                pg->flags.fetch_or(page::flag::dirty, std::memory_order_relaxed);
+                return true;
+            }
+        );
+    }
+
+    lib::expect<void> vmspace::map(
+        std::uintptr_t address, std::size_t length,
+        prot_t prot, flag_t flags,
+        object::ptr obj, off_t offset
+    )
+    {
+        if (length == 0)
+            return std::unexpected { lib::err::invalid_length };
+
+        const auto psize = default_page_size();
+        if ((address % psize) || (offset % psize))
+            return std::unexpected { lib::err::addr_not_aligned };
+
+        length = lib::align_up(length, psize);
+
+        const auto offsetp = offset / psize;
+        const auto startp = address / psize;
+        const auto endp = (address + length) / psize;
+
+        const auto locked = tree.read_lock();
+        const auto overlapping = locked->overlapping(startp, endp) |
+            std::views::transform([](const entry &val) {
+                return const_cast<entry *>(std::addressof(val));
+            });
+
+        for (const auto entry : overlapping)
+        {
+            // if (startp <= entry->startp && entry->endp <= endp)
+            // {
+            // }
+        }
+
+        return { };
+    }
+
+    lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
+    {
+        return { };
+    }
+
+    lib::expect<void> vmspace::unmap(object::ptr obj)
+    {
+        return { };
+    }
+
+    lib::expect<void> vmspace::protect(std::uintptr_t address, std::size_t length, prot_t prot)
+    {
+        return { };
+    }
+
+    bool vmspace::is_mapped(std::uintptr_t addr, std::size_t length)
+    {
+        return false;
+    }
+
+    lib::expect<std::uintptr_t> vmspace::find_free_region(std::size_t length)
+    {
+        return { };
+    }
+
+    bool handle_pfault(std::uintptr_t vaddr, bool on_write)
+    {
+        return false;
+    }
+} // namespace vmm::uvm
