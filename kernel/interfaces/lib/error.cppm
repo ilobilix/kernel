@@ -51,6 +51,7 @@ export namespace lib
         io_error,
 
         addr_not_aligned,
+        addr_out_of_bounds,
         addr_in_use,
         not_mapped,
         out_of_memory
@@ -96,6 +97,7 @@ export namespace lib
             case err::invalid_length:
             case err::buffer_too_small:
             case err::addr_not_aligned:
+            case err::addr_out_of_bounds:
                 return EINVAL;
             case err::invalid_address:
             case err::not_mapped:

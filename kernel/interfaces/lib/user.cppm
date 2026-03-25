@@ -24,18 +24,6 @@ export namespace lib
     bool fill_user(void __user *dest, int value, std::size_t len);
     std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 
-    template<typename Type>
-    inline Type __user *uptr_add(Type __user *ptr, std::ptrdiff_t offset)
-    {
-        return reinterpret_cast<void __user *>(reinterpret_cast<std::uintptr_t>(ptr) + offset);
-    }
-
-    template<typename Type>
-    inline Type __user *uptr_sub(Type __user *ptr, std::ptrdiff_t offset)
-    {
-        return reinterpret_cast<Type __user *>(reinterpret_cast<std::uintptr_t>(ptr) - offset);
-    }
-
     template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
     inline Type *remove_user_cast(Arg __user *ptr)
     {

@@ -78,17 +78,17 @@ export namespace vmm
         class entry
         {
             private:
-            std::uintptr_t _value = 0;
+            std::atomic<std::uintptr_t> _value = 0;
 
             class accessor
             {
                 friend class entry;
 
                 private:
-                std::uintptr_t &_parent;
+                std::atomic<std::uintptr_t> &_parent;
 
-                accessor(std::uintptr_t &parent)
-                    : _parent { parent }, value { _parent } { }
+                accessor(std::atomic<std::uintptr_t> &parent)
+                    : _parent { parent }, value { _parent.load(std::memory_order_acquire) } { }
 
                 public:
                 std::uintptr_t value = 0;
@@ -128,7 +128,11 @@ export namespace vmm
 
                 bool is_large() const;
 
-                accessor &write() { _parent = value; return *this; }
+                accessor &write()
+                {
+                    _parent.store(value, std::memory_order_release);
+                    return *this;
+                }
             };
 
             public:

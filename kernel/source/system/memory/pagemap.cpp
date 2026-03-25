@@ -103,6 +103,9 @@ namespace vmm
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
 
+        if (length == 0)
+            return { };
+
         if (psize.has_value())
         {
             lib::bug_on(!magic_enum::enum_contains(psize.value()));
@@ -163,9 +166,14 @@ namespace vmm
         return { };
     }
 
+    // TODO: tlb shootdown
+
     lib::expect<void> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
+
+        if (length == 0)
+            return { };
 
         if (psize.has_value())
         {
@@ -246,6 +254,9 @@ namespace vmm
 
     lib::expect<void> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
     {
+        if (length == 0)
+            return { };
+
         if (psize.has_value())
         {
             lib::bug_on(!magic_enum::enum_contains(psize.value()));

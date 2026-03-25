@@ -618,7 +618,7 @@ namespace vmm::uvm
     }
 
     lib::expect<void> object::read_pages(
-        off_t offp, std::span<page *> pages,
+        std::uint64_t offp, std::span<page *> pages,
         std::size_t idx, madv_t advise, flag_t flags
     )
     {
@@ -782,7 +782,7 @@ namespace vmm::uvm
         return { };
     }
 
-    lib::expect<void> object::write_back(off_t offp, std::size_t num_pages, flag_t flags)
+    lib::expect<void> object::write_back(std::uint64_t offp, std::size_t num_pages, flag_t flags)
     {
         // TODO
         lib::unused(flags);
@@ -898,7 +898,7 @@ namespace vmm::uvm
         return { };
     }
 
-    std::size_t object::apply_func(off_t offset, std::size_t size, auto func)
+    std::size_t object::apply_func(std::uint64_t offset, std::size_t size, auto func)
     {
         const auto psize = default_page_size();
         const auto num_alloc_pages = psize / pmm::page_size;
@@ -962,7 +962,7 @@ namespace vmm::uvm
         return progress;
     }
 
-    std::size_t object::read(off_t offset, lib::maybe_uspan<std::byte> buffer)
+    std::size_t object::read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         if (buffer.empty())
             return 0;
@@ -980,7 +980,7 @@ namespace vmm::uvm
         );
     }
 
-    std::size_t object::write(off_t offset, lib::maybe_uspan<std::byte> buffer)
+    std::size_t object::write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         if (buffer.empty())
             return 0;
@@ -999,7 +999,7 @@ namespace vmm::uvm
         );
     }
 
-    std::size_t object::clear(off_t offset, std::uint8_t value, std::size_t length)
+    std::size_t object::clear(std::uint64_t offset, std::uint8_t value, std::size_t length)
     {
         if (length == 0)
             return 0;
@@ -1018,39 +1018,134 @@ namespace vmm::uvm
         );
     }
 
-    lib::expect<void> vmspace::map(
-        std::uintptr_t address, std::size_t length,
-        prot_t prot, flag_t flags,
-        object::ptr obj, off_t offset
+    lib::expect<std::uintptr_t> vmspace::map(
+        std::uintptr_t hint, std::size_t length,
+        prot_t prot, prot_t max_prot, flag_t flags,
+        object::ptr obj, std::uint64_t offset
     )
     {
         if (length == 0)
             return std::unexpected { lib::err::invalid_length };
 
+        if (!((flags & flag::shared) ^ (flags & flag::private_)))
+            return std::unexpected { lib::err::invalid_flags };
+
         const auto psize = default_page_size();
-        if ((address % psize) || (offset % psize))
+        if (obj && offset % psize)
             return std::unexpected { lib::err::addr_not_aligned };
+
+        const auto offp = offset / psize;
 
         length = lib::align_up(length, psize);
 
-        const auto offsetp = offset / psize;
-        const auto startp = address / psize;
-        const auto endp = (address + length) / psize;
+        object::ptr target_obj;
+        anon_map::ptr target_amap;
 
-        const auto locked = tree.read_lock();
-        const auto overlapping = locked->overlapping(startp, endp) |
-            std::views::transform([](const entry &val) {
-                return const_cast<entry *>(std::addressof(val));
-            });
+        const bool is_anon = flags & flag::anonymous;
+        const bool is_file = !is_anon;
 
-        for (const auto entry : overlapping)
+        if (is_file)
+            target_obj = std::move(obj);
+
+        if (flags & flag::private_)
         {
-            // if (startp <= entry->startp && entry->endp <= endp)
-            // {
-            // }
+            target_amap = new anon_map { };
+            target_amap->nslots = length / psize;
+            target_amap->slots = std::make_unique<anon::ptr []>(target_amap->nslots);
+        }
+        else if ((flags & flag::shared) && (flags & flag::anonymous))
+            target_obj = new memobject { };
+
+        std::uintptr_t startp = 0;
+        std::uintptr_t endp = 0;
+
+        auto wlocked = tree.write_lock();
+        if (flags & flag::fixed)
+        {
+            if (hint % psize)
+                return std::unexpected { lib::err::addr_not_aligned };
+
+            if (hint < mmap_min || hint + length > mmap_max)
+                return std::unexpected { lib::err::addr_out_of_bounds };
+
+            startp = hint / psize;
+            endp = (hint + length) / psize;
+
+            const auto overlapping = wlocked->overlapping(startp, endp) |
+                std::views::transform([](const entry &val) {
+                    return const_cast<entry *>(std::addressof(val));
+                }) | std::ranges::to<std::vector<entry *>>();
+
+            for (auto ent : overlapping)
+            {
+                const auto overlap_start = std::max(startp, ent->startp);
+                const auto overlap_end = std::min(endp, ent->endp);
+
+                const auto unmap_vaddr = overlap_start * psize;
+                const auto unmap_length = (overlap_end - overlap_start) * psize;
+
+                // handles tlb shootdown
+                if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
+                    // TODO: undo changes to the tree?
+                    return std::unexpected { ret.error() };
+
+                wlocked->remove(ent);
+
+                if (ent->endp > endp)
+                {
+                    const auto pages = endp - ent->startp;
+
+                    const auto obj_offp = ent->obj ? ent->offp + pages : 0;
+                    const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
+
+                    wlocked->insert(new entry {
+                        .startp = endp,
+                        .endp = ent->endp,
+                        .obj = ent->obj,
+                        .offp = obj_offp,
+                        .amap = ent->amap,
+                        .anon_idx = anon_idx,
+                        .prot = ent->prot,
+                        .max_prot = ent->max_prot,
+                        .flags = ent->flags,
+                        .hook = { },
+                        .interval = { }
+                    });
+                }
+
+                if (ent->startp < startp)
+                {
+                    ent->endp = startp;
+                    wlocked->insert(ent);
+                }
+                else delete ent;
+            }
+        }
+        else
+        {
+            const auto ret = find_free_region(length);
+            if (!ret)
+                return std::unexpected { lib::err::out_of_memory };
+
+            startp = *ret / psize;
+            endp = (*ret + length) / psize;
         }
 
-        return { };
+        wlocked->insert(new entry {
+            .startp = startp,
+            .endp = endp,
+            .obj = std::move(target_obj),
+            .offp = is_file ? offp : 0,
+            .amap = std::move(target_amap),
+            .anon_idx = 0,
+            .prot = prot,
+            .max_prot = max_prot,
+            .flags = flags,
+            .hook = { },
+            .interval = { }
+        });
+
+        return startp * psize;
     }
 
     lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
@@ -1068,14 +1163,74 @@ namespace vmm::uvm
         return { };
     }
 
-    bool vmspace::is_mapped(std::uintptr_t addr, std::size_t length)
+    lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
     {
-        return false;
+        if (locked->empty())
+        {
+            if (length > mmap_max - mmap_min)
+                return std::unexpected { lib::err::out_of_memory };
+
+            return mmap_max - length;
+        }
+
+        const auto root = locked->root();
+
+        const auto max_gap = root->interval.subtree_max_gap;
+        const auto high_gap = mmap_max - root->interval.subtree_max;
+        const auto low_gap = root->interval.subtree_min - mmap_min;
+
+        if (max_gap < length && high_gap < length && low_gap < length)
+            return std::unexpected { lib::err::out_of_memory };
+
+        if (high_gap >= length)
+            return mmap_max - length;
+
+        const auto nil = locked->nil();
+        auto node = locked->root();
+
+        std::uintptr_t floor = mmap_min;
+        while (node)
+        {
+            const auto left = node->hook.left;
+            const auto right = node->hook.right;
+
+            if (right != nil && right->interval.subtree_max_gap >= length)
+            {
+                auto current_max = node->endp;
+                if (left != nil && left->interval.subtree_max > current_max)
+                    current_max = left->interval.subtree_max;
+
+                if (current_max > floor)
+                    floor = current_max;
+
+                node = right;
+                continue;
+            }
+
+            const auto prev_endp = (left != nil ? left->interval.subtree_max : floor);
+            if (node->startp > prev_endp && (node->startp - prev_endp) >= length)
+                return node->startp - length;
+
+            if (left == nil)
+                break;
+
+            node = left;
+        }
+
+        const auto first = locked->first();
+        if (first->startp - mmap_min >= length)
+            return first->startp - length;
+
+        return std::unexpected { lib::err::out_of_memory };
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region(std::size_t length)
     {
-        return { };
+        if (length == 0)
+            return std::unexpected { lib::err::invalid_length };
+
+        const auto rlocked = tree.read_lock();
+        return find_free_region_internal(rlocked, length);
     }
 
     bool handle_pfault(std::uintptr_t vaddr, bool on_write)

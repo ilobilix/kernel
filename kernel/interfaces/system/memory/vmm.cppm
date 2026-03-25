@@ -179,15 +179,16 @@ export namespace vmm::uvm
         using ptr = lib::intrusive_ptr<anon, &anon::hook>;
     };
 
-    struct amap
+    struct anon_map
     {
         lib::mutex lock;
         lib::intrusive_ptr_hook hook;
 
+        // TODO: some kind of tree
         std::unique_ptr<anon::ptr []> slots;
         std::size_t nslots;
 
-        using ptr = lib::intrusive_ptr<amap, &amap::hook>;
+        using ptr = lib::intrusive_ptr<anon_map, &anon_map::hook>;
     };
 
     struct object;
@@ -223,7 +224,7 @@ export namespace vmm::uvm
         union {
             struct {
                 object *obj_ptr;
-                off_t offp;
+                std::uint64_t offp;
             };
 
             struct {
@@ -248,21 +249,21 @@ export namespace vmm::uvm
         virtual lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) = 0;
         virtual lib::expect<void> write_pages(std::size_t idx, std::span<page *> pages) = 0;
 
-        std::size_t apply_func(off_t offset, std::size_t size, auto func);
+        std::size_t apply_func(std::uint64_t offset, std::size_t size, auto func);
 
         public:
         lib::intrusive_ptr_hook hook;
 
         lib::expect<void> read_pages(
-            off_t offp, std::span<page *> pages,
+            std::uint64_t offp, std::span<page *> pages,
             std::size_t idx, madv_t advise, flag_t flags
         );
 
-        lib::expect<void> write_back(off_t offp, std::size_t num_pages, flag_t flags);
+        lib::expect<void> write_back(std::uint64_t offp, std::size_t num_pages, flag_t flags);
 
-        std::size_t read(off_t offset, lib::maybe_uspan<std::byte> buffer);
-        std::size_t write(off_t offset, lib::maybe_uspan<std::byte> buffer);
-        std::size_t clear(off_t offset, std::uint8_t value, std::size_t length);
+        std::size_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
+        std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
+        std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
         object() = default;
         virtual ~object() { }
@@ -292,10 +293,10 @@ export namespace vmm::uvm
         std::uintptr_t endp;
 
         object::ptr obj;
-        off_t offp;
+        std::uint64_t offp;
 
-        amap::ptr amap;
-        off_t anon_offp;
+        anon_map::ptr amap;
+        std::uint64_t anon_idx;
 
         prot_t prot;
         prot_t max_prot;
@@ -307,13 +308,16 @@ export namespace vmm::uvm
 
     struct vmspace
     {
-        static constexpr std::uintptr_t mmap_min = 0x10000;
-        static constexpr std::uintptr_t mmap_top = 0x7FFFF7000000;
-        static constexpr std::uintptr_t stack_top = 0x7FFFFFFFF000;
+        private:
+        lib::expect<std::uintptr_t> find_free_region_internal(auto &locked, std::size_t length);
+
+        public:
+        static constexpr std::uintptr_t mmap_min = 0x1000;
+        static constexpr std::uintptr_t mmap_max = 0x7FFFFFFFF000;
 
         std::shared_ptr<pagemap> pmap;
         lib::locker<
-            lib::interval_tree_alloc<
+            lib::interval_tree<
                 entry,
                 std::uintptr_t,
                 &entry::startp,
@@ -324,10 +328,10 @@ export namespace vmm::uvm
             lib::rwmutex
         > tree;
 
-        lib::expect<void> map(
-            std::uintptr_t address, std::size_t length,
-            prot_t prot, flag_t flags,
-            object::ptr obj, off_t offset
+        lib::expect<std::uintptr_t> map(
+            std::uintptr_t hint, std::size_t length,
+            prot_t prot, prot_t max_prot, flag_t flags,
+            object::ptr obj, std::uint64_t offset
         );
 
         lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
@@ -335,10 +339,13 @@ export namespace vmm::uvm
 
         lib::expect<void> protect(std::uintptr_t address, std::size_t length, prot_t prot);
 
-        bool is_mapped(std::uintptr_t addr, std::size_t length);
         lib::expect<std::uintptr_t> find_free_region(std::size_t length);
 
-        ~vmspace() { lib::panic_if(pmap.use_count() != 1); }
+        ~vmspace()
+        {
+            lib::panic_if(pmap.use_count() != 1);
+            tree.write_lock()->clear([](entry *x) { delete x; });
+        }
     };
 
     std::size_t default_page_size();

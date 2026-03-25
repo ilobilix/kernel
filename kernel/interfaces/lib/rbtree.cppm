@@ -24,24 +24,6 @@ export namespace lib
     template<typename Type>
     struct rbtree_hook
     {
-        template<typename Type1, rbtree_hook<Type1> Type1::*, typename, typename>
-        friend class rbtree;
-
-        template<
-            typename Type1, typename IType,
-            IType Type1::*, IType Type1::*,
-            rbtree_hook<Type1> Type1::*, interval_hook<IType> Type1::*
-        >
-        friend class interval_tree;
-
-        template<
-            typename Type1, typename IType1,
-            IType1 Type1::*, IType1 Type1::*,
-            rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-        >
-        friend class interval_tree_alloc;
-
-        private:
         Type *parent;
         Type *left;
         Type *right;
@@ -49,7 +31,6 @@ export namespace lib
         Type *predecessor;
         colour colour;
 
-        public:
         constexpr rbtree_hook() : parent { nullptr },
             left { nullptr }, right { nullptr },
             successor { nullptr }, predecessor { nullptr },
@@ -84,7 +65,6 @@ export namespace lib
         Type *_head;
         std::size_t _size;
 
-        static inline constexpr Type *nil() { return nullptr; }
         inline constexpr rbtree_hook<Type> *hook(rbtree_hook<Type> *nh, Type *item) const
         {
             if (item == nil())
@@ -121,9 +101,6 @@ export namespace lib
         {
             return hook(nh, item)->colour;
         }
-
-        inline constexpr Type *root() const { return static_cast<Type *>(_root); }
-        inline constexpr Type *head() const { return static_cast<Type *>(_head); }
 
         static inline constexpr bool augment(Type *x)
         {
@@ -544,6 +521,8 @@ export namespace lib
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
+        static inline constexpr Type *nil() { return nullptr; }
+
         constexpr rbtree() : _root { nil() }, _head { nil() }, _size { 0 } { }
 
         constexpr rbtree(const rbtree &) = delete;
@@ -602,6 +581,51 @@ export namespace lib
             bug_on(x._tree != this);
             remove(x.value());
         }
+
+        constexpr void clear(auto destroyer)
+        {
+            if (empty())
+                return;
+
+            rbtree_hook<Type> nh;
+            auto node = root();
+
+            while (node != nil())
+            {
+                if (left(&nh, node) != nil())
+                {
+                    node = left(&nh, node);
+                }
+                else if (right(&nh, node) != nil())
+                {
+                    node = right(&nh, node);
+                }
+                else
+                {
+                    auto *p = parent(&nh, node);
+                    if (p != nil())
+                    {
+                        if (left(&nh, p) == node)
+                            hook(&nh, p)->left = nil();
+                        else
+                            hook(&nh, p)->right = nil();
+                    }
+
+                    auto victim = node;
+                    node = p;
+
+                    hook(&nh, victim)->parent = nil();
+                    destroyer(victim);
+                }
+            }
+
+            _root = nil();
+            _head = nil();
+            _size = 0;
+        }
+
+        constexpr Type *root() const { return static_cast<Type *>(_root); }
+        constexpr Type *head() const { return static_cast<Type *>(_head); }
 
         constexpr iterator begin() { return { this, head() }; }
         constexpr iterator end() { return { this, nil() }; }
@@ -664,23 +688,14 @@ export namespace lib
         private:
         rbtree<Type, Member, Less, Aug> _rbtree;
 
-        constexpr void _delete_subtree(Type *node)
-        {
-            if (!node)
-                return;
-
-            auto h = &(node->*Member);
-            _delete_subtree(h->left);
-            _delete_subtree(h->right);
-            delete node;
-        }
-
         public:
         using iterator = typename rbtree<Type, Member, Less, Aug>::iterator;
         using const_iterator = typename rbtree<Type, Member, Less, Aug>::const_iterator;
 
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+        static inline constexpr Type *nil() { return decltype(_rbtree)::nil(); }
 
         constexpr rbtree_alloc() : _rbtree { } { }
 
@@ -738,9 +753,12 @@ export namespace lib
         {
             if (_rbtree.empty())
                 return;
-            _delete_subtree(_rbtree.root());
-            _rbtree = { };
+
+            _rbtree.clear([](Type *x) { delete x; });
         }
+
+        constexpr Type *root() const { return _rbtree.root(); }
+        constexpr Type *head() const { return _rbtree.root(); }
 
         constexpr iterator begin() { return _rbtree.begin(); }
         constexpr iterator end() { return _rbtree.end(); }
@@ -759,6 +777,11 @@ export namespace lib
 
         constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
         constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr Type *first() const { return _rbtree.first(); }
+        constexpr Type *last() const { return _rbtree.last(); }
+
+        constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
 
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
