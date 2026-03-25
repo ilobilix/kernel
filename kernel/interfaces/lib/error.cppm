@@ -56,6 +56,7 @@ export namespace lib
         not_mapped,
         out_of_memory,
 
+        not_permitted,
         permission_denied
     };
 
@@ -124,8 +125,10 @@ export namespace lib
                 return EADDRINUSE;
             case err::out_of_memory:
                 return ENOMEM;
-            case err::permission_denied:
+            case err::not_permitted:
                 return EPERM;
+            case err::permission_denied:
+                return EACCES;
         }
         lib::panic("unhandled err: {}", magic_enum::enum_name(err));
         std::unreachable();

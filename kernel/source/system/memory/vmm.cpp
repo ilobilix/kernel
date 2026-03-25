@@ -1060,6 +1060,7 @@ namespace vmm::uvm
         std::uintptr_t endp = 0;
 
         auto wlocked = tree.write_lock();
+
         if ((flags & flag::fixed) || (flags & flag::fixed_noreplace))
         {
             if (hint % psize)
@@ -1071,18 +1072,30 @@ namespace vmm::uvm
             startp = hint / psize;
             endp = (hint + length) / psize;
 
-            const auto overlapping = wlocked->overlapping(startp, endp) |
-                std::views::transform([](const entry &val) {
-                    return const_cast<entry *>(std::addressof(val));
-                }) | std::ranges::to<std::vector<entry *>>();
-
-            if (!overlapping.empty() && (flags & flag::fixed_noreplace))
-                return std::unexpected { lib::err::already_exists };
-
-            for (auto ent : overlapping)
             {
-                if (ent->flags & flag::untouchable)
-                    return std::unexpected { lib::err::permission_denied };
+                const auto overlapping = wlocked->overlapping(startp, endp);
+                if (!overlapping.empty() && (flags & flag::fixed_noreplace))
+                    return std::unexpected { lib::err::already_exists };
+
+                for (auto &ent : overlapping)
+                {
+                    if (ent.flags & flag::untouchable)
+                        return std::unexpected { lib::err::not_permitted };
+
+                    if ((ent.max_prot & prot) != prot)
+                        return std::unexpected { lib::err::permission_denied };
+                }
+            }
+
+            while (true)
+            {
+                const auto overlapping = wlocked->overlapping(startp, endp);
+
+                auto it = overlapping.begin();
+                if (it == overlapping.end())
+                    break;
+
+                auto ent = it.value();
 
                 const auto overlap_start = std::max(startp, ent->startp);
                 const auto overlap_end = std::min(endp, ent->endp);
@@ -1090,9 +1103,7 @@ namespace vmm::uvm
                 const auto unmap_vaddr = overlap_start * psize;
                 const auto unmap_length = (overlap_end - overlap_start) * psize;
 
-                // handles tlb shootdown
                 if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
-                    // TODO: undo changes to the tree?
                     return std::unexpected { ret.error() };
 
                 wlocked->remove(ent);
@@ -1156,17 +1167,235 @@ namespace vmm::uvm
 
     lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
     {
-        return { };
-    }
+        if (length == 0)
+            return std::unexpected { lib::err::invalid_length };
 
-    lib::expect<void> vmspace::unmap(object::ptr obj)
-    {
+        const auto psize = default_page_size();
+        if (address % psize)
+            return std::unexpected { lib::err::addr_not_aligned };
+
+        length = lib::align_up(length, psize);
+
+        if (address < mmap_min || address + length > vspace_top)
+            return std::unexpected { lib::err::addr_out_of_bounds };
+
+        const auto startp = address / psize;
+        const auto endp = (address + length) / psize;
+
+        auto wlocked = tree.write_lock();
+
+        {
+            const auto overlapping = wlocked->overlapping(startp, endp);
+
+            const auto total_pages = std::accumulate(
+                std::ranges::begin(overlapping), std::ranges::end(overlapping), 0uz,
+                [startp, endp](std::size_t acc, const entry &ent) {
+                    const auto overlap_start = std::max(startp, ent.startp);
+                    const auto overlap_end = std::min(endp, ent.endp);
+                    return acc + (overlap_end - overlap_start);
+                }
+            );
+
+            if (total_pages < (endp - startp))
+                return std::unexpected { lib::err::out_of_memory };
+
+            for (const auto &ent : overlapping)
+            {
+                if (ent.flags & flag::untouchable)
+                    return std::unexpected { lib::err::not_permitted };
+            }
+        }
+
+        while (true)
+        {
+            const auto overlapping = wlocked->overlapping(startp, endp);
+
+            auto it = overlapping.begin();
+            if (it == overlapping.end())
+                break;
+
+            auto ent = it.value();
+
+            const auto overlap_start = std::max(startp, ent->startp);
+            const auto overlap_end = std::min(endp, ent->endp);
+
+            const auto unmap_vaddr = overlap_start * psize;
+            const auto unmap_length = (overlap_end - overlap_start) * psize;
+
+            if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
+                return std::unexpected { ret.error() };
+
+            wlocked->remove(ent);
+
+            if (ent->endp > overlap_end)
+            {
+                const auto pages = overlap_end - ent->startp;
+
+                const auto obj_offp = ent->obj ? ent->offp + pages : 0;
+                const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
+
+                wlocked->insert(new entry {
+                    .startp = overlap_end,
+                    .endp = ent->endp,
+                    .obj = ent->obj,
+                    .offp = obj_offp,
+                    .amap = ent->amap,
+                    .anon_idx = anon_idx,
+                    .prot = ent->prot,
+                    .max_prot = ent->max_prot,
+                    .flags = ent->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+
+            if (ent->startp < overlap_start)
+            {
+                wlocked->insert(new entry {
+                    .startp = ent->startp,
+                    .endp = overlap_start,
+                    .obj = ent->obj,
+                    .offp = ent->offp,
+                    .amap = ent->amap,
+                    .anon_idx = ent->anon_idx,
+                    .prot = ent->prot,
+                    .max_prot = ent->max_prot,
+                    .flags = ent->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+
+            delete ent;
+        }
+
         return { };
     }
 
     lib::expect<void> vmspace::protect(std::uintptr_t address, std::size_t length, prot_t prot)
     {
+        if (length == 0)
+            return std::unexpected { lib::err::invalid_length };
+
+        const auto psize = default_page_size();
+        if (address % psize)
+            return std::unexpected { lib::err::addr_not_aligned };
+
+        length = lib::align_up(length, psize);
+
+        if (address < mmap_min || address + length > vspace_top)
+            return std::unexpected { lib::err::addr_out_of_bounds };
+
+        const auto startp = address / psize;
+        const auto endp = (address + length) / psize;
+
+        auto wlocked = tree.write_lock();
+
+        {
+            const auto overlapping = wlocked->overlapping(startp, endp);
+
+            const auto total_pages = std::accumulate(
+                std::ranges::begin(overlapping), std::ranges::end(overlapping), 0uz,
+                [startp, endp](std::size_t acc, const entry &ent) {
+                    const auto overlap_start = std::max(startp, ent.startp);
+                    const auto overlap_end = std::min(endp, ent.endp);
+                    return acc + (overlap_end - overlap_start);
+                }
+            );
+
+            if (total_pages < (endp - startp))
+                return std::unexpected { lib::err::out_of_memory };
+
+            for (const auto &ent : overlapping)
+            {
+                if (ent.flags & flag::untouchable)
+                    return std::unexpected { lib::err::not_permitted };
+            }
+        }
+
+        while (true)
+        {
+            const auto overlapping = wlocked->overlapping(startp, endp);
+
+            auto it = overlapping.begin();
+            if (it == overlapping.end())
+                break;
+
+            auto ent = it.value();
+
+            const auto overlap_start = std::max(startp, ent->startp);
+            const auto overlap_end = std::min(endp, ent->endp);
+
+            wlocked->remove(ent);
+
+            if (ent->endp > overlap_end)
+            {
+                const auto pages = overlap_end - ent->startp;
+
+                const auto obj_offp = ent->obj ? ent->offp + pages : 0;
+                const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
+
+                wlocked->insert(new entry {
+                    .startp = overlap_end,
+                    .endp = ent->endp,
+                    .obj = ent->obj,
+                    .offp = obj_offp,
+                    .amap = ent->amap,
+                    .anon_idx = anon_idx,
+                    .prot = ent->prot,
+                    .max_prot = ent->max_prot,
+                    .flags = ent->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+
+            if (ent->startp < overlap_start)
+            {
+                wlocked->insert(new entry {
+                    .startp = ent->startp,
+                    .endp = overlap_start,
+                    .obj = ent->obj,
+                    .offp = ent->offp,
+                    .amap = ent->amap,
+                    .anon_idx = ent->anon_idx,
+                    .prot = ent->prot,
+                    .max_prot = ent->max_prot,
+                    .flags = ent->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+
+            const auto pages = overlap_start - startp;
+
+            ent->startp = overlap_start;
+            ent->endp = overlap_end;
+            if (ent->obj)
+                ent->offp += pages;
+            if (ent->amap)
+                ent->anon_idx += pages;
+            ent->prot = prot;
+
+            wlocked->insert(ent);
+        }
+
+        if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot)); !ret)
+            return std::unexpected { ret.error() };
+
         return { };
+    }
+
+    pflag vmspace::prot_to_pflags(prot_t prot)
+    {
+        auto ret = pflag::user;
+        if (prot & prot::read)
+            ret |= pflag::read;
+        if (prot & prot::write)
+            ret |= pflag::write;
+        if (prot & prot::exec)
+            ret |= pflag::exec;
+        return ret;
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)

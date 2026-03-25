@@ -313,6 +313,8 @@ export namespace vmm::uvm
     struct vmspace
     {
         private:
+        pflag prot_to_pflags(prot_t prot);
+
         lib::expect<std::uintptr_t> find_free_region_internal(auto &locked, std::size_t length);
 
         public:
@@ -338,10 +340,7 @@ export namespace vmm::uvm
             prot_t prot, prot_t max_prot, flag_t flags,
             object::ptr obj, std::uint64_t offset
         );
-
         lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
-        lib::expect<void> unmap(object::ptr obj);
-
         lib::expect<void> protect(std::uintptr_t address, std::size_t length, prot_t prot);
 
         lib::expect<std::uintptr_t> find_free_region(std::size_t length);
