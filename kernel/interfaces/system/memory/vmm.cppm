@@ -162,7 +162,8 @@ export namespace vmm::uvm
         shared = 0x01,
         private_ = 0x02,
         fixed = 0x10,
-        anonymous = 0x20
+        anonymous = 0x20,
+        fixed_noreplace = 0x100000
     };
 
     enum madv : madv_t
@@ -312,8 +313,9 @@ export namespace vmm::uvm
         lib::expect<std::uintptr_t> find_free_region_internal(auto &locked, std::size_t length);
 
         public:
-        static constexpr std::uintptr_t mmap_min = 0x1000;
-        static constexpr std::uintptr_t mmap_max = 0x7FFFFFFFF000;
+        static constexpr std::uintptr_t mmap_min = 0x10000;
+        static constexpr std::uintptr_t mmap_max = 0x7FFFF7000000;
+        static constexpr std::uintptr_t vspace_top = 0x7FFFFFFFF000;
 
         std::shared_ptr<pagemap> pmap;
         lib::locker<
