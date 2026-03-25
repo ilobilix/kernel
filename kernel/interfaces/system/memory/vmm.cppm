@@ -163,7 +163,10 @@ export namespace vmm::uvm
         private_ = 0x02,
         fixed = 0x10,
         anonymous = 0x20,
-        fixed_noreplace = 0x100000
+        fixed_noreplace = 0x100000,
+
+        // custom
+        untouchable = 0x40
     };
 
     enum madv : madv_t
@@ -315,7 +318,7 @@ export namespace vmm::uvm
         public:
         static constexpr std::uintptr_t mmap_min = 0x10000;
         static constexpr std::uintptr_t mmap_max = 0x7FFFF7000000;
-        static constexpr std::uintptr_t vspace_top = 0x7FFFFFFFF000;
+        static constexpr std::uintptr_t vspace_top = 0x7FFFFFFFF000; // TODO: arch?
 
         std::shared_ptr<pagemap> pmap;
         lib::locker<
