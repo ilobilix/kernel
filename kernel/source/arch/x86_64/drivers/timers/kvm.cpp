@@ -45,7 +45,7 @@ namespace x86_64::timers::kvm
 
             volatile auto pvclock = clockptr.read<kvmclock_info *>();
 
-            while (pvclock->version % 2)
+            while (pvclock->version & 1)
                 arch::pause();
 
             auto time = static_cast<uint128_t>(tsc::rdtsc()) - pvclock->tsc_timestamp;

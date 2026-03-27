@@ -61,13 +61,12 @@ export namespace sched
         std::uintptr_t kstack_top;
         std::ssize_t preemption = 0;
 
-        std::weak_ptr<vmm::memobject> ustack_obj;
-
         pid_t tid;
         process *parent;
 
         status status = status::not_ready;
         bool is_user;
+        bool in_trampoline;
         bool can_migrate = true;
 
         cpu::registers regs;
@@ -101,7 +100,8 @@ export namespace sched
         lib::intrusive_list_hook<thread> list_hook;
         lib::intrusive_list_hook<thread_base> semaphore_list_hook;
 
-        void update_ustack(std::uintptr_t addr);
+        [[noreturn]]
+        void enter_user(std::uintptr_t ip, std::uintptr_t stack);
 
         void prepare_sleep(std::size_t ms = 0);
         void cancel_sleep();
@@ -162,7 +162,7 @@ export namespace sched
         lib::map::flat_hash<pid_t, thread *> threads;
 
         std::atomic<pid_t> next_tid = 1;
-        std::uintptr_t next_stack_top = vmm::vmspace::stack_top;
+        std::uintptr_t next_stack_top = vmm::vmspace::vspace_top;
 
         static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
 

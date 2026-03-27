@@ -1,148 +1,13 @@
 // Copyright (C) 2024-2026  ilobilo
 
 export module system.memory.virt;
-
 export import :pagemap;
+
 import system.memory.phys;
 import lib;
 import std;
 
 export namespace vmm
-{
-    enum prot
-    {
-        none = 0x00,
-        read = 0x01,
-        write = 0x02,
-        exec = 0x04
-    };
-
-    enum flag
-    {
-        failed = -1,
-        file = 0x00,
-        shared = 0x01,
-        private_ = 0x02,
-        fixed = 0x10,
-        anonymous = 0x20,
-
-        untouchable = 0x40
-    };
-
-    class object
-    {
-        protected:
-        lib::locker<
-            lib::btree::map<std::size_t, std::uintptr_t>,
-            lib::mutex
-        > pages;
-
-        private:
-        virtual std::uintptr_t request_page(std::size_t idx) = 0;
-        virtual void write_back() = 0;
-
-        public:
-        object() = default;
-        virtual ~object() { };
-
-        std::uintptr_t get_page(std::size_t idx);
-
-        std::size_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
-        std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
-        std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
-
-        std::size_t copy_to(object &other, std::uint64_t offset, std::size_t length);
-    };
-
-    class memobject : public object
-    {
-        private:
-        std::uintptr_t request_page(std::size_t idx) override;
-        void write_back() override;
-
-        public:
-        ~memobject();
-    };
-
-    struct mapping
-    {
-        std::uintptr_t startp;
-        std::uintptr_t endp;
-
-        std::shared_ptr<object> obj;
-        off_t offsetp;
-
-        std::uint8_t prot;
-        std::uint8_t flags;
-
-        lib::rbtree_hook<mapping> rbtree_hook;
-        lib::interval_hook<std::uintptr_t> interval_hook;
-
-        friend bool operator<(const mapping &lhs, const mapping &rhs)
-        {
-            return lhs.startp < rhs.startp;
-        }
-    };
-
-    struct vmspace
-    {
-        std::shared_ptr<pagemap> pmap;
-        lib::locker<
-            lib::interval_tree_alloc<
-                mapping,
-                std::uintptr_t,
-                &mapping::startp,
-                &mapping::endp,
-                &mapping::rbtree_hook,
-                &mapping::interval_hook
-            >,
-            lib::rwmutex
-        > tree;
-
-        static constexpr std::uintptr_t mmap_min = 0x10000;
-        static constexpr std::uintptr_t mmap_top = 0x7FFFF7000000;
-        static constexpr std::uintptr_t stack_top = 0x7FFFFFFFF000;
-
-        std::uintptr_t brk_start = 0;
-        std::uintptr_t brk = 0;
-        inline void init_brk(std::uintptr_t addr)
-        {
-            brk_start = brk = addr;
-        }
-
-        lib::expect<void> map(
-            std::uintptr_t address, std::size_t length,
-            std::uint8_t prot, std::uint8_t flags,
-            std::shared_ptr<object> obj, off_t offset
-        );
-        lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
-        lib::expect<void> unmap(std::shared_ptr<object> obj);
-        lib::expect<void> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
-
-        bool is_mapped(std::uintptr_t addr, std::size_t length);
-        std::optional<std::uintptr_t> find_free_region(std::size_t length);
-
-        ~vmspace() { lib::panic_if(pmap.use_count() != 1); }
-    };
-
-    std::size_t default_page_size();
-
-    bool handle_pfault(std::uintptr_t addr, bool on_write);
-
-    std::uintptr_t alloc_vspace(std::size_t pages);
-
-    void init();
-    void init_vspaces();
-} // export namespace vmm
-
-
-
-
-
-
-
-// TODO: WIP
-export namespace vmm::uvm
 {
     using prot_t = std::uint32_t;
     using flag_t = std::uint32_t;
@@ -179,6 +44,8 @@ export namespace vmm::uvm
     {
         page *pg;
         lib::intrusive_ptr_hook hook;
+
+        ~anon();
 
         using ptr = lib::intrusive_ptr<anon, &anon::hook>;
     };
@@ -313,8 +180,6 @@ export namespace vmm::uvm
     struct vmspace
     {
         private:
-        pflag prot_to_pflags(prot_t prot);
-
         lib::expect<std::uintptr_t> find_free_region_internal(auto &locked, std::size_t length);
 
         public:
@@ -348,8 +213,20 @@ export namespace vmm::uvm
         ~vmspace()
         {
             lib::panic_if(pmap.use_count() != 1);
-            tree.write_lock()->clear([](entry *x) { delete x; });
+            tree.write_lock()->clear([](entry *x) {
+                // TODO
+                delete x;
+            });
         }
+    };
+
+    struct pfault_state
+    {
+        std::uintptr_t address;
+        bool is_present;
+        bool is_write;
+        bool is_exec;
+        bool is_user;
     };
 
     std::size_t default_page_size();
@@ -364,12 +241,10 @@ export namespace vmm::uvm
 
     std::uintptr_t paddr_from(page *pg);
 
-    bool handle_pfault(std::uintptr_t vaddr, bool on_write);
-} // export namespace vmm::uvm
+    bool handle_pfault(pfault_state state);
 
-// TODO: TMP
-export namespace vmm
-{
-    using page = uvm::page;
-    auto page_for(auto addr) { return uvm::page_for(addr); }
+    std::uintptr_t alloc_vspace(std::size_t pages);
+
+    void init();
+    void init_vspaces();
 } // export namespace vmm

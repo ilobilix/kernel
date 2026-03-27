@@ -13,7 +13,7 @@ import std;
 namespace fs::tmpfs
 {
     inode::inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
-        : vfs::inode { }, memory { std::make_shared<vmm::memobject>() }
+        : vfs::inode { }, memory { new vmm::memobject { } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
@@ -136,16 +136,9 @@ namespace fs::tmpfs
         return progress;
     }
 
-    lib::expect<std::shared_ptr<vmm::object>> ops::map(std::shared_ptr<vfs::file> file, bool priv)
+    lib::expect<vmm::object::ptr> ops::map(std::shared_ptr<vfs::file> file)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-
-        if (priv)
-        {
-            auto memory = std::make_shared<vmm::memobject>();
-            inod->memory->copy_to(*memory, 0, static_cast<std::size_t>(inod->stat.st_size));
-            return memory;
-        }
         return inod->memory;
     }
 

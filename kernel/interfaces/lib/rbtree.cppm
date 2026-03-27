@@ -678,6 +678,25 @@ export namespace lib
             return current != nil();
         }
 
+        constexpr Type *find(auto cmp) const
+        {
+            auto current = root();
+            rbtree_hook<Type> nh;
+            while (current != nil())
+            {
+                auto res = cmp(*current);
+                if (res == 0)
+                    break;
+
+                if (res > 0)
+                    current = left(&nh, current);
+                else
+                    current = right(&nh, current);
+            }
+            return current != nil() ? current : nullptr;
+
+        }
+
         constexpr std::size_t size() const { return _size; }
         constexpr bool empty() const { return _size == 0; }
     };
@@ -782,6 +801,7 @@ export namespace lib
         constexpr Type *last() const { return _rbtree.last(); }
 
         constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
+        constexpr Type *find(auto cmp) const { return _rbtree.find(cmp); }
 
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }

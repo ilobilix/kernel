@@ -34,7 +34,7 @@ namespace sched::arch
         lib::unused(cpu);
     }
 
-    void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
+    void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         lib::unused(proc, thread, ip, arg);
     }
@@ -42,6 +42,14 @@ namespace sched::arch
     void deinitialise(process *proc, thread *thread)
     {
         lib::unused(proc, thread);
+    }
+
+    [[noreturn]]
+    void enter_user(thread *thread, std::uintptr_t ip, std::uintptr_t stack)
+    {
+        lib::unused(thread, ip, stack);
+        lib::panic("enter_user not implemented");
+        std::unreachable();
     }
 
     void save(thread *thread)
@@ -57,10 +65,5 @@ namespace sched::arch
     void ctx_switch(thread *current, thread *next)
     {
         lib::unused(current, next);
-    }
-
-    void update_stack(thread *thread, std::uintptr_t addr)
-    {
-        lib::unused(thread, addr);
     }
 } // namespace sched::arch

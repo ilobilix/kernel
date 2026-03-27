@@ -158,7 +158,7 @@ export namespace lib
 
         explicit constexpr operator bool() const { return _ptr != nullptr; }
 
-        auto use_count() const
+        std::uint32_t use_count() const
         {
             if (!_ptr)
                 return 0;

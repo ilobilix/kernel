@@ -11,7 +11,7 @@ export namespace fs::tmpfs
 {
     struct inode : vfs::inode
     {
-        std::shared_ptr<vmm::object> memory;
+        vmm::object::ptr memory;
         inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode);
     };
 
@@ -29,7 +29,7 @@ export namespace fs::tmpfs
 
         lib::expect<std::size_t> getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer) override;
 
-        lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<vfs::file> file, bool priv) override;
+        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override;
     };
 
     struct fs : vfs::filesystem
