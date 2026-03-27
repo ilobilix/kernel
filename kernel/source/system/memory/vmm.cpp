@@ -1031,8 +1031,6 @@ namespace vmm
                 if (auto &slot = amap->slots[anon_idx + offp])
                 {
                     auto opg = slot->pg;
-                    opg->ref();
-
                     if (state.is_write)
                     {
                         if (opg->refcount.load(std::memory_order_acquire) != 1)
@@ -1067,6 +1065,7 @@ namespace vmm
                         }
                     }
 
+                    opg->ref();
                     pinned = opg;
                     paddr = paddr_from(opg);
                 }
