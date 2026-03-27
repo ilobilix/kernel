@@ -91,6 +91,6 @@ namespace syscall::misc
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, buflen);
         if (!uspan)
             return (errno = EFAULT, -1);
-        return lib::random_bytes(uspan.value());
+        return lib::random_bytes(*uspan);
     }
 } // namespace syscall::misc
