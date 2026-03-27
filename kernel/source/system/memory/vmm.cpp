@@ -90,13 +90,9 @@ namespace vmm
     }
 
     lib::expect<void> object::read_pages(
-        std::uint64_t offp, std::span<page *> pages,
-        std::size_t idx, madv_t advise, flag_t flags
+        std::uint64_t offp, std::span<page *> pages, std::size_t idx
     )
     {
-        // TODO
-        lib::unused(advise, flags);
-
         lib::bug_on(pages.size() > max_readahead);
 
         const auto psize = default_page_size();
@@ -179,7 +175,7 @@ namespace vmm
                 pg->refcount.store(2, std::memory_order_relaxed);
                 pg->obj_ptr = this;
                 pg->offp = start_idx + i;
-                pg->flags.store(page::flag::file | page::flag::busy, std::memory_order_relaxed);
+                pg->flags.store(type | page::flag::busy, std::memory_order_relaxed);
 
                 locked->insert({ start_idx + i, pg });
                 pages[i] = pg;
@@ -254,11 +250,8 @@ namespace vmm
         return { };
     }
 
-    lib::expect<void> object::write_back(std::uint64_t offp, std::size_t num_pages, flag_t flags)
+    lib::expect<void> object::write_back(std::uint64_t offp, std::size_t num_pages)
     {
-        // TODO
-        lib::unused(flags);
-
         const auto psize = default_page_size();
         const auto num_alloc_pages = psize / pmm::page_size;
 
@@ -391,15 +384,26 @@ namespace vmm
             );
             std::span<page *> pages { chunk, num_pages };
 
-            auto res = read_pages(curr_idx, pages, 0, 0, 0);
+            auto res = read_pages(curr_idx, pages, 0);
             if (!res.has_value())
                 break;
+
+            const auto cleanup = [&](std::size_t i) {
+                for (std::size_t j = i + 1; j < num_pages; j++)
+                {
+                    if (chunk[j] && chunk[j]->unref())
+                        pmm::free(paddr_from(chunk[j]), num_alloc_pages);
+                }
+            };
 
             for (std::size_t i = 0; i < num_pages && remaining > 0; i++)
             {
                 auto pg = chunk[i];
                 if (!pg)
+                {
+                    cleanup(i);
                     return progress;
+                }
 
                 const auto vaddr = lib::tohh(paddr_from(pg));
                 const auto copy_len = std::min(psize - poffset, remaining);
@@ -417,11 +421,7 @@ namespace vmm
 
                 if (!success)
                 {
-                    for (std::size_t j = i + 1; j < num_pages; j++)
-                    {
-                        if (chunk[j] && chunk[j]->unref())
-                            pmm::free(paddr_from(chunk[j]), num_alloc_pages);
-                    }
+                    cleanup(i);
                     return progress;
                 }
 
@@ -950,6 +950,9 @@ namespace vmm
         if (state.address < vmspace::mmap_min || state.address >= vmspace::vspace_top)
             return false;
 
+        if (state.is_present && !state.is_write && !state.is_exec)
+            return false;
+
         const auto thread = sched::this_thread();
         if (!thread->is_user)
             return false;
@@ -969,13 +972,15 @@ namespace vmm
         std::uint64_t obj_offp;
         std::uint64_t anon_idx;
 
+        const auto find_cmp = [&](const auto &ent) {
+            if ((ent.startp * psize) <= state.address && state.address < (ent.endp * psize))
+                return 0;
+            return (ent.startp * psize) < state.address ? -1 : 1;
+        };
+
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto entry = rlocked->find([&](const auto &ent) {
-                if ((ent.startp * psize) <= state.address && state.address < (ent.endp * psize))
-                    return 0;
-                return (ent.startp * psize) < state.address ? -1 : 1;
-            });
+            const auto entry = rlocked->find(find_cmp);
 
             if (!entry)
                 return false;
@@ -989,6 +994,7 @@ namespace vmm
                 obj = entry->obj;
                 obj_offp = entry->offp;
             }
+
             if (entry->amap)
             {
                 amap = entry->amap;
@@ -1009,15 +1015,195 @@ namespace vmm
         const auto offp = (aligned / psize) - startp;
         std::uintptr_t paddr = 0;
 
-        // TODO
+        page *pinned = nullptr;
+        const auto check_pinned = [&] {
+            if (pinned && pinned->unref())
+                pmm::free(paddr_from(pinned), num_alloc_pages);
+        };
+
+        if (flags & flag::anonymous)
+        {
+            if (flags & flag::private_)
+            {
+                lib::bug_on(!amap);
+                std::unique_lock _ { amap->lock };
+
+                if (auto &slot = amap->slots[anon_idx + offp])
+                {
+                    auto opg = slot->pg;
+                    opg->ref();
+
+                    if (state.is_write)
+                    {
+                        if (opg->refcount.load(std::memory_order_acquire) != 1)
+                        {
+                            // cow
+                            paddr = pmm::alloc(num_alloc_pages, false);
+                            if (paddr == 0)
+                                return false;
+
+                            auto pg = page_for(paddr);
+                            pg->refcount.store(1, std::memory_order_relaxed);
+                            pg->flags.store(page::flag::anonymous, std::memory_order_relaxed);
+
+                            const auto old_vaddr = lib::tohh(paddr_from(opg));
+                            const auto new_vaddr = lib::tohh(paddr);
+
+                            std::memcpy(
+                                reinterpret_cast<void *>(new_vaddr),
+                                reinterpret_cast<void *>(old_vaddr),
+                                psize
+                            );
+
+                            if (opg->unref())
+                                pmm::free(paddr_from(opg), num_alloc_pages);
+
+                            slot = new anon {
+                                .pg = pg,
+                                .hook { }
+                            };
+
+                            goto end;
+                        }
+                    }
+
+                    pinned = opg;
+                    paddr = paddr_from(opg);
+                }
+                else // not present or not in anon
+                {
+                    paddr = pmm::alloc(num_alloc_pages, true);
+                    if (paddr == 0)
+                        return false;
+
+                    auto pg = page_for(paddr);
+                    pg->refcount.store(1, std::memory_order_relaxed);
+                    pg->flags.store(page::flag::anonymous, std::memory_order_relaxed);
+
+                    amap->slots[anon_idx + offp] = new anon {
+                        .pg = pg,
+                        .hook { }
+                    };
+                }
+            }
+            else // shared
+            {
+                lib::bug_on(!(flags & flag::shared));
+                lib::bug_on(!obj);
+
+                page *fetched = nullptr;
+                // memobject
+                const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
+                if (!ret || !fetched)
+                    return false;
+
+                pinned = fetched;
+                paddr = paddr_from(fetched);
+            }
+        }
+        else // file
+        {
+            if (flags & flag::private_)
+            {
+                lib::bug_on(!amap);
+                std::unique_lock _ { amap->lock };
+
+                if (!state.is_present)
+                {
+                    if (!amap->slots[anon_idx + offp])
+                    {
+                        lib::bug_on(!obj);
+
+                        page *fetched = nullptr;
+                        const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
+                        if (!ret || !fetched)
+                            return false;
+
+                        pinned = fetched;
+                        paddr = paddr_from(fetched);
+                    }
+                    else
+                    {
+                        auto opg = amap->slots[anon_idx + offp]->pg;
+                        opg->ref();
+                        pinned = opg;
+                        paddr = paddr_from(opg);
+                    }
+                    prot &= ~prot::write;
+                }
+                else // write
+                {
+                    page *opg = nullptr;
+                    if (amap->slots[anon_idx + offp])
+                    {
+                        opg = amap->slots[anon_idx + offp]->pg;
+                        if (opg->refcount.load(std::memory_order_acquire) == 1)
+                        {
+                            opg->ref();
+                            pinned = opg;
+                            paddr = paddr_from(opg);
+                            goto end;
+                        }
+                    }
+                    else
+                    {
+                        lib::bug_on(!obj);
+                        const auto ret = obj->read_pages(obj_offp + offp, { &opg, 1 }, 0);
+                        if (!ret || !opg)
+                            return false;
+                    }
+
+                    paddr = pmm::alloc(num_alloc_pages, true);
+                    if (paddr == 0)
+                        return false;
+
+                    auto pg = page_for(paddr);
+                    pg->refcount.store(1, std::memory_order_relaxed);
+                    pg->flags.store(
+                        page::flag::anonymous | page::flag::dirty,
+                        std::memory_order_relaxed
+                    );
+
+                    const auto old_vaddr = lib::tohh(paddr_from(opg));
+                    const auto new_vaddr = lib::tohh(paddr);
+
+                    std::memcpy(
+                        reinterpret_cast<void *>(new_vaddr),
+                        reinterpret_cast<void *>(old_vaddr),
+                        psize
+                    );
+
+                    if (opg->unref())
+                        pmm::free(paddr_from(opg), num_alloc_pages);
+
+                    amap->slots[anon_idx + offp] = new anon {
+                        .pg = pg,
+                        .hook { }
+                    };
+                }
+            }
+            else // shared
+            {
+                lib::bug_on(!obj);
+
+                page *fetched = nullptr;
+                const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
+                if (!ret || !fetched)
+                    return false;
+
+                pinned = fetched;
+                paddr = paddr_from(fetched);
+
+                if (state.is_write)
+                    fetched->flags.fetch_or(page::flag::dirty, std::memory_order_relaxed);
+            }
+        }
+
+        end:
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto entry = rlocked->find([&](const auto &ent) {
-                if ((ent.startp * psize) <= state.address && state.address < (ent.endp * psize))
-                    return 0;
-                return (ent.startp * psize) < state.address ? -1 : 1;
-            });
+            const auto entry = rlocked->find(find_cmp);
 
             if (!entry)
                 goto fail;
@@ -1029,17 +1215,21 @@ namespace vmm
 
             const auto new_offp = (aligned / psize) - entry->startp;
 
-            if (entry->obj && (entry->offp + new_offp) != (obj_offp + offp))
+            if (obj && (entry->obj != obj || (entry->offp + new_offp) != (obj_offp + offp)))
                 goto fail;
-            if (entry->amap && (entry->anon_idx + new_offp) != (anon_idx + offp))
+            if (amap && (entry->amap != amap || (entry->anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
         }
 
         // TODO: tlb shootdown if (state.is_present && state.is_write)
         if (vmspace->pmap->map(aligned, paddr, psize, prot_to_pflags(prot)))
+        {
+            check_pinned();
             return true;
+        }
 
         fail:
+        check_pinned();
         return false;
     }
 } // namespace vmm

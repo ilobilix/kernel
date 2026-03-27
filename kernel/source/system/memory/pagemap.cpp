@@ -147,8 +147,9 @@ namespace vmm
             const auto addr = accessor.getaddr();
             const bool needs_invl = addr && is_canonical(addr);
 
-            if (accessor.getflags(valid_table_flags) && needs_invl)
-                return std::unexpected { lib::err::addr_in_use };
+            // TODO: invalidate if upgrading?
+            // if (accessor.getflags(valid_table_flags) && needs_invl)
+            //     return std::unexpected { lib::err::addr_in_use };
 
             accessor.clear()
                 .setaddr(current_paddr)
