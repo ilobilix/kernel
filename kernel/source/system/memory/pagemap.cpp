@@ -147,9 +147,8 @@ namespace vmm
             const auto addr = accessor.getaddr();
             const bool needs_invl = addr && is_canonical(addr);
 
-            // TODO: tlb shootdown? or do it in handle_pfault
-            // if (accessor.getflags(valid_table_flags) && needs_invl)
-            //     return std::unexpected { lib::err::addr_in_use };
+            if (accessor.getflags(valid_table_flags) && needs_invl)
+                return std::unexpected { lib::err::addr_in_use };
 
             accessor.clear()
                 .setaddr(current_paddr)

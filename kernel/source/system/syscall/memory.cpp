@@ -6,7 +6,6 @@ import system.memory.virt;
 import system.scheduler;
 import system.vfs;
 import lib;
-
 import std;
 
 namespace syscall::memory
@@ -117,31 +116,43 @@ namespace syscall::memory
         const auto address = reinterpret_cast<std::uintptr_t>(addr);
         const auto old = vmspace->current_brk;
 
-        if (address == old)
+        if (address == old || address < vmm::vmspace::mmap_min)
             return reinterpret_cast<void *>(old);
+
+        const auto old_end = lib::align_up(old, psize);
+        const auto new_end = lib::align_up(address, psize);
 
         if (address > old)
         {
-            const auto begin = lib::align_up(old, psize);
-            const auto length = lib::align_up(address - begin, psize);
-            if (length == 0)
-                return reinterpret_cast<void *>(old);
+            const auto begin = old_end;
+            const auto length = new_end - old_end;
 
-            vmm::memobject::ptr obj { new vmm::memobject { } };
+            if (length > 0)
+            {
+                const auto prot = vmm::prot::read | vmm::prot::write;
+                const auto flags = vmm::flag::private_ | vmm::flag::anonymous | vmm::flag::fixed;
 
-            const auto prot = vmm::prot::read | vmm::prot::write | vmm::prot::exec;
-            const auto flags = vmm::flag::private_ | vmm::flag::anonymous;
+                const auto ret = vmspace->map(
+                    begin, length,
+                    prot, prot, flags,
+                    nullptr, 0
+                );
 
-            const auto ret = vmspace->map(
-                begin, length,
-                prot, prot, flags,
-                obj, 0
-            );
-
-            if (!ret.has_value())
-                return reinterpret_cast<void *>(old);
+                if (!ret.has_value())
+                    return reinterpret_cast<void *>(old);
+            }
         }
-        else return reinterpret_cast<void *>(old); // TODO
+        else
+        {
+            const auto begin = new_end;
+            const auto length = old_end - new_end;
+
+            if (length > 0)
+            {
+                if (!vmspace->unmap(begin, length))
+                    return reinterpret_cast<void *>(old);
+            }
+        }
 
         vmspace->current_brk = address;
         return addr;
