@@ -51,23 +51,22 @@ namespace fs::tmpfs
         if (real_size == 0)
             return 0;
 
-        inod->memory->read(offset, buffer.subspan(0, real_size));
-        return real_size;
+        return inod->memory->read(offset, buffer.subspan(0, real_size));
     }
 
     lib::expect<std::size_t> ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
 
-        auto size = buffer.size_bytes();
-        inod->memory->write(offset, buffer.subspan(0, size));
+        const auto size = buffer.size_bytes();
+        const auto ret = inod->memory->write(offset, buffer.subspan(0, size));
 
         if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
         {
             inod->stat.st_size = offset + size;
             inod->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(inod->stat.st_blksize));
         }
-        return size;
+        return ret;
     }
 
     lib::expect<void> ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
