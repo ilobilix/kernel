@@ -176,6 +176,9 @@ export namespace vmm
     struct vmspace
     {
         private:
+        void insert(auto &locked, entry *ent);
+        void remove(auto &locked, entry *ent);
+
         lib::expect<std::uintptr_t> find_free_region_internal(auto &locked, std::size_t length);
 
         public:
@@ -195,6 +198,7 @@ export namespace vmm
             >,
             lib::rwmutex
         > tree;
+        std::atomic<std::uint64_t> gen = 0;
 
         std::uintptr_t current_brk;
 

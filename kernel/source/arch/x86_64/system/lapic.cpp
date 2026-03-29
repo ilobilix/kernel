@@ -239,6 +239,8 @@ namespace x86_64::apic
             write(reg::tic, 0);
             write(reg::lvt_timer, vector);
             const auto ticks = freq.ticks(ns);
+            if (ticks > 0xFFFFFFFF)
+                lib::panic("lapic: timer ticks exceed limit: {} ns = {} ticks", ns, ticks);
             write(reg::tic, ticks);
         }
     }

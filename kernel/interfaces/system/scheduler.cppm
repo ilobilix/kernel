@@ -14,6 +14,7 @@ import std;
 namespace sched
 {
     constexpr std::size_t timeslice = 6;
+    constexpr std::size_t max_wait = 1000;
 
     using nice_t = lib::ranged<std::int8_t, -20, 19>;
     constexpr nice_t default_prio = 0;
