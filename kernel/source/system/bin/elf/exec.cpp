@@ -20,8 +20,8 @@ namespace bin::elf::exec
     class format : public bin::exec::format
     {
         private:
-        static inline constexpr std::uintptr_t default_base = 0x400000;
-        static inline constexpr std::uintptr_t default_interp_base = 0x40000000;
+        static constexpr std::uintptr_t default_base = 0x400000;
+        static constexpr std::uintptr_t default_interp_base = 0x40000000;
 
         struct auxval
         {
@@ -67,6 +67,7 @@ namespace bin::elf::exec
                 addr = 0;
 
             const auto psize = vmm::default_page_size();
+            const auto npsize = vmm::pagemap::from_page_size(psize);
 
             std::shared_ptr<vfs::file> interp { };
 
@@ -116,7 +117,7 @@ namespace bin::elf::exec
                         if (phdr.p_flags & PF_X)
                             prot |= vmm::prot::exec;
 
-                        const auto misalign = phdr.p_vaddr & (psize - 1);
+                        const auto misalign = phdr.p_vaddr & (npsize - 1);
 
                         const auto paloffset = phdr.p_offset - misalign;
                         const auto padded = phdr.p_filesz + misalign;
@@ -280,7 +281,7 @@ namespace bin::elf::exec
 
             return std::make_tuple(
                 aux, std::move(interp),
-                lib::align_up(max_end, psize)
+                lib::align_up(max_end, npsize)
             );
         }
 
@@ -376,11 +377,14 @@ namespace bin::elf::exec
                 write(type);
             };
 
+            const auto psize = vmm::default_page_size();
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+
             write_auxv(AT_NULL, 0);
             write_auxv(AT_PHDR, auxv.at_phdr);
             write_auxv(AT_PHENT, auxv.at_phent);
             write_auxv(AT_PHNUM, auxv.at_phnum);
-            write_auxv(AT_PAGESZ, vmm::default_page_size());
+            write_auxv(AT_PAGESZ, npsize);
             write_auxv(AT_BASE, ctx->interp_base);
             write_auxv(AT_ENTRY, auxv.at_entry);
             write_auxv(AT_NOTELF, 0);

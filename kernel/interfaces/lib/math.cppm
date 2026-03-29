@@ -76,7 +76,7 @@ export namespace lib
     template<typename ...Args>
     inline constexpr auto unique_from(auto a, Args &&...args)
     {
-        static constexpr auto szudzik = [](std::size_t x, std::size_t y)
+        constexpr auto szudzik = [](std::size_t x, std::size_t y)
         {
             return (x >= y) ? ((x * x) + x + y) : ((y * y) + x);
         };

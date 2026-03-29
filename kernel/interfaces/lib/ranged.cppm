@@ -11,8 +11,8 @@ export namespace lib
     class ranged
     {
         public:
-        static inline constexpr Type min = Min;
-        static inline constexpr Type max = Max;
+        static constexpr Type min = Min;
+        static constexpr Type max = Max;
 
         private:
         Type _value;

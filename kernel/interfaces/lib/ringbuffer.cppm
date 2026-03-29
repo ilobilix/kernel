@@ -22,16 +22,16 @@ export namespace lib
         static_assert((Cap != 0) && ((Cap & (Cap - 1)) == 0), "capacity must be a power of 2");
 
         public:
-        static inline constexpr std::size_t capacity = Cap;
-        static inline constexpr rb_mode mode = Mode;
-        static inline constexpr bool multi_producer = MultiProducer;
-        static inline constexpr bool multi_consumer = MultiConsumer;
+        static constexpr std::size_t capacity = Cap;
+        static constexpr rb_mode mode = Mode;
+        static constexpr bool multi_producer = MultiProducer;
+        static constexpr bool multi_consumer = MultiConsumer;
 
         using value_type = Type;
 
         private:
-        static inline constexpr std::size_t mask = capacity - 1;
-        static inline constexpr std::size_t alignment = std::hardware_destructive_interference_size;
+        static constexpr std::size_t mask = capacity - 1;
+        static constexpr std::size_t alignment = std::hardware_destructive_interference_size;
 
         struct cell_t
         {
@@ -44,7 +44,7 @@ export namespace lib
             std::conditional_t<multi_producer, std::atomic<std::size_t>, std::size_t> value;
         } _head;
 
-        static inline constexpr bool tail_is_atomic = multi_consumer || mode == rb_mode::overwrite;
+        static constexpr bool tail_is_atomic = multi_consumer || mode == rb_mode::overwrite;
         struct alignas(alignment)
         {
             std::conditional_t<tail_is_atomic, std::atomic<std::size_t>, std::size_t> value;

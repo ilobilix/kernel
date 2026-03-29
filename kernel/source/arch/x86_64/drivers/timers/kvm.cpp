@@ -108,10 +108,13 @@ namespace x86_64::timers::kvm
         if (!supported())
             return;
 
-        const auto vaddr = vmm::alloc_vspace(1);
-        const auto paddr = pmm::alloc(1, true);
-        const auto length = sizeof(kvmclock_info);
         const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+
+        const auto vaddr = vmm::alloc_vspace(npsize);
+        const auto paddr = pmm::alloc(npsize / pmm::page_size, true);
+        const auto length = sizeof(kvmclock_info);
+
         const auto flags = vmm::pflag::rwg;
         const auto cache = vmm::caching::mmio;
 

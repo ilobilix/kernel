@@ -242,7 +242,7 @@ extern "C"
         const auto paddr = lib::align_down(addr, npsize);
         const auto size = lib::align_up((addr - paddr) + len, npsize);
 
-        const auto vaddr = vmm::alloc_vspace(lib::div_roundup(size, pmm::page_size));
+        const auto vaddr = vmm::alloc_vspace(lib::align_up(size, npsize));
 
         if (const auto ret = pmap->map(vaddr, paddr, size, vmm::pflag::rwg, psize); !ret)
             lib::panic("could not map uacpi memory: {}", magic_enum::enum_name(ret.error()));

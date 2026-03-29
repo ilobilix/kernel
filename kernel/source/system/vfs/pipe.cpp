@@ -10,8 +10,8 @@ namespace vfs::pipe
 {
     struct data
     {
-        static inline constexpr std::size_t buffer_size = 65536;
-        // static inline constexpr std::size_t packet_size = 512;
+        static constexpr std::size_t buffer_size = 65536;
+        // static constexpr std::size_t packet_size = 512;
 
         lib::rbmpmcd<char, buffer_size> buffer;
         // lib::rbmpmcd<std::string, (buffer_size / packet_size)> packets;

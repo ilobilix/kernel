@@ -146,11 +146,12 @@ namespace x86_64::timers::hpet
         [] {
             lib::info("hpet: supported: {}", supported());
 
-            vaddr = vmm::alloc_vspace(1);
-            lib::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
-
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
+
+            vaddr = vmm::alloc_vspace(npsize);
+            lib::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
+
             const auto flags = vmm::pflag::rwg;
             const auto caching = vmm::caching::mmio;
 

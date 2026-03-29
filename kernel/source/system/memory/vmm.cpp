@@ -17,8 +17,6 @@ namespace vmm
 
     namespace
     {
-        constexpr auto def_psize = page_size::small;
-
         constexpr std::size_t num_waitqueues = 256;
         lib::wait_queue waitqueues[num_waitqueues];
 
@@ -53,8 +51,9 @@ namespace vmm
 
         std::uintptr_t pfndb_base()
         {
-            // doesn't change
-            static const auto cached = [] { return pmm::info().pfndb_base; } ();
+            static const auto cached = [] {
+                return pmm::info().pfndb_base;
+            } ();
             return cached;
         }
 
@@ -70,11 +69,6 @@ namespace vmm
             return ret;
         }
     } // namespace
-
-    std::size_t default_page_size()
-    {
-        return pagemap::from_page_size(def_psize);
-    }
 
     page *page_for(std::uintptr_t addr)
     {
@@ -94,7 +88,8 @@ namespace vmm
         lib::bug_on(pages.size() > max_readahead);
 
         const auto psize = default_page_size();
-        const auto num_alloc_pages = psize / pmm::page_size;
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
 
         const auto start_idx = offp;
 
@@ -251,7 +246,8 @@ namespace vmm
     lib::expect<void> object::write_back(std::uint64_t offp, std::size_t num_pages)
     {
         const auto psize = default_page_size();
-        const auto num_alloc_pages = psize / pmm::page_size;
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
 
         page *chunk[max_readahead];
 
@@ -364,20 +360,21 @@ namespace vmm
     std::size_t object::apply_func(std::uint64_t offset, std::size_t size, auto func)
     {
         const auto psize = default_page_size();
-        const auto num_alloc_pages = psize / pmm::page_size;
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
 
         std::size_t progress = 0;
         std::size_t remaining = size;
 
-        std::size_t curr_idx = offset / psize;
-        std::size_t poffset = offset % psize;
+        std::size_t curr_idx = offset / npsize;
+        std::size_t poffset = offset % npsize;
 
         page *chunk[max_readahead];
 
         while (remaining > 0)
         {
             const auto num_pages = std::min(
-                (poffset + remaining + psize - 1) / psize,
+                (poffset + remaining + npsize - 1) / npsize,
                 max_readahead
             );
             std::span<page *> pages { chunk, num_pages };
@@ -404,7 +401,7 @@ namespace vmm
                 }
 
                 const auto vaddr = lib::tohh(paddr_from(pg));
-                const auto copy_len = std::min(psize - poffset, remaining);
+                const auto copy_len = std::min(npsize - poffset, remaining);
 
                 bool success = func(pg, progress, vaddr + poffset, copy_len);
 
@@ -491,7 +488,8 @@ namespace vmm
     object::~object()
     {
         const auto psize = default_page_size();
-        const auto num_alloc_pages = psize / pmm::page_size;
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
 
         for (auto &[_, page] : *cache.lock())
         {
@@ -516,12 +514,13 @@ namespace vmm
             return std::unexpected { lib::err::permission_denied };
 
         const auto psize = default_page_size();
-        if (obj && offset % psize)
+        const auto npsize = pagemap::from_page_size(psize);
+        if (obj && offset % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
 
-        const auto offp = offset / psize;
+        const auto offp = offset / npsize;
 
-        length = lib::align_up(length, psize);
+        length = lib::align_up(length, npsize);
 
         object::ptr target_obj;
         anon_map::ptr target_amap;
@@ -535,7 +534,7 @@ namespace vmm
         if (flags & flag::private_)
         {
             target_amap = new anon_map { };
-            target_amap->nslots = length / psize;
+            target_amap->nslots = length / npsize;
             target_amap->slots = std::make_unique<anon::ptr []>(target_amap->nslots);
         }
         else if ((flags & flag::shared) && (flags & flag::anonymous))
@@ -548,14 +547,14 @@ namespace vmm
 
         if ((flags & flag::fixed) || (flags & flag::fixed_noreplace))
         {
-            if (hint % psize)
+            if (hint % npsize)
                 return std::unexpected { lib::err::addr_not_aligned };
 
             if (hint < mmap_min || hint + length > vspace_top)
                 return std::unexpected { lib::err::addr_out_of_bounds };
 
-            startp = hint / psize;
-            endp = (hint + length) / psize;
+            startp = hint / npsize;
+            endp = (hint + length) / npsize;
 
             {
                 const auto overlapping = wlocked->overlapping(startp, endp);
@@ -582,8 +581,8 @@ namespace vmm
                 const auto overlap_start = std::max(startp, ent->startp);
                 const auto overlap_end = std::min(endp, ent->endp);
 
-                const auto unmap_vaddr = overlap_start * psize;
-                const auto unmap_length = (overlap_end - overlap_start) * psize;
+                const auto unmap_vaddr = overlap_start * npsize;
+                const auto unmap_length = (overlap_end - overlap_start) * npsize;
 
                 if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                     return std::unexpected { ret.error() };
@@ -626,8 +625,8 @@ namespace vmm
             if (!ret)
                 return std::unexpected { lib::err::out_of_memory };
 
-            startp = *ret / psize;
-            endp = (*ret + length) / psize;
+            startp = *ret / npsize;
+            endp = (*ret + length) / npsize;
         }
 
         wlocked->insert(new entry {
@@ -644,7 +643,7 @@ namespace vmm
             .interval = { }
         });
 
-        return startp * psize;
+        return startp * npsize;
     }
 
     lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
@@ -653,16 +652,17 @@ namespace vmm
             return std::unexpected { lib::err::invalid_length };
 
         const auto psize = default_page_size();
-        if (address % psize)
+        const auto npsize = pagemap::from_page_size(psize);
+        if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
 
-        length = lib::align_up(length, psize);
+        length = lib::align_up(length, npsize);
 
         if (address < mmap_min || address + length > vspace_top)
             return std::unexpected { lib::err::addr_out_of_bounds };
 
-        const auto startp = address / psize;
-        const auto endp = (address + length) / psize;
+        const auto startp = address / npsize;
+        const auto endp = (address + length) / npsize;
 
         auto wlocked = tree.write_lock();
 
@@ -689,8 +689,8 @@ namespace vmm
             const auto overlap_start = std::max(startp, ent->startp);
             const auto overlap_end = std::min(endp, ent->endp);
 
-            const auto unmap_vaddr = overlap_start * psize;
-            const auto unmap_length = (overlap_end - overlap_start) * psize;
+            const auto unmap_vaddr = overlap_start * npsize;
+            const auto unmap_length = (overlap_end - overlap_start) * npsize;
 
             if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                 return std::unexpected { ret.error() };
@@ -748,16 +748,17 @@ namespace vmm
             return std::unexpected { lib::err::invalid_length };
 
         const auto psize = default_page_size();
-        if (address % psize)
+        const auto npsize = pagemap::from_page_size(psize);
+        if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
 
-        length = lib::align_up(length, psize);
+        length = lib::align_up(length, npsize);
 
         if (address < mmap_min || address + length > vspace_top)
             return std::unexpected { lib::err::addr_out_of_bounds };
 
-        auto startp = address / psize;
-        const auto endp = (address + length) / psize;
+        auto startp = address / npsize;
+        const auto endp = (address + length) / npsize;
 
         auto wlocked = tree.write_lock();
 
@@ -864,16 +865,18 @@ namespace vmm
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
     {
         const auto psize = default_page_size();
-        const auto plen = lib::div_roundup(length, psize);
-        const auto pmin = mmap_min / psize;
-        const auto pmax = mmap_max / psize;
+        const auto npsize = pagemap::from_page_size(psize);
+
+        const auto plen = lib::div_roundup(length, npsize);
+        const auto pmin = mmap_min / npsize;
+        const auto pmax = mmap_max / npsize;
 
         if (locked->empty())
         {
             if (plen > pmax - pmin)
                 return std::unexpected { lib::err::out_of_memory };
 
-            return (pmax - plen) * psize;
+            return (pmax - plen) * npsize;
         }
 
         const auto root = locked->root();
@@ -909,7 +912,7 @@ namespace vmm
 
             const auto prev_endp = (left != nil ? left->interval.subtree_max : floor);
             if (node->startp > prev_endp && (node->startp - prev_endp) >= plen)
-                return (node->startp - plen) * psize;
+                return (node->startp - plen) * npsize;
 
             if (left == nil)
                 break;
@@ -919,7 +922,7 @@ namespace vmm
 
         const auto first = locked->first();
         if (first->startp - pmin >= plen)
-            return (first->startp - plen) * psize;
+            return (first->startp - plen) * npsize;
 
         return std::unexpected { lib::err::out_of_memory };
     }
@@ -939,7 +942,8 @@ namespace vmm
         if (pg->unref())
         {
             const auto psize = default_page_size();
-            const auto num_alloc_pages = psize / pmm::page_size;
+            const auto npsize = pagemap::from_page_size(psize);
+            const auto num_alloc_pages = npsize / pmm::page_size;
             pmm::free(paddr_from(pg), num_alloc_pages);
         }
     }
@@ -963,9 +967,10 @@ namespace vmm
         const auto &vmspace = proc->vmspace;
 
         const auto psize = default_page_size();
-        const auto num_alloc_pages = psize / pmm::page_size;
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
 
-        const auto aligned = lib::align_down(state.address, psize);
+        const auto aligned = lib::align_down(state.address, npsize);
 
         object::ptr obj;
         anon_map::ptr amap;
@@ -978,7 +983,7 @@ namespace vmm
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / psize, (aligned / psize) + 1);
+            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
 
             if (ret.empty())
                 return false;
@@ -1011,7 +1016,7 @@ namespace vmm
         if (state.is_exec && !(prot & prot::exec))
             return false;
 
-        const auto offp = (aligned / psize) - startp;
+        const auto offp = (aligned / npsize) - startp;
         std::uintptr_t paddr = 0;
 
         page *pinned = nullptr;
@@ -1049,7 +1054,7 @@ namespace vmm
                             std::memcpy(
                                 reinterpret_cast<void *>(new_vaddr),
                                 reinterpret_cast<void *>(old_vaddr),
-                                psize
+                                npsize
                             );
 
                             if (opg->unref())
@@ -1171,7 +1176,7 @@ namespace vmm
                     std::memcpy(
                         reinterpret_cast<void *>(new_vaddr),
                         reinterpret_cast<void *>(old_vaddr),
-                        psize
+                        npsize
                     );
 
                     if (opg->unref())
@@ -1204,7 +1209,7 @@ namespace vmm
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / psize, (aligned / psize) + 1);
+            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
 
             if (ret.empty())
                 goto fail;
@@ -1216,7 +1221,7 @@ namespace vmm
             if (state.is_exec && !(entry.prot & prot::exec))
                 goto fail;
 
-            const auto new_offp = (aligned / psize) - entry.startp;
+            const auto new_offp = (aligned / npsize) - entry.startp;
 
             if (obj && (entry.obj != obj || (entry.offp + new_offp) != (obj_offp + offp)))
                 goto fail;
@@ -1225,7 +1230,7 @@ namespace vmm
         }
 
         // TODO: tlb shootdown if (state.is_present && state.is_write)
-        if (vmspace->pmap->map(aligned, paddr, psize, prot_to_pflags(prot)))
+        if (vmspace->pmap->map(aligned, paddr, npsize, prot_to_pflags(prot)))
         {
             check_pinned();
             return true;

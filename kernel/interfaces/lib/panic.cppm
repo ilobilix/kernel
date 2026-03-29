@@ -25,7 +25,7 @@ export namespace lib
     template<comptime_string Str, bool Regs, typename ...Args>
     struct panic_base
     {
-        static inline constexpr bool Check = !Str.is_empty();
+        static constexpr bool Check = !Str.is_empty();
 
         [[noreturn]] panic_base(
                 std::string_view fmt, Args &&...args,
