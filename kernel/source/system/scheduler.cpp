@@ -661,14 +661,13 @@ namespace sched
         while (true)
         {
             auto elocked = eepers.lock();
-            if (elocked->empty())
+            while (elocked->empty())
             {
                 me->prepare_sleep();
                 lib::bug_on(me->sleep_until.has_value());
                 elocked.unlock();
                 yield();
                 elocked.lock();
-                lib::bug_on(elocked->empty());
             }
 
             const auto timer = chrono::main_timer();

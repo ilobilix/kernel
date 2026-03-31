@@ -13,10 +13,6 @@ import std;
 
 namespace
 {
-    signed char nooo_unicode[] {
-        #embed "../../embed/nooo.uni"
-    };
-
     char nooo_ascii[] {
         #embed "../../embed/nooo.ascii"
     };
@@ -44,32 +40,22 @@ namespace lib
     }
 
     [[noreturn, clang::no_sanitize("undefined")]]
-    void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location)
+    void vpanic(
+        std::size_t len, std::string_view fmt, fmt::format_args args,
+        cpu::registers *regs, std::source_location location
+    )
     {
         if (panicking.exchange(true))
             goto end;
 
         arch::halt_others();
-        log::unsafe::unlock();
 
-        println("");
-        if (auto ctx = output::term::main())
-        {
-            bool first = true;
-            for (const auto seg : nooo_ascii | std::views::split('\n'))
-            {
-                if (!first)
-                    output::term::write(ctx, "\r\n");
-                first = false;
-                output::term::write(ctx, std::string_view { seg });
-            }
-        }
-        for (auto chr : nooo_unicode)
-            output::serial::printc(chr);
-        println("");
+        log::set_direct_print(true);
+        log::force_unlock();
 
+        println("\n{}\n", nooo_ascii);
         fatal("kernel panicked with the following message:");
-        fatal(fmt, args);
+        vfatal(len, fmt, args);
         fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
 
         if (regs)
@@ -108,6 +94,6 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
         { return _func; }
     };
     const custom_location loc { file, line, func };
-    lib::vpanic(message, fmt::make_format_args(), nullptr, loc);
+    lib::vpanic(std::strlen(message), message, fmt::make_format_args(), nullptr, loc);
 }
 #endif

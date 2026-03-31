@@ -318,10 +318,8 @@ namespace vmm
         lib::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
 
         kernel_pagemap.initialize();
-
-        lib::debug("vmm: mapping:");
         {
-            lib::debug("vmm: - memory map entries");
+            lib::debug("vmm: - mapping memory map entries");
 
             const auto memmaps = boot::requests::memmap.response->entries;
             const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -349,7 +347,10 @@ namespace vmm
                 if (len == 0)
                     continue;
 
-                lib::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, memmap->base, vaddr);
+                lib::debug(
+                    "vmm: -  type: {}, size: 0x{:X}, 0x{:X} -> 0x{:X}",
+                    magic_enum::enum_name(type), len, memmap->base, vaddr
+                );
 
                 if (const auto ret = kernel_pagemap->map(vaddr, paddr, len, pflag::rw, std::nullopt, cache); !ret)
                     lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
@@ -364,7 +365,7 @@ namespace vmm
             const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
             auto phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff);
 
-            lib::debug("vmm: - kernel binary");
+            lib::debug("vmm: - mapping kernel binary");
 
             for (std::size_t i = 0; i < ehdr->e_phnum; i++)
             {
@@ -382,7 +383,10 @@ namespace vmm
                     if (phdr->p_flags & PF_X)
                         flags |= pflag::exec;
 
-                    lib::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
+                    lib::debug(
+                        "vmm: -  phdr: size: 0x{:X}, flags: 0b{:b}, 0x{:X} -> 0x{:X}",
+                        size, static_cast<std::uint8_t>(flags), paddr, vaddr
+                    );
 
                     if (const auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, std::nullopt, cache); !ret)
                         lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));

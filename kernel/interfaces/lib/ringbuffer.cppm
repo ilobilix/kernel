@@ -35,19 +35,19 @@ export namespace lib
 
         struct cell_t
         {
-            std::atomic<std::size_t> sequence;
+            std::atomic_size_t sequence;
             alignas(value_type) std::byte data[sizeof(value_type)];
         };
 
         struct alignas(alignment)
         {
-            std::conditional_t<multi_producer, std::atomic<std::size_t>, std::size_t> value;
+            std::conditional_t<multi_producer, std::atomic_size_t, std::size_t> value;
         } _head;
 
         static constexpr bool tail_is_atomic = multi_consumer || mode == rb_mode::overwrite;
         struct alignas(alignment)
         {
-            std::conditional_t<tail_is_atomic, std::atomic<std::size_t>, std::size_t> value;
+            std::conditional_t<tail_is_atomic, std::atomic_size_t, std::size_t> value;
         } _tail;
 
         cell_t *_storage;
@@ -253,7 +253,7 @@ export namespace lib
         ringbuffer() : _storage { lib::allocz<cell_t *>(sizeof(cell_t) * capacity) }
         {
             for (std::size_t i = 0; i < capacity; i++)
-                new (&_storage[i].sequence) std::atomic<std::size_t> { i };
+                new (&_storage[i].sequence) std::atomic_size_t { i };
 
             if constexpr (multi_producer)
                 _head.value.store(0, std::memory_order_relaxed);

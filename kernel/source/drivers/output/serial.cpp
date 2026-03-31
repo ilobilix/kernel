@@ -9,36 +9,6 @@ import std;
 
 namespace output::serial
 {
-    namespace
-    {
-        constinit logger *loggers = nullptr;
-    } // namespace
-
-    void register_logger(logger &log)
-    {
-        if (loggers == nullptr)
-        {
-            loggers = &log;
-            log.next = nullptr;
-            return;
-        }
-        else
-        {
-            log.next = loggers;
-            loggers = &log;
-        }
-    }
-
-    void printc(char chr)
-    {
-        auto current = loggers;
-        while (current != nullptr)
-        {
-            current->printc(chr);
-            current = current->next;
-        }
-    }
-
     namespace tty = fs::dev::tty;
 
     struct serial_driver : tty::driver

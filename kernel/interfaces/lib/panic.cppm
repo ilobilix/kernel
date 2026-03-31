@@ -20,7 +20,10 @@ export namespace lib
     void check_if_panicking();
 
     [[noreturn]]
-    void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location);
+    void vpanic(
+        std::size_t len, std::string_view fmt, fmt::format_args args,
+        cpu::registers *regs, std::source_location location
+    );
 
     template<comptime_string Str, bool Regs, typename ...Args>
     struct panic_base
@@ -28,37 +31,49 @@ export namespace lib
         static constexpr bool Check = !Str.is_empty();
 
         [[noreturn]] panic_base(
-                std::string_view fmt, Args &&...args,
+                fmt::format_string<Args...> fmt, Args &&...args,
                 const std::source_location &location = std::source_location::current()
             ) requires (!Check)
         {
-            vpanic(fmt, fmt::make_format_args(args...), nullptr, location);
+            const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
+            const std::string_view view { fmt.get().data(), fmt.get().size() };
+            vpanic(len, view, fmt::make_format_args(args...), nullptr, location);
         }
 
         [[noreturn]] panic_base(
-                cpu::registers *regs, std::string_view fmt, Args &&...args,
+                cpu::registers *regs, fmt::format_string<Args...> fmt, Args &&...args,
                 const std::source_location &location = std::source_location::current()
             ) requires (!Check && Regs)
         {
-            vpanic(fmt, fmt::make_format_args(args...), regs, location);
+            const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
+            const std::string_view view { fmt.get().data(), fmt.get().size() };
+            vpanic(len, view, fmt::make_format_args(args...), regs, location);
         }
 
         constexpr panic_base(
-                bool condition, std::string_view fmt, Args &&...args,
+                bool condition, fmt::format_string<Args...> fmt, Args &&...args,
                 const std::source_location &location = std::source_location::current()
             ) requires Check
         {
             if (!std::is_constant_evaluated() && condition)
-                vpanic(fmt, fmt::make_format_args(args...), nullptr, location);
+            {
+                const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
+                const std::string_view view { fmt.get().data(), fmt.get().size() };
+                vpanic(len, view, fmt::make_format_args(args...), nullptr, location);
+            }
         }
 
         panic_base(
-                bool condition, cpu::registers *regs, std::string_view fmt, Args &&...args,
+                bool condition, cpu::registers *regs, fmt::format_string<Args...> fmt, Args &&...args,
                 const std::source_location &location = std::source_location::current()
             ) requires (Check && Regs)
         {
             if (condition)
-                vpanic(fmt, fmt::make_format_args(args...), regs, location);
+            {
+                const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
+                const std::string_view view { fmt.get().data(), fmt.get().size() };
+                vpanic(len, view, fmt::make_format_args(args...), regs, location);
+            }
         }
 
         constexpr panic_base(
@@ -67,7 +82,7 @@ export namespace lib
             ) requires Check
         {
             if (!std::is_constant_evaluated() && condition)
-                vpanic(Str.value, fmt::make_format_args(), nullptr, location);
+                vpanic(Str.size(), Str.value, fmt::make_format_args(), nullptr, location);
         }
 
         panic_base(
@@ -76,7 +91,7 @@ export namespace lib
             ) requires (Check && Regs)
         {
             if (condition)
-                vpanic(Str.value, fmt::make_format_args(), regs, location);
+                vpanic(Str.size(), Str.value, fmt::make_format_args(), regs, location);
         }
     };
 
@@ -93,16 +108,16 @@ export namespace lib
     };
 
     template<typename ...Args>
-    panic(std::string_view, Args &&...) -> panic<Args...>;
+    panic(fmt::format_string<Args...>, Args &&...) -> panic<Args...>;
     template<typename ...Args>
-    panic(cpu::registers *, std::string_view, Args &&...) -> panic<Args...>;
+    panic(cpu::registers *, fmt::format_string<Args...>, Args &&...) -> panic<Args...>;
 
     template<typename ...Args>
     panic_if(bool) -> panic_if<Args...>;
     template<typename ...Args>
     panic_if(bool, cpu::registers *) -> panic_if<Args...>;
     template<typename ...Args>
-    panic_if(bool, std::string_view, Args &&...) -> panic_if<Args...>;
+    panic_if(bool, fmt::format_string<Args...>, Args &&...) -> panic_if<Args...>;
     template<typename ...Args>
-    panic_if(bool, cpu::registers *, std::string_view, Args &&...) -> panic_if<Args...>;
+    panic_if(bool, cpu::registers *, fmt::format_string<Args...>, Args &&...) -> panic_if<Args...>;
 } // export namespace lib
