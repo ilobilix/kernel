@@ -28,7 +28,7 @@ namespace lib::log
 
         constinit logger *loggers = nullptr;
 
-        // based on log_ring.zig from rdmsr/zag
+        // stolen from https://github.com/rdmsr/zag/blob/de98aab7f068221872f2b110d371c1037e2cfe15/src/kern/log_ring.zig
         template<std::size_t DataBits, std::size_t MsgBits>
         class ring
         {
