@@ -50,7 +50,7 @@ namespace lib::log
                 std::uint64_t seq;
                 std::uint64_t time;
                 std::uint16_t len;
-                log_level lvl;
+                level lvl;
             };
 
             struct reservation
@@ -659,7 +659,7 @@ namespace lib::log
 
     namespace detail
     {
-        void vprint(bool add_nl, log_level lvl, std::size_t len, std::string_view fmt, fmt::format_args args)
+        void vprint(bool add_nl, level lvl, std::size_t len, std::string_view fmt, fmt::format_args args)
         {
             auto nanos = chrono::now(chrono::monotonic).to_ns();
 
@@ -671,7 +671,7 @@ namespace lib::log
                 lock.lock();
 
                 std::size_t off = 0;
-                if (lvl != log_level::none)
+                if (lvl != level::none)
                 {
                     const auto [h, m, s] = lib::time_from(nanos / 1'000'000'000);
                     nanos %= 1'000'000'000;
@@ -707,7 +707,7 @@ namespace lib::log
                 if (!res)
                     return;
 
-                if ((res->info_ptr->lvl = lvl) != log_level::none)
+                if ((res->info_ptr->lvl = lvl) != level::none)
                     res->info_ptr->time = nanos;
                 res->info_ptr->len = len;
 
@@ -746,7 +746,7 @@ namespace lib::log
                 continue;
             }
 
-            if (res->lvl != log_level::none)
+            if (res->lvl != level::none)
             {
                 auto nanos = res->time;
                 const auto [h, m, s] = lib::time_from(nanos / 1'000'000'000);

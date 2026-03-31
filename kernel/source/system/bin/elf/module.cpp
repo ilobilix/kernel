@@ -63,7 +63,7 @@ namespace bin::elf::mod
             lib::info("elf: - dependencies: {}", ndeps);
 
             if (ndeps != 0)
-                lib::print(lib::log_level::info, "elf: -  ");
+                lib::print(lib::log::level::info, "elf: -  ");
             for (std::size_t i = 0; i < ndeps; i++)
             {
                 auto mod = entry.deps[i];

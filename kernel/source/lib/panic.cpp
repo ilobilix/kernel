@@ -60,10 +60,10 @@ namespace lib
 
         if (regs)
         {
-            arch::dump_regs(regs, cpu::extra_regs::read(), log_level::fatal);
-            trace(log_level::fatal, regs->fp(), regs->ip());
+            arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
+            trace(log::level::fatal, regs->fp(), regs->ip());
         }
-        else trace(log_level::fatal, 0, 0);
+        else trace(log::level::fatal, 0, 0);
 
         end:
         arch::halt(false);
