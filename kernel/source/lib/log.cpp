@@ -595,7 +595,7 @@ namespace lib::log
             }
         };
 
-        using ring_type = ring<15, 7>;
+        using ring_type = ring<14, 6>;
         constinit ring_type buffer { };
 
         constexpr std::size_t len_time = 18;
