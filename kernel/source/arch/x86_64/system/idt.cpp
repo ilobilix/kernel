@@ -85,14 +85,8 @@ namespace x86_64::idt
             std::unreachable();
         }
 
-        const bool local_available = cpu::local::available();
-        std::optional<std::reference_wrapper<cpu::processor>> self;
-        bool old = false;
-        if (local_available)
-        {
-            self = cpu::self().unsafe_get();
-            old = self->get().in_interrupt.exchange(true, std::memory_order_acquire);
-        }
+        auto &self = cpu::self().unsafe_get();
+        bool old = self.in_interrupt.exchange(true, std::memory_order_acquire);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
@@ -136,19 +130,16 @@ namespace x86_64::idt
                     goto end;
             }
 
-            if (local_available)
+            if (sched::is_initialised())
             {
-                if (sched::is_initialised())
-                {
-                    const auto thread = sched::this_thread();
-                    lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
-                        vector, exception_messages[vector],
-                        self->get().idx, thread->parent->pid, thread->tid
-                    );
-                }
-                lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->get().idx);
+                const auto thread = sched::this_thread();
+                lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
+                    vector, exception_messages[vector],
+                    self.idx, thread->parent->pid, thread->tid
+                );
             }
-            lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self.idx);
+
             std::unreachable();
         }
         else
@@ -158,8 +149,7 @@ namespace x86_64::idt
         }
 
         end:
-        if (local_available)
-            self->get().in_interrupt.store(old, std::memory_order_release);
+        self.in_interrupt.store(old, std::memory_order_release);
     }
 
     void init()
