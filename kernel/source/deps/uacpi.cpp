@@ -29,27 +29,27 @@ namespace uacpi
             const auto glocked = gpe.read_lock();
             return nlocked->empty() && glocked->empty();
         }
-    } // namespace
 
-    void worker_caller(queue_type &queue, lib::semaphore &added)
-    {
-        while (true)
+        void worker_caller(queue_type &queue, lib::semaphore &added)
         {
-            added.wait();
-            bool worked = false;
+            while (true)
             {
-                auto locked = queue.write_lock();
-                while (!locked->empty())
+                added.wait();
+                bool worked = false;
                 {
-                    auto [handler, handle] = locked->pop_front_element();
-                    handler(handle);
-                    worked = true;
+                    auto locked = queue.write_lock();
+                    while (!locked->empty())
+                    {
+                        auto [handler, handle] = locked->pop_front_element();
+                        handler(handle);
+                        worked = true;
+                    }
                 }
+                if (worked)
+                    completed.signal();
             }
-            if (worked)
-                completed.signal();
         }
-    }
+    } // namespace
 
     lib::initgraph::task uacpi_task
     {

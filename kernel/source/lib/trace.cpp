@@ -2,7 +2,7 @@
 
 module;
 
-#include <cxxabi.h>
+#include <demangler.hpp>
 
 module lib;
 
@@ -12,6 +12,11 @@ import std;
 
 namespace lib
 {
+    namespace
+    {
+        char demangle_buffer[4096];
+    } // namespace
+
     void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip)
     {
         if (fp == 0 || fp & 7)
@@ -33,22 +38,26 @@ namespace lib
             bool is_empty = !ret.has_value();
 
             std::string_view str { "unknown" };
-            char *ptr = nullptr;
-
             if (!is_empty)
             {
-                int status = -1;
-                // ptr = abi::__cxa_demangle(namebuf.data(), nullptr, nullptr, &status);
-                if (!ptr || status != 0)
+                const bool ret = absl::debugging_internal::Demangle(
+                    namebuf.data(),
+                    demangle_buffer,
+                    sizeof(demangle_buffer)
+                );
+                if (ret)
                 {
-                    ptr = nullptr;
-                    str = std::string_view { namebuf.data(), std::strnlen(namebuf.data(), KSYM_NAME_LEN) };
+                    str = std::string_view {
+                        demangle_buffer,
+                        std::strnlen(demangle_buffer, sizeof(demangle_buffer))
+                    };
                 }
                 else
                 {
-                    str = ptr;
-                    if (str.ends_with("()"))
-                        str.remove_suffix(2);
+                    str = std::string_view {
+                        namebuf.data(),
+                        std::strnlen(namebuf.data(), KSYM_NAME_LEN)
+                    };
                 }
             }
 
@@ -57,9 +66,6 @@ namespace lib
             const bool is_last = !frame || !frame->ip;
             if (!is_last || where != "unknown")
                 lib::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
-
-            if (ptr)
-                lib::free(ptr);
 
             return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };
