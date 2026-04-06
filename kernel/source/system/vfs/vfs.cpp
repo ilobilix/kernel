@@ -308,7 +308,7 @@ namespace vfs
         return res->target;
     }
 
-    auto resolve(std::optional<path> parent, lib::path _path) -> lib::expect<resolve_res>
+    auto resolve(std::optional<path> parent, lib::path _path, bool automount) -> lib::expect<resolve_res>
     {
         if (!parent || _path.is_absolute())
             parent = get_root(false);
@@ -388,17 +388,20 @@ namespace vfs
             auto mnt = current.mnt;
 
             again:
-            for (const auto &child_mnt : dentry->child_mounts)
+            if (automount || !last)
             {
-                const auto locked = child_mnt.lock();
-                if (!locked || !locked->mounted_on.has_value() || !locked->root)
-                    continue;
-
-                if (mnt == locked->mounted_on->mnt)
+                for (const auto &child_mnt : dentry->child_mounts)
                 {
-                    mnt = locked;
-                    dentry = locked->root;
-                    goto again;
+                    const auto locked = child_mnt.lock();
+                    if (!locked || !locked->mounted_on.has_value() || !locked->root)
+                        continue;
+
+                    if (mnt == locked->mounted_on->mnt)
+                    {
+                        mnt = locked;
+                        dentry = locked->root;
+                        goto again;
+                    }
                 }
             }
 
@@ -426,7 +429,7 @@ namespace vfs
         return std::unexpected { lib::err::not_found };
     }
 
-    auto reduce(path parent, path src, std::size_t symlink_depth) -> lib::expect<path>
+    auto reduce(path parent, path src, bool automount, std::size_t symlink_depth) -> lib::expect<path>
     {
         const auto is_symlink = [&src]
         {
@@ -442,7 +445,7 @@ namespace vfs
             if (!is_symlink())
                 return src;
 
-            const auto ret = resolve(parent, src.dentry->symlinked_to);
+            const auto ret = resolve(parent, src.dentry->symlinked_to, automount);
             if (!ret || ret->target.dentry == src.dentry)
                 return std::unexpected { lib::err::invalid_symlink };
 

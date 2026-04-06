@@ -84,4 +84,46 @@ export
         enum time : std::uint8_t { access = (1 << 0), modify = (1 << 1), status = (1 << 2) };
         void update_time(std::uint8_t flags);
     };
+
+    struct statx_timestamp
+    {
+        std::int64_t tv_sec;
+        std::uint32_t tv_nsec;
+        std::int32_t __reserved;
+    };
+
+    struct statx
+    {
+        std::uint32_t stx_mask;
+        std::uint32_t stx_blksize;
+        std::uint64_t stx_attributes;
+        std::uint32_t stx_nlink;
+        std::uint32_t stx_uid;
+        std::uint32_t stx_gid;
+        std::uint16_t stx_mode;
+        std::uint16_t __spare0[1];
+        std::uint64_t stx_ino;
+        std::uint64_t stx_size;
+        std::uint64_t stx_blocks;
+        std::uint64_t stx_attributes_mask;
+        statx_timestamp stx_atime;
+        statx_timestamp stx_btime;
+        statx_timestamp stx_ctime;
+        statx_timestamp stx_mtime;
+        std::uint32_t stx_rdev_major;
+        std::uint32_t stx_rdev_minor;
+        std::uint32_t stx_dev_major;
+        std::uint32_t stx_dev_minor;
+        std::uint64_t stx_mnt_id;
+        std::uint32_t stx_dio_mem_align;
+        std::uint32_t stx_dio_offset_align;
+        std::uint64_t stx_subvol;
+        std::uint32_t stx_atomic_write_unit_min;
+        std::uint32_t stx_atomic_write_unit_max;
+        std::uint32_t stx_atomic_write_segments_max;
+        std::uint32_t stx_dio_read_offset_align;
+        std::uint32_t stx_atomic_write_unit_max_opt;
+        std::uint32_t __spare2[1];
+        std::uint64_t __spare3[8];
+    };
 } // export

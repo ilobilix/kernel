@@ -78,7 +78,10 @@ export namespace vfs
         at_symlink_follow = 0x400,
         at_eaccess = 0x200,
         at_no_automount = 0x800,
-        at_empty_path = 0x1000
+        at_empty_path = 0x1000,
+        at_statx_force_sync = 0x2000,
+        at_statx_sync_type = 0x6000,
+        at_statx_dont_sync = 0x4000
     };
 
     enum accchecks : int
@@ -560,8 +563,8 @@ export namespace vfs
     std::string pathname_from(path path);
 
     auto path_for(lib::path _path) -> lib::expect<path>;
-    auto resolve(std::optional<path> parent, lib::path path) -> lib::expect<resolve_res>;
-    auto reduce(path parent, path src, std::size_t symlink_depth = symloop_max) -> lib::expect<path>;
+    auto resolve(std::optional<path> parent, lib::path path, bool automount = true) -> lib::expect<resolve_res>;
+    auto reduce(path parent, path src, bool automount = true, std::size_t symlink_depth = symloop_max) -> lib::expect<path>;
 
     auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;

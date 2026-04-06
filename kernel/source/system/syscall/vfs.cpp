@@ -7,6 +7,7 @@ import system.memory.virt;
 import system.chrono;
 import system.vfs;
 import system.vfs.pipe;
+import system.vfs.dev;
 import magic_enum;
 import arch;
 import lib;
@@ -43,13 +44,16 @@ namespace syscall::vfs
             return fd->file->path;
         }
 
-        std::optional<resolve_res> resolve_from(sched::process *proc, int dirfd, lib::path_view path)
+        std::optional<resolve_res> resolve_from(
+            sched::process *proc, int dirfd,
+            lib::path_view path, bool automount = true
+        )
         {
             auto parent = get_parent(proc, dirfd, path);
             if (!parent.has_value())
                 return std::nullopt;
 
-            auto res = resolve(std::move(parent), path);
+            auto res = resolve(std::move(parent), path, automount);
             if (!res.has_value())
                 return (errno = lib::map_error(res.error()), std::nullopt);
 
@@ -79,25 +83,39 @@ namespace syscall::vfs
             return path;
         }
 
-        std::optional<path> get_target(sched::process *proc, int dirfd, const char __user *pathname, bool follow_links, bool empty_path)
+        std::optional<path> get_target(
+            sched::process *proc, int dirfd, const char __user *pathname,
+            bool follow_links, bool empty_path, bool automount)
         {
             if (empty_path)
             {
-                if (dirfd == at_fdcwd)
-                    return proc->cwd;
+                bool use_dirfd = (pathname == nullptr);
+                if (!use_dirfd)
+                {
+                    const auto pathname_len = lib::strnlen_user(pathname, 1);
+                    if (pathname_len < 0)
+                        return (errno = EFAULT, std::nullopt);
+                    use_dirfd = (pathname_len == 0);
+                }
 
-                auto fd = get_fd(proc, dirfd);
-                if (fd == nullptr)
-                    return std::nullopt;
+                if (use_dirfd)
+                {
+                    if (dirfd == at_fdcwd)
+                        return proc->cwd;
 
-                return fd->file->path;
+                    auto fd = get_fd(proc, dirfd);
+                    if (fd == nullptr)
+                        return std::nullopt;
+
+                    return fd->file->path;
+                }
             }
 
             auto val = get_path(pathname);
             if (!val.has_value())
                 return std::nullopt;
 
-            auto res = resolve_from(proc, dirfd, std::move(*val));
+            auto res = resolve_from(proc, dirfd, std::move(*val), automount);
             if (!res.has_value())
                 return std::nullopt;
 
@@ -106,7 +124,7 @@ namespace syscall::vfs
 
             if (follow_links)
             {
-                auto reduced = reduce(std::move(res->parent), std::move(target));
+                auto reduced = reduce(std::move(res->parent), std::move(target), automount);
                 if (!reduced.has_value())
                     return (errno = lib::map_error(reduced.error()), std::nullopt);
                 target = std::move(*reduced);
@@ -738,10 +756,14 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
+        if (flags & ~(at_symlink_nofollow | at_no_automount | at_empty_path))
+            return (errno = EINVAL, -1);
+
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
+        const bool automount = true; // (flags & at_no_automount) == 0;
 
-        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path);
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, automount);
         if (!target.has_value())
             return -1;
 
@@ -752,17 +774,94 @@ namespace syscall::vfs
 
     int stat(const char __user *pathname, struct stat __user *statbuf)
     {
-        return fstatat(at_fdcwd, pathname, statbuf, 0);
+        return fstatat(at_fdcwd, pathname, statbuf, at_no_automount);
     }
 
     int fstat(int fd, struct stat __user *statbuf)
     {
-        return fstatat(fd, nullptr, statbuf, at_empty_path);
+        return fstatat(fd, nullptr, statbuf, at_empty_path | at_no_automount);
     }
 
     int lstat(const char __user *pathname, struct stat __user *statbuf)
     {
-        return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow);
+        return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow | at_no_automount);
+    }
+
+    int statx(int dirfd, const char __user *pathname, int flags, unsigned int mask, struct statx __user *statxbuf)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        constexpr auto valid_flags =
+            at_symlink_nofollow |
+            at_no_automount |
+            at_empty_path |
+            at_statx_sync_type;
+
+        if ((flags & ~valid_flags) != 0)
+            return (errno = EINVAL, -1);
+
+        const auto sync_mode = flags & at_statx_sync_type;
+        if (sync_mode == (at_statx_force_sync | at_statx_dont_sync))
+            return (errno = EINVAL, -1);
+
+        constexpr std::uint32_t statx_basic_stats = 0x000007FFu;
+        constexpr std::uint32_t statx_mnt_id = 0x00001000u;
+        constexpr std::uint32_t statx_reserved = 0x80000000u;
+
+        if (mask & statx_reserved)
+            return (errno = EINVAL, -1);
+
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
+        const bool automount = (flags & at_no_automount) == 0;
+
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, automount);
+        if (!target.has_value())
+            return -1;
+
+        struct stat val;
+        {
+            const std::unique_lock _ { target->dentry->inode->lock };
+            val = target->dentry->inode->stat;
+        }
+
+        constexpr auto to_statx_timestamp = [](const timespec &ts)
+        {
+            return statx_timestamp {
+                .tv_sec = static_cast<std::int64_t>(ts.tv_sec),
+                .tv_nsec = static_cast<std::uint32_t>(ts.tv_nsec),
+                .__reserved = 0
+            };
+        };
+
+        struct statx ret { };
+        ret.stx_mask = statx_basic_stats;
+        ret.stx_blksize = static_cast<std::uint32_t>(val.st_blksize);
+        ret.stx_nlink = static_cast<std::uint32_t>(val.st_nlink);
+        ret.stx_uid = static_cast<std::uint32_t>(val.st_uid);
+        ret.stx_gid = static_cast<std::uint32_t>(val.st_gid);
+        ret.stx_mode = static_cast<std::uint16_t>(val.st_mode);
+        ret.stx_ino = static_cast<std::uint64_t>(val.st_ino);
+        ret.stx_size = static_cast<std::uint64_t>(val.st_size);
+        ret.stx_blocks = static_cast<std::uint64_t>(val.st_blocks);
+        ret.stx_atime = to_statx_timestamp(val.st_atim);
+        ret.stx_ctime = to_statx_timestamp(val.st_ctim);
+        ret.stx_mtime = to_statx_timestamp(val.st_mtim);
+        ret.stx_rdev_major = dev::major(val.st_rdev);
+        ret.stx_rdev_minor = dev::minor(val.st_rdev);
+        ret.stx_dev_major = dev::major(val.st_dev);
+        ret.stx_dev_minor = dev::minor(val.st_dev);
+
+        if ((mask & statx_mnt_id) != 0 && target->mnt != nullptr)
+        {
+            ret.stx_mask |= statx_mnt_id;
+            ret.stx_mnt_id = target->mnt->fs.lock()->dev_id;
+        }
+
+        if (!lib::copy_to_user(statxbuf, &ret, sizeof(struct statx)))
+            return (errno = EFAULT, -1);
+
+        return 0;
     }
 
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
@@ -773,7 +872,7 @@ namespace syscall::vfs
         const bool empty_path = (flags & at_empty_path) != 0;
         const bool eaccess = (flags & at_eaccess) != 0;
 
-        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path);
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
             return -1;
 
@@ -896,7 +995,7 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        const auto target = get_target(proc, at_fdcwd, pathname, true, false);
+        const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
         if (!target.has_value())
             return -1;
 
@@ -911,7 +1010,7 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        const auto target = get_target(proc, fd, nullptr, true, true);
+        const auto target = get_target(proc, fd, nullptr, true, true, true);
         if (!target.has_value())
             return -1;
 
