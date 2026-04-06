@@ -31,6 +31,7 @@ export namespace lib
         no_such_device,
         invalid_device_or_address,
         invalid_mount,
+        invalid_path,
         invalid_symlink,
         invalid_flags,
         invalid_type,
@@ -93,6 +94,7 @@ export namespace lib
             case err::invalid_device_or_address:
                 return ENXIO;
             case err::invalid_mount:
+            case err::invalid_path:
             case err::invalid_symlink:
             case err::invalid_flags:
             case err::invalid_type:

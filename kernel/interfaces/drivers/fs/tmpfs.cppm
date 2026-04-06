@@ -23,11 +23,17 @@ export namespace fs::tmpfs
             return instance;
         }
 
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override;
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override;
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override;
+        lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) override;
 
-        lib::expect<std::size_t> getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> write(
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) override;
+
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override;
 
         lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override;
     };
@@ -36,12 +42,28 @@ export namespace fs::tmpfs
     {
         struct instance : vfs::filesystem::instance, std::enable_shared_from_this<instance>
         {
-            auto create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev) -> lib::expect<std::shared_ptr<vfs::inode>> override;
-            auto symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> lib::expect<std::shared_ptr<vfs::inode>> override;
-            auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> lib::expect<std::shared_ptr<vfs::inode>> override;
+            auto create(
+                std::shared_ptr<vfs::inode> &parent,
+                std::string_view name, mode_t mode, dev_t rdev
+            ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
+
+            auto symlink(
+                std::shared_ptr<vfs::inode> &parent,
+                std::string_view name, lib::path target
+            ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
+
+            auto link(
+                std::shared_ptr<vfs::inode> &parent,
+                std::string_view name, std::shared_ptr<vfs::inode> target
+            ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
+
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override;
 
-            auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override;
+            auto readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
+                -> lib::expect<lib::list<vfs::dir_entry>> override;
+
+            auto lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
+                -> lib::expect<std::optional<vfs::dir_entry>> override;
 
             auto write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;
             auto dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;

@@ -44,7 +44,7 @@ export namespace boot
     };
 
     [[gnu::used, gnu::section(".limine_requests")]]
-    volatile std::uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(5);
+    volatile std::uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(6);
 
     namespace requests
     {

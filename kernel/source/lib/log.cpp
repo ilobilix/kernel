@@ -23,7 +23,7 @@ namespace lib::log
         constinit std::atomic_uint64_t last_published = 0;
         constinit std::atomic_uint64_t last_consumed = 0;
 
-        constinit lib::spinlock_irq lock;
+        constinit lib::spinlock lock;
         constinit std::atomic_bool direct = true;
 
         constinit logger *loggers = nullptr;
@@ -612,7 +612,7 @@ namespace lib::log
 
             while (current)
             {
-                current->start();
+                current->lock();
                 bool first = true;
                 for (const auto seg : str | std::views::split('\n'))
                 {
@@ -621,7 +621,7 @@ namespace lib::log
                     first = false;
                     internal_print(seg);
                 }
-                current->stop();
+                current->unlock();
                 current = current->next;
             }
         }
@@ -645,6 +645,13 @@ namespace lib::log
     void force_unlock()
     {
         lock.unlock();
+
+        auto current = loggers;
+        while (current)
+        {
+            current->unlock();
+            current = current->next;
+        }
     }
 
     void wait_for_logs()

@@ -54,13 +54,13 @@ export namespace lib::log
     {
         void (*prints)(std::string_view str);
 
-        void (*start)();
-        void (*stop)();
+        void (*lock)();
+        void (*unlock)();
 
         logger *next;
 
-        constexpr logger(auto prints, auto start, auto stop)
-            : prints { prints }, start { start }, stop { stop }, next { nullptr } { }
+        constexpr logger(auto prints, auto lock, auto unlock)
+            : prints { prints }, lock { lock }, unlock { unlock }, next { nullptr } { }
     };
 
     void register_logger(logger *lg);

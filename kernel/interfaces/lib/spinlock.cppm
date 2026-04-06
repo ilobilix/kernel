@@ -6,8 +6,8 @@ import std;
 
 namespace lib::lock
 {
-    bool acquire_irq();
-    void release_irq(bool irq);
+    void acquire_irq();
+    void release_irq();
 
     void acquire_preempt();
     void release_preempt();
@@ -98,18 +98,15 @@ export namespace lib
     template<>
     class spinlock_base<lock_type::irq> : public spinlock_base<lock_type::none>
     {
-        private:
-        bool _interrupts;
-
         public:
         constexpr spinlock_base()
-            : spinlock_base<lock_type::none> { }, _interrupts { false } { }
+            : spinlock_base<lock_type::none> { } { }
 
         using spinlock_base<lock_type::none>::spinlock_base;
 
         void lock()
         {
-            _interrupts = lock::acquire_irq();
+            lock::acquire_irq();
             spinlock_base<lock_type::none>::lock();
         }
 
@@ -118,7 +115,7 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::release_irq(_interrupts);
+            lock::release_irq();
             return true;
         }
     };

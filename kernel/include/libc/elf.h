@@ -170,10 +170,18 @@ typedef struct
 #define ELF64_R_SYM(i) ((i) >> 32)
 #define ELF64_R_TYPE(i) ((i) & 0xffffffff)
 
+#define R_X86_64_NONE 0
 #define R_X86_64_64 1
+#define R_X86_64_COPY 5
 #define R_X86_64_GLOB_DAT 6
 #define R_X86_64_JUMP_SLOT 7
 #define R_X86_64_RELATIVE 8
+
+#define R_AARCH64_NONE 0
+#define R_AARCH64_COPY 1024
+#define R_AARCH64_GLOB_DAT 1025
+#define R_AARCH64_JUMP_SLOT 1026
+#define R_AARCH64_RELATIVE 1027
 
 #define AT_NULL 0
 #define AT_IGNORE 1

@@ -10,4 +10,6 @@ export namespace fs::devtmpfs
 {
     lib::initgraph::stage *registered_stage();
     lib::initgraph::stage *mounted_stage();
+
+    lib::expect<void> create(lib::path path, mode_t mode, dev_t rdev = 0);
 } // export namespace fs::devtmpfs
