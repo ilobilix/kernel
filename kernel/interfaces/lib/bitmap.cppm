@@ -32,7 +32,7 @@ export namespace lib
         constexpr bitmap(std::uint8_t *data, std::size_t count)
             : _data { data }, _count { count }, _initialised { true }, _allocated { false } { };
 
-        constexpr bitmap(std::size_t count)
+        bitmap(std::size_t count)
         {
             const auto size = div_roundup(count, 8u);
 
@@ -45,11 +45,50 @@ export namespace lib
             clear();
         }
 
-        bitmap(const bitmap &other) = delete;
-        bitmap &operator=(const bitmap &other) = delete;
+        bitmap(const bitmap &other)
+        {
+            const auto size = div_roundup(other._count, 8u);
 
-        constexpr bitmap(bitmap &&other) : bitmap { } { swap(*this, other); }
-        constexpr bitmap &operator=(bitmap &&other) { swap(*this, other); return *this; }
+            _data = new std::uint8_t[size]();
+            _count = other._count;
+            _allocated = true;
+
+            _initialised = true;
+
+            std::memcpy(_data, other._data, size);
+        }
+
+        bitmap &operator=(const bitmap &other)
+        {
+            if (this != &other)
+            {
+                const auto size = div_roundup(other._count, 8u);
+
+                if (_allocated)
+                    delete[] _data;
+
+                _data = new std::uint8_t[size]();
+                _count = other._count;
+                _allocated = true;
+
+                _initialised = true;
+
+                std::memcpy(_data, other._data, size);
+            }
+            return *this;
+        }
+
+        constexpr bitmap(bitmap &&other) : bitmap { }
+        {
+            swap(*this, other);
+        }
+
+        constexpr bitmap &operator=(bitmap &&other)
+        {
+            if (this != &other)
+                swap(*this, other);
+            return *this;
+        }
 
         constexpr ~bitmap()
         {
@@ -96,7 +135,7 @@ export namespace lib
             return bit(*this, index);
         }
 
-        constexpr bool get(std::size_t index)
+        constexpr bool get(std::size_t index) const
         {
             lib::bug_on(!_initialised);
             return _data[index / 8] & (1 << (index % 8));
@@ -118,6 +157,16 @@ export namespace lib
         constexpr std::size_t length() const
         {
             return _count;
+        }
+
+        constexpr bool empty() const
+        {
+            for (std::size_t i = 0; i < div_roundup(_count, 8); i++)
+            {
+                if (_data[i] != 0)
+                    return false;
+            }
+            return true;
         }
     };
 } // export namespace lib

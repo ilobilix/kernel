@@ -535,6 +535,29 @@ export namespace vfs
         }
     };
 
+    struct fdtable
+    {
+        lib::locker<
+            lib::map::flat_hash<
+                int,
+                std::shared_ptr<vfs::filedesc>
+            >, lib::rwspinlock
+        > fds;
+        int next_fd;
+
+        std::shared_ptr<vfs::filedesc> get(int fd);
+        bool close(int fd);
+
+        int alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force);
+        int dup(int oldfd, int newfd, bool closexec, bool force);
+
+        void close_on_exec();
+
+        fdtable() = default;
+        fdtable(fdtable &other);
+        ~fdtable();
+    };
+
     struct resolve_res
     {
         path parent;
