@@ -73,47 +73,49 @@ namespace sched::arch
         );
     }
 
-    void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
+    void initialise(process *proc, thread *thrd, std::uintptr_t ip, std::uintptr_t arg, bool cloning)
     {
         lib::unused(proc);
 
-        auto &regs = thread->regs;
-        regs.rflags = 0x202;
-        regs.rip = ip;
-        regs.rdi = arg;
+        if (!cloning)
+        {
+            auto &regs = thrd->regs;
+            regs.rip = ip;
+            regs.rdi = arg;
+            regs.rsp = thrd->kstack_top;
+
+            regs.rflags = 0x202;
+            regs.cs = gdt::segment::code;
+            regs.ss = gdt::segment::data;
+        }
 
         const auto &fpu = cpu::features::get_fpu();
-        thread->fpu = lib::allocz<std::byte *>(fpu.size);
-        thread->fpu_size = fpu.size;
+        thrd->fpu = lib::allocz<std::byte *>(fpu.size);
+        thrd->fpu_size = fpu.size;
 
-        regs.cs = gdt::segment::code;
-        regs.ss = gdt::segment::data;
-
-        regs.rsp = thread->kstack_top;
-
-        if (thread->is_user)
+        if (thrd->is_user)
         {
-            fpu.restore(thread->fpu);
+            if (!cloning)
+            {
+                fpu.restore(thrd->fpu);
 
-            constexpr std::uint16_t default_fcw = 0b1100111111;
-            constexpr std::uint32_t default_mxcsr = 0b1111110000000;
+                constexpr std::uint16_t default_fcw = 0b1100111111;
+                constexpr std::uint32_t default_mxcsr = 0b1111110000000;
 
-            asm volatile ("fldcw %0" :: "m"(default_fcw) : "memory");
-            asm volatile ("ldmxcsr %0" :: "m"(default_mxcsr) : "memory");
-
-            fpu.save(thread->fpu);
+                asm volatile ("fldcw %0" :: "m"(default_fcw) : "memory");
+                asm volatile ("ldmxcsr %0" :: "m"(default_mxcsr) : "memory");
+            }
+            fpu.save(thrd->fpu);
         }
     }
 
     [[noreturn]]
     void enter_user(thread *thread, std::uintptr_t ip, std::uintptr_t stack)
     {
-        lib::unused(thread);
         ::arch::int_switch(false);
         thread->in_trampoline = false;
 
-        auto &tss = gdt::tss::self();
-        tss.rsp[0] = thread->kstack_top;
+        gdt::tss::self().rsp[0] = thread->kstack_top;
         cpu::gs::write_kernel(thread->gs_base);
 
         sched_enter_user(ip, stack);
@@ -141,9 +143,7 @@ namespace sched::arch
 
         if (!thread->in_trampoline && thread->is_user)
         {
-            auto &tss = gdt::tss::self();
-            tss.rsp[0] = thread->kstack_top;
-
+            gdt::tss::self().rsp[0] = thread->kstack_top;
             cpu::gs::write_kernel(thread->gs_base);
             cpu::fs::write(thread->fs_base);
             cpu::features::get_fpu().restore(thread->fpu);

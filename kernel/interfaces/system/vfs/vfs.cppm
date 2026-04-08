@@ -401,7 +401,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->open(shared_from_this(), flags);
         }
 
@@ -410,7 +409,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->close(shared_from_this());
         }
 
@@ -421,7 +419,6 @@ export namespace vfs
                 return std::unexpected { ops.error() };
 
             const std::unique_lock _ { lock };
-            const std::unique_lock __ { path.dentry->inode->lock };
 
             const auto ret = ops->get()->read(shared_from_this(), offset, buffer);
             if (ret.has_value())
@@ -436,10 +433,6 @@ export namespace vfs
                 return std::unexpected { ops.error() };
 
             const std::unique_lock _ { lock };
-            const std::unique_lock __ { path.dentry->inode->lock };
-
-            if (flags & o_append)
-                offset = path.dentry->inode->stat.st_size;
 
             const auto ret = ops->get()->write(shared_from_this(), offset, buffer);
             if (ret.has_value())
@@ -452,7 +445,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->read(shared_from_this(), offset, buffer);
         }
 
@@ -461,7 +453,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->write(shared_from_this(), offset, buffer);
         }
 
@@ -470,7 +461,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->trunc(shared_from_this(), size);
         }
 
@@ -481,7 +471,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->poll(shared_from_this(), pt);
         }
 
@@ -490,7 +479,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->ioctl(shared_from_this(), request, argp);
         }
 
@@ -499,7 +487,6 @@ export namespace vfs
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            const std::unique_lock _ { path.dentry->inode->lock };
             return ops->get()->map(shared_from_this());
         }
 

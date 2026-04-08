@@ -22,6 +22,7 @@ namespace lib::log
 
         constinit std::atomic_uint64_t last_published = 0;
         constinit std::atomic_uint64_t last_consumed = 0;
+        constinit std::uint64_t next_seq = 0;
 
         constinit lib::spinlock lock;
         constinit std::atomic_bool direct = true;
@@ -625,6 +626,40 @@ namespace lib::log
                 current = current->next;
             }
         }
+
+        void print(ring_type::info &info)
+        {
+            if (info.lvl != level::none)
+            {
+                auto nanos = info.time;
+                const auto [h, m, s] = lib::time_from(nanos / 1'000'000'000);
+                nanos %= 1'000'000'000;
+                nanos /= 1'000;
+
+                std::array<char, len_time> time { };
+                lib::bug_on(fmt::format_to_n(
+                    time.data(), time.size(), "[{:02}:{:02}:{:02}.{:06}] ",
+                    h, m, s, nanos
+                ).size != len_time);
+                std::strncpy(data.data(), time.data(), len_time);
+
+                const std::string_view view {
+                    data.data(), info.len + len_time
+                };
+                lock.lock();
+                prints(view);
+                lock.unlock();
+            }
+            else
+            {
+                const std::string_view view {
+                    data.data() + len_time, info.len
+                };
+                lock.lock();
+                prints(view);
+                lock.unlock();
+            }
+        }
     } // namespace
 
     void register_logger(logger *lg)
@@ -642,6 +677,7 @@ namespace lib::log
         direct.store(_direct, std::memory_order_release);
     }
 
+    // called from panic
     void force_unlock()
     {
         lock.unlock();
@@ -651,6 +687,18 @@ namespace lib::log
         {
             current->unlock();
             current = current->next;
+        }
+
+        while (true)
+        {
+            auto res = buffer.read(next_seq, std::span {
+                data.data() + len_time, data.size() - len_time
+            });
+            if (!res.has_value())
+                break;
+
+            print(*res);
+            next_seq = res->seq + 1;
         }
     }
 
@@ -734,7 +782,6 @@ namespace lib::log
     {
         set_direct_print(false);
 
-        std::uint64_t next_seq = 0;
         while (true)
         {
             auto res = buffer.read(next_seq, std::span {
@@ -748,41 +795,12 @@ namespace lib::log
                     available.wait();
                     continue;
                 }
-                next_seq++;
+                next_seq = buffer.first_seq();
                 last_consumed.store(next_seq - 1, std::memory_order_release);
                 continue;
             }
 
-            if (res->lvl != level::none)
-            {
-                auto nanos = res->time;
-                const auto [h, m, s] = lib::time_from(nanos / 1'000'000'000);
-                nanos %= 1'000'000'000;
-                nanos /= 1'000;
-
-                std::array<char, len_time> time { };
-                lib::bug_on(fmt::format_to_n(
-                    time.data(), time.size(), "[{:02}:{:02}:{:02}.{:06}] ",
-                    h, m, s, nanos
-                ).size != len_time);
-                std::strncpy(data.data(), time.data(), len_time);
-
-                const std::string_view view {
-                    data.data(), res->len + len_time
-                };
-                lock.lock();
-                prints(view);
-                lock.unlock();
-            }
-            else
-            {
-                const std::string_view view {
-                    data.data() + len_time, res->len
-                };
-                lock.lock();
-                prints(view);
-                lock.unlock();
-            }
+            print(*res);
 
             next_seq = res->seq + 1;
             last_consumed.store(res->seq, std::memory_order_release);
@@ -798,7 +816,9 @@ namespace lib::log
             sched::pid0_created_stage()
         },
         [] {
+#if !ILOBILIX_SYSCALL_LOG
             sched::spawn(reinterpret_cast<std::uintptr_t>(consumer));
+#endif
         }
     };
 

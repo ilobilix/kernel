@@ -2,11 +2,19 @@
 
 export module system.syscall.vfs;
 
+import system.scheduler;
+import system.vfs;
 import lib;
 import std;
 
 export namespace syscall::vfs
 {
+    using namespace ::vfs;
+    std::optional<path> get_target(
+        sched::process *proc, int dirfd, const char __user *pathname,
+        bool follow_links, bool empty_path, bool automount
+    );
+
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode);
     int open(const char __user *pathname, int flags, mode_t mode);
     int creat(const char __user *pathname, mode_t mode);
@@ -37,6 +45,18 @@ export namespace syscall::vfs
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags);
     int faccessat(int dirfd, const char __user *pathname, int mode);
     int access(const char __user *pathname, int mode);
+
+    int fchmodat(int dirfd, const char __user *pathname, mode_t mode, int flags);
+    int chmod(const char __user *pathname, mode_t mode);
+    int fchmod(int fd, mode_t mode);
+
+    int fchownat(int dirfd, const char __user *pathname, uid_t owner, gid_t group, int flags);
+    int chown(const char __user *pathname, uid_t owner, gid_t group);
+    int fchown(int fd, uid_t owner, gid_t group);
+    int lchown(const char __user *pathname, uid_t owner, gid_t group);
+
+    std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz);
+    std::ssize_t readlink(const char __user *pathname, char __user *buf, std::size_t bufsiz);
 
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);

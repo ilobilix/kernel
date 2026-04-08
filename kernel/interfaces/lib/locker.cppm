@@ -69,6 +69,8 @@ namespace lib::detail
         }
 
         [[nodiscard]] ret_type &value() const & { return *_ptr; }
+        [[nodiscard]] ret_type *get() const & { return _ptr; }
+
         [[nodiscard]] ret_type &operator*() const & { return *_ptr; }
         [[nodiscard]] ret_type *operator->() const & { return _ptr; }
 

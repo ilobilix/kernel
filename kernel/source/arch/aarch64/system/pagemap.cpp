@@ -73,8 +73,10 @@ namespace vmm
     }
 
     page_size pagemap::fixpsize(page_size psize) { return psize; }
-    void pagemap::invalidate(std::uintptr_t vaddr)
+    void pagemap::invalidate(std::uintptr_t vaddr, std::size_t length)
     {
+        // TODO
+        lib::unused(length);
         cpu::invlpg(vaddr);
     }
 

@@ -12,7 +12,19 @@ export namespace lib
     struct user_string
     {
         std::string str;
-        explicit user_string(const char __user *ustr);
+
+        static std::optional<std::string> get(
+            const char __user *ustr, std::size_t max_length = 4096
+        );
+
+        explicit user_string(const char __user *ustr)
+        {
+            auto ret = get(ustr);
+            if (ret.has_value())
+                str = std::move(*ret);
+            else
+                str = "";
+        }
     };
 
     template<std::size_t N>

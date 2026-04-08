@@ -61,9 +61,15 @@ namespace vfs::pipe
             lib::bug_on(pdata->readers == 0 && pdata->writers == 0);
 
             if (is_read(file->flags))
+            {
                 pdata->readers--;
+                pdata->write_wait.signal_all();
+            }
             else if (is_write(file->flags))
+            {
                 pdata->writers--;
+                pdata->read_wait.signal_all();
+            }
 
             file->private_data.reset();
             return { };
@@ -141,15 +147,23 @@ namespace vfs::pipe
                 std::size_t chunk_written = 0;
                 while (chunk_written < current_chunk)
                 {
-                    const auto pushed = pdata->buffer.push({
-                        const_cast<const char *>(buf.data()) + chunk_written,
-                        current_chunk - chunk_written
-                    }).first;
+                    const auto remaining = current_chunk - chunk_written;
+                    const auto avail = pdata->buffer.available();
+                    const auto to_push = std::min(remaining, avail);
 
-                    if (pushed > 0)
+                    if (to_push > 0)
                     {
-                        chunk_written += pushed;
-                        pdata->read_wait.signal_all();
+                        const auto [success, _] = pdata->buffer.push({
+                            const_cast<const char *>(buf.data()) + chunk_written,
+                            to_push
+                        });
+
+                        if (success)
+                        {
+                            chunk_written += to_push;
+                            pdata->read_wait.signal_all();
+                            continue;
+                        }
                         continue;
                     }
 
@@ -157,6 +171,7 @@ namespace vfs::pipe
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
+                        // TODO: SIGPIPE
                         return std::unexpected { lib::err::no_readers };
                     }
 

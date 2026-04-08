@@ -584,7 +584,7 @@ namespace vmm
                 const auto unmap_vaddr = overlap_start * npsize;
                 const auto unmap_length = (overlap_end - overlap_start) * npsize;
 
-                if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
+                if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
                     return std::unexpected { ret.error() };
 
                 wlocked->remove(ent);
@@ -692,7 +692,7 @@ namespace vmm
             const auto unmap_vaddr = overlap_start * npsize;
             const auto unmap_length = (overlap_end - overlap_start) * npsize;
 
-            if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
+            if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
                 return std::unexpected { ret.error() };
 
             wlocked->remove(ent);
@@ -856,7 +856,7 @@ namespace vmm
             startp = overlap_end;
         }
 
-        if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot)); !ret)
+        if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot), psize); !ret)
             return std::unexpected { ret.error() };
 
         return { };
@@ -934,6 +934,88 @@ namespace vmm
 
         const auto rlocked = tree.read_lock();
         return find_free_region_internal(rlocked, length);
+    }
+
+    lib::expect<std::shared_ptr<vmspace>> vmspace::fork(std::shared_ptr<vmm::pagemap> cpmap)
+    {
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+
+        auto ret = std::make_shared<vmspace>();
+        ret->pmap = cpmap;
+        ret->current_brk = current_brk;
+
+        auto wlocked = tree.write_lock();
+        auto cwlocked = ret->tree.write_lock();
+
+        for (const auto &ent : *wlocked)
+        {
+            if (ent.flags & flag::shared)
+            {
+                cwlocked->insert(new entry {
+                    .startp = ent.startp,
+                    .endp = ent.endp,
+                    .obj = ent.obj,
+                    .offp = ent.offp,
+                    .amap = nullptr,
+                    .anon_idx = 0,
+                    .prot = ent.prot,
+                    .max_prot = ent.max_prot,
+                    .flags = ent.flags,
+                    .hook = { },
+                    .interval = { }
+                });
+                continue;
+            }
+
+            anon_map::ptr camap;
+            if (ent.amap)
+            {
+                camap = new anon_map { };
+                camap->nslots = ent.amap->nslots;
+                camap->slots = std::make_unique<anon::ptr[]>(camap->nslots);
+
+                const std::unique_lock _ { ent.amap->lock };
+                for (std::size_t i = 0; i < ent.amap->nslots; i++)
+                {
+                    auto &slot = ent.amap->slots[i];
+                    if (!slot)
+                        continue;
+
+                    auto pg = slot->pg;
+                    pg->ref();
+                    camap->slots[i] = new anon {
+                        .pg = pg,
+                        .hook = { }
+                    };
+                }
+            }
+
+            cwlocked->insert(new entry {
+                .startp = ent.startp,
+                .endp = ent.endp,
+                .obj = ent.obj,
+                .offp = ent.offp,
+                .amap = camap,
+                .anon_idx = ent.anon_idx,
+                .prot = ent.prot,
+                .max_prot = ent.max_prot,
+                .flags = ent.flags,
+                .hook = { },
+                .interval = { }
+            });
+
+            if (ent.prot & prot::write)
+            {
+                const auto vaddr = ent.startp * npsize;
+                const auto length = (ent.endp - ent.startp) * npsize;
+
+                const auto pflags = prot_to_pflags(ent.prot & ~prot::write);
+                lib::unused(pmap->protect(vaddr, length, pflags, psize));
+            }
+        }
+
+        return ret;
     }
 
     anon::~anon()
@@ -1045,12 +1127,9 @@ namespace vmm
                 npsize
             );
 
-            if (opg->unref())
-                pmm::free(paddr_from(opg), num_alloc_pages);
-
             slot = pg->anon_ptr = new anon {
                 .pg = pg,
-                .hook { }
+                .hook = { }
             };
 
             return true;
@@ -1061,19 +1140,16 @@ namespace vmm
             if (flags & flag::private_)
             {
                 lib::bug_on(!amap);
-                std::unique_lock _ { amap->lock };
+                const std::unique_lock _ { amap->lock };
 
                 if (auto &slot = amap->slots[anon_idx + offp])
                 {
                     auto opg = slot->pg;
-                    if (state.is_write)
+                    if (state.is_write && opg->refcount.load(std::memory_order_acquire) != 1)
                     {
-                        if (opg->refcount.load(std::memory_order_acquire) != 1)
-                        {
-                            if (!copy_old(opg, slot, false))
-                                return false;
-                            goto end;
-                        }
+                        if (!copy_old(opg, slot, false))
+                            return false;
+                        goto end;
                     }
 
                     opg->ref();
@@ -1092,7 +1168,7 @@ namespace vmm
 
                     amap->slots[anon_idx + offp] = pg->anon_ptr = new anon {
                         .pg = pg,
-                        .hook { }
+                        .hook = { }
                     };
                 }
             }
@@ -1116,7 +1192,7 @@ namespace vmm
             if (flags & flag::private_)
             {
                 lib::bug_on(!amap);
-                std::unique_lock alock { amap->lock };
+                const std::unique_lock alock { amap->lock };
 
                 if (!state.is_present)
                 {
@@ -1142,7 +1218,11 @@ namespace vmm
                     else
                     {
                         if (!copy_old(opg, amap->slots[anon_idx + offp], true))
+                        {
+                            if (opg->unref())
+                                pmm::free(paddr_from(opg), num_alloc_pages);
                             return false;
+                        }
                     }
                 }
                 else // write
@@ -1169,7 +1249,11 @@ namespace vmm
                     }
 
                     if (!copy_old(opg, amap->slots[anon_idx + offp], true))
+                    {
+                        if (opg->unref())
+                            pmm::free(paddr_from(opg), num_alloc_pages);
                         return false;
+                    }
                 }
             }
             else // shared
@@ -1200,6 +1284,9 @@ namespace vmm
 
             auto &entry = ret.front();
 
+            if (entry.flags != flags)
+                goto fail;
+
             if (state.is_write && !(entry.prot & prot::write))
                 goto fail;
             if (state.is_exec && !(entry.prot & prot::exec))
@@ -1213,9 +1300,13 @@ namespace vmm
                 goto fail;
         }
 
-        // TODO: tlb shootdown if (state.is_present && state.is_write)
-        if (vmspace->pmap->map(aligned, paddr, npsize, prot_to_pflags(prot)))
+        if ((flags & flag::private_) && (prot & prot::write) && !state.is_write)
+            prot &= ~prot::write;
+
+        if (vmspace->pmap->map(aligned, paddr, npsize, prot_to_pflags(prot), psize))
         {
+            if (state.is_present && state.is_write)
+                vmspace->pmap->invalidate(aligned, npsize);
             check_pinned();
             return true;
         }

@@ -34,9 +34,9 @@ namespace sched::arch
         lib::unused(cpu);
     }
 
-    void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
+    void initialise(process *proc, thread *thrd, std::uintptr_t ip, std::uintptr_t arg, bool cloning)
     {
-        lib::unused(proc, thread, ip, arg);
+        lib::unused(proc, thrd, ip, arg, cloning);
     }
 
     void deinitialise(process *proc, thread *thread)

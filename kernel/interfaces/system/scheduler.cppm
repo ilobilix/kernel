@@ -62,6 +62,8 @@ export namespace sched
         std::uintptr_t kstack_top;
         std::ssize_t preemption = 0;
 
+        std::uintptr_t og_ustack_top;
+
         pid_t tid;
         process *parent;
 
@@ -71,6 +73,7 @@ export namespace sched
         bool can_migrate = true;
 
         cpu::registers regs;
+        cpu::registers *saved_regs;
 
         nice_t priority;
 
@@ -78,7 +81,7 @@ export namespace sched
         std::uintptr_t clear_child_tid = 0;
 
         std::uint64_t vruntime = 0;
-        std::uint64_t schedule_time;
+        std::uint64_t schedule_time = 0;
 
         lib::spinlock sleep_lock;
         bool sleep_ints;
@@ -101,6 +104,8 @@ export namespace sched
         lib::intrusive_list_hook<thread> list_hook;
         lib::intrusive_list_hook<thread_base> semaphore_list_hook;
 
+        void kill();
+
         [[noreturn]]
         void enter_user(std::uintptr_t ip, std::uintptr_t stack);
 
@@ -108,7 +113,10 @@ export namespace sched
         void cancel_sleep();
         bool wake_up(std::size_t reason);
 
-        static thread *create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user);
+        static thread *create(
+            process *parent, std::uintptr_t ip, std::uintptr_t arg,
+            bool is_user, bool cloning = false
+        );
 
         thread() = default;
         ~thread();
@@ -132,13 +140,16 @@ export namespace sched
 
         std::shared_ptr<vmm::vmspace> vmspace;
 
-        vfs::path root;
-        vfs::path cwd;
-        mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
-
-        class fdtable
+        struct vfs_state
         {
-            private:
+            vfs::path root;
+            vfs::path cwd;
+            mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
+        };
+        std::shared_ptr<vfs_state> vfs;
+
+        struct fdtable
+        {
             lib::locker<
                 lib::map::flat_hash<
                     int, std::shared_ptr<vfs::filedesc>
@@ -146,15 +157,26 @@ export namespace sched
             > fds;
             int next_fd = 0;
 
-            public:
             bool close(int fd);
             std::shared_ptr<vfs::filedesc> get(int fd);
 
             int allocate_fd(std::shared_ptr<vfs::filedesc> desc, int fd, bool force);
             int dup(int oldfd, int newfd, bool closexec, bool force);
-        } fdt;
+
+            void close_on_exec();
+
+            fdtable() = default;
+            fdtable(fdtable &other);
+            ~fdtable();
+        };
+        std::shared_ptr<fdtable> fdt;
 
         bool has_execved = false;
+        bool exited = false;
+        bool reaped = false;
+        int exit_status = 0;
+
+        lib::semaphore waiter;
 
         lib::spinlock lock;
 
@@ -162,10 +184,9 @@ export namespace sched
         lib::map::flat_hash<pid_t, process *> children;
         lib::map::flat_hash<pid_t, thread *> threads;
 
-        std::atomic<pid_t> next_tid = 1;
         std::uintptr_t next_stack_top = vmm::vmspace::vspace_top;
 
-        static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
+        std::uintptr_t map_stack();
 
         process() = default;
         ~process();
@@ -201,6 +222,9 @@ export namespace sched
     bool is_initialised();
     process *get_pid0();
 
+    pid_t alloc_pid(process *proc);
+    pid_t alloc_tid();
+
     process *proc_for(pid_t pid);
 
     group *group_for(pid_t pgid);
@@ -217,10 +241,15 @@ export namespace sched
     std::size_t sleep(std::size_t ms = 0);
     std::size_t yield();
 
+    [[noreturn]]
+    void exit(int status);
+
     std::size_t allocate_cpu();
     void enqueue(thread *thread, std::size_t cpu_idx);
 
     thread *spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t priority = default_prio);
+
+    process *create_pid1(std::shared_ptr<vmm::pagemap> pmap);
 
     void enable();
     void disable();

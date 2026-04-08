@@ -54,14 +54,11 @@ namespace vfs
         lib::bug_on(!path.dentry || !path.dentry->inode);
 
         auto &inode = path.dentry->inode;
-        dev_t dev, rdev; mode_t mode;
-        {
-            const std::unique_lock _ { inode->lock };
-            auto &stat = inode->stat;
-            dev = stat.st_dev;
-            rdev = stat.st_rdev;
-            mode = stat.st_mode;
-        }
+        const auto &stat = inode->stat;
+
+        const auto dev = stat.st_dev;
+        const auto rdev = stat.st_rdev;
+        const auto mode = stat.st_mode;
 
         auto ops = dev::get_ops(dev, rdev, mode);
         if (!ops.has_value())
@@ -224,7 +221,7 @@ namespace vfs
     path get_root(bool absolute)
     {
         if (!absolute)
-            return sched::this_thread()->parent->root;
+            return sched::this_thread()->parent->vfs->root;
 
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
         while (!ret.dentry->child_mounts.empty())
@@ -262,7 +259,7 @@ namespace vfs
     std::shared_ptr<dentry> dentry::root(bool absolute)
     {
         if (!absolute)
-            return sched::this_thread()->parent->root.dentry;
+            return sched::this_thread()->parent->vfs->root.dentry;
         return vfs::root;
     }
 
@@ -302,7 +299,7 @@ namespace vfs
 
     auto path_for(lib::path _path) -> lib::expect<path>
     {
-        auto res = resolve(sched::this_thread()->parent->root, _path);
+        auto res = resolve(sched::this_thread()->parent->vfs->root, _path);
         if (!res)
             return std::unexpected { res.error() };
         return res->target;
@@ -726,7 +723,7 @@ namespace vfs
             lib::bug_on(!mount("", "/", "tmpfs", 0));
 
             const auto pid0 = sched::get_pid0();
-            pid0->root = pid0->cwd = get_root(true);
+            pid0->vfs->root = pid0->vfs->cwd = get_root(true);
         }
     };
 } // namespace vfs

@@ -45,6 +45,7 @@ namespace fs::tmpfs
     )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
 
@@ -65,6 +66,13 @@ namespace fs::tmpfs
     )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
+
+        if (file->flags & vfs::o_append)
+        {
+            offset = static_cast<std::size_t>(inod->stat.st_size);
+            file->offset = offset;
+        }
 
         const auto size = buffer.size_bytes();
         const auto ret = inod->memory->write(offset, buffer.subspan(0, size));
@@ -82,6 +90,7 @@ namespace fs::tmpfs
     lib::expect<void> ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
         const auto current_size = static_cast<std::size_t>(inod->stat.st_size);
         if (size == current_size)

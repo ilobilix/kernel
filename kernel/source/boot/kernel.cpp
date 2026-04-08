@@ -33,7 +33,7 @@ void kthread()
             lib::panic("could not identify {} file format", path);
 
         auto pmap = std::make_shared<vmm::pagemap>();
-        auto proc = sched::process::create(nullptr, pmap);
+        auto proc = sched::create_pid1(std::move(pmap));
 
         proc->ruid = proc->euid = proc->suid = 1000;
         proc->rgid = proc->egid = proc->sgid = 1000;
@@ -48,9 +48,9 @@ void kthread()
         if (!tty->file->open(0))
             lib::panic("could not open {}", tty_path);
 
-        proc->fdt.allocate_fd(tty, 0, false);
-        proc->fdt.dup(0, 1, false, false);
-        proc->fdt.dup(0, 2, false, false);
+        proc->fdt->allocate_fd(tty, 0, false);
+        proc->fdt->dup(0, 1, false, false);
+        proc->fdt->dup(0, 2, false, false);
 
         thread = format->load({
             .pathname = path.data(),

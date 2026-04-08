@@ -9,10 +9,10 @@ syscall_entry:
     mov gs:[8], rsp
     mov rsp, gs:[16]
 
-    push 0x1B # ss
+    push 0x23 # ss
     push gs:[8] # rsp
     push r11 # rflags
-    push 0x23 # cs
+    push 0x2B # cs
     push rcx # rip
     push 0 # error_code
     push 0 # vector
@@ -26,8 +26,12 @@ syscall_entry:
 
     popall
 
-    add rsp, 56
-    mov rsp, gs:[8]
+    add rsp, 16
+
+    pop rcx
+    add rsp, 8
+    pop r11
+    pop rsp
 
     swapgs
     sysretq

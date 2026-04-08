@@ -5,6 +5,7 @@ module x86_64.system.syscall;
 import :arch;
 
 import x86_64.system.gdt;
+import system.scheduler;
 import system.syscall;
 import system.cpu.local;
 import system.cpu;
@@ -54,12 +55,20 @@ namespace x86_64::syscall
         [56] = { "clone", proc::clone },
         [57] = { "fork", proc::fork },
         [58] = { "vfork", proc::vfork },
+        [59] = { "execve", proc::execve },
+        [61] = { "wait4", proc::wait4 },
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl },
         [79] = { "getcwd", vfs::getcwd, [](std::uintptr_t val) { return val == 0; } },
         [80] = { "chdir", vfs::chdir },
         [81] = { "fchdir", vfs::fchdir },
         [85] = { "creat", vfs::creat },
+        [89] = { "readlink", vfs::readlink },
+        [90] = { "chmod", vfs::chmod },
+        [91] = { "fchmod", vfs::fchmod },
+        [92] = { "chown", vfs::chown },
+        [93] = { "fchown", vfs::fchown },
+        [94] = { "lchown", vfs::lchown },
         [95] = { "umask", proc::umask },
         [96] = { "gettimeofday", chrono::gettimeofday },
         [102] = { "getuid", proc::getuid },
@@ -87,8 +96,12 @@ namespace x86_64::syscall
         [218] = { "set_tid_address", proc::set_tid_address },
         [228] = { "clock_gettime", chrono::clock_gettime },
         [231] = { "exit_group", proc::exit_group },
+        [234] = { "tgkill", proc::tgkill },
         [257] = { "openat", vfs::openat },
+        [260] = { "fchownat", vfs::fchownat },
         [262] = { "fstatat", vfs::fstatat },
+        [267] = { "readlinkat", vfs::readlinkat },
+        [268] = { "fchmodat", vfs::fchmodat },
         [269] = { "faccessat", vfs::faccessat },
         [270] = { "pselect6", vfs::pselect },
         [273] = { "set_robust_list", proc::set_robust_list },
@@ -99,6 +112,7 @@ namespace x86_64::syscall
         [296] = { "pwritev", vfs::pwritev },
         [302] = { "prlimit", proc::prlimit },
         [318] = { "getrandom", misc::getrandom },
+        [322] = { "execveat", proc::execveat },
         [332] = { "statx", vfs::statx },
         [334] = { "rseq", proc::rseq },
         [435] = { "clone3", proc::clone3 },
@@ -120,6 +134,7 @@ namespace x86_64::syscall
             lib::panic("invalid syscall: {}", idx);
 
         in_syscall.write(true);
+        sched::this_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
         in_syscall.write(false);
     }

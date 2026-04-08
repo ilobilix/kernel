@@ -151,7 +151,6 @@ export namespace vmm
         static void free_table(table *ptr);
 
         static page_size fixpsize(page_size psize);
-        static void invalidate(std::uintptr_t vaddr);
 
         static std::uintptr_t to_arch(pflag flags, caching cache, page_size psize);
         static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>;
@@ -164,6 +163,8 @@ export namespace vmm
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
+
+        void invalidate(std::uintptr_t vaddr, std::size_t length);
 
         [[gnu::pure]] static bool is_canonical(std::uintptr_t addr);
 

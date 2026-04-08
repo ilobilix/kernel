@@ -77,7 +77,7 @@ namespace sched
         void reschedule(std::size_t ms);
         void reschedule_other(std::size_t cpu);
 
-        void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg);
+        void initialise(process *proc, thread *thrd, std::uintptr_t ip, std::uintptr_t arg, bool cloning);
         void deinitialise(process *proc, thread *thread);
 
         [[noreturn]]
@@ -87,12 +87,11 @@ namespace sched
         void load(thread *thread);
 
         void ctx_switch(thread *current, thread *next);
-
-        void update_stack(thread *thread, std::uintptr_t addr);
     } // namespace arch
 
     namespace
     {
+        std::atomic<pid_t> next_pid = 2;
         lib::locker<
             lib::map::flat_hash<
                 std::size_t, process *
@@ -114,13 +113,8 @@ namespace sched
         std::atomic_bool initialised = false;
         process *pid0 = nullptr;
 
-        std::size_t alloc_pid(process *proc)
-        {
-            static std::atomic_size_t next_pid = 0;
-            const auto pid = next_pid++;
-            processes.write_lock().value()[pid] = proc;
-            return pid;
-        }
+        std::shared_ptr<vmm::vmspace> kvmspace = nullptr;
+        lib::spinlock kvmspace_lock;
 
         void save(thread *thread, cpu::registers *regs)
         {
@@ -152,6 +146,19 @@ namespace sched
             return thread;
         }
     } // namespace
+
+    // TODO: better pid/tid allocation
+    pid_t alloc_pid(process *proc)
+    {
+        const auto pid = next_pid++;
+        processes.write_lock().value()[pid] = proc;
+        return pid;
+    }
+
+    pid_t alloc_tid()
+    {
+        return next_pid++;
+    }
 
     thread *spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
     {
@@ -256,6 +263,14 @@ namespace sched
         return it->second;
     }
 
+    void thread::kill()
+    {
+        const auto old_status = status;
+        status = status::killed;
+        if (old_status == status::running)
+            arch::reschedule_other(running_on->idx);
+    }
+
     [[noreturn]]
     void thread::enter_user(std::uintptr_t ip, std::uintptr_t stack)
     {
@@ -356,53 +371,53 @@ namespace sched
     {
         lib::free(kstack_top - boot::kstack_size);
 
-        if (is_user)
+        if (is_user && og_ustack_top)
         {
             const auto &vmspace = parent->vmspace;
-            const auto vaddr = ustack_top - boot::ustack_size;
-            lib::panic_if(!vmspace->unmap(vaddr, boot::ustack_size));
+            const auto vaddr = og_ustack_top - boot::ustack_size;
+            lib::bug_on(!vmspace->unmap(vaddr, boot::ustack_size));
         }
 
         arch::deinitialise(parent, this);
     }
 
-    thread *thread::create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user)
+    thread *thread::create(
+        process *parent, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_user, bool cloning
+    )
     {
         lib::bug_on(!parent);
         auto thread = new sched::thread { };
 
-        thread->tid = parent->next_tid++;
+        bool empty = false;
+        {
+            const std::unique_lock _ { parent->lock };
+            empty = parent->threads.empty();
+        }
+
+        thread->tid = empty ? parent->pid : alloc_tid();
         thread->parent = parent;
         thread->status = status::not_ready;
         thread->is_user = is_user;
         thread->priority = default_prio;
         thread->vruntime = 0;
+        thread->running_on = nullptr;
 
-        const auto stack = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
-        thread->kstack_top = stack;
+        const auto kstack = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        thread->kstack_top = kstack;
 
         if (is_user)
         {
-            thread->in_trampoline = true;
-
-            auto &vmspace = parent->vmspace;
-
-            const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
-            const auto prot = vmm::read | vmm::write;
-            const auto flags = vmm::private_ | vmm::anonymous | vmm::fixed_noreplace;
-
-            lib::panic_if(!vmspace->map(
-                vaddr, boot::ustack_size,
-                prot, prot, flags, nullptr, 0
-            ));
-
-            // TODO: guard page
-
-            thread->ustack_top = vaddr + boot::ustack_size;
+            if (!cloning)
+            {
+                thread->in_trampoline = true;
+                thread->og_ustack_top = thread->ustack_top = parent->map_stack();
+            }
+            else thread->in_trampoline = false;
         }
-        else thread->ustack_top = stack;
+        else thread->og_ustack_top = thread->ustack_top = kstack;
 
-        arch::initialise(parent, thread, ip, arg);
+        arch::initialise(parent, thread, ip, arg, cloning);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
@@ -410,65 +425,73 @@ namespace sched
         return thread;
     }
 
-    process::~process()
+    std::uintptr_t process::map_stack()
     {
-        lib::panic("TODO: process {} deconstructor", pid);
+        const auto vaddr = (next_stack_top -= boot::ustack_size);
+        const auto prot = vmm::read | vmm::write;
+        const auto flags = vmm::private_ | vmm::anonymous | vmm::fixed_noreplace;
+
+        lib::panic_if(!vmspace->map(
+            vaddr, boot::ustack_size,
+            prot, prot, flags, nullptr, 0
+        ));
+
+        // TODO: guard page
+
+        return vaddr + boot::ustack_size;
     }
 
-    process *process::create(process *parent, std::shared_ptr<vmm::pagemap> pagemap)
+    process::~process()
     {
-        lib::bug_on(!pagemap);
-        auto proc = new process { };
+        lib::bug_on(!threads.empty());
+        lib::bug_on(!children.empty());
 
-        proc->pid = alloc_pid(proc);
-        if (proc->pid != 0)
+        if (auto grp = group_for(pgid))
         {
-            if (proc->pid == 1)
-            {
-                lib::bug_on(parent != nullptr);
-                auto grp = new group { };
-                grp->pgid = proc->pgid = proc->pid;
-                grp->members.write_lock().value()[proc->pid] = proc;
-                groups.write_lock().value()[grp->pgid] = grp;
+            auto wlocked = grp->members.write_lock();
+            wlocked->erase(pid);
 
-                auto sess = new session { };
-                proc->sid = grp->sid = sess->sid = grp->pgid;
-                sess->members.write_lock().value()[grp->pgid] = grp;
-                sessions.write_lock().value()[sess->sid] = sess;
-            }
-            else if (parent)
+            if (wlocked->empty())
             {
-                proc->pgid = parent->pgid;
-                proc->sid = parent->sid;
+                wlocked.unlock();
+
+                if (auto sess = session_for(grp->sid))
                 {
-                    auto grp = group_for(proc->pgid);
-                    auto wlocked = grp->members.write_lock();
-                    lib::bug_on(wlocked->contains(proc->pid));
-                    wlocked.value()[proc->pid] = proc;
+                    auto swlocked = sess->members.write_lock();
+                    swlocked->erase(grp->pgid);
+
+                    if (swlocked->empty())
+                    {
+                        swlocked.unlock();
+                        sessions.write_lock()->erase(sess->sid);
+                        delete sess;
+                    }
                 }
+
+                groups.write_lock()->erase(grp->pgid);
+                delete grp;
             }
-            else lib::panic("cannot create a non-init process without a parent");
         }
 
-        proc->vmspace = std::make_shared<vmm::vmspace>(pagemap);
-
-        if (parent)
-        {
-            proc->root = parent->root;
-            proc->cwd = parent->cwd;
-            proc->parent = parent;
-
-            const std::unique_lock _ { parent->lock };
-            parent->children[proc->pid] = proc;
-        }
-        else proc->root = proc->cwd = vfs::get_root(true);
-
-        return proc;
+        processes.write_lock()->erase(pid);
     }
 
     bool process::fdtable::close(int fd)
     {
-        return fds.write_lock()->erase(fd);
+        auto fdesc = get(fd);
+        if (!fdesc)
+            return false;
+
+        if (!fds.write_lock()->erase(fd))
+            return false;
+
+        if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+        {
+            if (const auto ret = fdesc->file->close(); !ret)
+                lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+        }
+
+        return true;
     }
 
     std::shared_ptr<vfs::filedesc> process::fdtable::get(int fd)
@@ -517,6 +540,57 @@ namespace sched
         return fd;
     }
 
+    void process::fdtable::close_on_exec()
+    {
+        auto wlocked = fds.write_lock();
+        for (auto it = wlocked->begin(); it != wlocked->end(); )
+        {
+            if (it->second && it->second->closexec.load(std::memory_order_relaxed))
+            {
+                auto &fdesc = it->second;
+                if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+                {
+                    if (const auto ret = fdesc->file->close(); !ret)
+                        lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+                }
+                it = wlocked->erase(it);
+            }
+            else it++;
+        }
+    }
+
+    process::fdtable::fdtable(fdtable &other) : next_fd { other.next_fd }
+    {
+        auto orlocked = other.fds.read_lock();
+        auto wlocked = fds.write_lock();
+
+        for (const auto &[fd, old_desc] : *orlocked)
+        {
+            if (!old_desc)
+                continue;
+
+            old_desc->file->ref.fetch_add(1, std::memory_order_relaxed);
+            wlocked.value()[fd] = std::make_shared<vfs::filedesc>(
+                old_desc->file,
+                old_desc->closexec.load(std::memory_order_relaxed)
+            );
+        }
+    }
+
+    process::fdtable::~fdtable()
+    {
+        auto wlocked = fds.write_lock();
+        for (auto &[fd, fdesc] : *wlocked)
+        {
+            if (fdesc && fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+            {
+                if (const auto ret = fdesc->file->close(); !ret)
+                    lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+            }
+        }
+        wlocked->clear();
+    }
+
     thread *this_thread()
     {
         return percpu.read<thread *, &percpu::running_thread>();
@@ -553,6 +627,57 @@ namespace sched
         arch::int_switch(old);
 
         return eeping ? thread->wake_reason : wake_reason::success;
+    }
+
+    [[noreturn]]
+    void exit(int status)
+    {
+        auto current = this_thread();
+        auto proc = current->parent;
+        if (proc->pid == 1)
+            lib::panic("attempted to kill init");
+
+        proc->fdt.reset();
+
+        {
+            const std::unique_lock _ { proc->lock };
+            proc->exit_status = status;
+            proc->exited = true;
+
+            for (auto &[tid, thrd] : proc->threads)
+            {
+                if (thrd == current)
+                    continue;
+                thrd->status = status::killed;
+            }
+        }
+
+        if (!proc->children.empty())
+        {
+            auto init = proc_for(1);
+            lib::bug_on(!init);
+
+            const std::unique_lock _ { init->lock };
+            for (auto &[pid, child] : proc->children)
+            {
+                child->parent = init;
+                init->children[pid] = child;
+            }
+            proc->children.clear();
+        }
+
+        if (current->clear_child_tid)
+        {
+            auto ptr = reinterpret_cast<int __user *>(current->clear_child_tid);
+            int zero = 0;
+            lib::copy_to_user(ptr, &zero, sizeof(int));
+            // TODO: futex wake on clear_child_tid address
+        }
+
+        arch::int_switch(false);
+        current->status = status::killed;
+        schedule(nullptr);
+        std::unreachable();
     }
 
     std::size_t allocate_cpu()
@@ -632,21 +757,32 @@ namespace sched
                 auto list = std::move(dead);
                 enable();
 
+                lib::map::flat_hash<pid_t, process *> dying_procs;
                 while (!list.empty())
                 {
-                    // TODO
                     const auto thread = list.front();
                     list.pop_front();
 
                     auto proc = thread->parent;
-                    const std::unique_lock _ { proc->lock };
-                    lib::bug_on(proc->threads.erase(thread->tid) != 1);
+                    bool last_thread = false;
+                    {
+                        const std::unique_lock _ { proc->lock };
+                        proc->threads.erase(thread->tid);
+                        last_thread = proc->threads.empty() && proc->exited;
+                    }
 
                     delete thread;
-                    if (proc->threads.empty())
-                        lib::panic("TODO: process {} exit", proc->pid);
 
-                    // TODO: thread, process, group and session cleanup
+                    if (last_thread && proc->pid > 0)
+                        dying_procs[proc->pid] = proc;
+                }
+
+                for (auto &[pid, proc] : dying_procs)
+                {
+                    if (proc->parent)
+                        proc->parent->waiter.signal_all();
+
+                    // TODO: send SIGCHLD to parent
                 }
             }
             std::unreachable();
@@ -756,8 +892,7 @@ namespace sched
             static constexpr std::size_t weight0 = prio_to_weight(0);
             const std::size_t exec_time = time - current->schedule_time;
             const std::size_t weight = prio_to_weight(current->priority);
-            const std::size_t vtime = (exec_time * weight0) / weight;
-            current->vruntime += vtime;
+            current->vruntime += (exec_time * weight0) / weight;
         }
 
         const auto &eeper = pcpu.sleeper_thread;
@@ -782,52 +917,52 @@ namespace sched
 
         thread *next = nullptr;
         bool found_dead = false;
-
         {
             auto locked = pcpu.queue.lock();
 
-            const auto begin = locked->begin();
-            for (auto it = begin; it != locked->end(); )
+            for (auto it = locked->begin(); it != locked->end(); )
             {
                 const auto thread = (it++).value();
-                switch (thread->status)
+                if (thread->status == status::ready)
                 {
-                    case status::ready:
-                        if (current && !is_current_idle &&
-                            current->status == status::running &&
-                            current->vruntime <= thread->vruntime)
-                        {
-                            next = current;
-                            goto found;
-                        }
+                    if (current && !is_current_idle &&
+                        current->status == status::running &&
+                        current->vruntime <= thread->vruntime)
+                    {
+                        next = current;
+                    }
+                    else
+                    {
                         next = thread;
                         locked->remove(thread);
-                        goto found;
-                    [[unlikely]] case status::sleeping:
-                    [[unlikely]] case status::running:
-                    [[unlikely]] case status::not_ready:
-                        lib::panic(
-                            "found a {} thread in scheduler queue",
-                            magic_enum::enum_name(thread->status)
-                        );
-                        std::unreachable();
-                    case status::killed:
-                        locked->remove(thread);
-                        dead.push_back(thread);
-                        found_dead = true;
-                        break;
-                        break;
-                    default:
-                        std::unreachable();
+                    }
+                    break;
+                }
+                else if (thread->status == status::killed)
+                {
+                    locked->remove(thread);
+                    dead.push_back(thread);
+                    found_dead = true;
+                }
+                else
+                {
+                    lib::panic(
+                        "found a {} thread in scheduler queue",
+                        magic_enum::enum_name(thread->status)
+                    );
                 }
             }
-            found:
         }
 
-        std::optional<pid_t> prev_pid { };
+        std::optional<pid_t> prev_pid;
         if (current != nullptr) [[likely]]
         {
-            if (current->status != status::killed)
+            if (current->status == status::killed)
+            {
+                dead.push_back(current);
+                found_dead = true;
+            }
+            else
             {
                 prev_pid = current->parent->pid;
                 if (!is_current_idle) [[likely]]
@@ -845,13 +980,7 @@ namespace sched
                     }
                 }
             }
-            else
-            {
-                dead.push_back(current);
-                found_dead = true;
-            }
         }
-
         if (found_dead)
         {
             auto &reaper = pcpu.reaper_thread;
@@ -902,11 +1031,10 @@ namespace sched
             }
             else if (earliest_wake > time)
             {
-                const auto slice = std::min(
+                arch::reschedule(std::min(
                     (earliest_wake - time) / 1'000'000,
                     max_wait
-                );
-                arch::reschedule(slice);
+                ));
             }
         }
 
@@ -914,6 +1042,34 @@ namespace sched
 
         if (!regs)
             arch::ctx_switch(current, next);
+    }
+
+    process *create_pid1(std::shared_ptr<vmm::pagemap> pmap)
+    {
+        static bool created = false;
+        lib::bug_on(created == true);
+        created = true;
+
+        auto proc = new process { };
+        proc->pid = 1;
+        processes.write_lock().value()[proc->pid] = proc;
+        proc->vmspace = std::make_shared<vmm::vmspace>(std::move(pmap));
+
+        auto grp = new group { };
+        grp->pgid = proc->pgid = proc->pid;
+        grp->members.write_lock().value()[proc->pid] = proc;
+        groups.write_lock().value()[grp->pgid] = grp;
+
+        auto sess = new session { };
+        proc->sid = grp->sid = sess->sid = grp->pgid;
+        sess->members.write_lock().value()[grp->pgid] = grp;
+        sessions.write_lock().value()[sess->sid] = sess;
+
+        proc->fdt = std::make_shared<process::fdtable>();
+        proc->vfs = std::make_shared<process::vfs_state>();
+        proc->vfs->root = proc->vfs->cwd = vfs::get_root(true);
+
+        return proc;
     }
 
     lib::initgraph::stage *pid0_created_stage()
@@ -936,11 +1092,16 @@ namespace sched
         },
         lib::initgraph::entail { pid0_created_stage() },
         [] {
-            pid0 = process::create(
-                nullptr,
-                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-            );
-            lib::bug_on(!pid0 || pid0->pid != 0);
+            lib::bug_on(kvmspace == nullptr);
+
+            pid0 = new process { };
+            pid0->pid = 0;
+            processes.write_lock().value()[pid0->pid] = pid0;
+
+            pid0->vmspace = kvmspace;
+
+            pid0->vfs = std::make_shared<process::vfs_state>();
+            pid0->vfs->root = pid0->vfs->cwd = vfs::get_root(true);
         }
     };
 
@@ -950,19 +1111,17 @@ namespace sched
             return;
 
         arch::disable();
-        if (percpu.unsafe_get().reaper_thread->preemption < 0)
+
+        auto &pcpu_ref = percpu.unsafe_get();
+        if (pcpu_ref.reaper_thread->preemption < 0 ||
+            pcpu_ref.in_scheduler.load(std::memory_order_acquire))
         {
             arch::enable();
             return;
         }
 
-        if (percpu.unsafe_get().in_scheduler.load(std::memory_order_acquire))
-        {
-            arch::enable();
-            return;
-        }
-
-        arch::enable(); arch::enable();
+        arch::enable();
+        arch::enable();
     }
 
     void disable()
@@ -972,26 +1131,27 @@ namespace sched
 
         arch::disable();
         if (percpu.unsafe_get().in_scheduler.load(std::memory_order_acquire))
-        {
             arch::enable();
-            return;
-        }
     }
 
     [[noreturn]] void start()
     {
         static std::atomic_bool should_start = false;
 
-        // shared across all cpus
-        static auto idle_vmspace = std::make_shared<vmm::vmspace>(
-            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-        );
-
         const auto &self = cpu::self().unsafe_get();
 
         const auto idle_proc = new process { };
-        idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = -1;
+        {
+            const std::unique_lock _ { kvmspace_lock };
+            if (kvmspace == nullptr)
+            {
+                kvmspace = std::make_shared<vmm::vmspace>(
+                    std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+                );
+            }
+            idle_proc->vmspace = kvmspace;
+        }
 
         const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), 0, false);
         idle_thread->status = status::ready;

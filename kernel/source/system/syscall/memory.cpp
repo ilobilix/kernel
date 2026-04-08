@@ -44,7 +44,7 @@ namespace syscall::memory
         vmm::object::ptr obj;
         if (!anon && fd >= 0)
         {
-            auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+            auto fdesc = proc->fdt->get(static_cast<std::size_t>(fd));
             if (!fdesc)
                 return (errno = EBADF, invalid_addr);
 
