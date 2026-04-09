@@ -124,6 +124,9 @@ namespace cpu
     {
         namespace
         {
+            std::atomic_bool fpu_set = false;
+            fpu shared_fpu;
+
             constexpr std::uint64_t rfbm = ~0ull;
             constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
             constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
@@ -152,13 +155,11 @@ namespace cpu
             {
                 asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
             }
-
-            cpu_local(fpu, fpu_percpu);
         } // namespace
 
         fpu &get_fpu()
         {
-            return fpu_percpu.unsafe_get();
+            return shared_fpu;
         }
 
         void enable()
@@ -240,17 +241,18 @@ namespace cpu
 
                 bool xopt = cpu::id(0x0D, 1).value_or(cpu::id_res { }).a & (1 << 0);
 
-                auto &fpu = get_fpu();
-                fpu.size = res13.c;
-                fpu.save = xopt ? xsaveopt : xsave;
-                fpu.restore = xrstor;
+                if (fpu_set.exchange(true, std::memory_order_acq_rel))
+                {
+                    shared_fpu.size = res13.c;
+                    shared_fpu.save = xopt ? xsaveopt : xsave;
+                    shared_fpu.restore = xrstor;
+                }
             }
-            else
+            else if (fpu_set.exchange(true, std::memory_order_acq_rel))
             {
-                auto &fpu = get_fpu();
-                fpu.size = 512;
-                fpu.save = fxsave;
-                fpu.restore = fxrstor;
+                shared_fpu.size = 512;
+                shared_fpu.save = fxsave;
+                shared_fpu.restore = fxrstor;
             }
         }
     } // namespace features

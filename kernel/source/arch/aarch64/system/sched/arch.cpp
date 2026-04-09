@@ -11,12 +11,28 @@ namespace sched::arch
         return reinterpret_cast<thread_t *>(cpu::read_el1_base());
     }
 
-    void context_switch(thread_t *prev, thread_t *next);
+    void init_core(thread_t *initial)
+    {
+        lib::unused(initial);
+        // TODO
+    }
 
-    void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        std::uintptr_t stack_top, bool is_kernel
-    );
+    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_kernel)
+    {
+        lib::unused(thread, ip, arg, is_kernel);
+        // TODO
+    }
 
-    [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);
+    void context_switch(thread_t *prev, thread_t *next)
+    {
+        lib::unused(prev, next);
+        // TODO
+    }
+
+    [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack)
+    {
+        // TODO
+        lib::unused(ip, stack);
+        std::unreachable();
+    }
 } // namespace sched::arch

@@ -2,6 +2,8 @@
 
 export module system.sched:thread;
 
+import system.sched.thread_base;
+
 import system.cpu.local;
 import magic_enum;
 import lib;
@@ -34,24 +36,8 @@ export namespace sched
 
     using namespace magic_enum::bitwise_operators;
 
-    struct entity_t
-    {
-        std::uint64_t vruntime = 0;
-        std::uint64_t total_runtime = 0;
-        std::uint64_t prev_runtime = 0;
-        std::uint64_t sched_time = 0;
-
-        nice_t nice = default_nice;
-        std::uint64_t weight = nice_to_weight(nice);
-        std::uint64_t inv_weight = nice_to_inv_weight(nice);
-
-        bool on_rq = false;
-
-        lib::rbtree_hook<entity_t> hook;
-    };
-
     struct process_t;
-    struct thread_t
+    struct thread_t : thread_base_t
     {
         // accessed from assembly
         cpu::processor *running_on;
@@ -59,7 +45,7 @@ export namespace sched
         std::uintptr_t kstack_top;
         thread_t *self;
 
-        std::atomic<std::ssize_t> preempt_count;
+        std::atomic<std::ssize_t> preempt_count = 0;
 
         // sizes are fixed
         std::uintptr_t ustack_base;
@@ -72,7 +58,18 @@ export namespace sched
         thread_flags flags = thread_flags::none;
         int exit_code = 0;
 
-        entity_t entity;
+        std::uint64_t vruntime = 0;
+        std::uint64_t total_runtime = 0;
+        std::uint64_t prev_runtime = 0;
+        std::uint64_t sched_time = 0;
+
+        nice_t nice;
+        std::uint64_t weight;
+        std::uint64_t inv_weight;
+
+        bool in_rq = false;
+        lib::rbtree_hook<thread_t> hook;
+
         arch::context *ctx;
         arch::data adata;
 

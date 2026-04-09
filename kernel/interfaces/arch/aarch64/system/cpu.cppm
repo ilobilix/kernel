@@ -76,5 +76,10 @@ export namespace cpu
         return mrs<"tpidr_el0">();
     }
 
-    std::uintptr_t self_addr() { return read_el1_base(); }
+    std::uintptr_t self_addr()
+    {
+        std::uintptr_t addr;
+        asm volatile ("mrs %0, tpidr_el1; ldr %0, [%0]" : "=r"(addr) :: "memory");
+        return addr;
+    }
 } // export namespace cpu

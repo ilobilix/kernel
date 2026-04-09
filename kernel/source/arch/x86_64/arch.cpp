@@ -122,7 +122,7 @@ namespace arch
         void entry(std::uintptr_t addr)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
-            cpu::gs::write_user(addr);
+            cpu::gs::write(addr);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
@@ -142,7 +142,7 @@ namespace arch
         void bsp(std::uintptr_t addr)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
-            cpu::gs::write_user(addr);
+            cpu::gs::write(addr);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);

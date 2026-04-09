@@ -34,7 +34,6 @@ export namespace sched
     struct process_t
     {
         pid_t pid;
-        pid_t ppid;
 
         process_t *parent;
 
@@ -49,24 +48,6 @@ export namespace sched
         session_t *session;
 
         std::shared_ptr<vmm::vmspace> vmspace;
-        std::shared_ptr<vfs::fdtable> fds;
-
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                thread_t *
-            >, lib::spinlock
-        > threads;
-
-        std::atomic<std::size_t> alive_threads;
-
-        std::shared_ptr<cred_t> cred;
-
-        std::shared_ptr<signal_action_t> sigactions;
-        signal_queue_t sigqueue;
-
-        int exit_code = 0;
-        bool is_zombie = false;
 
         struct vfs_state
         {
@@ -75,6 +56,24 @@ export namespace sched
             mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
         };
         std::shared_ptr<vfs_state> vfs;
+        std::shared_ptr<vfs::fdtable> fds;
+
+        std::shared_ptr<cred_t> cred;
+
+        std::shared_ptr<signal_action_t> sigactions;
+        signal_queue_t sigqueue;
+
+        lib::locker<
+            lib::map::flat_hash<
+                pid_t,
+                thread_t *
+            >, lib::spinlock
+        > threads;
+
+        std::atomic<std::size_t> alive_threads = 0;
+
+        int exit_code = 0;
+        bool is_zombie = false;
 
         lib::spinlock lock;
     };

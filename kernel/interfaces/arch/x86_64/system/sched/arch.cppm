@@ -35,12 +35,9 @@ export namespace sched::arch
 
     thread_t *current_thread();
 
+    void init_core(thread_t *initial);
+    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_kernel);
+
     void context_switch(thread_t *prev, thread_t *next);
-
-    void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        std::uintptr_t stack_top, bool is_kernel
-    );
-
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);
 } // export namespace sched::arch

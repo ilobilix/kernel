@@ -139,7 +139,7 @@ namespace sched::arch
 
     void load(thread *thread)
     {
-        cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread));
+        cpu::gs::write(reinterpret_cast<std::uintptr_t>(thread));
 
         if (!thread->in_trampoline && thread->is_user)
         {

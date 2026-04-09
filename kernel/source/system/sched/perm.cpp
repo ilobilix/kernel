@@ -8,7 +8,7 @@ namespace sched
     {
         void set_creds(process_t *process, const std::shared_ptr<cred_t> &new_cred)
         {
-            std::unique_lock _ { process->lock };
+            const std::unique_lock _ { process->lock };
             process->cred = new_cred;
         }
 

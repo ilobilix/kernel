@@ -12,6 +12,7 @@ export import :wait_queue;
 export import :work_queue;
 
 import :arch;
+import boot;
 
 // implemented in :arch
 namespace sched::arch
@@ -22,18 +23,18 @@ namespace sched::arch
     // makes sure that thread doesn't migrate to another core
     thread_t *current_thread();
 
+    void init_core(thread_t *initial);
+    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_kernel);
+
     void context_switch(thread_t *prev, thread_t *next);
-
-    void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        std::uintptr_t stack_top, bool is_kernel
-    );
-
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);
 } // namespace sched::arch
 
 export namespace sched
 {
+    constexpr std::size_t kstack_size = boot::kstack_size;
+    constexpr std::size_t ustack_size = boot::ustack_size;
+
     // called from bsp
     void init();
 
@@ -72,11 +73,14 @@ export namespace sched
     // called on yield, block, timer or wake up
     void schedule();
 
-    // create and run a new kernel thread under pid 0
-    thread_t *create_kthread(nice_t nice, std::uintptr_t ip, std::uintptr_t arg);
+    // create a new kernel thread under pid 0
+    thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
 
     // create a user thread
-    thread_t *create_thread(process_t *proc, int nice, std::uintptr_t entry, std::uintptr_t stack);
+    thread_t *create_uthread(process_t *proc, std::uintptr_t entry, std::uintptr_t stack, nice_t nice = default_nice);
+
+    // enqueue a new thread on current cpu
+    void enqueue_new(thread_t *thread);
 
     bool wake_up(thread_t *thread, bool preempt = true);
 
