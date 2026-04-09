@@ -60,16 +60,6 @@ namespace sched
         std::unreachable();
     }
 
-    thread_t *current_thread()
-    {
-        return local_rq.read<thread_t *, &run_queue_t::current>();
-    }
-
-    process_t *current_process()
-    {
-        return current_thread()->proc;
-    }
-
     void schedule()
     {
         // TODO

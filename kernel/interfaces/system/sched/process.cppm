@@ -8,6 +8,7 @@ import system.vfs;
 import lib;
 import std;
 
+import :cred;
 import :thread;
 
 export namespace sched
@@ -59,8 +60,7 @@ export namespace sched
 
         std::atomic<std::size_t> alive_threads;
 
-        gid_t rgid = 0, sgid = 0, egid = 0;
-        uid_t ruid = 0, suid = 0, euid = 0;
+        std::shared_ptr<cred_t> cred;
 
         std::shared_ptr<signal_action_t> sigactions;
         signal_queue_t sigqueue;

@@ -37,6 +37,7 @@ export namespace lib
         invalid_type,
         invalid_pml_entry,
         invalid_length,
+        invalid_argument,
         invalid_address,
         invalid_fd,
 
@@ -100,6 +101,7 @@ export namespace lib
             case err::invalid_type:
             case err::invalid_pml_entry:
             case err::invalid_length:
+            case err::invalid_argument:
             case err::buffer_too_small:
             case err::addr_not_aligned:
             case err::addr_out_of_bounds:

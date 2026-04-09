@@ -2,6 +2,8 @@
 
 export module system.sched;
 
+export import :cred;
+export import :perm;
 export import :nice;
 export import :process;
 export import :thread;
@@ -16,6 +18,9 @@ namespace sched::arch
 {
     struct context;
     struct data;
+
+    // makes sure that thread doesn't migrate to another core
+    thread_t *current_thread();
 
     void context_switch(thread_t *prev, thread_t *next);
 
@@ -35,8 +40,33 @@ export namespace sched
     // start scheduling on this code
     [[noreturn]] void start();
 
-    thread_t *current_thread();
-    process_t *current_process();
+    inline thread_t *current_thread()
+    {
+        return arch::current_thread();
+    }
+
+    inline process_t *current_process()
+    {
+        return current_thread()->proc;
+    }
+
+    inline void preempt_disable()
+    {
+        current_thread()->preempt_count.fetch_add(1, std::memory_order_acquire);
+    }
+
+    inline void preempt_enable()
+    {
+        auto thread = current_thread();
+        if (thread->preempt_count.fetch_sub(1, std::memory_order_release) == 1
+            && thread->needs_resched())
+            schedule();
+    }
+
+    inline bool is_preempt_disabled()
+    {
+        return current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
+    }
 
     // pick next thread and switch to it
     // called on yield, block, timer or wake up
@@ -71,23 +101,9 @@ export namespace sched
     // get process with the pid
     process_t *get_process(pid_t pid);
 
-    inline void preempt_disable()
-    {
-        current_thread()->preempt_count.fetch_add(1, std::memory_order_acquire);
-    }
-
-    inline void preempt_enable()
-    {
-        auto thread = current_thread();
-        if (thread->preempt_count.fetch_sub(1, std::memory_order_release) == 1
-            && thread->needs_resched())
-            schedule();
-    }
-
-    inline bool is_preempt_disabled()
-    {
-        return current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
-    }
+    void preempt_disable();
+    void preempt_enable();
+    bool is_preempt_disabled();
 
     // called from a timer interrupt
     void tick();

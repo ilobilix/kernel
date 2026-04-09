@@ -4,6 +4,11 @@ export module system.sched:arch;
 
 import std;
 
+export namespace sched
+{
+    struct thread_t;
+} // export namespace sched
+
 export namespace sched::arch
 {
     struct context
@@ -28,7 +33,7 @@ export namespace sched::arch
         std::size_t fpu_size;
     };
 
-    struct thread_t;
+    thread_t *current_thread();
 
     void context_switch(thread_t *prev, thread_t *next);
 

@@ -32,11 +32,7 @@ export namespace sched
         signal_pending = (1 << 3)
     };
 
-    using magic_enum::bitwise_operators::operator~;
-    using magic_enum::bitwise_operators::operator&;
-    using magic_enum::bitwise_operators::operator&=;
-    using magic_enum::bitwise_operators::operator|;
-    using magic_enum::bitwise_operators::operator|=;
+    using namespace magic_enum::bitwise_operators;
 
     struct entity_t
     {
@@ -59,9 +55,9 @@ export namespace sched
     {
         // accessed from assembly
         cpu::processor *running_on;
-        thread_t *self;
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
+        thread_t *self;
 
         std::atomic<std::ssize_t> preempt_count;
 
