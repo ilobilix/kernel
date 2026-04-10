@@ -86,7 +86,7 @@ namespace x86_64::idt
         }
 
         auto &self = cpu::self().unsafe_get();
-        bool old = self.in_interrupt.exchange(true, std::memory_order_acquire);
+        self.in_interrupt.store(true, std::memory_order_acquire);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
@@ -148,12 +148,12 @@ namespace x86_64::idt
             std::unreachable();
         }
 
-        end:
-        self.in_interrupt.store(old, std::memory_order_release);
-
         if (sched::is_running() && !sched::is_preempt_disabled() &&
             sched::current_thread()->needs_resched())
             sched::schedule();
+
+        end:
+        self.in_interrupt.store(false, std::memory_order_release);
     }
 
     void init()

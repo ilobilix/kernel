@@ -8,7 +8,6 @@ std::byte kernel_stack[boot::kstack_size] { };
 extern "C" [[gnu::used]]
 auto kernel_stack_top = kernel_stack + boot::kstack_size;
 
-[[noreturn]]
 void kthread()
 {
     lib::initgraph::postsched_init_engine.run();
@@ -72,7 +71,7 @@ void kthread()
     //     thread->status = sched::status::ready;
     // }
 
-    // lib::log::wait_for_logs();
+    lib::log::wait_for_logs();
     // sched::enqueue_new(thread);
 }
 
@@ -86,10 +85,8 @@ extern "C"  [[noreturn]] void kmain()
     memory::init();
     cxxabi::construct();
 
-    sched::init();
-
     lib::initgraph::presched_init_engine.run();
 
-    sched::spawn(kthread, 0, -19);
+    sched::spawn(kthread);
     sched::start();
 }

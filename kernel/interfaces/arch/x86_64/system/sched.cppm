@@ -39,6 +39,7 @@ export namespace sched::arch
     void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline);
 
     void arm_timer_ns(std::uint64_t ns);
+    void wake_up_other(std::size_t cpu_idx);
 
     void context_switch(thread_t *prev, thread_t *next);
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);

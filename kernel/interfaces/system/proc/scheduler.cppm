@@ -29,6 +29,7 @@ namespace sched::arch
     void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline);
 
     void arm_timer_ns(std::uint64_t ns);
+    void wake_up_other(std::size_t cpu_idx);
 
     void context_switch(thread_t *prev, thread_t *next);
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);
@@ -41,11 +42,13 @@ namespace sched
 
 export namespace sched
 {
+    constexpr std::size_t balance_interval_ns = 100'000'000;
+    constexpr std::size_t balance_max_nr = 4;
+
     constexpr std::size_t kstack_size = boot::kstack_size;
     constexpr std::size_t ustack_size = boot::ustack_size;
 
-    // called from bsp
-    void init();
+    lib::initgraph::stage *pid0_created_stage();
 
     // start scheduling on this code
     [[noreturn]] void start();
