@@ -218,16 +218,14 @@ export namespace lib
             return insert_before({ this, _head }, x);
         }
 
-        constexpr void remove(iterator x)
+        constexpr void remove(Type *x)
         {
-            bug_on(x._lst != this);
+            const auto prev = hook(x).prev;
+            const auto next = hook(x).next;
 
-            const auto prev = hook(x._current).prev;
-            const auto next = hook(x._current).next;
-
-            if (x._current == _head)
+            if (x == _head)
                 _head = next;
-            if (x._current == _tail)
+            if (x == _tail)
                 _tail = prev;
 
             if (prev)
@@ -235,11 +233,17 @@ export namespace lib
             if (next)
                 hook(next).prev = prev;
 
-            hook(x._current).next = nullptr;
-            hook(x._current).prev = nullptr;
+            hook(x).next = nullptr;
+            hook(x).prev = nullptr;
 
             bug_on(_size == 0);
             _size--;
+        }
+
+        constexpr void remove(iterator x)
+        {
+            bug_on(x._lst != this);
+            remove(x._current);
         }
 
         constexpr Type *pop_front()

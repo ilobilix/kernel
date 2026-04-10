@@ -4,39 +4,52 @@ module system.sched;
 
 namespace sched
 {
-    wait_queue_t::wait_queue_t()
-    {
-        // TODO
-    }
-
     void wait_queue_t::prepare_wait(wait_queue_entry_t *entry, thread_state state)
     {
-        // TODO
+        auto locked = entries.lock();
+        locked->push_back(entry);
+        entry->thread->state = state;
     }
 
     void wait_queue_t::finish_wait(wait_queue_entry_t *entry)
     {
-        // TODO
+        auto locked = entries.lock();
+        locked->remove(entry);
     }
 
     void wait_queue_t::wake_one()
     {
-        // TODO
+        auto locked = entries.lock();
+        if (locked->empty())
+            return;
+        auto entry = locked->pop_front();
+        wake_up(entry->thread, true);
     }
 
     void wait_queue_t::wake_all()
     {
-        // TODO
+        auto locked = entries.lock();
+        while (!locked->empty())
+        {
+            auto entry = locked->pop_front();
+            wake_up(entry->thread, true);
+        }
     }
 
     void wait_queue_t::wake_exclusive()
     {
-        // TODO
-    }
+        auto locked = entries.lock();
+        auto it = locked->begin();
+        while (it != locked->end())
+        {
+            auto entry = (it++).value();
+            locked->remove(entry);
 
-    bool wait_queue_t::signal_pending(const thread_t *thread)
-    {
-        // TODO
-        return false;
+            const bool exclusive = entry->exclusive;
+            wake_up(entry->thread, true);
+
+            if (exclusive)
+                break;
+        }
     }
 } // namespace sched
