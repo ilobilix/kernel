@@ -31,7 +31,8 @@ export namespace sched
         kernel = (1 << 0),
         idle = (1 << 1),
         needs_resched = (1 << 2),
-        signal_pending = (1 << 3)
+        interrupted = (1 << 3),
+        signal_pending = (1 << 4)
     };
 
     using namespace magic_enum::bitwise_operators;

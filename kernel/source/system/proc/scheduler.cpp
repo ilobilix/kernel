@@ -27,15 +27,6 @@ namespace sched
 
         std::atomic_bool should_start = false;
 
-        struct sleep_entry_t
-        {
-            thread_t *thread;
-            std::uint64_t deadline_ns;
-            bool expired;
-
-            lib::rbtree_hook<sleep_entry_t> hook;
-        };
-
         lib::locker<
             lib::rbtree<
                 sleep_entry_t,
@@ -183,7 +174,7 @@ namespace sched
             );
 
             proc->vfs = nullptr;
-            proc->fdt = nullptr;
+            proc->fdt = std::make_shared<vfs::fdtable>();
             proc->cred = nullptr;
             proc->sigactions = nullptr;
 
@@ -473,6 +464,26 @@ namespace sched
         schedule();
     }
 
+    void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns)
+    {
+        const auto timer = chrono::main_timer();
+        entry->deadline_ns = timer->ns() + ns;
+        entry->expired = false;
+
+        auto locked = sleep_list.lock();
+        locked->insert(entry);
+    }
+
+    bool cancel_thread_timeout(sleep_entry_t *entry)
+    {
+        auto locked = sleep_list.lock();
+        if (entry->expired)
+            return false;
+
+        locked->remove(entry);
+        return true;
+    }
+
     std::uint64_t sleep_for_ns(std::uint64_t ns)
     {
         if (ns == 0)
@@ -507,7 +518,7 @@ namespace sched
         return now >= deadline ? 0 : deadline - now;
     }
 
-    void yield()
+    bool yield()
     {
         preempt_disable();
         {
@@ -523,6 +534,11 @@ namespace sched
         }
         preempt_enable();
         schedule();
+
+        auto thread = current_thread();
+        const bool interrupted = (thread->flags & thread_flags::interrupted) != thread_flags::none;
+        thread->flags &= ~thread_flags::interrupted;
+        return interrupted;
     }
 
     [[noreturn]] void thread_exit(int exit_code)

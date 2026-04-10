@@ -117,7 +117,7 @@ namespace net::arp
         addr::mac mac;
         bool resolved;
 
-        lib::semaphore doorbell;
+        sched::wait_queue_t doorbell;
 
         constexpr bool operator==(const route &rhs) const
         {
@@ -171,7 +171,7 @@ namespace net::arp
                         route->ip = arp.sip;
                         route->mac = arp.smac;
                         route->resolved = true;
-                        route->doorbell.signal();
+                        route->doorbell.wake_one();
                     }
                     break;
                 default:

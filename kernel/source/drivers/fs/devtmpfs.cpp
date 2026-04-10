@@ -3,6 +3,7 @@
 module drivers.fs.devtmpfs;
 
 import drivers.fs.tmpfs;
+import system.sched.mutex;
 import system.vfs.dev;
 import system.vfs;
 import magic_enum;
@@ -13,7 +14,7 @@ namespace fs::devtmpfs
 {
     struct fs : vfs::filesystem
     {
-        lib::locked_ptr<tmpfs::fs::instance, lib::mutex> instance;
+        lib::locked_ptr<tmpfs::fs::instance, sched::mutex> instance;
         std::shared_ptr<vfs::dentry> root;
 
         std::shared_ptr<struct vfs::mount> internal_mnt;
@@ -31,7 +32,7 @@ namespace fs::devtmpfs
 
         fs() : vfs::filesystem { "devtmpfs" }
         {
-            instance = lib::make_locked<tmpfs::fs::instance, lib::mutex>();
+            instance = lib::make_locked<tmpfs::fs::instance, sched::mutex>();
             auto locked = instance.lock();
 
             root = std::make_shared<vfs::dentry>();

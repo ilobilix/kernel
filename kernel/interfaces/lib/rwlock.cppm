@@ -3,7 +3,6 @@
 export module lib:rwlock;
 
 import :spinlock;
-import :mutex;
 import :bug_on;
 import std;
 
@@ -15,14 +14,8 @@ export namespace lib
         private:
         std::size_t counter;
 
-        std::conditional_t<
-            Type == lock_type::block,
-            mutex, spinlock_base<lock_type::spin>
-        > readers;
-        std::conditional_t<
-            Type == lock_type::block,
-            mutex, spinlock_base<Type>
-        > global;
+        spinlock_base<lock_type::spin> readers;
+        spinlock_base<Type> global;
 
         public:
         constexpr rwlock_base()
@@ -97,5 +90,4 @@ export namespace lib
     using rwspinlock = rwlock_base<lock_type::spin>;
     using rwspinlock_irq = rwlock_base<lock_type::irq>;
     using rwspinlock_preempt = rwlock_base<lock_type::preempt>;
-    using rwmutex = rwlock_base<lock_type::block>;
 } // export namespace lib

@@ -3,6 +3,8 @@
 export module system.vfs;
 
 import system.sched.thread_base;
+import system.sched.wait_queue;
+import system.sched.mutex;
 import system.memory.virt;
 import lib;
 import std;
@@ -151,7 +153,7 @@ export namespace vfs
 
     struct poll_table
     {
-        virtual void queue_wait(lib::wait_queue *wq) = 0;
+        virtual void queue_wait(sched::wait_queue_t *wq) = 0;
         virtual ~poll_table() = default;
     };
 
@@ -266,14 +268,14 @@ export namespace vfs
 
     struct mount
     {
-        lib::locked_ptr<filesystem::instance, lib::mutex> fs;
+        lib::locked_ptr<filesystem::instance, sched::mutex> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
     };
 
     struct inode
     {
-        lib::mutex lock;
+        sched::mutex lock;
         stat stat;
         bool dirty = false;
     };
@@ -378,7 +380,7 @@ export namespace vfs
         std::shared_ptr<inode> inode;
 
         std::weak_ptr<dentry> parent;
-        lib::locker<children, lib::rwmutex> children;
+        lib::locker<children, sched::mutex> children;
 
         lib::list<std::weak_ptr<mount>> child_mounts;
     };
@@ -387,7 +389,7 @@ export namespace vfs
     {
         auto get_ops() const -> lib::expect<std::shared_ptr<ops>>;
 
-        lib::mutex lock;
+        sched::mutex lock;
         std::atomic<std::uint32_t> ref;
         path path;
         std::size_t offset;

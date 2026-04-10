@@ -2,12 +2,16 @@
 
 module lib;
 
-import :mutex;
 import system.chrono;
 import std;
 
 namespace lib
 {
+    namespace
+    {
+        lib::spinlock _lock;
+    } // namespace
+
     // TODO: better random
     std::ssize_t random_bytes(lib::maybe_uspan<std::byte> buffer)
     {
@@ -16,9 +20,7 @@ namespace lib
         };
         static std::uniform_int_distribution<std::uint8_t> dist { 0, 255 };
 
-        static mutex lock;
-        const std::unique_lock _ { lock };
-
+        const std::unique_lock _ { _lock };
         if (buffer.is_user())
         {
             membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
