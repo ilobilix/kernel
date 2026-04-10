@@ -3,7 +3,7 @@
 module system.memory.virt;
 
 import system.memory.phys;
-import system.scheduler;
+import system.sched;
 import system.cpu;
 import magic_enum;
 import lib;
@@ -28,25 +28,26 @@ namespace vmm
 
         void wait_on_busy_page(page *pg)
         {
-            const auto me = sched::this_thread();
-            lib::wait_queue_entry wqe { me };
+            // TODO-SCHED-REWRITE
+            // const auto thread = sched::current_thread();
+            // lib::wait_queue_entry wqe { thread };
 
-            auto &wq = waitqueues[hash_page(pg)];
-            while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
-            {
-                me->prepare_sleep();
-                wq.add(&wqe);
+            // auto &wq = waitqueues[hash_page(pg)];
+            // while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
+            // {
+            //     thread->prepare_sleep();
+            //     wq.add(&wqe);
 
-                if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
-                {
-                    wq.remove(&wqe);
-                    me->cancel_sleep();
-                    break;
-                }
+            //     if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
+            //     {
+            //         wq.remove(&wqe);
+            //         thread->cancel_sleep();
+            //         break;
+            //     }
 
-                sched::yield();
-                wq.remove(&wqe);
-            }
+            //     sched::yield();
+            //     wq.remove(&wqe);
+            // }
         }
 
         std::uintptr_t pfndb_base()
@@ -1032,7 +1033,7 @@ namespace vmm
 
     bool handle_pfault(pfault_state state)
     {
-        if (!sched::is_initialised())
+        if (!sched::is_running())
             return false;
 
         if (state.address < vmspace::mmap_min || state.address >= vmspace::vspace_top)
@@ -1041,11 +1042,11 @@ namespace vmm
         if (state.is_present && !state.is_write && !state.is_exec)
             return false;
 
-        const auto thread = sched::this_thread();
-        if (!thread->is_user)
+        const auto thread = sched::current_thread();
+        if (thread->is_kernel())
             return false;
 
-        const auto proc = thread->parent;
+        const auto proc = thread->proc;
         const auto &vmspace = proc->vmspace;
 
         const auto psize = default_page_size();

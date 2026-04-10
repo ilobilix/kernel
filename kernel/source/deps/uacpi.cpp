@@ -55,17 +55,16 @@ namespace uacpi
     {
         "uacpi.create-workers",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { sched::pid0_created_stage() },
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
-            sched::spawn(reinterpret_cast<std::uintptr_t>(+[] {
+            sched::spawn(+[] {
                 worker_caller(notify, notify_added);
-                arch::halt(true);
-            }));
-            sched::spawn(reinterpret_cast<std::uintptr_t>(+[] {
+                std::unreachable();
+            });
+            sched::spawn(+[] {
                 worker_caller(gpe, gpe_added);
-                arch::halt(true);
-            }));
+                std::unreachable();
+            });
         }
     };
 } // namespace uacpi
@@ -313,7 +312,7 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        sched::sleep(msec);
+        sched::sleep_for_ns(msec * 1'000'000);
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
@@ -356,9 +355,9 @@ extern "C"
 
     uacpi_thread_id uacpi_kernel_get_thread_id()
     {
-        const auto thread = sched::this_thread();
+        const auto thread = sched::current_thread();
         return reinterpret_cast<uacpi_thread_id>(lib::unique_from(
-            static_cast<std::size_t>(thread->tid), static_cast<std::size_t>(thread->parent->pid)
+            static_cast<std::size_t>(thread->tid), static_cast<std::size_t>(thread->proc->pid)
         ));
     }
 

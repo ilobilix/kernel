@@ -8,7 +8,7 @@ import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.memory.virt;
 import system.interrupts;
-import system.scheduler;
+import system.sched;
 import system.cpu.local;
 import system.cpu;
 import frigg;
@@ -130,12 +130,12 @@ namespace x86_64::idt
                     goto end;
             }
 
-            if (sched::is_initialised())
+            if (sched::is_running())
             {
-                const auto thread = sched::this_thread();
+                const auto thread = sched::current_thread();
                 lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
                     vector, exception_messages[vector],
-                    self.idx, thread->parent->pid, thread->tid
+                    self.idx, thread->proc->pid, thread->tid
                 );
             }
             lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self.idx);
@@ -150,6 +150,10 @@ namespace x86_64::idt
 
         end:
         self.in_interrupt.store(old, std::memory_order_release);
+
+        if (sched::is_running() && !sched::is_preempt_disabled() &&
+            sched::current_thread()->needs_resched())
+            sched::schedule();
     }
 
     void init()

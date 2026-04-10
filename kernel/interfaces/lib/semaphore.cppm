@@ -2,7 +2,7 @@
 
 export module lib:semaphore;
 
-import system.scheduler.base;
+import system.sched.thread_base;
 import std;
 
 import :spinlock;
@@ -15,11 +15,11 @@ export namespace lib
         private:
         struct locate
         {
-            static lib::intrusive_list_hook<sched::thread_base> &operator()(sched::thread_base &x);
+            static lib::intrusive_list_hook<sched::thread_base_t> &operator()(sched::thread_base_t &x);
         };
         spinlock lock;
         lib::intrusive_list_locate<
-            sched::thread_base, locate
+            sched::thread_base_t, locate
         > threads;
         std::ssize_t signals;
 

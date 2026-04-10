@@ -2,9 +2,9 @@
 
 module system.syscall.vfs;
 
-import system.scheduler;
 import system.memory.virt;
 import system.chrono;
+import system.sched;
 import system.vfs;
 import system.vfs.pipe;
 import system.vfs.dev;
@@ -19,14 +19,14 @@ namespace syscall::vfs
 
     namespace
     {
-        std::shared_ptr<filedesc> get_fd(sched::process *proc, int fdnum)
+        std::shared_ptr<filedesc> get_fd(sched::process_t *proc, int fdnum)
         {
             if (fdnum < 0)
                 return (errno = EBADF, nullptr);
             return proc->fdt->get(fdnum) ?: (errno = EBADF, nullptr);
         }
 
-        std::optional<path> get_parent(sched::process *proc, int dirfd, lib::path_view path)
+        std::optional<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path)
         {
             if (path.is_absolute())
                 return get_root(true);
@@ -45,7 +45,7 @@ namespace syscall::vfs
         }
 
         std::optional<resolve_res> resolve_from(
-            sched::process *proc, int dirfd,
+            sched::process_t *proc, int dirfd,
             lib::path_view path, bool automount = true
         )
         {
@@ -98,7 +98,7 @@ namespace syscall::vfs
             return true;
         }
 
-        int close_fd(sched::process *proc, int fd, bool was_opened = true)
+        int close_fd(sched::process_t *proc, int fd, bool was_opened = true)
         {
             if (!was_opened)
             {
@@ -117,7 +117,7 @@ namespace syscall::vfs
     } // namespace
 
     std::optional<path> get_target(
-        sched::process *proc, int dirfd, const char __user *pathname,
+        sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     )
     {
@@ -168,7 +168,7 @@ namespace syscall::vfs
 
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         auto &fdt = proc->fdt;
 
         const bool follow_links = (flags & o_nofollow) == 0;
@@ -216,11 +216,11 @@ namespace syscall::vfs
             {
                 const std::unique_lock _ { created->dentry->inode->lock };
 
-                stat.st_uid = proc->euid;
+                stat.st_uid = proc->cred->euid;
                 if (parent_stat.mode() & s_isgid)
                     stat.st_gid = parent_stat.st_gid;
                 else
-                    stat.st_gid = proc->egid;
+                    stat.st_gid = proc->cred->egid;
 
                 if (!dirty_inode(*created, created->dentry->inode))
                     return -1;
@@ -260,7 +260,7 @@ namespace syscall::vfs
         const auto fdesc = filedesc::create(target, flags, proc->pid);
         if (!fdesc)
             return (errno = EMFILE, -1);
-        const auto fd = fdt->allocate_fd(fdesc, 0, false);
+        const auto fd = fdt->alloc(fdesc, 0, false);
         if (fd < 0)
             return (errno = EMFILE, -1);
 
@@ -305,13 +305,13 @@ namespace syscall::vfs
 
     int close(int fd)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         return close_fd(proc, fd);
     }
 
     std::ssize_t read(int fd, void __user *buf, std::size_t count)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -355,7 +355,7 @@ namespace syscall::vfs
 
     std::ssize_t write(int fd, const void __user *buf, std::size_t count)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -399,7 +399,7 @@ namespace syscall::vfs
 
     std::ssize_t pread(int fd, void __user *buf, std::size_t count, off_t offset)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -443,7 +443,7 @@ namespace syscall::vfs
 
     std::ssize_t pwrite(int fd, const void __user *buf, std::size_t count, off_t offset)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -493,7 +493,7 @@ namespace syscall::vfs
 
     std::ssize_t readv(int fd, const iovec __user *iov, int iovcnt)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -550,7 +550,7 @@ namespace syscall::vfs
 
     std::ssize_t writev(int fd, const iovec __user *iov, int iovcnt)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -604,7 +604,7 @@ namespace syscall::vfs
 
     std::ssize_t preadv(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -662,7 +662,7 @@ namespace syscall::vfs
 
     std::ssize_t pwritev(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -720,7 +720,7 @@ namespace syscall::vfs
 
     off_t lseek(int fd, off_t offset, int whence)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -766,7 +766,7 @@ namespace syscall::vfs
 
     int fstatat(int dirfd, const char __user *pathname, ::stat __user *statbuf, int flags)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         if (flags & ~(at_symlink_nofollow | at_no_automount | at_empty_path))
             return (errno = EINVAL, -1);
@@ -801,7 +801,7 @@ namespace syscall::vfs
 
     int statx(int dirfd, const char __user *pathname, int flags, unsigned int mask, struct statx __user *statxbuf)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         constexpr auto valid_flags =
             at_symlink_nofollow |
@@ -878,7 +878,13 @@ namespace syscall::vfs
 
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
     {
-        const auto proc = sched::this_thread()->parent;
+        if ((mode & ~(f_ok | x_ok | w_ok | r_ok)) != 0)
+            return (errno = EINVAL, -1);
+
+        if ((flags & ~(at_symlink_nofollow | at_empty_path | at_eaccess)) != 0)
+            return (errno = EINVAL, -1);
+
+        const auto proc = sched::current_process();
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -891,14 +897,29 @@ namespace syscall::vfs
         if (mode == f_ok)
             return 0;
 
-        const auto uid = eaccess ? proc->euid : proc->ruid;
-        const auto gid = eaccess ? proc->egid : proc->rgid;
+        using namespace magic_enum::bitwise_operators;
+        auto desired = sched::access_mode::none;
+        if (mode & r_ok)
+            desired |= sched::access_mode::read;
+        if (mode & w_ok)
+            desired |= sched::access_mode::write;
+        if (mode & x_ok)
+            desired |= sched::access_mode::exec;
 
-        if (mode & ~(r_ok | w_ok | x_ok))
-            return (errno = EINVAL, -1);
+        std::shared_ptr<sched::cred_t> cred;
+        if (eaccess == false)
+        {
+            cred = proc->cred->clone();
+            cred->fsuid = cred->ruid;
+            cred->fsgid = cred->rgid;
 
-        const auto supgids = proc->supplementary_gids.read_lock();
-        if (!check_access(uid, gid, *supgids, target->dentry->inode->stat, mode))
+            if (cred->ruid != 0)
+                cred->effective &= ~(sched::cap_t::dac_override | sched::cap_t::dac_override);
+        }
+        else cred = proc->cred;
+
+        const auto &stat = target->dentry->inode->stat;
+        if (!sched::check_perms(cred, stat, desired))
             return (errno = EACCES, -1);
 
         return 0;
@@ -919,7 +940,7 @@ namespace syscall::vfs
         if (flags & ~(at_symlink_nofollow | at_empty_path))
             return (errno = EINVAL, -1);
 
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -958,7 +979,7 @@ namespace syscall::vfs
         if (flags & ~(at_symlink_nofollow | at_empty_path))
             return (errno = EINVAL, -1);
 
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -1003,7 +1024,7 @@ namespace syscall::vfs
 
     std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto target = get_target(proc, dirfd, pathname, false, true, true);
         if (!target.has_value())
@@ -1031,7 +1052,7 @@ namespace syscall::vfs
 
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -1045,7 +1066,7 @@ namespace syscall::vfs
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -1086,13 +1107,13 @@ namespace syscall::vfs
 
     int dup(int oldfd)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         return proc->fdt->dup(oldfd, 0, false, false);
     }
 
     int dup2(int oldfd, int newfd)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         return proc->fdt->dup(oldfd, newfd, false, true);
     }
 
@@ -1101,13 +1122,13 @@ namespace syscall::vfs
         if (oldfd == newfd || (flags & ~o_closexec) != 0)
             return (errno = EINVAL, -1);
 
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         return proc->fdt->dup(oldfd, newfd, (flags & o_closexec) != 0, true);
     }
 
     char *getcwd(char __user *buf, std::size_t size)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto path_str = pathname_from(proc->vfs->cwd);
         if (path_str.size() + 1 > size)
@@ -1120,7 +1141,7 @@ namespace syscall::vfs
 
     int chdir(const char __user *pathname)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
         if (!target.has_value())
@@ -1135,7 +1156,7 @@ namespace syscall::vfs
 
     int fchdir(int fd)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto target = get_target(proc, fd, nullptr, true, true, true);
         if (!target.has_value())
@@ -1150,7 +1171,7 @@ namespace syscall::vfs
 
     int pipe2(int __user *pipefd, int flags)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         auto &fdt = proc->fdt;
 
         if (flags & ~(o_closexec | o_direct | o_nonblock))
@@ -1160,8 +1181,8 @@ namespace syscall::vfs
         {
             shared_inode->stat.st_blksize = 0x1000;
             shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
-            shared_inode->stat.st_uid = proc->euid;
-            shared_inode->stat.st_gid = proc->egid;
+            shared_inode->stat.st_uid = proc->cred->euid;
+            shared_inode->stat.st_gid = proc->cred->egid;
 
             shared_inode->stat.update_time(
                 stat::time::access |
@@ -1185,7 +1206,7 @@ namespace syscall::vfs
             return (errno = EMFILE, -1);
         rfdesc->closexec = (flags & o_closexec) != 0;
 
-        fds[0] = fdt->allocate_fd(rfdesc, 0, false);
+        fds[0] = fdt->alloc(rfdesc, 0, false);
         if (fds[0] < 0)
             return (errno = EMFILE, -1);
 
@@ -1211,7 +1232,7 @@ namespace syscall::vfs
         }
         wfdesc->closexec = (flags & o_closexec) != 0;
 
-        fds[1] = fdt->allocate_fd(wfdesc, 0, false);
+        fds[1] = fdt->alloc(wfdesc, 0, false);
         if (fds[1] < 0)
         {
             close_fd(proc, fds[0]);
@@ -1248,7 +1269,7 @@ namespace syscall::vfs
 
     int getdents64(int fd, dirent64 __user *buf, std::size_t count)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
 
         const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
@@ -1316,183 +1337,185 @@ namespace syscall::vfs
             std::memset(set->fds_bits, 0, sizeof(fd_set));
         }
 
-        struct select_poll_table : poll_table
-        {
-            lib::list<lib::wait_queue_entry> wait_nodes;
-            sched::thread *current;
+        // struct select_poll_table : poll_table
+        // {
+        //     lib::list<lib::wait_queue_entry> wait_nodes;
+        //     sched::thread_t *current;
 
-            select_poll_table(sched::thread *current) : current { current } { }
-            ~select_poll_table() override { unregister_all(); }
+        //     select_poll_table(sched::thread_t *current) : current { current } { }
+        //     ~select_poll_table() override { unregister_all(); }
 
-            void queue_wait(lib::wait_queue *wq) override
-            {
-                wq->add(&wait_nodes.emplace_back(static_cast<sched::thread_base *>(current)));
-            }
+        //     void queue_wait(lib::wait_queue *wq) override
+        //     {
+        //         wq->add(&wait_nodes.emplace_back(static_cast<sched::thread_base_t *>(current)));
+        //     }
 
-            void unregister_all()
-            {
-                for (auto &node : wait_nodes)
-                {
-                    if (node.queue)
-                        node.queue->remove(&node);
-                }
-                wait_nodes.clear();
-            }
-        };
+        //     void unregister_all()
+        //     {
+        //         for (auto &node : wait_nodes)
+        //         {
+        //             if (node.queue)
+        //                 node.queue->remove(&node);
+        //         }
+        //         wait_nodes.clear();
+        //     }
+        // };
 
         // TODO: ugh
         int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
         {
+            return (errno = ENOSYS, -1);
+            // TODO-SCHED-REWRITE
             // TODO
-            lib::unused(sigmask);
+            // lib::unused(sigmask);
 
-            const auto me = sched::this_thread();
-            const auto proc = me->parent;
+            // const auto me = sched::current_thread();
+            // const auto proc = me->proc;
 
-            std::optional<std::size_t> timeout_ms { };
-            if (timeout)
-                timeout_ms = timeout->to_ms();
+            // std::optional<std::size_t> timeout_ms { };
+            // if (timeout)
+            //     timeout_ms = timeout->to_ms();
 
-            const auto start_time = chrono::now(chrono::monotonic).to_ns();
+            // const auto start_time = chrono::now(chrono::monotonic).to_ns();
 
-            const auto check_files = [&](select_poll_table *table, bool write_back) -> lib::expect<int>
-            {
-                int events = 0;
+            // const auto check_files = [&](select_poll_table *table, bool write_back) -> lib::expect<int>
+            // {
+            //     int events = 0;
 
-                fd_set out_read, out_write, out_except;
-                FD_ZERO(&out_read); FD_ZERO(&out_write); FD_ZERO(&out_except);
+            //     fd_set out_read, out_write, out_except;
+            //     FD_ZERO(&out_read); FD_ZERO(&out_write); FD_ZERO(&out_except);
 
-                for (int i = 0; i < nfds; i++)
-                {
-                    if (!(
-                        (readfds ? FD_ISSET(i, readfds) : 0) |
-                        (writefds ? FD_ISSET(i, writefds) : 0) |
-                        (exceptfds ? FD_ISSET(i, exceptfds) : 0)
-                    )) continue;
+            //     for (int i = 0; i < nfds; i++)
+            //     {
+            //         if (!(
+            //             (readfds ? FD_ISSET(i, readfds) : 0) |
+            //             (writefds ? FD_ISSET(i, writefds) : 0) |
+            //             (exceptfds ? FD_ISSET(i, exceptfds) : 0)
+            //         )) continue;
 
-                    auto fd = proc->fdt->get(i);
-                    if (!fd || !fd->file)
-                        return std::unexpected { lib::err::invalid_fd };
+            //         auto fd = proc->fdt->get(i);
+            //         if (!fd || !fd->file)
+            //             return std::unexpected { lib::err::invalid_fd };
 
-                    const auto pres = fd->file->poll(table);
-                    if (!pres.has_value())
-                        continue;
+            //         const auto pres = fd->file->poll(table);
+            //         if (!pres.has_value())
+            //             continue;
 
-                    if (readfds && FD_ISSET(i, readfds) && (*pres & pollin))
-                    {
-                        FD_SET(i, &out_read);
-                        events++;
-                    }
-                    if (writefds && FD_ISSET(i, writefds) && (*pres & pollout))
-                    {
-                        FD_SET(i, &out_write);
-                        events++;
-                    }
-                    if (exceptfds && FD_ISSET(i, exceptfds) && (*pres & pollpri))
-                    {
-                        FD_SET(i, &out_except);
-                        events++;
-                    }
-                }
+            //         if (readfds && FD_ISSET(i, readfds) && (*pres & pollin))
+            //         {
+            //             FD_SET(i, &out_read);
+            //             events++;
+            //         }
+            //         if (writefds && FD_ISSET(i, writefds) && (*pres & pollout))
+            //         {
+            //             FD_SET(i, &out_write);
+            //             events++;
+            //         }
+            //         if (exceptfds && FD_ISSET(i, exceptfds) && (*pres & pollpri))
+            //         {
+            //             FD_SET(i, &out_except);
+            //             events++;
+            //         }
+            //     }
 
-                if (write_back)
-                {
-                    if (events > 0)
-                    {
-                        if (readfds)
-                            std::memcpy(readfds, &out_read, sizeof(fd_set));
-                        if (writefds)
-                            std::memcpy(writefds, &out_write, sizeof(fd_set));
-                        if (exceptfds)
-                            std::memcpy(exceptfds, &out_except, sizeof(fd_set));
-                    }
-                    else
-                    {
-                        if (readfds)
-                            FD_ZERO(readfds);
-                        if (writefds)
-                            FD_ZERO(writefds);
-                        if (exceptfds)
-                            FD_ZERO(exceptfds);
-                    }
-                }
-                return events;
-            };
+            //     if (write_back)
+            //     {
+            //         if (events > 0)
+            //         {
+            //             if (readfds)
+            //                 std::memcpy(readfds, &out_read, sizeof(fd_set));
+            //             if (writefds)
+            //                 std::memcpy(writefds, &out_write, sizeof(fd_set));
+            //             if (exceptfds)
+            //                 std::memcpy(exceptfds, &out_except, sizeof(fd_set));
+            //         }
+            //         else
+            //         {
+            //             if (readfds)
+            //                 FD_ZERO(readfds);
+            //             if (writefds)
+            //                 FD_ZERO(writefds);
+            //             if (exceptfds)
+            //                 FD_ZERO(exceptfds);
+            //         }
+            //     }
+            //     return events;
+            // };
 
-            select_poll_table table { me };
+            // select_poll_table table { me };
 
-            auto events = check_files(&table, false);
-            if (!events.has_value())
-                return (errno = lib::map_error(events.error()), -1);
-            if (*events > 0)
-            {
-                if (const auto ret = check_files(nullptr, true); !ret.has_value())
-                    return (errno = lib::map_error(ret.error()), -1);
-                goto exit;
-            }
+            // auto events = check_files(&table, false);
+            // if (!events.has_value())
+            //     return (errno = lib::map_error(events.error()), -1);
+            // if (*events > 0)
+            // {
+            //     if (const auto ret = check_files(nullptr, true); !ret.has_value())
+            //         return (errno = lib::map_error(ret.error()), -1);
+            //     goto exit;
+            // }
 
-            while (true)
-            {
-                for (auto &node : table.wait_nodes)
-                    node.triggered.store(false, std::memory_order_seq_cst);
+            // while (true)
+            // {
+            //     for (auto &node : table.wait_nodes)
+            //         node.triggered.store(false, std::memory_order_seq_cst);
 
-                events = check_files(nullptr, false);
-                if (!events.has_value())
-                    return (errno = lib::map_error(events.error()), -1);
+            //     events = check_files(nullptr, false);
+            //     if (!events.has_value())
+            //         return (errno = lib::map_error(events.error()), -1);
 
-                if (*events > 0)
-                {
-                    if (const auto ret = check_files(nullptr, true); !ret.has_value())
-                        return (errno = lib::map_error(ret.error()), -1);
-                    goto exit;
-                }
+            //     if (*events > 0)
+            //     {
+            //         if (const auto ret = check_files(nullptr, true); !ret.has_value())
+            //             return (errno = lib::map_error(ret.error()), -1);
+            //         goto exit;
+            //     }
 
-                if (timeout_ms.has_value())
-                {
-                    const auto now = chrono::now(chrono::monotonic).to_ns();
-                    const auto elapsed_ms = (now - start_time) / 1'000'000;
-                    if (elapsed_ms >= *timeout_ms)
-                    {
-                        events = 0;
-                        if (const auto ret = check_files(nullptr, true); !ret.has_value())
-                            return (errno = lib::map_error(ret.error()), -1);
-                        goto exit;
-                    }
-                    me->prepare_sleep(*timeout_ms - elapsed_ms);
-                }
-                else me->prepare_sleep();
+            //     if (timeout_ms.has_value())
+            //     {
+            //         const auto now = chrono::now(chrono::monotonic).to_ns();
+            //         const auto elapsed_ms = (now - start_time) / 1'000'000;
+            //         if (elapsed_ms >= *timeout_ms)
+            //         {
+            //             events = 0;
+            //             if (const auto ret = check_files(nullptr, true); !ret.has_value())
+            //                 return (errno = lib::map_error(ret.error()), -1);
+            //             goto exit;
+            //         }
+            //         me->prepare_sleep(*timeout_ms - elapsed_ms);
+            //     }
+            //     else me->prepare_sleep();
 
-                bool race = false;
-                for (auto &node : table.wait_nodes)
-                {
-                    if (node.triggered.load(std::memory_order_seq_cst))
-                    {
-                        race = true;
-                        break;
-                    }
-                }
+            //     bool race = false;
+            //     for (auto &node : table.wait_nodes)
+            //     {
+            //         if (node.triggered.load(std::memory_order_seq_cst))
+            //         {
+            //             race = true;
+            //             break;
+            //         }
+            //     }
 
-                if (race)
-                {
-                    me->status = sched::status::running;
-                    me->sleep_lock.unlock();
-                    arch::int_switch(me->sleep_ints);
-                    continue;
-                }
-                sched::yield();
-            }
+            //     if (race)
+            //     {
+            //         me->status = sched::status::running;
+            //         me->sleep_lock.unlock();
+            //         arch::int_switch(me->sleep_ints);
+            //         continue;
+            //     }
+            //     sched::yield();
+            // }
 
-            exit:
-            if (update_timeout && timeout != nullptr && timeout_ms.has_value())
-            {
-                const auto elapsed_ns = chrono::now(chrono::monotonic).to_ns() - start_time;
-                const auto orig_ns = *timeout_ms * 1'000'000;
-                const auto remaining_ns = (orig_ns > elapsed_ns) ? (orig_ns - elapsed_ns) : 0;
+            // exit:
+            // if (update_timeout && timeout != nullptr && timeout_ms.has_value())
+            // {
+            //     const auto elapsed_ns = chrono::now(chrono::monotonic).to_ns() - start_time;
+            //     const auto orig_ns = *timeout_ms * 1'000'000;
+            //     const auto remaining_ns = (orig_ns > elapsed_ns) ? (orig_ns - elapsed_ns) : 0;
 
-                timeout->tv_sec = remaining_ns / 1'000'000'000;
-                timeout->tv_nsec = remaining_ns % 1'000'000'000;
-            }
-            return *events;
+            //     timeout->tv_sec = remaining_ns / 1'000'000'000;
+            //     timeout->tv_nsec = remaining_ns % 1'000'000'000;
+            // }
+            // return *events;
         }
 
         int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timespec *timeout, bool update_timeout, const sigset_t __user *sigmask)

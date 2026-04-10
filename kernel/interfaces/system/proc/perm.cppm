@@ -19,7 +19,7 @@ export namespace sched
         none  = 0,
         read  = (1 << 0),
         write = (1 << 1),
-        exec  = (1 << 2)
+        exec  = (1 << 2) // search
     };
 
     using namespace magic_enum::bitwise_operators;

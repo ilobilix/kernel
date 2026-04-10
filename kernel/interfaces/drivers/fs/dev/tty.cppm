@@ -2,7 +2,7 @@
 
 export module drivers.fs.dev.tty;
 
-import system.scheduler.base;
+import system.sched.thread_base;
 import system.vfs;
 import lib;
 import std;
@@ -394,7 +394,7 @@ export namespace fs::dev::tty
 
         std::atomic_bool stopped;
 
-        sched::thread_base *worker_thread;
+        sched::thread_base_t *worker_thread;
         std::atomic_bool should_work;
         lib::semaphore hung_sem;
 
@@ -436,8 +436,9 @@ export namespace fs::dev::tty
 
         struct ctrl_t
         {
-            pid_t pgid;
-            pid_t sid;
+            // ugly
+            void *group;
+            void *session;
         };
         lib::locker<ctrl_t, lib::mutex> ctrl;
 

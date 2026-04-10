@@ -7,7 +7,7 @@ module;
 
 module x86_64.drivers.timers.hpet;
 
-import system.scheduler;
+import system.sched;
 import system.memory;
 import system.chrono;
 import system.acpi;
@@ -79,7 +79,7 @@ namespace x86_64::timers::hpet
             while (true)
             {
                 read();
-                sched::sleep(1'000);
+                sched::sleep_for_ns(1'000'000'000);
             }
         }
 
@@ -180,12 +180,11 @@ namespace x86_64::timers::hpet
         "timers.arch.hpet.create-thread",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
-            sched::pid0_created_stage(),
             initialised_stage()
         },
         [] {
             if (!is_64bit)
-                sched::spawn(reinterpret_cast<std::uintptr_t>(handle_overflow));
+                sched::spawn(handle_overflow);
         }
     };
 } // namespace x86_64::timers::hpet

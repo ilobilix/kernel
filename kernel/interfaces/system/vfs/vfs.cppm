@@ -2,7 +2,7 @@
 
 export module system.vfs;
 
-import system.scheduler.base;
+import system.sched.thread_base;
 import system.memory.virt;
 import lib;
 import std;
@@ -583,8 +583,6 @@ export namespace vfs
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> lib::expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
-
-    bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const stat &stat, int mode);
 
     lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

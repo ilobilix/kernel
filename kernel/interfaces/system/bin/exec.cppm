@@ -3,7 +3,7 @@
 export module system.bin.exec;
 
 import system.memory.virt;
-import system.scheduler;
+import system.sched;
 import system.vfs;
 import std;
 
@@ -30,7 +30,7 @@ export namespace bin::exec
         virtual ~format() = default;
 
         virtual bool identify(const std::shared_ptr<vfs::file> &file) const = 0;
-        virtual sched::thread *load(const request &req, sched::process *proc) const = 0;
+        virtual sched::thread_t *load(const request &req, sched::process_t *proc) const = 0;
 
         std::string_view name() const { return _name; }
     };

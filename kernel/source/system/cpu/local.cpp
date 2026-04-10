@@ -2,7 +2,7 @@
 
 module system.cpu.local;
 
-import system.scheduler;
+import system.sched;
 import system.cpu;
 import system.memory;
 import magic_enum;
@@ -123,12 +123,12 @@ namespace cpu
 
         void begin_access()
         {
-            sched::disable();
+            sched::preempt_disable();
         }
 
         void end_access()
         {
-            sched::enable();
+            sched::preempt_enable();
         }
     } // namespace local
 

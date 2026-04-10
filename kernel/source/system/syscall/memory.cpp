@@ -3,7 +3,7 @@
 module system.syscall.memory;
 
 import system.memory.virt;
-import system.scheduler;
+import system.sched;
 import system.vfs;
 import lib;
 import std;
@@ -34,7 +34,7 @@ namespace syscall::memory
         if (!anon && fd < 0)
             return (errno = EBADF, invalid_addr);
 
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
         vmm::prot_t max_prot = 0;
@@ -84,7 +84,7 @@ namespace syscall::memory
 
     int munmap(void *addr, std::size_t length)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->unmap(
@@ -96,7 +96,7 @@ namespace syscall::memory
 
     int mprotect(void *addr, std::size_t len, int prot)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->protect(
@@ -109,7 +109,7 @@ namespace syscall::memory
 
     void *brk(void *addr)
     {
-        const auto proc = sched::this_thread()->parent;
+        const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
         const auto psize = vmm::default_page_size();

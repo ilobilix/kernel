@@ -56,7 +56,7 @@ export namespace sched
             mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
         };
         std::shared_ptr<vfs_state> vfs;
-        std::shared_ptr<vfs::fdtable> fds;
+        std::shared_ptr<vfs::fdtable> fdt;
 
         std::shared_ptr<cred_t> cred;
 

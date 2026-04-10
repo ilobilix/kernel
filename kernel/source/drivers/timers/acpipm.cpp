@@ -8,7 +8,7 @@ module;
 
 module drivers.timers.acpipm;
 
-import system.scheduler;
+import system.sched;
 import system.acpi;
 import system.chrono;
 import lib;
@@ -52,7 +52,7 @@ namespace timers::acpipm
             while (true)
             {
                 time_ns();
-                sched::sleep(1'000);
+                sched::sleep_for_ns(1'000'000'000);
             }
         }
     } // namespace
@@ -152,11 +152,10 @@ namespace timers::acpipm
         "timers.acpipm.create-thread",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
-            sched::pid0_created_stage(),
             initialised_stage()
         },
         [] {
-            sched::spawn(reinterpret_cast<std::uintptr_t>(handle_overflow));
+            sched::spawn(handle_overflow);
         }
     };
 } // namespace timers::acpipm

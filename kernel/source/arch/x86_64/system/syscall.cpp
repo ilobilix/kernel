@@ -5,7 +5,6 @@ module x86_64.system.syscall;
 import :arch;
 
 import x86_64.system.gdt;
-import system.scheduler;
 import system.syscall;
 import system.cpu.local;
 import system.cpu;
@@ -134,7 +133,6 @@ namespace x86_64::syscall
             lib::panic("invalid syscall: {}", idx);
 
         in_syscall.write(true);
-        sched::this_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
         in_syscall.write(false);
     }

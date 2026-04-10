@@ -4,7 +4,7 @@ module drivers.fs.dev.tty;
 
 import drivers.fs.devtmpfs;
 import system.memory.virt;
-import system.scheduler;
+import system.sched;
 import system.vfs;
 import system.vfs.dev;
 import arch;
@@ -45,7 +45,7 @@ namespace fs::dev::tty
                     return ret;
             }
 
-            const auto proc = sched::proc_for(file->pid);
+            const auto proc = sched::get_process(file->pid);
             lib::bug_on(!proc);
 
             const bool noctty = !(flags & vfs::o_noctty) ||
@@ -53,21 +53,18 @@ namespace fs::dev::tty
                 (inst->drv->major == 5 && inst->minor == 1) || // console
                 (inst->drv->typ == type::pty && inst->drv->subtyp == subtype::pty_master);
 
-            if (noctty && (proc->pid == proc->sid)) // is leader
+            if (noctty && (proc->pid == proc->session->sid)) // is leader
             {
                 auto locked = inst->ctrl.lock();
-                if (locked->sid == 0)
+                if (!locked->session)
                 {
-                    const auto sess = sched::session_for(proc->sid);
-                    lib::bug_on(!sess);
-
-                    auto ctty_locked = sess->controlling_tty.lock();
+                    auto ctty_locked = proc->session->ctty.lock();
                     if (!ctty_locked.value())
                     {
                         ctty_locked.value() = inst;
 
-                        locked->pgid = proc->pgid;
-                        locked->sid = proc->sid;
+                        locked->group = proc->group;
+                        locked->session = proc->session;
                     }
                 }
             }
@@ -82,17 +79,17 @@ namespace fs::dev::tty
             if (const auto ret = inst->close(); !ret)
                 return ret;
 
-            if (auto locked = inst->ctrl.lock(); locked->sid)
+            if (auto locked = inst->ctrl.lock(); locked->session)
             {
-                lib::bug_on(!locked->pgid);
-                if (const auto session = sched::session_for(locked->sid))
+                lib::bug_on(!locked->group);
+                if (const auto session = static_cast<sched::session_t *>(locked->session))
                 {
-                    auto ctty = session->controlling_tty.lock();
+                    auto ctty = session->ctty.lock();
                     if (ctty.value() == inst)
                         ctty.value() = nullptr;
                 }
-                locked->sid = 0;
-                locked->pgid = 0;
+                locked->session = nullptr;
+                locked->group = nullptr;
             }
             return { };
         }
@@ -241,7 +238,7 @@ namespace fs::dev::tty
             }
         };
 
-        lib::bug_on(sched::this_thread() != self->worker_thread);
+        lib::bug_on(sched::current_thread() != self->worker_thread);
 
         bool next_is_verbatim = false;
         while (true)
@@ -257,9 +254,7 @@ namespace fs::dev::tty
                 }
 
                 self->should_work.store(true, std::memory_order_relaxed);
-                sched::this_thread()->status = sched::status::killed;
-                sched::yield();
-                std::unreachable();
+                sched::thread_exit(0);
             }
 
             if (self->inst->hung_up.load(std::memory_order_relaxed))
@@ -786,11 +781,11 @@ namespace fs::dev::tty
         switch (request)
         {
             case tiocgpgrp:
-                if (!argp.write(inst->ctrl.lock()->pgid))
+                if (!argp.write(static_cast<sched::group_t *>(inst->ctrl.lock()->group)->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tiocspgrp:
-                if (!argp.read(inst->ctrl.lock()->pgid))
+                if (!argp.read(static_cast<sched::group_t *>(inst->ctrl.lock()->group)->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tiocgwinsz:
@@ -1034,13 +1029,10 @@ namespace fs::dev::tty
             lib::bug_on(!file || file->private_data != nullptr);
             lib::unused(flags);
 
-            const auto proc = sched::proc_for(file->pid);
+            const auto proc = sched::get_process(file->pid);
             lib::bug_on(!proc);
 
-            auto sess = sched::session_for(proc->sid);
-            lib::bug_on(!sess);
-
-            auto ctty = sess->controlling_tty.lock();
+            auto ctty = proc->session->ctty.lock();
             if (!ctty.value())
                 return std::unexpected { lib::err::invalid_device_or_address };
 
