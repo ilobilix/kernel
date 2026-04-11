@@ -98,6 +98,7 @@ export
     using clockid_t = std::int32_t;
     using pid_t = std::int32_t;
     using rlim_t = std::uint64_t;
+    using nfds_t = std::uint64_t;
 
     using dev_t = std::uint64_t;
     using ino_t = std::uint64_t;

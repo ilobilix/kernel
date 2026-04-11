@@ -828,8 +828,8 @@ namespace fs::dev::tty
         std::uint16_t mask = 0;
         if (pt != nullptr)
         {
-            pt->queue_wait(&in_wq);
-            pt->queue_wait(&out_wq);
+            pt->add(in_wq);
+            pt->add(out_wq);
         }
 
         if (inst->hung_up.load(std::memory_order_relaxed))

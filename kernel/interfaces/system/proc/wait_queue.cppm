@@ -36,6 +36,9 @@ export namespace sched
         public:
         wait_queue_t() : entries { }, lock { }, pending { 0 } { }
 
+        void add_entry(wait_queue_entry_t &entry);
+        void remove_entry(wait_queue_entry_t &entry);
+
         bool wait(std::uint64_t ns = 0);
         void wait_unint(std::uint64_t ns = 0);
 

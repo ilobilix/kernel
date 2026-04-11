@@ -11,6 +11,19 @@ namespace sched
         return sched::current_thread();
     }
 
+    void wait_queue_t::add_entry(wait_queue_entry_t &entry)
+    {
+        const std::unique_lock _ { lock };
+        entries.push_back(&entry);
+    }
+
+    void wait_queue_t::remove_entry(wait_queue_entry_t &entry)
+    {
+        const std::unique_lock _ { lock };
+        if (entries.find(&entry) != entries.end())
+            entries.remove(&entry);
+    }
+
     bool wait_queue_t::wait(std::uint64_t ns)
     {
         if (pending.load(std::memory_order_acquire) > 0)

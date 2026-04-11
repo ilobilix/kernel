@@ -4,6 +4,7 @@ module system.syscall.vfs;
 
 import system.memory.virt;
 import system.chrono;
+import system.sched.wait_queue;
 import system.sched;
 import system.vfs;
 import system.vfs.pipe;
@@ -1337,185 +1338,236 @@ namespace syscall::vfs
             std::memset(set->fds_bits, 0, sizeof(fd_set));
         }
 
-        // struct select_poll_table : poll_table
-        // {
-        //     lib::list<lib::wait_queue_entry> wait_nodes;
-        //     sched::thread_t *current;
+        struct poll_table : ::vfs::poll_table
+        {
+            struct entry
+            {
+                sched::wait_queue_entry_t entry;
+                sched::wait_queue_t *wq;
+            };
 
-        //     select_poll_table(sched::thread_t *current) : current { current } { }
-        //     ~select_poll_table() override { unregister_all(); }
+            lib::list<entry> entries;
 
-        //     void queue_wait(lib::wait_queue *wq) override
-        //     {
-        //         wq->add(&wait_nodes.emplace_back(static_cast<sched::thread_base_t *>(current)));
-        //     }
+            poll_table() = default;
+            ~poll_table()
+            {
+                for (auto &entry : entries)
+                    entry.wq->remove_entry(entry.entry);
+            }
 
-        //     void unregister_all()
-        //     {
-        //         for (auto &node : wait_nodes)
-        //         {
-        //             if (node.queue)
-        //                 node.queue->remove(&node);
-        //         }
-        //         wait_nodes.clear();
-        //     }
-        // };
+            void add(sched::wait_queue_t &wq) override
+            {
+                auto &entry = entries.emplace_back();
+                entry.wq = &wq;
+                wq.add_entry(entry.entry);
+            }
+        };
 
-        // TODO: ugh
+        int ppoll(std::vector<pollfd> &fds, timespec *timeout, const sigset_t *sigmask)
+        {
+            std::uint64_t timeout_ns = 0;
+            if (timeout)
+            {
+                if (timeout->tv_nsec < 0 || timeout->tv_nsec >= 1'000'000'000l)
+                    return (errno = EINVAL, -1);
+
+                timeout_ns = timeout->to_ns();
+            }
+
+            auto thread = sched::current_thread();
+            auto process = thread->proc;
+
+            // TODO
+            lib::unused(sigmask);
+            // sigset_t old_sigmask;
+            // if (sigmask)
+            //     sigprocmask(SIG_SETMASK, sigmask, &old_sigmask);
+
+            auto cleanup = [&] {
+                // TODO
+                // if (sigmask)
+                //     restore old sigmask
+            };
+
+            struct fd_slot
+            {
+                std::shared_ptr<file> file;
+                std::uint16_t events;
+            };
+
+            std::vector<fd_slot> slots(fds.size());
+
+            for (nfds_t i = 0; i < fds.size(); i++)
+            {
+                fds[i].revents = 0;
+                if (fds[i].fd < 0)
+                {
+                    slots[i].file = nullptr;
+                    continue;
+                }
+
+                auto desc = process->fdt->get(fds[i].fd);
+                if (!desc)
+                {
+                    fds[i].revents = pollnval;
+                    slots[i].file = nullptr;
+                    continue;
+                }
+
+                slots[i].file = desc->file;
+                slots[i].events = fds[i].events | pollerr | pollhup;
+            }
+
+            while (true)
+            {
+                poll_table pt;
+                std::size_t ready = 0;
+
+                for (nfds_t i = 0; i < fds.size(); i++)
+                {
+                    if (!slots[i].file)
+                        continue;
+
+                    const auto ops_res = slots[i].file->get_ops();
+                    if (!ops_res)
+                    {
+                        fds[i].revents = pollerr;
+                        ready++;
+                        continue;
+                    }
+
+                    auto res = ops_res->get()->poll(slots[i].file, &pt);
+                    if (res.has_value())
+                    {
+                        fds[i].revents = *res & slots[i].events;
+                        if (fds[i].revents)
+                            ready++;
+                    }
+                }
+
+                if (ready > 0)
+                {
+                    cleanup();
+                    return ready;
+                }
+
+                if (timeout && timeout_ns == 0)
+                {
+                    cleanup();
+                    return 0;
+                }
+
+                thread->state = sched::thread_state::sleeping;
+                sched::sleep_entry_t sleep_timeout {
+                    .thread = thread,
+                    .deadline_ns = 0,
+                    .expired = false,
+                    .hook = { }
+                };
+
+                if (timeout)
+                    sched::arm_thread_timeout(&sleep_timeout, timeout_ns);
+
+                const bool interrupted = sched::yield();
+                if (timeout)
+                {
+                    if (sleep_timeout.expired)
+                    {
+                        cleanup();
+                        return 0;
+                    }
+                    else sched::cancel_thread_timeout(&sleep_timeout);
+                }
+
+                if (interrupted)
+                {
+                    cleanup();
+                    return (errno = EINTR, -1);
+                }
+            }
+        }
+
         int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
         {
-            return (errno = ENOSYS, -1);
-            // TODO-SCHED-REWRITE
-            // TODO
-            // lib::unused(sigmask);
+            if (nfds < 0 || nfds > FD_SETSIZE)
+                return (errno = EINVAL, -1);
 
-            // const auto me = sched::current_thread();
-            // const auto proc = me->proc;
+            std::vector<pollfd> pfds;
+            pfds.reserve(nfds);
+            for (int fd = 0; fd < nfds; fd++)
+            {
+                short events = 0;
+                if (readfds && FD_ISSET(fd, readfds))
+                    events |= pollin | pollrdhup;
+                if (writefds && FD_ISSET(fd, writefds))
+                    events |= pollout;
+                if (exceptfds && FD_ISSET(fd, exceptfds))
+                    events |= pollpri;
+                if (!events)
+                    continue;
 
-            // std::optional<std::size_t> timeout_ms { };
-            // if (timeout)
-            //     timeout_ms = timeout->to_ms();
+                pfds.emplace_back(fd, events, 0);
+            }
 
-            // const auto start_time = chrono::now(chrono::monotonic).to_ns();
+            const auto timer = chrono::main_timer();
 
-            // const auto check_files = [&](select_poll_table *table, bool write_back) -> lib::expect<int>
-            // {
-            //     int events = 0;
+            std::uint64_t start_ns = 0;
+            if (update_timeout && timeout)
+                start_ns = timer->ns();
 
-            //     fd_set out_read, out_write, out_except;
-            //     FD_ZERO(&out_read); FD_ZERO(&out_write); FD_ZERO(&out_except);
+            const auto ret = ppoll(pfds, timeout, sigmask);
 
-            //     for (int i = 0; i < nfds; i++)
-            //     {
-            //         if (!(
-            //             (readfds ? FD_ISSET(i, readfds) : 0) |
-            //             (writefds ? FD_ISSET(i, writefds) : 0) |
-            //             (exceptfds ? FD_ISSET(i, exceptfds) : 0)
-            //         )) continue;
+            if (update_timeout && timeout && ret >= 0)
+            {
+                const auto elapsed = timer->ns() - start_ns;
+                const auto requested = timeout->to_ns();
 
-            //         auto fd = proc->fdt->get(i);
-            //         if (!fd || !fd->file)
-            //             return std::unexpected { lib::err::invalid_fd };
+                if (elapsed >= requested)
+                {
+                    timeout->tv_sec = 0;
+                    timeout->tv_nsec = 0;
+                }
+                else
+                {
+                    const auto left = requested - elapsed;
+                    timeout->tv_sec = static_cast<time_t>(left / 1'000'000'000ul);
+                    timeout->tv_nsec = static_cast<long>(left % 1'000'000'000ul);
+                }
+            }
 
-            //         const auto pres = fd->file->poll(table);
-            //         if (!pres.has_value())
-            //             continue;
+            if (ret < 0)
+                return ret;
 
-            //         if (readfds && FD_ISSET(i, readfds) && (*pres & pollin))
-            //         {
-            //             FD_SET(i, &out_read);
-            //             events++;
-            //         }
-            //         if (writefds && FD_ISSET(i, writefds) && (*pres & pollout))
-            //         {
-            //             FD_SET(i, &out_write);
-            //             events++;
-            //         }
-            //         if (exceptfds && FD_ISSET(i, exceptfds) && (*pres & pollpri))
-            //         {
-            //             FD_SET(i, &out_except);
-            //             events++;
-            //         }
-            //     }
+            if (readfds)
+                FD_ZERO(readfds);
+            if (writefds)
+                FD_ZERO(writefds);
+            if (exceptfds)
+                FD_ZERO(exceptfds);
 
-            //     if (write_back)
-            //     {
-            //         if (events > 0)
-            //         {
-            //             if (readfds)
-            //                 std::memcpy(readfds, &out_read, sizeof(fd_set));
-            //             if (writefds)
-            //                 std::memcpy(writefds, &out_write, sizeof(fd_set));
-            //             if (exceptfds)
-            //                 std::memcpy(exceptfds, &out_except, sizeof(fd_set));
-            //         }
-            //         else
-            //         {
-            //             if (readfds)
-            //                 FD_ZERO(readfds);
-            //             if (writefds)
-            //                 FD_ZERO(writefds);
-            //             if (exceptfds)
-            //                 FD_ZERO(exceptfds);
-            //         }
-            //     }
-            //     return events;
-            // };
-
-            // select_poll_table table { me };
-
-            // auto events = check_files(&table, false);
-            // if (!events.has_value())
-            //     return (errno = lib::map_error(events.error()), -1);
-            // if (*events > 0)
-            // {
-            //     if (const auto ret = check_files(nullptr, true); !ret.has_value())
-            //         return (errno = lib::map_error(ret.error()), -1);
-            //     goto exit;
-            // }
-
-            // while (true)
-            // {
-            //     for (auto &node : table.wait_nodes)
-            //         node.triggered.store(false, std::memory_order_seq_cst);
-
-            //     events = check_files(nullptr, false);
-            //     if (!events.has_value())
-            //         return (errno = lib::map_error(events.error()), -1);
-
-            //     if (*events > 0)
-            //     {
-            //         if (const auto ret = check_files(nullptr, true); !ret.has_value())
-            //             return (errno = lib::map_error(ret.error()), -1);
-            //         goto exit;
-            //     }
-
-            //     if (timeout_ms.has_value())
-            //     {
-            //         const auto now = chrono::now(chrono::monotonic).to_ns();
-            //         const auto elapsed_ms = (now - start_time) / 1'000'000;
-            //         if (elapsed_ms >= *timeout_ms)
-            //         {
-            //             events = 0;
-            //             if (const auto ret = check_files(nullptr, true); !ret.has_value())
-            //                 return (errno = lib::map_error(ret.error()), -1);
-            //             goto exit;
-            //         }
-            //         me->prepare_sleep(*timeout_ms - elapsed_ms);
-            //     }
-            //     else me->prepare_sleep();
-
-            //     bool race = false;
-            //     for (auto &node : table.wait_nodes)
-            //     {
-            //         if (node.triggered.load(std::memory_order_seq_cst))
-            //         {
-            //             race = true;
-            //             break;
-            //         }
-            //     }
-
-            //     if (race)
-            //     {
-            //         me->status = sched::status::running;
-            //         me->sleep_lock.unlock();
-            //         arch::int_switch(me->sleep_ints);
-            //         continue;
-            //     }
-            //     sched::yield();
-            // }
-
-            // exit:
-            // if (update_timeout && timeout != nullptr && timeout_ms.has_value())
-            // {
-            //     const auto elapsed_ns = chrono::now(chrono::monotonic).to_ns() - start_time;
-            //     const auto orig_ns = *timeout_ms * 1'000'000;
-            //     const auto remaining_ns = (orig_ns > elapsed_ns) ? (orig_ns - elapsed_ns) : 0;
-
-            //     timeout->tv_sec = remaining_ns / 1'000'000'000;
-            //     timeout->tv_nsec = remaining_ns % 1'000'000'000;
-            // }
-            // return *events;
+            int ready = 0;
+            for (auto &pfd : pfds)
+            {
+                bool any = false;
+                if (readfds && (pfd.revents & (pollin  | pollhup | pollrdhup)))
+                {
+                    FD_SET(pfd.fd, readfds);
+                    any = true;
+                }
+                if (writefds && (pfd.revents & (pollout | pollhup)))
+                {
+                    FD_SET(pfd.fd, writefds);
+                    any = true;
+                }
+                if (exceptfds && (pfd.revents & (pollpri | pollerr)))
+                {
+                    FD_SET(pfd.fd, exceptfds);
+                    any = true;
+                }
+                if (any)
+                    ready++;
+            }
+            return ready;
         }
 
         int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timespec *timeout, bool update_timeout, const sigset_t __user *sigmask)
@@ -1554,6 +1606,87 @@ namespace syscall::vfs
         }
     } // namespace
 
+    int ppoll(pollfd __user *fds, nfds_t nfds, timespec __user *timeout, sigset_t __user *sigmask)
+    {
+        if (fds == nullptr)
+            return (errno = EFAULT, -1);
+
+        std::vector<pollfd> kfds;
+        for (nfds_t i = 0; i < nfds; i++)
+        {
+            auto &kfd = kfds.emplace_back();
+            if (!lib::copy_from_user(&kfd, &fds[i], sizeof(pollfd)))
+                return (errno = EFAULT, -1);
+        }
+
+        timespec ktimeout;
+        if (timeout != nullptr)
+        {
+            if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
+                return (errno = EFAULT, -1);
+        }
+
+        sigset_t ksigmask;
+        if (sigmask != nullptr)
+        {
+            if (!lib::copy_from_user(&ksigmask, sigmask, sizeof(sigset_t)))
+                return (errno = EFAULT, -1);
+        }
+
+        const auto ret = ppoll(
+            kfds,
+            timeout ? &ktimeout : nullptr,
+            sigmask ? &ksigmask : nullptr
+        );
+
+        for (nfds_t i = 0; i < nfds; i++)
+        {
+            if (!lib::copy_to_user(&fds[i], &kfds[i], sizeof(pollfd)))
+                return (errno = EFAULT, -1);
+        }
+
+        if (ret >= 0 && timeout != nullptr)
+        {
+            if (!lib::copy_to_user(timeout, &ktimeout, sizeof(timespec)))
+                return (errno = EFAULT, -1);
+        }
+
+        return ret;
+    }
+
+    int poll(pollfd __user *fds, nfds_t nfds, int timeout)
+    {
+        if (fds == nullptr)
+            return (errno = EFAULT, -1);
+
+        std::vector<pollfd> kfds;
+        for (nfds_t i = 0; i < nfds; i++)
+        {
+            auto &kfd = kfds.emplace_back();
+            if (!lib::copy_from_user(&kfd, &fds[i], sizeof(pollfd)))
+                return (errno = EFAULT, -1);
+        }
+
+        int ret;
+        if (timeout >= 0)
+        {
+            timespec ts {
+                timeout / 1000,
+                (timeout % 1000) * 1'000'000L
+            };
+            ret = ppoll(kfds, &ts, nullptr);
+        }
+        else ret = ppoll(kfds, nullptr, nullptr);
+
+        for (nfds_t i = 0; i < nfds; i++)
+        {
+            if (!lib::copy_to_user(&fds[i], &kfds[i], sizeof(pollfd)))
+                return (errno = EFAULT, -1);
+        }
+
+        return ret;
+    }
+
     int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout)
     {
         timespec ktimeout;
@@ -1577,6 +1710,7 @@ namespace syscall::vfs
             if (!lib::copy_to_user(timeout, &ktimeval, sizeof(timeval)))
                 return (errno = EFAULT, -1);
         }
+
         return ret;
     }
 
