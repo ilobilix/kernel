@@ -297,11 +297,24 @@ namespace sched
         else if (next->proc != prev->proc)
             next->proc->vmspace->pmap->load();
 
-        next->was_in_interrupt = self.in_interrupt.load(std::memory_order_relaxed);
+        if (self.in_interrupt.load(std::memory_order_relaxed))
+            next->was_in_interrupt = &self.in_interrupt;
+        next->needs_unlock = &rq.lock;
 
         arch::arm_timer_ns(timeslice);
-        rq.lock.unlock();
         arch::context_switch(prev, next);
+
+        auto thread = current_thread();
+        if (thread->needs_unlock)
+        {
+            thread->needs_unlock->unlock();
+            thread->needs_unlock = nullptr;
+        }
+        if (thread->was_in_interrupt)
+        {
+            thread->was_in_interrupt->store(false, std::memory_order_release);
+            thread->was_in_interrupt = nullptr;
+        }
     }
 
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)

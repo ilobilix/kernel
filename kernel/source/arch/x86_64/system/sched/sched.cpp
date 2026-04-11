@@ -31,10 +31,15 @@ namespace sched::arch
         extern "C" void sched_trampoline_entry()
         {
             auto thread = current_thread();
+            if (thread->needs_unlock)
+            {
+                thread->needs_unlock->unlock();
+                thread->needs_unlock = nullptr;
+            }
             if (thread->was_in_interrupt)
             {
-                cpu::self().unsafe_get().in_interrupt.store(false, std::memory_order_release);
-                thread->was_in_interrupt = false;
+                thread->was_in_interrupt->store(false, std::memory_order_release);
+                thread->was_in_interrupt = nullptr;
             }
         }
     } // namespace
