@@ -92,11 +92,13 @@ namespace timers::acpipm
             value += mask + 1;
 
         if (last_val - value > (mask >> 1))
+        {
             last.compare_exchange_strong(
                 last_val, value,
                 std::memory_order_relaxed,
                 std::memory_order_relaxed
             );
+        }
 
         return freq.nanos(value);
     }

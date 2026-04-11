@@ -542,8 +542,10 @@ namespace lib::log
                 desc_state expected { .id = res.id, .state = desc_state::reserved  };
                 const desc_state pub { .id = res.id, .state = desc_state::published };
 
-                state_ref(*d).compare_exchange_strong(expected, pub,
-                    std::memory_order_release, std::memory_order_relaxed
+                state_ref(*d).compare_exchange_strong(
+                    expected, pub,
+                    std::memory_order_release,
+                    std::memory_order_relaxed
                 );
 
                 arch::int_switch(res.irqs);

@@ -65,11 +65,13 @@ namespace x86_64::timers::hpet
                 value += (1ul << 32);
 
             if (last_val - value > (mask >> 1))
+            {
                 last.compare_exchange_strong(
                     last_val, value,
                     std::memory_order_relaxed,
                     std::memory_order_relaxed
                 );
+            }
 
             return value;
         }

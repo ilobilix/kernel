@@ -5,19 +5,11 @@ export module system.sched:work_queue;
 import lib;
 import std;
 
+import :sleep;
+
 export namespace sched
 {
-    struct work_t
-    {
-        std::function<void ()> func;
-        lib::intrusive_list_hook<work_t> hook;
-    };
+    lib::initgraph::stage *wq_initialised_stage();
 
-    void schedule_work(work_t *work);
-
-    // scheduler work to run after delay_ns nanoseconds
-    void schedule_work_after(work_t *work, std::uint64_t delay_ns);
-
-    // wait for all pending work to complete
-    void flush_work();
+    void schedule_work(std::function<void ()> func);
 } // export namespace sched
