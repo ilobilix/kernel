@@ -25,7 +25,19 @@ namespace sched
             >, lib::spinlock
         > processes;
 
-        std::atomic_bool should_start = false;
+        lib::locker<
+            lib::map::flat_hash<
+                pid_t,
+                std::weak_ptr<group_t>
+            >, lib::spinlock
+        > groups;
+
+        lib::locker<
+            lib::map::flat_hash<
+                pid_t,
+                std::weak_ptr<session_t>
+            >, lib::spinlock
+        > sessions;
 
         lib::locker<
             lib::rbtree<
@@ -39,6 +51,8 @@ namespace sched
             >, lib::spinlock_irq
         > sleep_list;
 
+        std::atomic_bool should_start = false;
+
         std::atomic<pid_t> next_id = 2;
         pid_t alloc_id()
         {
@@ -50,11 +64,11 @@ namespace sched
             return ret;
         }
 
-        void free_id(pid_t id)
-        {
-            // TODO
-            lib::unused(id);
-        }
+        // void free_id(pid_t id)
+        // {
+        //     // TODO
+        //     lib::unused(id);
+        // }
 
         bool can_run_on(const thread_t *thread, std::size_t cpu)
         {
@@ -138,6 +152,34 @@ namespace sched
             ret.clear(0xFF);
             return ret;
         }
+
+        std::shared_ptr<group_t> get_group(pid_t pgid)
+        {
+            auto locked = groups.lock();
+            auto it = locked->find(pgid);
+            if (it != locked->end())
+            {
+                if (auto group = it->second.lock())
+                    return group;
+                else
+                    locked->erase(it);
+            }
+            return nullptr;
+        }
+
+        // std::shared_ptr<session_t> get_session(pid_t sid)
+        // {
+        //     auto locked = sessions.lock();
+        //     auto it = locked->find(sid);
+        //     if (it != locked->end())
+        //     {
+        //         if (auto session = it->second.lock())
+        //             return session;
+        //         else
+        //             locked->erase(it);
+        //     }
+        //     return nullptr;
+        // }
     } // namespace
 
     lib::initgraph::stage *pid0_created_stage()
@@ -326,19 +368,18 @@ namespace sched
             proc->pid = 1;
             proc->parent = proc;
 
-            proc->session = new session_t { };
+            proc->session = std::make_shared<session_t>();
             proc->session->sid = proc->pid;
-            proc->session->leader = proc;
 
-            proc->group = new group_t { };
+            proc->group = std::make_shared<group_t>();
             proc->group->pgid = proc->pid;
             proc->group->session = proc->session;
-            proc->group->leader = proc;
-
-            proc->session->foreground_pg = proc->group;
 
             (*proc->group->members.lock())[proc->pid] = proc;
             (*proc->session->members.lock())[proc->group->pgid] = proc->group;
+
+            (*groups.lock())[proc->group->pgid] = proc->group;
+            (*sessions.lock())[proc->session->sid] = proc->session;
         }
         else
         {
@@ -896,8 +937,93 @@ namespace sched
 
     int setpgid(pid_t pid, pid_t pgid)
     {
-        // TODO-SCHED-REWRITE
-        return -1;
+        if (pgid < 0)
+            return (errno = EINVAL, -1);
+
+        const auto proc = sched::current_process();
+        if (pid == 0)
+            pid = proc->pid;
+        if (pgid == 0)
+            pgid = pid;
+
+        const auto target = sched::get_process(pid);
+        if (!target)
+            return (errno = ESRCH, -1);
+
+        if (target->group->pgid == pgid)
+            return 0;
+
+        // is leader
+        if (pid == target->session->sid)
+            return (errno = EPERM, -1);
+
+        if (proc->children.lock()->contains(pid))
+        {
+            if (target->has_execved)
+                return (errno = EACCES, -1);
+
+            if (proc->session != target->session)
+                return (errno = EPERM, -1);
+        }
+        else if (pid != proc->pid)
+            return (errno = ESRCH, -1);
+
+        auto target_group = get_group(pgid);
+        if (!target_group)
+        {
+            if (pgid != pid)
+                return (errno = EPERM, -1);
+
+            const auto create_group = [&] {
+                auto group = std::make_shared<group_t>();
+                group->pgid = target->pid;
+                group->session = target->session;
+                return group;
+            };
+
+            auto glocked = groups.lock();
+            auto it = glocked->find(pgid);
+
+            if (it == glocked->end())
+            {
+                target_group = create_group();
+                (*glocked)[pgid] = target_group;
+                (*target->session->members.lock())[pgid] = target_group;
+            }
+            else
+            {
+                target_group = it->second.lock();
+                if (!target_group)
+                {
+                    target_group = create_group();
+                    it->second = target_group;
+                    (*target->session->members.lock())[pgid] = target_group;
+                }
+            }
+        }
+
+        if (target_group->session != target->session)
+            return (errno = EPERM, -1);
+
+        const std::unique_lock _ { target->lock };
+        {
+            auto locked = target_group->members.lock();
+            auto [it, inserted] = locked->emplace(target->pid, target);
+            if (!inserted)
+                return (errno = EPERM, -1);
+        }
+        {
+            auto glocked = target->group->members.lock();
+            lib::bug_on(glocked->erase(target->pid) == 0);
+            if (glocked->empty())
+            {
+                auto slocked = target->session->members.lock();
+                lib::bug_on(slocked->erase(target->group->pgid) == 0);
+            }
+        }
+
+        target->group = std::move(target_group);
+        return 0;
     }
 
     pid_t getpgid(pid_t pid)
@@ -908,8 +1034,37 @@ namespace sched
 
     pid_t setsid()
     {
-        // TODO-SCHED-REWRITE
-        return -1;
+        const auto proc = sched::current_process();
+        if (proc->pid == proc->group->pgid)
+            return (errno = EPERM, -1);
+
+        auto session = std::make_shared<session_t>();
+        session->sid = proc->pid;
+
+        auto group = std::make_shared<group_t>();
+        group->pgid = proc->pid;
+        group->session = session;
+
+        (*group->members.lock())[proc->pid] = proc;
+        (*session->members.lock())[group->pgid] = group;
+
+        const std::unique_lock _ { proc->lock };
+        {
+            auto glocked = proc->group->members.lock();
+            lib::bug_on(glocked->erase(proc->pid) == 0);
+            if (glocked->empty())
+            {
+                auto slocked = proc->session->members.lock();
+                lib::bug_on(slocked->erase(proc->group->pgid) == 0);
+            }
+        }
+
+        (*groups.lock())[group->pgid] = group;
+        (*sessions.lock())[session->sid] = session;
+
+        proc->group = std::move(group);
+        proc->session = std::move(session);
+        return proc->session->sid;
     }
 
     pid_t getsid(pid_t pid)

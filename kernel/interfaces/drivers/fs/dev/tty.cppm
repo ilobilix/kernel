@@ -436,8 +436,8 @@ export namespace fs::dev::tty
 
         struct ctrl_t
         {
-            sched::group_t *group;
-            sched::session_t *session;
+            std::weak_ptr<sched::group_t> group;
+            std::weak_ptr<sched::session_t> session;
         };
         lib::locker<ctrl_t, sched::mutex> ctrl;
 

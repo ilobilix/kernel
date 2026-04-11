@@ -43,8 +43,8 @@ export namespace sched
             >, lib::spinlock
         > children;
 
-        group_t *group;
-        session_t *session;
+        std::shared_ptr<group_t> group;
+        std::shared_ptr<session_t> session;
 
         std::shared_ptr<vmm::vmspace> vmspace;
 
@@ -73,6 +73,7 @@ export namespace sched
 
         int exit_code = 0;
         bool is_zombie = false;
+        bool has_execved = false;
 
         lib::spinlock lock;
     };
@@ -80,8 +81,7 @@ export namespace sched
     struct group_t
     {
         pid_t pgid;
-        session_t *session;
-        process_t *leader;
+        std::shared_ptr<session_t> session;
 
         lib::locker<
             lib::map::flat_hash<
@@ -96,11 +96,11 @@ export namespace sched
     struct session_t
     {
         pid_t sid;
-        process_t *leader;
 
         lib::locker<
             lib::map::flat_hash<
-                pid_t, group_t *
+                pid_t,
+                std::weak_ptr<group_t>
             >, lib::spinlock
         > members;
 
@@ -110,6 +110,6 @@ export namespace sched
             >, lib::spinlock
         > ctty;
 
-        group_t *foreground_pg;
+        std::weak_ptr<group_t> foreground_pg;
     };
 } // export namespace sched

@@ -29,21 +29,12 @@ namespace vmm
 
         void wait_on_busy_page(page *pg)
         {
+            constexpr std::uint64_t wait_timeout = 100'000'000;
             sched::wait_queue_entry_t wqe { };
 
             auto &wq = waitqueues[hash_page(pg)];
             while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
-            {
-                wq.prepare_wait(&wqe, false);
-
-                if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
-                {
-                    wq.finish_wait(&wqe);
-                    break;
-                }
-
-                sched::yield();
-            }
+                wq.wait(wait_timeout);
         }
 
         std::uintptr_t pfndb_base()

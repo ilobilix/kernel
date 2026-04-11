@@ -15,21 +15,46 @@ import std;
 
 namespace syscall::proc
 {
-    pid_t gettid() { return sched::current_thread()->tid; }
-    pid_t getpid() { return sched::current_thread()->proc->pid; }
+    pid_t gettid()
+    {
+        return sched::current_thread()->tid;
+    }
+
+    pid_t getpid()
+    {
+        return sched::current_process()->pid;
+    }
 
     pid_t getppid()
     {
-        const auto parent = sched::current_thread()->proc->parent;
+        const auto parent = sched::current_process()->parent;
         return parent ? parent->pid : 0;
     }
 
-    pid_t getpgrp() { return sched::current_thread()->proc->group->pgid; }
+    pid_t getpgrp()
+    {
+        return sched::current_process()->group->pgid;
+    }
 
-    uid_t getuid() { return sched::current_thread()->proc->cred->ruid;}
-    uid_t geteuid() { return sched::current_thread()->proc->cred->euid; }
-    gid_t getgid() { return sched::current_thread()->proc->cred->rgid; }
-    gid_t getegid() { return sched::current_thread()->proc->cred->egid; }
+    uid_t getuid()
+    {
+        return sched::current_process()->cred->ruid;
+    }
+
+    uid_t geteuid()
+    {
+        return sched::current_process()->cred->euid;
+    }
+
+    gid_t getgid()
+    {
+        return sched::current_process()->cred->rgid;
+    }
+
+    gid_t getegid()
+    {
+        return sched::current_process()->cred->egid;
+    }
 
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid)
     {
@@ -85,78 +110,12 @@ namespace syscall::proc
 
     int setpgid(pid_t pid, pid_t pgid)
     {
-        // TODO-SCHED-REWRITE
-        return (errno = ENOSYS, -1);
-        // if (pgid < 0)
-        //     return (errno = EINVAL, -1);
-
-        // const auto proc = sched::this_thread()->parent;
-        // if (pid == 0)
-        //     pid = proc->pid;
-        // if (pgid == 0)
-        //     pgid = pid;
-
-        // const auto target = sched::proc_for(pid);
-        // if (!target)
-        //     return (errno = ESRCH, -1);
-
-        // if (target->pgid == pgid)
-        //     return 0;
-
-        // // is leader
-        // if (pid == target->sid)
-        //     return (errno = EPERM, -1);
-
-        // if (proc->children.contains(pid))
-        // {
-        //     if (target->has_execved)
-        //         return (errno = EACCES, -1);
-        //     if (proc->sid != target->sid)
-        //         return (errno = EPERM, -1);
-        // }
-        // else if (pid != proc->pid)
-        //     return (errno = ESRCH, -1);
-
-        // auto target_group = sched::group_for(pgid);
-        // if (!target_group)
-        // {
-        //     if (pgid == pid)
-        //     {
-        //         target_group = sched::create_group(pgid);
-        //         target_group->sid = target->sid;
-        //         auto sess = sched::session_for(target->sid);
-        //         if (sess)
-        //             sess->members.write_lock().value()[pgid] = target_group;
-        //     }
-        //     else return (errno = EPERM, -1);
-        // }
-        // else if (target_group->sid != target->sid)
-        //     return (errno = EPERM, -1);
-
-        // if (!sched::change_group(target, target_group))
-        //     return (errno = EINVAL, -1);
-        // return (errno = no_error, 0);
+        return sched::setpgid(pid, pgid);
     }
 
     pid_t setsid()
     {
-        // TODO-SCHED-REWRITE
-        return (errno = ENOSYS, -1);
-        // const auto proc = sched::this_thread()->parent;
-
-        // if (proc->pid == proc->pgid)
-        //     return (errno = EPERM, -1);
-
-        // const auto grp = sched::create_group(proc->pid);
-        // const auto sess = sched::create_session(proc->pid);
-
-        // if (!sched::change_session(grp, sess))
-        //     return (errno = ENOSYS, -1);
-
-        // if (!sched::change_group(proc, grp))
-        //     return (errno = ENOSYS, -1);
-
-        // return proc->sid;
+        return sched::setsid();
     }
 
     int setfsuid(uid_t fsuid)
