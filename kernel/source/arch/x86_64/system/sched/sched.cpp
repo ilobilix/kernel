@@ -64,12 +64,11 @@ namespace sched::arch
 
     void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline)
     {
-        auto ctx = std::construct_at(reinterpret_cast<context *>(
-            (thread->kstack_top - sizeof(context)) & ~0xFul
-        ));
+        auto ctx = &thread->ctx;
 
         ctx->rflags = 0x202;
-        ctx->rsp = reinterpret_cast<std::uintptr_t>(ctx);
+        constexpr std::uintptr_t trampoline_rsp_reserve = 256;
+        ctx->rsp = (thread->kstack_top - trampoline_rsp_reserve) & ~0xFul;
 
         auto &adata = thread->adata;
         if (thread->is_kernel())
@@ -100,8 +99,6 @@ namespace sched::arch
 
             // TODO-SCHED-REWRITE: lazy fpu
         }
-
-        thread->ctx = ctx;
     }
 
     void arm_timer_ns(std::uint64_t ns)
@@ -138,7 +135,7 @@ namespace sched::arch
             cpu::gs::write_kernel(next->adata.gs_base);
         }
 
-        sched_context_switch(prev->ctx, next->ctx, next);
+        sched_context_switch(&prev->ctx, &next->ctx, next);
     }
 
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack)
