@@ -297,7 +297,7 @@ namespace sched
         else if (next->proc != prev->proc)
             next->proc->vmspace->pmap->load();
 
-        next->was_in_interrupt = self.in_interrupt.load(std::memory_order_acquire);
+        next->was_in_interrupt = self.in_interrupt.load(std::memory_order_relaxed);
 
         arch::arm_timer_ns(timeslice);
         rq.lock.unlock();

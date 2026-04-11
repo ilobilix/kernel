@@ -59,7 +59,7 @@ namespace arch
     bool in_interrupt()
     {
         sched::preempt_disable();
-        auto ret = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire);
+        auto ret = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed);
         sched::preempt_enable();
         return ret;
     }

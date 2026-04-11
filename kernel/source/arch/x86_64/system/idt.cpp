@@ -86,7 +86,8 @@ namespace x86_64::idt
         }
 
         auto &self = cpu::self().unsafe_get();
-        self.in_interrupt.store(true, std::memory_order_acquire);
+        self.in_interrupt.store(true, std::memory_order_relaxed);
+        std::atomic_signal_fence(std::memory_order_acquire);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
@@ -153,7 +154,8 @@ namespace x86_64::idt
             sched::schedule();
 
         end:
-        self.in_interrupt.store(false, std::memory_order_release);
+        std::atomic_signal_fence(std::memory_order_release);
+        self.in_interrupt.store(false, std::memory_order_relaxed);
     }
 
     void init()
