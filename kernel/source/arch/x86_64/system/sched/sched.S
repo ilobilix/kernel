@@ -28,6 +28,23 @@ sched_uthread_trampoline:
     jmp sched_return_to_user
 .global sched_uthread_trampoline
 
+sched_clone_trampoline:
+    cli
+    call sched_trampoline_entry
+
+    popall
+
+    add rsp, 16
+
+    pop rcx
+    add rsp, 8
+    pop r11
+    pop rsp
+
+    swapgs
+    sysretq
+.global sched_clone_trampoline
+
 sched_context_switch:
     mov [rdi + 0], rsp
     mov [rdi + 8], rbp

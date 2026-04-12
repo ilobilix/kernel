@@ -37,7 +37,8 @@ namespace sched
         if (entry->expired)
             return false;
 
-        locked->remove(entry);
+        if (locked->contains(entry))
+            locked->remove(entry);
         return true;
     }
 

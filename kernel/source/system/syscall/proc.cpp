@@ -268,309 +268,7 @@ namespace syscall::proc
         return (errno = ENOSYS, -1);
     }
 
-    namespace
-    {
-        enum clone_flags : std::uint64_t
-        {
-            csignal = 0x000000FF, // signal mask to be sent at exit
-            clone_vm = 0x00000100, // set if VM shared between processes
-            clone_fs = 0x00000200, // set if fs info shared between processes
-            clone_files = 0x00000400, // set if open files shared between processes
-            clone_sighand = 0x00000800, // set if signal handlers and blocked signals shared
-            clone_pidfd = 0x00001000, // set if a pidfd should be placed in parent
-            clone_ptrace = 0x00002000, // set if we want to let tracing continue on the child too
-            clone_vfork = 0x00004000, // set if the parent wants the child to wake it up on mm_release
-            clone_parent = 0x00008000, // set if we want to have the same parent as the cloner
-            clone_thread = 0x00010000, // same thread group?
-            clone_newns = 0x00020000, // new mount namespace group
-            clone_sysvsem = 0x00040000, // share system V SEM_UNDO semantics
-            clone_settls = 0x00080000, // create a new TLS for the child
-            clone_parent_settid = 0x00100000, // set the TID in the parent
-            clone_child_cleartid = 0x00200000, // clear the TID in the child
-            clone_detached = 0x00400000, // unused, ignored
-            clone_untraced = 0x00800000, // set if the tracing process can't force CLONE_PTRACE on this clone
-            clone_child_settid = 0x01000000, // set the TID in the child
-            clone_newcgroup = 0x02000000, // new cgroup namespace
-            clone_newuts = 0x04000000, // new utsname namespace
-            clone_newipc = 0x08000000, // new ipc namespace
-            clone_newuser = 0x10000000, // new user namespace
-            clone_newpid = 0x20000000, // new pid namespace
-            clone_newnet = 0x40000000, // new network namespace
-            clone_io = 0x80000000, // clone io context
-            clone_clear_sighand = 0x100000000ull, // clear any signal handler and reset to SIG_DFL.
-            clone_into_cgroup = 0x200000000ull, // clone into a specific cgroup given the right permissions.
-            clone_newtime = 0x00000080 // new time namespace
-        };
-
-        struct kclone_args
-        {
-            std::uint64_t flags;
-            int __user *pidfd;
-            int __user *child_tid;
-            int __user *parent_tid;
-            int exit_signal;
-            std::uint64_t stack;
-            std::uint64_t stack_size;
-            std::uint64_t tls;
-            pid_t *set_tid;
-            std::size_t set_tid_size;
-            int cgroup;
-        };
-
-        pid_t kclone(const kclone_args &args)
-        {
-            // TODO-SCHED-REWRITE
-            return (errno = ENOSYS, -1);
-//             const auto caller = sched::this_thread();
-//             const auto old_proc = caller->parent;
-//             const auto flags = args.flags;
-
-//             if ((flags & (clone_child_settid | clone_child_cleartid)) && !args.child_tid)
-//                 return (errno = EFAULT, -1);
-
-//             if ((flags & clone_parent_settid) && !args.parent_tid)
-//                 return (errno = EFAULT, -1);
-
-//             if ((flags & clone_clear_sighand) && (flags & clone_sighand))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_thread) && !(flags & clone_sighand))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_thread) && args.exit_signal)
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_thread) && (flags & clone_pidfd))
-//                 return (errno = EINVAL, -1);
-
-//             if (!(flags & clone_vm) && (flags & clone_sighand))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_fs) && (flags & clone_newns))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_fs) && (flags & clone_newuser))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_newipc) && (flags & clone_sysvsem))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_newpid) && (flags & (clone_thread | clone_parent)))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_newuser) && (flags & clone_thread))
-//                 return (errno = EINVAL, -1);
-
-//             // TODO: namespaces
-//             if ((flags & (clone_newipc | clone_newnet | clone_newpid | clone_newuser | clone_newuts)))
-//                 return (errno = EINVAL, -1);
-
-//             if ((flags & clone_parent) && old_proc->pid == 1)
-//                 return (errno = EINVAL, -1);
-
-//             // TODO
-//             // const auto needs_priv = flags & (clone_newcgroup | clone_newipc | clone_newnet |
-//             //     clone_newns | clone_newpid | clone_newuts);
-//             // if (needs_priv && !cap_sys_admin)
-//             //     return (errno = EPERM, -1);
-
-//             sched::process *new_proc;
-//             if (!(flags & clone_thread))
-//             {
-//                 new_proc = new sched::process { };
-//                 new_proc->pid = sched::alloc_pid(new_proc);
-
-//                 if (flags & clone_parent)
-//                     new_proc->parent = old_proc->parent;
-//                 else
-//                     new_proc->parent = old_proc;
-
-//                 new_proc->pgid = new_proc->parent->pgid;
-//                 new_proc->sid = new_proc->parent->sid;
-//                 {
-//                     auto grp = sched::group_for(new_proc->pgid);
-//                     auto wlocked = grp->members.write_lock();
-//                     lib::bug_on(wlocked->contains(new_proc->pid));
-//                     wlocked.value()[new_proc->pid] = new_proc;
-//                 }
-
-//                 new_proc->rgid = old_proc->rgid;
-//                 new_proc->sgid = old_proc->sgid;
-//                 new_proc->egid = old_proc->egid;
-
-//                 new_proc->ruid = old_proc->ruid;
-//                 new_proc->suid = old_proc->suid;
-//                 new_proc->euid = old_proc->euid;
-
-//                 new_proc->supplementary_gids.write_lock() =
-//                     *old_proc->supplementary_gids.read_lock();
-
-//                 if (flags & clone_vm)
-//                 {
-//                     if (!(flags & clone_vfork))
-//                     { } // TODO: clear alternate signal stacks
-
-//                     new_proc->vmspace = old_proc->vmspace;
-//                 }
-//                 else
-//                 {
-//                     auto pmap = std::make_shared<vmm::pagemap>();
-//                     if (!pmap)
-//                         return (errno = ENOMEM, -1);
-//                     auto ret = old_proc->vmspace->fork(pmap);
-//                     if (!ret)
-//                         return (errno = ENOMEM, -1);
-//                     new_proc->vmspace = std::move(*ret);
-//                     new_proc->next_stack_top = old_proc->next_stack_top;
-//                 }
-
-//                 if (flags & clone_fs)
-//                     new_proc->vfs = old_proc->vfs;
-//                 else
-//                     new_proc->vfs = std::make_shared<sched::process::vfs_state>(*old_proc->vfs);
-
-//                 if (flags & clone_files)
-//                     new_proc->fdt = old_proc->fdt;
-//                 else
-//                     new_proc->fdt = std::make_shared<sched::process::fdtable>(*old_proc->fdt);
-//             }
-//             else new_proc = old_proc;
-
-//             // TODO: this is so bad I want to nuke it
-
-//             auto new_thread = sched::thread::create(new_proc, 0, 0, true, true);
-//             std::memcpy(
-//                 &new_thread->regs,
-//                 caller->saved_regs,
-//                 sizeof(cpu::registers)
-//             );
-//             auto &regs = new_thread->regs;
-
-//             const auto cleanup = [&] {
-//                 if (new_proc == old_proc)
-//                 {
-//                     const std::unique_lock _ { old_proc->lock };
-//                     old_proc->threads.erase(new_thread->tid);;
-//                     delete new_thread;
-//                     return;
-//                 }
-
-//                 delete new_thread;
-//                 delete new_proc;
-//             };
-
-//             constexpr std::uint64_t stack_alignment = 16;
-//             if (args.stack != 0)
-//             {
-//                 std::uintptr_t req = static_cast<std::uintptr_t>(args.stack);
-
-//                 if (args.stack_size != 0)
-//                 {
-//                     constexpr auto max = std::numeric_limits<std::uintptr_t>::max();
-//                     if (req > max - static_cast<std::uintptr_t>(args.stack_size))
-//                     {
-//                         cleanup();
-//                         return (errno = EINVAL, -1);
-//                     }
-
-//                     req += static_cast<std::uintptr_t>(args.stack_size);
-//                 }
-
-//                 if (req & (stack_alignment - 1))
-//                 {
-//                     cleanup();
-//                     return (errno = EINVAL, -1);
-//                 }
-
-//                 new_thread->ustack_top = req;
-// #if defined(__x86_64__)
-//                 regs.rsp = req;
-// #endif
-//             }
-//             else
-//             {
-//                 new_thread->ustack_top = caller->ustack_top;
-//                 if (!(flags & clone_vm))
-//                     new_thread->og_ustack_top = 0;
-//                 else
-//                     new_thread->og_ustack_top = caller->og_ustack_top;
-//             }
-
-// #if defined(__x86_64__)
-//             if (flags & clone_settls)
-//                 new_thread->fs_base = args.tls;
-//             else
-//                 new_thread->fs_base = cpu::fs::read();
-//             new_thread->gs_base = cpu::gs::read_kernel();
-
-//             regs.rax = 0;
-// #else
-//             lib::unused(regs);
-//             lib::panic("kclone: unsupported architecture");
-//             std::unreachable();
-// #endif
-
-//             // TODO: set_tid
-
-//             if (flags & clone_child_settid)
-//             {
-//                 new_thread->set_child_tid = reinterpret_cast<std::uintptr_t>(args.child_tid);
-//                 // if (!lib::copy_to_user(args.child_tid, &new_thread->tid, sizeof(pid_t)))
-//                 // {
-//                 //     cleanup();
-//                 //     return (errno = EFAULT, -1);
-//                 // }
-//             }
-
-//             if (flags & clone_child_cleartid)
-//             {
-//                 new_thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(args.child_tid);
-//                 // TODO: wake up futex at that address
-//             }
-
-//             if (flags & clone_parent_settid)
-//             {
-//                 if (!lib::copy_to_user(args.parent_tid, &new_thread->tid, sizeof(pid_t)))
-//                 {
-//                     cleanup();
-//                     return (errno = EFAULT, -1);
-//                 }
-//             }
-
-//             if (flags & clone_clear_sighand)
-//             {
-//                 // TODO: use default signals
-//             }
-//             else { } // TODO: copy parent signals
-
-//             if (flags & clone_sighand)
-//             {
-//                 // TODO: share signal handlers
-//             }
-
-//             // TODO: cgroups
-//             // TODO: namespaces
-//             // TODO: pidfd
-
-//             if (flags & clone_vfork)
-//             {
-//                 // TODO: suspend caller until child calls execve or exit
-//             }
-
-//             if (!(flags & clone_thread))
-//             {
-//                 const std::unique_lock _ { new_proc->parent->lock };
-//                 new_proc->parent->children[new_proc->pid] = new_proc;
-//             }
-
-//             new_thread->status = sched::status::ready;
-//             new_thread->vruntime = caller->vruntime;
-//             new_thread->schedule_time = caller->schedule_time;
-//             sched::enqueue(new_thread, caller->running_on->idx);
-
-//             return new_thread->tid;
-        }
-    } // namespace
+    using enum sched::clone_flags;
 
     long clone(
         unsigned long flags, void __user *stack, int __user *parent_tid,
@@ -581,7 +279,7 @@ namespace syscall::proc
         if ((kflags & clone_pidfd) && (kflags & clone_parent_settid))
             return (errno = EINVAL, -1);
 
-        return kclone({
+        return sched::clone({
             .flags = kflags,
             .pidfd = parent_tid,
             .child_tid = child_tid,
@@ -616,8 +314,11 @@ namespace syscall::proc
         pid_t set_tid[32] { };
 
         clone_args uargs { };
-        if (size < 64 || size > sizeof(clone_args))
+        if (size < 64)
             return (errno = EINVAL, -1);
+
+        if (size > sizeof(clone_args))
+            return (errno = E2BIG, -1);
 
         if (!lib::copy_from_user(&uargs, cl_args, size))
             return (errno = EFAULT, -1);
@@ -635,7 +336,8 @@ namespace syscall::proc
             return (errno = EINVAL, -1);
 
         constexpr auto max = std::numeric_limits<int>::max();
-        if ((uargs.flags & clone_into_cgroup) && (uargs.cgroup > max || size < sizeof(clone_args)))
+        constexpr std::size_t size_v2 = 88;
+        if ((uargs.flags & clone_into_cgroup) && (uargs.cgroup > max || size < size_v2))
             return (errno = EINVAL, -1);
 
         if (uargs.flags & clone_detached)
@@ -644,7 +346,7 @@ namespace syscall::proc
         if ((uargs.flags & (clone_thread | clone_parent)) && uargs.exit_signal)
             return (errno = EINVAL, -1);
 
-        kclone_args kargs
+        sched::kclone_args_t kargs
         {
             .flags = uargs.flags,
             .pidfd = reinterpret_cast<int __user *>(uargs.pidfd),
@@ -664,24 +366,24 @@ namespace syscall::proc
         if (uargs.set_tid && !lib::copy_from_user(set_tid, uset_tid, uset_tid_size_bytes))
             return (errno = EFAULT, -1);
 
-        return kclone(kargs);
+        return sched::clone(kargs);
     }
 
     pid_t fork()
     {
-        kclone_args args { };
+        sched::kclone_args_t args { };
         // TODO
         // args.exit_signal = sigchld;
-        return kclone(args);
+        return sched::clone(args);
     }
 
     pid_t vfork()
     {
-        kclone_args args { };
+        sched::kclone_args_t args { };
         args.flags = clone_vfork | clone_vm;
         // TODO
         // args.exit_signal = sigchld;
-        return kclone(args);
+        return sched::clone(args);
     }
 
     int execveat(
@@ -870,97 +572,16 @@ namespace syscall::proc
 
     pid_t wait4(pid_t pid, int __user *wstatus, int options, struct rusage __user *rusage)
     {
-        // TODO-SCHED-REWRITE
-        return (errno = ENOSYS, -1);
-        // // TODO: rusage
-        // lib::unused(rusage);
+        // TODO: rusage
+        lib::unused(rusage);
 
-        // enum {
-        //     wnohang = 1,
-        //     wuntraced = 2,
-        //     wcontinued = 8
-        // };
+        int status;
+        const auto ret = sched::waitpid(pid, options, &status);
 
-        // const auto current = sched::this_thread();
-        // const auto proc = current->parent;
+        if (wstatus && !lib::copy_to_user(wstatus, &status, sizeof(int)))
+            return (errno = EFAULT, -1);
 
-        // while (true)
-        // {
-        //     sched::process *found = nullptr;
-        //     pid_t found_pid = -1;
-
-        //     {
-        //         const std::unique_lock _ { proc->lock };
-
-        //         if (proc->children.empty())
-        //             return (errno = ECHILD, -1);
-
-        //         bool any_match = false;
-        //         for (auto &[cpid, child] : proc->children)
-        //         {
-        //             bool matches = false;
-        //             if (pid == -1)
-        //                 matches = true;
-        //             else if (pid > 0)
-        //                 matches = (cpid == pid);
-        //             else if (pid == 0)
-        //                 matches = (child->pgid == proc->pgid);
-        //             else
-        //                 matches = (child->pgid == -pid);
-
-        //             if (!matches)
-        //                 continue;
-
-        //             any_match = true;
-
-        //             if (child->exited && child->threads.empty())
-        //             {
-        //                 found = child;
-        //                 found_pid = cpid;
-        //                 break;
-        //             }
-
-        //             // TODO: stopped/continued checks for WUNTRACED/WCONTINUED
-        //         }
-
-        //         if (!any_match)
-        //             return (errno = ECHILD, -1);
-        //     }
-
-        //     if (found)
-        //     {
-        //         const auto status = found->exit_status;
-        //         const auto wstatus_val = (status & 0xFF) << 8;
-
-        //         if (wstatus)
-        //         {
-        //             if (!lib::copy_to_user(wstatus, &wstatus_val, sizeof(int)))
-        //                 return (errno = EFAULT, -1);
-        //         }
-
-        //         {
-        //             const std::unique_lock _ { proc->lock };
-        //             proc->children.erase(found_pid);
-        //         }
-
-        //         bool should_delete = false;
-        //         {
-        //             const std::unique_lock _ { found->lock };
-        //             found->reaped = true;
-        //             should_delete = found->threads.empty();
-        //         }
-
-        //         if (should_delete)
-        //             delete found;
-
-        //         return found_pid;
-        //     }
-
-        //     if (options & wnohang)
-        //         return 0;
-
-        //     proc->waiter.wait();
-        // }
+        return ret;
     }
 
     [[noreturn]] void exit_group(int status)

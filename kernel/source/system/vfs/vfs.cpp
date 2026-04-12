@@ -737,6 +737,11 @@ namespace vfs
         }
     }
 
+    std::shared_ptr<fdtable> fdtable::clone()
+    {
+        return std::make_shared<fdtable>(*this);
+    }
+
     fdtable::fdtable(fdtable &other) : next_fd { other.next_fd }
     {
         auto orlocked = other.fds.read_lock();

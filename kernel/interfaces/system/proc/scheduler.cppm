@@ -26,7 +26,11 @@ namespace sched::arch
     thread_t *current_thread();
 
     void init_core(thread_t *initial);
-    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline);
+    void init_thread(
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_trampoline, bool is_clone
+    );
+    void deinit_thread(thread_t *thread);
 
     void arm_timer_ns(std::uint64_t ns);
     void wake_up_other(std::size_t cpu_idx);
@@ -103,7 +107,8 @@ export namespace sched
 
     // create a user thread
     thread_t *create_uthread(
-        process_t *proc, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline,
+        process_t *proc, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_trampoline, bool is_clone,
         std::uintptr_t stack, nice_t nice = default_nice
     );
 
@@ -144,7 +149,39 @@ export namespace sched
     int setpgid(pid_t pid, pid_t pgid);
     pid_t setsid();
 
-    struct kclone_args
+    enum clone_flags : std::uint64_t
+    {
+        csignal              = 0x000000FF,    // signal mask to be sent at exit
+        clone_vm             = 0x00000100,    // set if VM shared between processes
+        clone_fs             = 0x00000200,    // set if fs info shared between processes
+        clone_files          = 0x00000400,    // set if open files shared between processes
+        clone_sighand        = 0x00000800,    // set if signal handlers and blocked signals shared
+        clone_pidfd          = 0x00001000,    // set if a pidfd should be placed in parent
+        clone_ptrace         = 0x00002000,    // set if we want to let tracing continue on the child too
+        clone_vfork          = 0x00004000,    // set if the parent wants the child to wake it up on mm_release
+        clone_parent         = 0x00008000,    // set if we want to have the same parent as the cloner
+        clone_thread         = 0x00010000,    // same process
+        clone_newns          = 0x00020000,    // new mount namespace group
+        clone_sysvsem        = 0x00040000,    // share system V SEM_UNDO semantics
+        clone_settls         = 0x00080000,    // create a new TLS for the child
+        clone_parent_settid  = 0x00100000,    // set the TID in the parent
+        clone_child_cleartid = 0x00200000,    // clear the TID in the child
+        clone_detached       = 0x00400000,    // unused, ignored
+        clone_untraced       = 0x00800000,    // set if the tracing process can't force CLONE_PTRACE on this clone
+        clone_child_settid   = 0x01000000,    // set the TID in the child
+        clone_newcgroup      = 0x02000000,    // new cgroup namespace
+        clone_newuts         = 0x04000000,    // new utsname namespace
+        clone_newipc         = 0x08000000,    // new ipc namespace
+        clone_newuser        = 0x10000000,    // new user namespace
+        clone_newpid         = 0x20000000,    // new pid namespace
+        clone_newnet         = 0x40000000,    // new network namespace
+        clone_io             = 0x80000000,    // clone io context
+        clone_clear_sighand  = 0x100000000ul, // clear any signal handler and reset to SIG_DFL.
+        clone_into_cgroup    = 0x200000000ul, // clone into a specific cgroup given the right permissions.
+        clone_newtime        = 0x00000080,    // new time namespace
+    };
+
+    struct kclone_args_t
     {
         std::uint64_t flags;
         int __user *pidfd;
@@ -159,27 +196,18 @@ export namespace sched
         int cgroup;
     };
 
-    pid_t clone(const kclone_args &args);
+    pid_t clone(const kclone_args_t &args);
     int exec(const vfs::path &path, std::vector<std::string> argv, std::vector<std::string> envp);
 
-    struct wait_options_t
+    enum wait_flags
     {
-        enum {
-            wnohang = 0x00000001,
-            wuntraced = 0x00000002,
-            wstopped = wuntraced,
-            wexited = 0x00000004,
-            wcontinued = 0x00000008,
-            wnowait = 0x01000000
-        };
-
-        // -1 = any child
-        // >0 = specific pid
-        // 0 = same pgroupd
-        // <-1 = specific pgroup
-        pid_t pid;
-        int options;
+        wnohang = 0x00000001,
+        wuntraced = 0x00000002,
+        wstopped = wuntraced,
+        wexited = 0x00000004,
+        wcontinued = 0x00000008,
+        wnowait = 0x01000000
     };
 
-    pid_t waitpid(const wait_options_t &options, int *status);
+    pid_t waitpid(pid_t wait_pid, int options, int *status);
 } // export namespace sched

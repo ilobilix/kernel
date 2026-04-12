@@ -17,10 +17,19 @@ namespace sched::arch
         lib::unused(initial);
     }
 
-    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline)
+    void init_thread(
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_trampoline, bool is_clone
+    )
     {
         // TODO
-        lib::unused(thread, ip, arg, is_trampoline);
+        lib::unused(thread, ip, arg, is_trampoline, is_clone);
+    }
+
+    void deinit_thread(thread_t *thread)
+    {
+        // TODO
+        lib::unused(thread);
     }
 
     void arm_timer_ns(std::uint64_t ns)

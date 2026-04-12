@@ -874,6 +874,9 @@ namespace vmm
         if (max_gap < plen && high_gap < plen && low_gap < plen)
             return std::unexpected { lib::err::out_of_memory };
 
+        if (high_gap >= plen)
+            return (pmax - plen) * npsize;
+
         const auto nil = locked->nil();
         auto node = locked->root();
 
@@ -896,7 +899,14 @@ namespace vmm
                 continue;
             }
 
-            const auto prev_endp = (left != nil ? left->interval.subtree_max : floor);
+            if (right != nil)
+            {
+                const auto gap_after_node = right->interval.subtree_min - node->endp;
+                if (gap_after_node >= plen)
+                    return (right->interval.subtree_min - plen) * npsize;
+            }
+
+            const auto prev_endp = std::max(floor, left != nil ? left->interval.subtree_max : 0ul);
             if (node->startp > prev_endp && (node->startp - prev_endp) >= plen)
                 return (node->startp - plen) * npsize;
 
@@ -1075,6 +1085,9 @@ namespace vmm
         }
 
         if (!obj && !amap)
+            return false;
+
+        if (!(prot & prot::read))
             return false;
 
         if (state.is_write && !(prot & prot::write))
