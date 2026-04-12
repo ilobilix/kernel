@@ -4,6 +4,7 @@ export module system.sched:thread;
 
 import system.sched.thread_base;
 
+import system.memory.virt;
 import system.cpu.local;
 import system.cpu.regs;
 import magic_enum;
@@ -79,6 +80,7 @@ export namespace sched
         arch::context ctx;
         arch::data adata;
 
+        std::shared_ptr<vmm::vmspace> saved_vmspace;
         cpu::registers *saved_regs;
 
         lib::bitmap affinity;

@@ -25,7 +25,7 @@ namespace lib::log
         constinit std::atomic_uint64_t last_consumed = 0;
         constinit std::uint64_t next_seq = 0;
 
-        constinit lib::spinlock lock;
+        constinit lib::spinlock_irq lock;
         constinit std::atomic_bool direct = true;
 
         constinit logger *loggers = nullptr;
