@@ -9,6 +9,7 @@ import lib;
 import std;
 
 import :thread;
+import :process;
 
 export namespace sched
 {
@@ -59,8 +60,7 @@ export namespace sched
 
     lib::expect<void> set_securebits(secbit_t securebits);
 
-    std::shared_ptr<cred_t> apply_exec_caps(
-        const std::shared_ptr<cred_t> &old_cred,
-        const stat &stat, std::optional<vfs::file_caps> fcaps
+    void apply_exec_caps(
+        process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps
     );
 } // export namespace sched

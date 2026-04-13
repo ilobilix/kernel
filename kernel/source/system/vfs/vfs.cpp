@@ -59,7 +59,7 @@ namespace vfs
             const stat &stat, std::string_view name
         )
         {
-            if (name == "security.capability")
+            if (name == xattr_caps_name)
                 return sched::capable(cred, sched::cap_t::setfcap);
             if (name.starts_with("security.") || name.starts_with("trusted."))
                 return sched::capable(cred, sched::cap_t::sys_admin);
@@ -692,8 +692,7 @@ namespace vfs
 
     auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>
     {
-        if (target.mnt == nullptr)
-            return std::unexpected { lib::err::invalid_mount };
+        lib::bug_on(!target.mnt);
 
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;
@@ -721,8 +720,7 @@ namespace vfs
     auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
         -> lib::expect<void>
     {
-        if (target.mnt == nullptr)
-            return std::unexpected { lib::err::invalid_mount };
+        lib::bug_on(!target.mnt);
 
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;
@@ -760,8 +758,7 @@ namespace vfs
 
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>
     {
-        if (target.mnt == nullptr)
-            return std::unexpected { lib::err::invalid_mount };
+        lib::bug_on(!target.mnt);
 
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;
@@ -797,8 +794,7 @@ namespace vfs
 
         if (inode->xattrs.empty())
         {
-            if (target.mnt == nullptr)
-                return std::unexpected { lib::err::invalid_mount };
+            lib::bug_on(!target.mnt);
 
             auto fs = target.mnt->fs.lock();
             if (fs.get() == nullptr)
@@ -826,8 +822,7 @@ namespace vfs
 
         if (inode->xattrs.empty())
         {
-            if (target.mnt == nullptr)
-                return std::unexpected { lib::err::invalid_mount };
+            lib::bug_on(!target.mnt);
 
             auto fs = target.mnt->fs.lock();
             if (fs.get() == nullptr)

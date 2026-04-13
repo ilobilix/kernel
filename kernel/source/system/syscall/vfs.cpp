@@ -977,17 +977,35 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
 
-            // TODO: capabilities
+            const bool is_uid = (owner != static_cast<uid_t>(-1) && owner != inode->stat.st_uid);
+            const bool is_gid = (group != static_cast<uid_t>(-1) && group != inode->stat.st_gid);
 
-            if (owner != static_cast<uid_t>(-1))
+            if (is_uid || is_gid)
+            {
+                if (!sched::capable(proc->cred, sched::cap_t::chown))
+                    return (errno = EPERM, -1);
+
+                if (is_uid && inode->xattrs.contains(xattr_caps_name))
+                {
+                    lib::bug_on(!target->mnt);
+
+                    inode->xattrs.erase(xattr_caps_name);
+
+                    auto fs = target->mnt->fs.lock();
+                    if (!fs.get())
+                        return (errno = EIO, -1);
+
+                    if (const auto ret = fs->remxattr(inode, xattr_caps_name); !ret)
+                        return (errno = lib::map_error(ret.error()), -1);
+                }
+
                 inode->stat.st_uid = owner;
-            if (group != static_cast<gid_t>(-1))
                 inode->stat.st_gid = group;
 
-            inode->stat.update_time(stat::time::status);
-
-            if (const auto ret = dirty_inode(*target); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                inode->stat.update_time(stat::time::status);
+                if (const auto ret = dirty_inode(*target); !ret)
+                    return (errno = lib::map_error(ret.error()), -1);
+            }
         }
         return 0;
     }
