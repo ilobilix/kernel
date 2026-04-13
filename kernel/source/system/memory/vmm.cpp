@@ -3,7 +3,6 @@
 module system.memory.virt;
 
 import system.memory.phys;
-import system.sched.wait_queue;
 import system.sched;
 import system.cpu;
 import magic_enum;

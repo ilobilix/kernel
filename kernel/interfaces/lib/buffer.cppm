@@ -36,11 +36,30 @@ export namespace lib
             std::memcpy(_ptr, tohh(ptr), count * sizeof(Type));
         }
 
-        buffer(buffer &&other) noexcept : buffer { } { swap(*this, other); }
-        buffer &operator=(buffer &&other) noexcept { swap(*this, other); return *this; }
+        buffer(buffer &&other) : buffer { } { swap(*this, other); }
 
-        buffer(const buffer &other) = delete;
-        buffer &operator=(const buffer &other) = delete;
+        buffer(const buffer &other) : _alloc { other._alloc }
+        {
+            allocate(other._count);
+            std::memcpy(_ptr, other._ptr, _count * sizeof(Type));
+        }
+
+        buffer &operator=(const buffer &other)
+        {
+            if (&other != this)
+            {
+                allocate(other._count);
+                std::memcpy(_ptr, other._ptr, _count * sizeof(Type));
+            }
+            return *this;
+        }
+
+        buffer &operator=(buffer &&other)
+        {
+            if (&other != this)
+                swap(*this, other);
+            return *this;
+        }
 
         ~buffer()
         {

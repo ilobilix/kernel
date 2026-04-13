@@ -13,8 +13,6 @@ export import system.memory;
 export import system.net;
 export import system.pci;
 export import system.sched;
-export import system.sched.mutex;
-export import system.sched.wait_queue;
 export import system.syscall;
 export import system.vfs;
 export import system.vfs.dev;

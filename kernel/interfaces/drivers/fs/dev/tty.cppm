@@ -2,8 +2,6 @@
 
 export module drivers.fs.dev.tty;
 
-import system.sched.wait_queue;
-import system.sched.mutex;
 import system.sched;
 import system.vfs;
 import lib;

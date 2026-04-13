@@ -3,8 +3,10 @@
 export module system.sched;
 
 export import system.sched.thread_base;
+export import system.sched.wait_queue;
+export import system.sched.mutex;
+export import system.sched.cred;
 
-export import :cred;
 export import :perm;
 export import :nice;
 export import :process;
