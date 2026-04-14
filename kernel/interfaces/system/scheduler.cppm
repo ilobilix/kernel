@@ -8,6 +8,7 @@ import system.vfs;
 import lib;
 import std;
 
+extern "C++" struct processor;
 export namespace sched
 {
     constexpr std::size_t fixed_timeslice = 6;
@@ -22,8 +23,10 @@ export namespace sched
     };
 
     struct process;
-    struct thread : std::enable_shared_from_this<thread>
+    struct thread
     {
+        processor *running_on;
+
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
 
@@ -46,6 +49,7 @@ export namespace sched
 #elif defined(__aarch64__)
 #endif
 
+        std::uintptr_t allocate_ustack();
         std::uintptr_t allocate_kstack();
 
         static std::shared_ptr<thread> create(std::shared_ptr<process> parent, std::uintptr_t ip);

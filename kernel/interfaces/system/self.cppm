@@ -17,12 +17,12 @@ export namespace cpu
     {
         struct processor
         {
+            // do not move
             processor *self;
+            std::uintptr_t stack_top;
 
             std::size_t idx;
             std::size_t arch_id;
-
-            std::uintptr_t stack_top;
 
             cpu::arch::processor arch;
             sched::percpu sched;

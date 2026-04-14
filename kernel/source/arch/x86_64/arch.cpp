@@ -95,6 +95,8 @@ namespace arch
             auto &fpu = ptr->arch.fpu;
             std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
 
+            x86_64::syscall::init_cpu();
+
             x86_64::timers::kvm::init();
             x86_64::timers::tsc::init();
 
@@ -115,6 +117,8 @@ namespace arch
 
             auto &fpu = ptr->arch.fpu;
             std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+
+            x86_64::syscall::init_cpu();
 
             x86_64::apic::init_cpu();
             ptr->online = true;

@@ -51,7 +51,7 @@ namespace sched::arch
             regs.cs = x86_64::gdt::segment::ucode | 0x03;
             regs.ss = x86_64::gdt::segment::udata | 0x03;
 
-            regs.rsp = thread->ustack_top;
+            regs.rsp = thread->ustack_top = thread->allocate_ustack();
 
             self.fpu.restore(thread->fpu);
 
@@ -92,6 +92,9 @@ namespace sched::arch
     {
         auto self = cpu::self();
         self->arch.tss.ist[0] = thread->pfstack_top;
+
+        auto addr = reinterpret_cast<std::uintptr_t>(thread.get());
+        cpu::gs::write_user(addr);
 
         if (thread->is_user)
         {

@@ -70,6 +70,20 @@ namespace sched
         }
     } // namespace
 
+    std::uintptr_t thread::allocate_ustack()
+    {
+        auto parent = proc.lock();
+        auto paddr = pmm::alloc<std::uintptr_t>(lib::div_roundup(boot::user_stack_size, pmm::page_size));
+        auto vaddr = (parent->next_stack_top -= boot::user_stack_size);
+
+        auto psize = vmm::pagemap::max_page_size(boot::user_stack_size);
+        if (!parent->pagemap->map(vaddr, paddr, boot::user_stack_size, vmm::flag::rw, psize))
+            lib::panic("could not map user stack");
+
+        stacks.push_back(reinterpret_cast<std::byte *>(paddr));
+        return vaddr + boot::user_stack_size;
+    }
+
     std::uintptr_t thread::allocate_kstack()
     {
         auto paddr = pmm::alloc<std::byte *>(lib::div_roundup(boot::kernel_stack_size, pmm::page_size));
@@ -182,7 +196,9 @@ namespace sched
             if (current != sched.idle_thread)
                 enqueue(current, self->idx);
         }
+
         sched.running_thread = next;
+        next->running_on = reinterpret_cast<decltype(next->running_on)>(self);
 
         arch::reschedule(fixed_timeslice);
         load(next, regs);
@@ -195,6 +211,7 @@ namespace sched
         static auto idle_pagemap = std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get());
         auto idle_proc = std::make_shared<process>();
         idle_proc->pagemap = idle_pagemap;
+        idle_proc->pid = static_cast<std::size_t>(-1);
 
         auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
         idle_thread->status = status::ready;

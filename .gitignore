@@ -1,5 +1,6 @@
 .*
 !.git*
+!.gdbinit
 !.clang_format
 
 serial.txt
