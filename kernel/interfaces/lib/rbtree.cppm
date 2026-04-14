@@ -237,16 +237,14 @@ export namespace lib
             if (_head == nil() || Less::operator()(*z, *head()))
                 _head = z;
 
-            augment(z);
-            auto c = parent(nh, z);
+            insert_fixup(nh, z);
+
+            auto c = z;
             while (c != nil())
             {
-                if (!augment(c))
-                    break;
+                augment(c);
                 c = parent(nh, c);
             }
-
-            insert_fixup(nh, z);
         }
 
         constexpr void transplant(rbtree_hook<Type> *nh, Type *u, Type *v)
@@ -410,16 +408,15 @@ export namespace lib
 
             auto us = parent(nh, x);
 
-            auto c = us;
-            while (c != nil())
-            {
-                if (!augment(c))
-                    break;
-                c = parent(nh, c);
-            }
-
             if (yoc == colour::black)
                 _remove_fixup(nh, x);
+
+            auto c = (us != nil()) ? us : x;
+            while (c != nil())
+            {
+                augment(c);
+                c = parent(nh, c);
+            }
 
             if (root() == nil())
                 _head = nil();

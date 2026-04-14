@@ -7,24 +7,19 @@ import std;
 
 namespace lib
 {
-    user_string::user_string(const char __user *ustr)
+    std::optional<std::string> user_string::get(const char __user *ustr, std::size_t max_length)
     {
-        static constexpr std::size_t max_string_length = 4096;
         if (ustr == nullptr)
-        {
-            str = "";
-            return;
-        }
+            return std::nullopt;
 
-        const auto length = strnlen_user(ustr, max_string_length);
-        if (length == 0 || length == max_string_length)
-        {
-            str = "";
-            return;
-        }
+        const auto length = strnlen_user(ustr, max_length);
+        if (length == 0 || static_cast<std::size_t>(length) == max_length)
+            return std::nullopt;
 
-        str.resize(length);
-        if (!copy_from_user(str.data(), ustr, length))
-            str = "";
+        std::string ret = "";
+        ret.resize(length);
+        if (!copy_from_user(ret.data(), ustr, length))
+            return std::nullopt;
+        return ret;
     }
 } // namespace lib

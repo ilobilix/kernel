@@ -146,9 +146,7 @@ namespace vmm
 
             const auto addr = accessor.getaddr();
             const bool needs_invl = addr && is_canonical(addr);
-
-            if (accessor.getflags(valid_table_flags) && needs_invl)
-                return std::unexpected { lib::err::addr_in_use };
+            lib::bug_on(needs_invl && !accessor.getflags(valid_table_flags));
 
             accessor.clear()
                 .setaddr(current_paddr)
@@ -156,7 +154,7 @@ namespace vmm
                 .write();
 
             if (needs_invl)
-                invalidate(current_vaddr);
+                invalidate(current_vaddr, npsize);
 
             current_vaddr += npsize;
             current_paddr += npsize;
@@ -165,8 +163,6 @@ namespace vmm
 
         return { };
     }
-
-    // TODO: tlb shootdown
 
     lib::expect<void> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
     {
@@ -211,7 +207,8 @@ namespace vmm
             accessor.clearflags()
                 .setflags(to_arch(flags, cache, use_psize), true)
                 .write();
-            invalidate(current_vaddr);
+
+            invalidate(current_vaddr, npsize);
 
             current_vaddr += npsize;
             remaining -= npsize;
@@ -244,7 +241,7 @@ namespace vmm
 
             auto &pte = ret->get();
             pte.access().clear().write();
-            invalidate(current_vaddr);
+            invalidate(current_vaddr, npsize);
 
             current_vaddr += npsize;
             remaining -= npsize;
@@ -293,8 +290,6 @@ namespace vmm
 
     pagemap::~pagemap()
     {
-        lib::warn("vmm: destroying a pagemap");
-
         [](this auto self, table *ptr, std::size_t start, std::size_t end, std::size_t level)
         {
             if (level == 0)

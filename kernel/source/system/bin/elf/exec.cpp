@@ -39,8 +39,11 @@ namespace bin::elf::exec
             auxval auxv;
         };
 
-        static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr)
-            -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
+        static auto load_file(
+            const std::shared_ptr<vfs::file> &file,
+            std::shared_ptr<vmm::vmspace> &vmspace,
+            std::uintptr_t &addr
+        ) -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
         {
             Elf64_Ehdr ehdr;
             auto hdruspan = lib::maybe_uspan<std::byte>::create(
@@ -464,6 +467,8 @@ namespace bin::elf::exec
             const auto [auxv, interp, exec_end] = ret.value();
             lib::bug_on(req.interp && interp);
 
+            std::uintptr_t brk_base = exec_end;
+
             std::uintptr_t entry = auxv.at_entry;
             if (interp)
             {
@@ -475,11 +480,13 @@ namespace bin::elf::exec
                 lib::bug_on(interp_base == exec_base);
                 const auto [iauxv, ii, interp_end] = ret.value();
 
+                brk_base = std::max(brk_base, interp_end);
+
                 entry = iauxv.at_entry;
                 lib::bug_on(ii != nullptr);
             }
 
-            proc->vmspace->current_brk = exec_end;
+            proc->vmspace->current_brk = brk_base;
 
             const auto arg = new ctx { req, entry, interp_base, auxv };
             return sched::thread::create(
