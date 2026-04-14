@@ -74,7 +74,7 @@ namespace x86_64::idt
 
         num -= irq(0);
 
-        auto &handlers = irq_handlers.get(cpu::nth_base(cpuidx));
+        auto &handlers = irq_handlers.get(cpu::local::nth_base(cpuidx));
         if (num >= handlers.size())
             handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
 
@@ -162,7 +162,7 @@ namespace x86_64::idt
             idt[14].ist = 1;
         }
 
-        irq_handlers.get(cpu::nth_base(cpu->idx)).resize(num_preints);
+        irq_handlers.get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
 
         auto phandler = handler_at(cpu->idx, panic_int).value();
         phandler.get().set([](cpu::registers *) { arch::halt(false); });

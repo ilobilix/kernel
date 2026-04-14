@@ -153,7 +153,7 @@ namespace x86_64::timers::hpet
 
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
-            const auto flags = vmm::pflag::rw;
+            const auto flags = vmm::pflag::rwg;
             const auto caching = vmm::caching::mmio;
 
             if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)

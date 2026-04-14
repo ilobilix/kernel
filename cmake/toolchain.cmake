@@ -113,7 +113,7 @@ set(_ILOBILIX_DEFINES
     "__force=__attribute__((force))"
     "cpu_local=\
         [[gnu::section(\".percpu\")]] \
-        ::cpu::per::storage"
+        ::cpu::local::storage"
     "cpu_local_init(name, ...)=\
         void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { \
             name.initialise_base(base __VA_OPT__(,) __VA_ARGS__)^ \

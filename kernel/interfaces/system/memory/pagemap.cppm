@@ -40,6 +40,10 @@ export namespace vmm
 
         rw = read | write,
         rwx = read | write | exec,
+
+        rwg = rw | global,
+        rwxg = rwx | global,
+
         rwu = rw | user,
         rwxu = rwx | user
     };

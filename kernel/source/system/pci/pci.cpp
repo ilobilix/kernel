@@ -148,7 +148,10 @@ namespace pci
 
         const auto vaddr = vmm::alloc_vspace(lib::div_roundup(size, pmm::page_size));
 
-        if (const auto ret = pmap->map(vaddr, paddr, alsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+        const auto flags = vmm::pflag::rwg;
+        const auto cache = vmm::caching::mmio;
+
+        if (const auto ret = pmap->map(vaddr, paddr, alsize, flags, psize, cache); !ret)
             lib::panic("could not map pci bar: {}", magic_enum::enum_name(ret.error()));
 
         return virt = (vaddr + (phys - paddr));

@@ -14,14 +14,17 @@ export import aarch64.system.cpu;
 export namespace cpu
 {
     extern "C++" struct processor;
-    extern "C++" bool percpu_available();
+    namespace local
+    {
+        extern "C++" bool available();
 
-    processor *nth(std::size_t n);
-    std::uintptr_t nth_base(std::size_t n);
+        processor *nth(std::size_t n);
+        std::uintptr_t nth_base(std::size_t n);
+    } // namespace local
 
     std::size_t bsp_idx();
     std::size_t bsp_aid();
-    std::size_t cpu_count();
+    std::size_t count();
 
     void init_bsp();
     void init();

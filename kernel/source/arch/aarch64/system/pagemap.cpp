@@ -173,7 +173,7 @@ namespace vmm
 
     void pagemap::load() const
     {
-        if (n < cpu::cpu_count())
+        if (n < cpu::count())
         {
             constexpr auto bits = [](std::size_t top, std::size_t bottom, std::uint64_t value)
             {

@@ -97,7 +97,7 @@ namespace x86_64::timers::kvm
         const auto paddr = pmm::alloc<std::uintptr_t>(1, true);
         const auto length = sizeof(kvmclock_info);
         const auto psize = vmm::page_size::small;
-        const auto flags = vmm::pflag::rw;
+        const auto flags = vmm::pflag::rwg;
         const auto cache = vmm::caching::mmio;
 
         if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache); !ret)

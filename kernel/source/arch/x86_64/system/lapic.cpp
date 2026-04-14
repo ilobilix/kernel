@@ -242,8 +242,10 @@ namespace x86_64::apic
 
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
+                const auto flags = vmm::pflag::rwg;
+                const auto cache = vmm::caching::mmio;
 
-                if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+                if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
                     lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
             }
             else lib::bug_on(phys_mmio != pmmio, "lapic mmio address differs from the bsp");

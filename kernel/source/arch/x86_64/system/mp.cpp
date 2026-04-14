@@ -178,12 +178,12 @@ namespace cpu::mp
         }
 
         [] {
-            lib::bitmap bmap { cpu_count() - 1 };
+            lib::bitmap bmap { count() - 1 };
             bmap.clear();
 
             const auto check = [&bmap] {
                 bool ret = true;
-                for (std::size_t i = 1; i < cpu_count(); i++)
+                for (std::size_t i = 1; i < count(); i++)
                 {
                     if (nth(i)->online == false)
                         ret = false;

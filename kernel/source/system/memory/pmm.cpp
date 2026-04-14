@@ -402,7 +402,7 @@ namespace pmm
             const auto max_length = lib::align_up(memmap->length / page_size * sizeof(page), page_size) + page_size;
 
             const auto psize = vmm::page_size::small;
-            const auto flags = vmm::pflag::rw;
+            const auto flags = vmm::pflag::rwg;
 
             for (std::size_t vaddr = vstart; vaddr < vstart + max_length; vaddr += page_size)
             {
