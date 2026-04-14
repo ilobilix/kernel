@@ -1,5 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
+module;
+
+#include <cassert>
+
 export module x86_64.system.cpu;
 import std;
 
@@ -165,7 +169,38 @@ export namespace cpu
 
     namespace features
     {
-        void enable()
+
+        constexpr std::uint64_t rfbm = ~0ull;
+        constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
+        constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
+
+        void xsaveopt(std::byte *region)
+        {
+            asm volatile ("xsaveopt [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+        }
+
+        void xsave(std::byte *region)
+        {
+            asm volatile ("xsave [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+        }
+
+        void xrstor(std::byte *region)
+        {
+            asm volatile ("xrstor [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+        }
+
+        void fxsave(std::byte *region)
+        {
+            asm volatile ("fxsave [%0]" :: "r"(region) : "memory");
+        }
+
+        void fxrstor(std::byte *region)
+        {
+            asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
+        }
+
+        using fpu_func = void (*)(std::byte *);
+        std::tuple<std::size_t, fpu_func, fpu_func> enable()
         {
             // SSE
             {
@@ -206,6 +241,30 @@ export namespace cpu
                 cr4 |= (1 << 2);
                 wrreg(cr4, cr4);
             }
+
+            std::uint32_t a, b, c, d;
+            if (cpu::id(0x01, 0, a, b, c, d) && (c & (1 << 26)))
+            {
+                // xsave
+                wrreg(cr4, rdreg(cr4) | (1 << 18));
+
+                // x87 and SSE
+                std::uint64_t xcr0 = 0b11;
+                // AVX
+                if (c & (1 << 28))
+                    xcr0 |= (1 << 2);
+                // AVX512
+                if (cpu::id(0x07, 0, a, b, c, d) && (b & (1 << 16)))
+                    xcr0 |= (0b111 << 5);
+
+                asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
+
+                assert(cpu::id(0x0D, 0, a, b, c, d));
+
+                bool xopt = cpu::id(0x0D, 1, a, b, c, d) && (a & (1 << 0));
+                return { c, xopt ? xsaveopt : xsave, xrstor };
+            }
+            else return { 512, fxsave, fxrstor };
         }
     } // namespace features
 

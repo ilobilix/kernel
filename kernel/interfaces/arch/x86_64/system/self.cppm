@@ -22,6 +22,12 @@ export namespace cpu::arch
         x86_64::gdt::tss::ptr tss;
 
         struct {
+            std::size_t size;
+            void (*save)(std::byte *);
+            void (*restore)(std::byte *);
+        } fpu;
+
+        struct {
             void *pvclock = nullptr;
         } kvm;
         struct {
