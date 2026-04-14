@@ -171,12 +171,6 @@ export namespace vfs
         virtual lib::expect<std::size_t> write(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
 
-        virtual lib::expect<std::size_t> getdents(std::shared_ptr<file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer)
-        {
-            lib::unused(file, offset, buffer);
-            return std::unexpected { lib::err::not_a_dir };
-        }
-
         virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt)
         {
             lib::unused(file, pt);
@@ -210,6 +204,13 @@ export namespace vfs
     };
 
     struct inode;
+    struct dir_entry
+    {
+        std::string name;
+        std::shared_ptr<inode> inode;
+        std::size_t cookie;
+    };
+
     struct filesystem
     {
         std::string name;
@@ -219,13 +220,28 @@ export namespace vfs
             std::atomic<ino_t> next_inode = 1;
             dev_t dev_id;
 
-            virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, dev_t rdev) -> lib::expect<std::shared_ptr<inode>> = 0;
+            virtual auto create(
+                std::shared_ptr<inode> &parent,
+                std::string_view name, mode_t mode, dev_t rdev
+            ) -> lib::expect<std::shared_ptr<inode>> = 0;
 
-            virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> lib::expect<std::shared_ptr<inode>> = 0;
-            virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> lib::expect<std::shared_ptr<inode>> = 0;
+            virtual auto symlink(
+                std::shared_ptr<inode> &parent,
+                std::string_view name, lib::path target
+            ) -> lib::expect<std::shared_ptr<inode>> = 0;
+
+            virtual auto link(
+                std::shared_ptr<inode> &parent,
+                std::string_view name, std::shared_ptr<inode> target
+            ) -> lib::expect<std::shared_ptr<inode>> = 0;
+
             virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
-            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
+            virtual auto readdir(std::shared_ptr<dentry> dir, std::size_t cookie)
+                -> lib::expect<lib::list<dir_entry>> = 0;
+
+            virtual auto lookup(std::shared_ptr<dentry> dir,std::string_view name)
+                -> lib::expect<std::optional<dir_entry>>;
 
             virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
             virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
@@ -238,7 +254,8 @@ export namespace vfs
             instance();
         };
 
-        virtual auto mount(std::shared_ptr<dentry> src) const -> lib::expect<std::shared_ptr<mount>> = 0;
+        virtual auto mount(std::shared_ptr<dentry> src) const
+            -> lib::expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -353,12 +370,11 @@ export namespace vfs
         };
 
         std::string name;
-        std::string symlinked_to;
+        lib::path symlinked_to;
 
         std::shared_ptr<inode> inode;
 
         std::weak_ptr<dentry> parent;
-
         lib::locker<children, lib::rwmutex> children;
 
         lib::list<std::weak_ptr<mount>> child_mounts;
@@ -538,7 +554,8 @@ export namespace vfs
     path get_root(bool absolute);
 
     bool register_fs(std::unique_ptr<filesystem> fs);
-    auto find_fs(std::string_view name) -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
+    auto find_fs(std::string_view name)
+        -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
 
     std::string pathname_from(path path);
 
@@ -555,8 +572,6 @@ export namespace vfs
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
 
     bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const stat &stat, int mode);
-
-    bool populate(path parent, std::string_view name = "");
 
     lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

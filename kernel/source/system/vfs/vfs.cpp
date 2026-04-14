@@ -142,15 +142,83 @@ namespace vfs
             }
         }
 
-        const std::unique_lock __ { path.dentry->inode->lock };
-        const auto res = ops->get()->getdents(shared_from_this(), offset, buffer.subspan(progress));
-        if (!res.has_value())
+        auto fs = path.mnt->fs.lock();
+        while (true)
         {
-            if (res.error() == lib::err::buffer_too_small && progress > 0)
-                return progress;
-            return std::unexpected { res.error() };
+            auto batch = fs->readdir(path.dentry, offset);
+            if (!batch)
+                return std::unexpected { batch.error() };
+
+            if (batch->empty())
+                break;
+
+            for (const auto &entry : *batch)
+            {
+                const auto reclen = (sizeof(vfs::dirent64) + entry.name.size() + 1 + 7) & ~7;
+
+                if (progress + reclen > buffer.size())
+                {
+                    if (progress == 0)
+                        return std::unexpected { lib::err::buffer_too_small };
+                    return progress;
+                }
+
+                vfs::dirent64 dirent
+                {
+                    .d_ino = entry.inode->stat.st_ino,
+                    .d_off = static_cast<std::int64_t>(entry.cookie + 1),
+                    .d_reclen = static_cast<std::uint16_t>(reclen),
+                    .d_type = vfs::stat_to_dt(entry.inode->stat.type())
+                };
+
+                buffer.subspan(progress, sizeof(dirent))
+                    .copy_from(reinterpret_cast<std::byte *>(&dirent));
+
+                buffer.subspan(progress + sizeof(dirent), entry.name.size() + 1)
+                    .copy_from(reinterpret_cast<const std::byte *>(entry.name.c_str()));
+
+                progress += reclen;
+                offset = entry.cookie + 1;
+            }
         }
-        return progress + *res;
+
+        return progress;
+    }
+
+    auto filesystem::instance::lookup(std::shared_ptr<dentry> dir, std::string_view name)
+        -> lib::expect<std::optional<dir_entry>>
+    {
+        if (auto den = dir->children.read_lock()->lookup(name))
+            return dir_entry { std::string { name }, den->inode, 0 };
+
+        std::size_t cookie = 3;
+        while (true)
+        {
+            auto batch = readdir(dir, cookie);
+            if (!batch)
+                return std::unexpected { batch.error() };
+
+            if (batch->empty())
+                return std::nullopt;
+
+            auto wlocked = dir->children.write_lock();
+            for (auto &entry : *batch)
+            {
+                if (!wlocked->lookup(entry.name))
+                {
+                    auto dentry = std::make_shared<vfs::dentry>();
+                    dentry->parent = dir;
+                    dentry->name = entry.name;
+                    dentry->inode = entry.inode;
+                    wlocked->insert(dentry);
+                }
+
+                if (entry.name == name)
+                    return entry;
+
+                cookie = entry.cookie + 1;
+            }
+        }
     }
 
     path get_root(bool absolute)
@@ -161,8 +229,12 @@ namespace vfs
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
         while (!ret.dentry->child_mounts.empty())
         {
-            ret.mnt = ret.dentry->child_mounts.back().lock();
-            ret.dentry = ret.mnt->root;
+            const auto mnt = ret.dentry->child_mounts.back().lock();
+            if (!mnt || !mnt->root)
+                break;
+
+            ret.mnt = mnt;
+            ret.dentry = mnt->root;
         }
         return ret;
     }
@@ -178,7 +250,8 @@ namespace vfs
         return true;
     }
 
-    auto find_fs(std::string_view name) -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
+    auto find_fs(std::string_view name)
+        -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
     {
         auto locked = filesystems.lock();
         if (auto it = locked->find(name); it != locked->end())
@@ -214,7 +287,7 @@ namespace vfs
         }
 
         std::string result;
-        result.reserve(std::max(1zu, len + segments.size()));
+        result.reserve(len + segments.size());
 
         for (auto it = segments.rbegin(); it != segments.rend(); it++)
         {
@@ -258,7 +331,7 @@ namespace vfs
             if (segment.empty())
                 continue;
 
-            const bool last = i == size;
+            const bool last = (i == size);
 
             if (segment == "..")
             {
@@ -284,51 +357,72 @@ namespace vfs
                 continue;
             }
 
-            try_again:
+            auto dentry = current.dentry->children.read_lock()->lookup(segment);
+            if (dentry == nullptr)
             {
-                const auto &rlocked = current.dentry->children.read_lock();
-                if (auto dentry = rlocked->lookup(segment); dentry != nullptr)
+                auto found = current.mnt->fs.lock()->lookup(current.dentry, segment);
+                if (!found)
+                    return std::unexpected { found.error() };
+
+                if (!found->has_value())
+                    return std::unexpected { lib::err::not_found };
+
+                dentry = current.dentry->children.read_lock()->lookup(segment);
+                if (dentry == nullptr)
                 {
-                    auto mnt = current.mnt;
+                    const auto &entry = *found;
 
-                    again:
-                    for (const auto &child_mnt : dentry->child_mounts)
+                    auto wlocked = current.dentry->children.write_lock();
+                    dentry = wlocked->lookup(entry->name);
+                    if (dentry == nullptr)
                     {
-                        const auto locked = child_mnt.lock();
-                        if (mnt == locked->mounted_on->mnt)
-                        {
-                            mnt = locked;
-                            dentry = locked->root;
-                            goto again;
-                        }
+                        dentry = std::make_shared<vfs::dentry>();
+                        dentry->parent = current.dentry;
+                        dentry->name = entry->name;
+                        dentry->inode = entry->inode;
+                        wlocked->insert(dentry);
                     }
-
-                    path next { mnt, dentry };
-
-                    if (last)
-                        return resolve_res { current, next };
-
-                    if (next.dentry->inode->stat.type() == stat::type::s_iflnk)
-                    {
-                        const auto reduced = reduce(current, next);
-                        if (!reduced)
-                            return std::unexpected { reduced.error() };
-                        next = reduced.value();
-                    }
-
-                    if (next.dentry->inode->stat.type() != stat::type::s_ifdir)
-                        return std::unexpected { lib::err::not_a_dir };
-
-                    current = next;
-                    continue;
                 }
             }
 
-            if (populate(current, segment))
-                goto try_again;
+            auto mnt = current.mnt;
 
-            break;
+            again:
+            for (const auto &child_mnt : dentry->child_mounts)
+            {
+                const auto locked = child_mnt.lock();
+                if (!locked || !locked->mounted_on.has_value() || !locked->root)
+                    continue;
+
+                if (mnt == locked->mounted_on->mnt)
+                {
+                    mnt = locked;
+                    dentry = locked->root;
+                    goto again;
+                }
+            }
+
+            path next { mnt, dentry };
+
+            if (last)
+                return resolve_res { current, next };
+
+            auto type = next.dentry->inode->stat.type();
+            if (type == stat::type::s_iflnk)
+            {
+                const auto reduced = reduce(current, next);
+                if (!reduced)
+                    return std::unexpected { reduced.error() };
+                next = reduced.value();
+                type = next.dentry->inode->stat.type();
+            }
+
+            if (type != stat::type::s_ifdir)
+                return std::unexpected { lib::err::not_a_dir };
+
+            current = next;
         }
+
         return std::unexpected { lib::err::not_found };
     }
 
@@ -424,17 +518,16 @@ namespace vfs
         const auto name = _path.basename();
 
         auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev);
-        if (ret)
-        {
-            auto dentry = std::make_shared<vfs::dentry>();
-            dentry->parent = real_parent.dentry;
-            dentry->name = name;
-            dentry->inode = ret.value();
+        if (!ret)
+            return std::unexpected { ret.error() };
 
-            real_parent.dentry->children.write_lock()->insert(dentry);
-            return path { real_parent.mnt, dentry };
-        }
-        return std::unexpected { ret.error() };
+        auto dentry = std::make_shared<vfs::dentry>();
+        dentry->parent = real_parent.dentry;
+        dentry->name = name;
+        dentry->inode = std::move(*ret);
+
+        real_parent.dentry->children.write_lock()->insert(dentry);
+        return path { real_parent.mnt, dentry };
     }
 
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>
@@ -451,21 +544,23 @@ namespace vfs
         const auto name = src.basename();
 
         auto ret = real_parent.mnt->fs.lock()->symlink(real_parent.dentry->inode, name, target);
-        if (ret)
-        {
-            auto dentry = std::make_shared<vfs::dentry>();
-            dentry->parent = real_parent.dentry;
-            dentry->name = name;
-            dentry->symlinked_to = target.str();
-            dentry->inode = ret.value();
+        if (!ret)
+            return std::unexpected { ret.error() };
 
-            real_parent.dentry->children.write_lock()->insert(dentry);
-            return path { real_parent.mnt, dentry };
-        }
-        return std::unexpected { ret.error() };
+        auto dentry = std::make_shared<vfs::dentry>();
+        dentry->parent = real_parent.dentry;
+        dentry->name = name;
+        dentry->symlinked_to = target.str();
+        dentry->inode = std::move(*ret);
+
+        real_parent.dentry->children.write_lock()->insert(dentry);
+        return path { real_parent.mnt, dentry };
     }
 
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links) -> lib::expect<path>
+    auto link(
+        std::optional<path> parent, lib::path src,
+        std::optional<path> tgtparent, lib::path target, bool follow_links
+    ) -> lib::expect<path>
     {
         auto res = resolve(parent, src);
         if (res)
@@ -475,21 +570,20 @@ namespace vfs
         if (!res)
             return std::unexpected { res.error() };
 
-        const auto real_parent = res->target;
+        const auto real_parent = std::move(res->target);
         const auto name = src.basename();
 
         res = resolve(tgtparent, target);
         if (!res)
             return std::unexpected { res.error() };
 
-        const auto tgt = res->target;
-        const auto type = tgt.dentry->inode->stat.type();
-        if (follow_links && type == stat::s_iflnk)
+        auto tgt = std::move(res->target);
+        if (follow_links && tgt.dentry->inode->stat.type() == stat::s_iflnk)
         {
-            const auto reduced = reduce(res->parent, res->target);
+            auto reduced = reduce(res->parent, tgt);
             if (!reduced)
                 return std::unexpected { reduced.error() };
-            res->target = reduced.value();
+            tgt = std::move(*reduced);
         }
 
         if (tgt.dentry->inode->stat.type() == stat::type::s_ifdir)
@@ -498,18 +592,21 @@ namespace vfs
         if (real_parent.mnt != tgt.mnt)
             return std::unexpected { lib::err::different_filesystem };
 
-        auto ret = real_parent.mnt->fs.lock()->link(real_parent.dentry->inode, name, tgt.dentry->inode);
-        if (ret)
-        {
-            auto dentry = std::make_shared<vfs::dentry>();
-            dentry->parent = real_parent.dentry;
-            dentry->name = name;
-            dentry->inode = ret.value();
+        auto ret = real_parent.mnt->fs.lock()->link(
+            real_parent.dentry->inode,
+            name,
+            tgt.dentry->inode
+        );
+        if (!ret)
+            return std::unexpected { ret.error() };
 
-            real_parent.dentry->children.write_lock()->insert(dentry);
-            return path { real_parent.mnt, dentry };
-        }
-        return std::unexpected { ret.error() };
+        auto dentry = std::make_shared<vfs::dentry>();
+        dentry->parent = real_parent.dentry;
+        dentry->name = name;
+        dentry->inode = std::move(*ret);
+
+        real_parent.dentry->children.write_lock()->insert(dentry);
+        return path { real_parent.mnt, dentry };
     }
 
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>
@@ -529,19 +626,22 @@ namespace vfs
 
             if (!res->target.dentry->children.read_lock()->empty())
                 return std::unexpected { lib::err::dir_not_empty };
-            populate(res->target);
-            if (!res->target.dentry->children.read_lock()->empty())
+
+            std::size_t cookie = 3;
+            const auto ret = res->target.mnt->fs.lock()->readdir(res->target.dentry, cookie);
+            if (!ret)
+                return std::unexpected { ret.error() };
+            if (!ret->empty())
                 return std::unexpected { lib::err::dir_not_empty };
         }
 
-        auto ret = res->target.mnt->fs.lock()->unlink(inode);
-        if (ret)
-        {
-            auto wlocked = real_parent->children.write_lock();
-            lib::bug_on(!wlocked->erase(name));
-            return { };
-        }
-        return std::unexpected { ret.error() };
+        const auto ret = res->target.mnt->fs.lock()->unlink(inode);
+        if (!ret)
+            return std::unexpected { ret.error() };
+
+        auto wlocked = real_parent->children.write_lock();
+        lib::bug_on(!wlocked->erase(name));
+        return { };
     }
 
     bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const ::stat &stat, int mode)
@@ -601,30 +701,6 @@ namespace vfs
             return false;
 
         return true;
-    }
-
-    bool populate(path parent, std::string_view name)
-    {
-        auto ret = parent.mnt->fs.lock()->populate(parent.dentry->inode, name);
-        if (!ret.has_value())
-            return false;
-
-        auto list = std::move(*ret);
-        if (!list.empty())
-        {
-            auto wlocked = parent.dentry->children.write_lock();
-            for (auto &[name, inode] : list)
-            {
-                auto dentry = std::make_shared<vfs::dentry>();
-                dentry->parent = parent.dentry;
-                dentry->name = std::move(name);
-                dentry->inode = std::move(inode);
-
-                wlocked->insert(dentry);
-            }
-            return true;
-        }
-        return false;
     }
 
     lib::initgraph::stage *root_mounted_stage()

@@ -15,9 +15,12 @@ namespace fs::devtmpfs
     {
         lib::locked_ptr<tmpfs::fs::instance, lib::mutex> instance;
         std::shared_ptr<vfs::dentry> root;
+
+        std::shared_ptr<struct vfs::mount> internal_mnt;
         mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
 
-        auto mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
+        auto mount(std::shared_ptr<vfs::dentry> src) const
+            -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src);
 
@@ -39,18 +42,60 @@ namespace fs::devtmpfs
             );
             root->parent = root;
 
+            internal_mnt = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
+
             vfs::dev::register_fs_ops(locked->dev_id, tmpfs::ops::singleton());
         }
     };
 
+    namespace
+    {
+        fs *main = nullptr;
+    } // namespace
+
+    lib::expect<void> create(lib::path path, mode_t mode, dev_t rdev)
+    {
+        if (main == nullptr)
+            return std::unexpected { lib::err::invalid_filesystem };
+
+        if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
+            return std::unexpected { lib::err::invalid_path };
+
+        const vfs::path devroot {
+            .mnt = main->internal_mnt,
+            .dentry = main->root
+        };
+
+        std::string partial;
+        for (const auto segment_view : path.dirname() | std::views::split('/'))
+        {
+            const std::string_view segment { segment_view };
+            if (segment.empty())
+                continue;
+
+            if (!partial.empty())
+                partial += '/';
+            partial += segment;
+
+            if (const auto ret = vfs::create(devroot, partial, stat::type::s_ifdir | 0755); !ret)
+            {
+                if (ret.error() != lib::err::already_exists)
+                    return std::unexpected { ret.error() };
+            }
+        }
+
+        if (const auto ret = vfs::create(devroot, path, mode, rdev); !ret)
+            return std::unexpected { ret.error() };
+
+        return { };
+    }
+
     std::unique_ptr<vfs::filesystem> init()
     {
-        static bool once_flag = false;
-        if (once_flag)
+        if (main != nullptr)
             lib::panic("devtmpfs: tried to initialise twice");
 
-        once_flag = true;
-        return std::unique_ptr<vfs::filesystem> { new fs };
+        return std::unique_ptr<vfs::filesystem> { main = new fs };
     }
 
     lib::initgraph::stage *registered_stage()

@@ -39,22 +39,30 @@ namespace fs::tmpfs
         );
     }
 
-    lib::expect<std::size_t> ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> ops::read(
+        std::shared_ptr<vfs::file> file, std::uint64_t offset,
+        lib::maybe_uspan<std::byte> buffer
+    )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
 
         auto size = buffer.size_bytes();
-        auto real_size = size;
-        if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
-            real_size = size - ((offset + size) - inod->stat.st_size);
 
+        const auto file_size = static_cast<std::size_t>(inod->stat.st_size);
+        if (offset >= file_size)
+            return 0;
+
+        const auto real_size = std::min(size, file_size - offset);
         if (real_size == 0)
             return 0;
 
         return inod->memory->read(offset, buffer.subspan(0, real_size));
     }
 
-    lib::expect<std::size_t> ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> ops::write(
+        std::shared_ptr<vfs::file> file, std::uint64_t offset,
+        lib::maybe_uspan<std::byte> buffer
+    )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
 
@@ -64,7 +72,9 @@ namespace fs::tmpfs
         if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
         {
             inod->stat.st_size = offset + size;
-            inod->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(inod->stat.st_blksize));
+            inod->stat.st_blocks = lib::div_roundup(
+                offset + size, static_cast<std::size_t>(inod->stat.st_blksize)
+            );
         }
         return ret;
     }
@@ -83,56 +93,10 @@ namespace fs::tmpfs
             inod->memory->clear(current_size, 0, size - current_size);
 
         inod->stat.st_size = size;
-        inod->stat.st_blocks = lib::div_roundup(size, static_cast<std::size_t>(inod->stat.st_blksize));
+        inod->stat.st_blocks = lib::div_roundup(
+            size, static_cast<std::size_t>(inod->stat.st_blksize)
+        );
         return { };
-    }
-
-    lib::expect<std::size_t> ops::getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer)
-    {
-        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-
-        if (inod->stat.type() != stat::type::s_ifdir)
-            return std::unexpected { lib::err::not_a_dir };
-
-        auto rlocked = file->path.dentry->children.read_lock();
-
-        std::size_t progress = 0;
-        for (auto it = rlocked->begin_at(offset); it != rlocked->end(); it++)
-        {
-            const auto &[dentry, cookie] = *it;
-            const auto reclen = (sizeof(vfs::dirent64) + dentry->name.length() + 1 + 7) & ~7;
-
-            if (reclen + progress > buffer.size())
-            {
-                if (progress == 0)
-                    return std::unexpected { lib::err::buffer_too_small };
-                break;
-            }
-
-            const auto &stat = dentry->inode->stat;
-
-            offset = cookie + 1;
-            vfs::dirent64 dirent
-            {
-                .d_ino = stat.st_ino,
-                .d_off = static_cast<std::int64_t>(offset),
-                .d_reclen = static_cast<std::uint16_t>(reclen),
-                .d_type = vfs::stat_to_dt(stat.type())
-            };
-
-            buffer.subspan(progress, sizeof(vfs::dirent64))
-                .copy_from(reinterpret_cast<std::byte *>(&dirent));
-
-            const std::span name {
-                reinterpret_cast<std::byte *>(dentry->name.data()),
-                dentry->name.length() + 1
-            };
-            buffer.subspan(progress + sizeof(vfs::dirent64), dentry->name.length() + 1)
-                .copy_from(name);
-
-            progress += reclen;
-        }
-        return progress;
     }
 
     lib::expect<vmm::object::ptr> ops::map(std::shared_ptr<vfs::file> file)
@@ -141,19 +105,28 @@ namespace fs::tmpfs
         return inod->memory;
     }
 
-    auto fs::instance::create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev) -> lib::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::create(
+        std::shared_ptr<vfs::inode> &parent,
+        std::string_view name, mode_t mode, dev_t rdev
+    ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
         return std::shared_ptr<vfs::inode>(new inode { dev_id, rdev, next_inode++, mode });
     }
 
-    auto fs::instance::symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> lib::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::symlink(
+        std::shared_ptr<vfs::inode> &parent,
+        std::string_view name, lib::path target
+    ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(target);
         return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0);
     }
 
-    auto fs::instance::link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> lib::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::link(
+        std::shared_ptr<vfs::inode> &parent,
+        std::string_view name, std::shared_ptr<vfs::inode> target
+    ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
         target->stat.st_nlink++;
@@ -166,10 +139,35 @@ namespace fs::tmpfs
         return { };
     }
 
-    auto fs::instance::populate(std::shared_ptr<vfs::inode> &node, std::string_view name) -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>>
+    auto fs::instance::readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
+        -> lib::expect<lib::list<vfs::dir_entry>>
     {
-        lib::unused(node, name);
-        return std::unexpected { lib::err::todo };
+        constexpr std::size_t max_batch = 256;
+        lib::list<vfs::dir_entry> result;
+
+        auto rlocked = dir->children.read_lock();
+        std::size_t progress = 0;
+        for (auto it = rlocked->begin_at(cookie); it != rlocked->end(); it++, progress++)
+        {
+            if (progress >= max_batch)
+                break;
+
+            result.push_back({
+                it->dentry->name,
+                it->dentry->inode,
+                it->cookie
+            });
+        }
+        return result;
+    }
+
+    auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
+        -> lib::expect<std::optional<vfs::dir_entry>>
+    {
+        auto rlocked = dir->children.read_lock();
+        if (auto den = rlocked->lookup(name); den != nullptr)
+            return vfs::dir_entry { std::string { name }, den->inode, 0 };
+        return std::nullopt;
     }
 
     auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>

@@ -1153,12 +1153,13 @@ namespace fs::dev::tty
     {
         "vfs.dev.tty.current.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { devtmpfs::mounted_stage() },
+        lib::initgraph::require { devtmpfs::registered_stage() },
         [] {
             // TODO: /dev/tty driver instead of just ops?
             register_dev_ops(makedev(5, 0), current_ops::singleton());
 
-            if (const auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
+            const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0));
+            if (!ret)
             {
                 lib::panic(
                     "tty: failed to create '/dev/tty': {}",

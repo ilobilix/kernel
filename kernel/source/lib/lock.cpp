@@ -13,27 +13,29 @@ namespace lib::lock
     namespace
     {
         cpu_local(std::atomic_size_t, irq_depth, 0uz);
+        cpu_local(bool, irq_status);
     } // namespace
 
-    bool acquire_irq()
+    void acquire_irq()
     {
         const auto ret = arch::int_status();
 
         acquire_preempt();
+        irq_status.unsafe_get() = ret;
         if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
         {
             release_preempt();
-            return ret;
+            return;
         }
 
         if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
             arch::int_switch(false);
 
         release_preempt();
-        return ret;
+        return;
     }
 
-    void release_irq(bool old)
+    void release_irq()
     {
         acquire_preempt();
         if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
@@ -43,7 +45,7 @@ namespace lib::lock
         }
 
         if (irq_depth.unsafe_get().fetch_sub(1, std::memory_order_release) == 1)
-            arch::int_switch(old);
+            arch::int_switch(irq_status.unsafe_get());
 
         release_preempt();
     }

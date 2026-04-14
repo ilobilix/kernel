@@ -16,36 +16,41 @@ namespace aarch64::output::pl011
         constexpr std::uintptr_t uart = 0x9000000;
         constinit std::uintptr_t addr = -1;
 
-        constinit lib::spinlock lock;
+        constinit lib::spinlock _lock;
+
+        void printc(char chr)
+        {
+            if (addr == static_cast<std::uintptr_t>(-1)) [[unlikely]]
+                return;
+
+            while (lib::mmio::in<16>(addr + 0x18) & (1 << 5))
+                arch::pause();
+
+            lib::mmio::out<8>(addr, chr);
+        }
+
+        void prints(std::string_view str)
+        {
+            for (const auto chr : str)
+                printc(chr);
+        }
+
+        void lock() { _lock.lock(); }
+        void unlock() { _lock.unlock(); }
+
+        constinit lib::logger log {
+            prints, lock, unlock
+        };
     } // namespace
-
-    void printc(char chr)
-    {
-        if (addr == static_cast<std::uintptr_t>(-1)) [[unlikely]]
-            return;
-
-        while (lib::mmio::in<16>(addr + 0x18) & (1 << 5))
-            arch::pause();
-
-        lib::mmio::out<8>(addr, chr);
-    }
-
-    void prints(std::string_view str)
-    {
-        for (const auto chr : str)
-            printc(chr);
-    }
-
-    void start() { lock.lock(); }
-    void stop() { lock.unlock(); }
-
-    constinit lib::logger log {
-        prints, start, stop
-    };
 
     void init()
     {
-        if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, pmm::page_size, vmm::pflag::rwg, vmm::page_size::small, vmm::caching::mmio); !ret)
+        const auto psize = vmm::page_size::small;
+        const auto len = vmm::pagemap::from_page_size(psize);
+        const auto flags = vmm::pflag::rwg;
+        const auto caching = vmm::caching::mmio;
+
+        if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, len, flags, psize, caching); !ret)
             lib::panic("could not map uart: {}", magic_enum::enum_name(ret.error()));
 
         // Disable the UART.

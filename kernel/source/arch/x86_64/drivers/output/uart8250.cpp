@@ -120,20 +120,20 @@ namespace x86_64::output::uart8250
             lib::io::out<8>(port + 1, on);
         }
 
-        lib::spinlock lock;
         void prints(std::string_view str)
         {
             for (const auto chr : str)
-                printc(chr, ports[0]);
+            printc(chr, ports[0]);
         }
 
-        void start() { lock.lock(); }
-        void stop() { lock.unlock(); }
-    } // namespace
+        lib::spinlock _lock;
+        void lock() { _lock.lock(); }
+        void unlock() { _lock.unlock(); }
 
-    constinit lib::logger log {
-        prints, start, stop
-    };
+        constinit lib::logger log {
+            prints, lock, unlock
+        };
+    } // namespace
 
     void init()
     {
@@ -156,7 +156,7 @@ namespace x86_64::output::uart8250
                 if (!usable[idx])
                     return 0;
 
-                start();
+                lock();
                 const auto com = ports[idx];
                 for (const auto byte : buffer)
                 {
@@ -168,7 +168,7 @@ namespace x86_64::output::uart8250
                     const auto ctx = term::main();
                     term::write(ctx, chr);
                 }
-                stop();
+                unlock();
                 return buffer.size_bytes();
             }
 

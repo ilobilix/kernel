@@ -340,6 +340,8 @@ namespace bin::elf::mod
                 switch (auto type = ELF64_R_TYPE(rel.r_info))
                 {
 #if defined(__x86_64__)
+                    case R_X86_64_NONE:
+                        break;
                     case R_X86_64_64:
                     case R_X86_64_GLOB_DAT:
                     case R_X86_64_JUMP_SLOT:
@@ -363,7 +365,7 @@ namespace bin::elf::mod
                         }
                         else resolved = loaded_at + sym->st_value;
 
-                        *reinterpret_cast<std::uint64_t *>(loc) = resolved;// + rel.r_addend;
+                        *reinterpret_cast<std::uint64_t *>(loc) = resolved;
                         break;
                     }
                     case R_X86_64_RELATIVE:
@@ -456,18 +458,26 @@ namespace bin::elf::mod
                     return;
                 }
 
-                auto dir = ret->target;
-                vfs::populate(dir);
-
-                for (const auto &[child, _] : dir.dentry->children.read_lock().value())
+                std::size_t offset = 3;
+                while (true)
                 {
-                    if (!child->name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
-                        continue;
+                    auto res = ret->target.mnt->fs.lock()->readdir(ret->target.dentry, offset);
+                    if (!res || res->empty())
+                        break;
 
-                    load(path, vfs::file::create({
-                        .mnt = dir.mnt,
-                        .dentry = child
-                    }, 0, 0, 0));
+                    for (const auto &[name, inode, cookie] : *res)
+                    {
+                        offset = cookie + 1;
+
+                        if (!name.ends_with(".ko") || inode->stat.type() != stat::type::s_ifreg)
+                            continue;
+
+                        auto res = vfs::resolve(ret->target, name);
+                        if (!res)
+                            continue;
+
+                        load(path, vfs::file::create(res->target, 0, 0, 0));
+                    }
                 }
             };
             load_from("/usr/lib/modules/noarch");

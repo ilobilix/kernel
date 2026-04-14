@@ -8,15 +8,18 @@ import std;
 
 namespace x86_64::output::e9
 {
-    void prints(std::string_view str)
+    namespace
     {
-        for (const auto chr : str)
-            lib::io::out<8>(0xE9, chr);
-    }
+        void prints(std::string_view str)
+        {
+            for (const auto chr : str)
+                lib::io::out<8>(0xE9, chr);
+        }
 
-    constinit lib::logger log {
-        prints, [] { }, [] { }
-    };
+        constinit lib::logger log {
+            prints, [] { }, [] { }
+        };
+    } // namespace
 
     void init()
     {
