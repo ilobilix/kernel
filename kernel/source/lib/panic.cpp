@@ -42,7 +42,10 @@ namespace lib
 
         static std::atomic_bool panicking = false;
         if (panicking)
+        {
+            log::fatal("one panic was more than enough already and now you want a second one?");
             goto exit;
+        }
         panicking = true;
 
         log::unsafe::unlock();

@@ -6,6 +6,7 @@ import :arch;
 
 import x86_64.system.gdt;
 import system.syscall;
+import system.cpu.self;
 import system.cpu;
 import arch;
 import lib;
@@ -58,6 +59,14 @@ namespace x86_64::syscall
         [302] = { "prlimit", proc::prlimit }
     };
 
+    cpu_local<bool> in_syscall;
+    cpu_local_init(in_syscall, false);
+
+    bool is_in_syscall()
+    {
+        return in_syscall.get();
+    }
+
     extern "C" void syscall_entry();
     extern "C" void syscall_handler(cpu::registers *regs)
     {
@@ -65,7 +74,9 @@ namespace x86_64::syscall
         if (idx >= std::size(table) || !table[idx].is_valid())
             lib::panic("invalid syscall: {}", idx);
 
+        in_syscall = true;
         regs->rax = table[idx].invoke(regs);
+        in_syscall = false;
     }
 
     void init_cpu()

@@ -6,6 +6,7 @@ module;
 
 module x86_64.system.idt;
 
+import x86_64.system.syscall;
 import x86_64.system.ioapic;
 import x86_64.system.lapic;
 import x86_64.system.pic;
@@ -109,7 +110,7 @@ namespace x86_64::idt
         }
         else if (vector < irq(0))
         {
-            if (vector == 14 && sched::is_initialised() && sched::this_thread()->is_user)
+            if (vector == 14 && (regs->cs & 0x03 || x86_64::syscall::is_in_syscall()))
             {
                 const bool by_write = (regs->error_code & (1 << 2)) != 0;
                 if (vmm::handle_pfault(rdreg(cr2), by_write))
