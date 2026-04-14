@@ -39,13 +39,14 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, sched_vector);
     }
 
-    void finalise(process *proc, thread *thread, std::uintptr_t ip)
+    void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         lib::unused(proc);
 
         auto &regs = thread->regs;
         regs.rflags = 0x202;
         regs.rip = ip;
+        regs.rdi = arg;
 
         const auto &fpu = cpu::features::get_fpu();
         thread->fpu = lib::allocz<std::byte *>(fpu.size);

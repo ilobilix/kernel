@@ -68,7 +68,7 @@ namespace sched
         void init();
         void reschedule(std::size_t ms);
 
-        void finalise(process *proc, thread *thread, std::uintptr_t ip);
+        void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg);
         void deinitialise(process *proc, thread *thread);
 
         void save(thread *thread);
@@ -125,7 +125,21 @@ namespace sched
         {
             ::arch::halt(true);
         }
+
+        thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
+        {
+            const auto thread = thread::create(processes.read_lock()->at(pid), ip, arg, false);
+            thread->priority = priority;
+            thread->status = status::ready;
+            enqueue(thread, cpu);
+            return thread;
+        }
     } // namespace
+
+    thread *spawn(pid_t pid, std::uintptr_t ip, std::uintptr_t arg, nice_t priority)
+    {
+        return spawn_on(allocate_cpu(), pid, ip, arg, priority);
+    }
 
     bool is_initialised() { return initialised; }
 
@@ -281,7 +295,7 @@ namespace sched
         // lib::error("TODO: thread {} deconstructor on cpu {}", tid, cpu::self()->idx);
     }
 
-    thread *thread::create(process *parent, std::uintptr_t ip, bool is_user)
+    thread *thread::create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user)
     {
         lib::bug_on(!parent);
         auto thread = new sched::thread { };
@@ -314,7 +328,7 @@ namespace sched
         }
         else thread->ustack_top = stack;
 
-        arch::finalise(parent, thread, ip);
+        arch::finalise(parent, thread, ip, arg);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
@@ -502,20 +516,6 @@ namespace sched
             default:
                 std::unreachable();
         }
-    }
-
-    thread *spawn(pid_t pid, std::uintptr_t ip, nice_t priority)
-    {
-        return spawn_on(allocate_cpu(), pid, ip, priority);
-    }
-
-    thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority)
-    {
-        const auto thread = thread::create(processes.read_lock()->at(pid), ip, false);
-        thread->priority = priority;
-        thread->status = status::ready;
-        enqueue(thread, cpu);
-        return thread;
     }
 
     void reaper()
@@ -822,7 +822,7 @@ namespace sched
         idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = -1;
 
-        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), false);
+        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), 0, false);
         idle_thread->status = status::ready;
 
         percpu->idle_proc = idle_proc;
@@ -836,8 +836,8 @@ namespace sched
             for (std::size_t idx = 0; idx < cpu::count(); idx++)
             {
                 auto &obj = percpu.get(cpu::local::nth_base(idx));
-                obj.reaper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
-                sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), -5);
+                obj.reaper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), 0, nice_t::max);
+                sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), 0, -5);
             }
 
             initialised = true;

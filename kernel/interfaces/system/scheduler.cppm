@@ -104,7 +104,7 @@ export namespace sched
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
 
-        static thread *create(process *parent, std::uintptr_t ip, bool is_user);
+        static thread *create(process *parent, std::uintptr_t ip, std::uintptr_t arg, bool is_user);
 
         thread() = default;
         ~thread();
@@ -212,8 +212,7 @@ export namespace sched
     std::size_t allocate_cpu();
     void enqueue(thread *thread, std::size_t cpu_idx);
 
-    thread *spawn(pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
-    thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    thread *spawn(pid_t pid, std::uintptr_t ip, std::uintptr_t arg = 0, nice_t priority = default_prio);
 
     void enable();
     void disable();
