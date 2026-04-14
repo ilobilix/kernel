@@ -31,16 +31,14 @@ export namespace cpu
 
     bool id(std::uint32_t leaf, std::uint32_t subleaf, std::uint32_t &eax, std::uint32_t &ebx, std::uint32_t &ecx, std::uint32_t &edx, bool check_max = true)
     {
-        static const auto cached = [leaf]
+        static const auto cached = []
         {
             std::uint32_t cpuid_max = 0;
-            asm volatile ("cpuid" : "=a"(cpuid_max) : "a"(leaf & 0x80000000) : "ebx", "ecx", "edx");
-            if (leaf > cpuid_max)
-                return false;
-            return true;
+            asm volatile ("cpuid" : "=a"(cpuid_max) : "a"(0x80000000) : "ebx", "ecx", "edx");
+            return cpuid_max;
         } ();
 
-        if (check_max && !cached)
+        if (check_max && (cached && leaf > cached))
             return false;
 
         asm volatile ("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(leaf), "c"(subleaf));

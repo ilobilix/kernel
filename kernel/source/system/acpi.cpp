@@ -38,8 +38,8 @@ namespace acpi
             if (uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &out_table) != UACPI_STATUS_OK)
                 return;
 
-            madt::hdr = new acpi_madt;
             const auto ptr = static_cast<acpi_madt *>(out_table.ptr);
+            madt::hdr = std::malloc<acpi_madt *>(ptr->hdr.length);
             std::memcpy(madt::hdr, ptr, ptr->hdr.length);
             uacpi_table_unref(&out_table);
 

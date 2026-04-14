@@ -12,7 +12,6 @@ export namespace pmm
         std::size_t top = 0;
         std::size_t usable_top = 0;
 
-        std::size_t total = 0;
         std::size_t usable = 0;
         std::size_t used = 0;
     };

@@ -13,35 +13,8 @@ namespace x86_64::gdt
 {
     namespace
     {
-        extern "C" [[gnu::naked]] void load_early(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code)
-        {
-            asm volatile (R"(
-                lgdt [rdi]
-
-                mov ss, si
-                mov si, 0
-                mov ds, si
-                mov fs, si
-                mov gs, si
-                mov es, si
-
-                push rdx
-                lea rax, [rip + 1f]
-                push rax
-                retfq
-                1:
-                ret
-            )");
-        }
-
-        [[gnu::naked]] void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss)
-        {
-            asm volatile (R"(
-                call load_early
-                ltr cx
-                ret
-            )");
-        }
+        extern "C" void load_early(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code);
+        extern "C" void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss);
 
         constinit entries default_gdt
         {

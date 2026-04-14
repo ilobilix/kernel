@@ -107,12 +107,14 @@ export namespace lib
         val |= val >> 4;
         val |= val >> 8;
         val |= val >> 16;
+        val |= val >> 32;
         return ++val;
     }
 
     inline constexpr std::size_t pre_pow2(std::size_t val)
     {
-        return next_pow2(val) >> 1;
+        const auto np2 = next_pow2(val);
+        return np2 == val ? np2 : np2 >> 1;
     }
 
     inline constexpr std::pair<std::uint64_t, std::uint64_t> freq2nspn(std::uint64_t freq)

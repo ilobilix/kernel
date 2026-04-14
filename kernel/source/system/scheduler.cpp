@@ -128,7 +128,7 @@ namespace sched
         status = status::sleeping;
 
         if (ms)
-            sleep_for = ms;
+            sleep_for = ms * 1'000'000;
         else
             sleep_for = std::nullopt;
     }
@@ -213,7 +213,7 @@ namespace sched
         if (eeping && thread->sleep_for.has_value())
         {
             const auto clock = time::main_clock();
-            thread->sleep_until = clock->ns() / 1'000'000 + thread->sleep_for.value();
+            thread->sleep_until = clock->ns() + thread->sleep_for.value();
             thread->sleep_for = std::nullopt;
         }
 
@@ -275,27 +275,38 @@ namespace sched
         }
         // TODO: if killed
 
+        std::list<std::shared_ptr<thread>> tmpqueue;
+
         auto first = next_thread();
         auto next = first;
         while (next->status != status::ready)
         {
             if (next->status == status::sleeping)
             {
-                if (next->sleep_until.has_value() && time / 1'000'000 >= next->sleep_until.value())
+                if (next->sleep_until.has_value() && time >= next->sleep_until.value())
                 {
                     next->status = status::ready;
                     next->wake_reason = wake_reason::success;
                     break;
                 }
             }
-            enqueue(next, self->idx);
+
+            tmpqueue.push_back(next);
             next = next_thread();
+            if (next == percpu->idle_thread)
+                break;
+
             if (next == first)
             {
-                enqueue(next, self->idx);
+                tmpqueue.push_back(next);
                 next = percpu->idle_thread;
             }
         }
+
+        for (auto &thread : tmpqueue)
+            enqueue(thread, self->idx);
+
+        // tmpqueue.clear();
 
         percpu->running_thread = next;
         next->schedule_time = time;
