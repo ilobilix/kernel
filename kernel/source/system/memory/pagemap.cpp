@@ -151,8 +151,9 @@ namespace vmm
                 current = head.next;
                 while (current)
                 {
-                    pmm::free(current);
-                    current = current->next;
+                    const auto next = current->next;
+                    pmm::free(current, npages);
+                    current = next;
                 }
                 return std::unexpected { ret.error() };
             }
@@ -161,8 +162,9 @@ namespace vmm
         current = head.next;
         while (current)
         {
-            std::memset(current, 0, pmm::page_size);
-            current = current->next;
+            const auto next = current->next;
+            std::memset(current, 0, npages * pmm::page_size);
+            current = next;
         }
         return { };
     }
@@ -270,7 +272,7 @@ namespace vmm
     void init()
     {
         log::info("vmm: setting up the kernel pagemap");
-        log::debug("vmm: hhdm offset is: 0x{:X}", boot::get_hhdm_offset());
+        log::debug("vmm: hhdm offset: 0x{:X}", boot::get_hhdm_offset());
 
         kernel_pagemap.initialize();
 
@@ -354,8 +356,11 @@ namespace vmm
 
         log::debug("vmm: loading the pagemap");
         kernel_pagemap->load();
+    }
 
-        vspace_base = lib::tohh(lib::align_up(pmm::info().top, lib::gib(1)));
+    void init_vspaces()
+    {
+        vspace_base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
         for (std::size_t i = 0; auto &entry : vspaces)
             entry = vspace_base + (lib::gib(1 /* TODO: more than 1 gib? */) * (i++));
     }

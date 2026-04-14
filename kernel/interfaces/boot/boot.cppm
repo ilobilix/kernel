@@ -27,6 +27,7 @@ export namespace boot
     constexpr std::size_t limine_rev = 3;
 
     using limine_mp_info = ::limine_mp_info;
+    using limine_memmap_entry = ::limine_memmap_entry;
 
     enum class memmap : std::uint64_t
     {

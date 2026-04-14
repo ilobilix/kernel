@@ -10,8 +10,9 @@ export namespace memory
 {
     void init()
     {
-        pmm::init();
-        slab::init();
         vmm::init();
+        pmm::init();
+        vmm::init_vspaces();
+        slab::init();
     }
 } // export namespace memory
