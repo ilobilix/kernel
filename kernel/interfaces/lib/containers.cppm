@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:containers;
-import std;
+import cppstd;
 
 export namespace lib
 {

@@ -8,7 +8,7 @@ export module drivers.terminal;
 
 import drivers.framebuffer;
 import lib;
-import std;
+import cppstd;
 
 export namespace term
 {

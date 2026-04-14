@@ -3,7 +3,7 @@
 export module system.time;
 
 import frigg;
-import std;
+import cppstd;
 
 export namespace time
 {

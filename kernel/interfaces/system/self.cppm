@@ -9,7 +9,7 @@ export module system.cpu.self;
 import system.scheduler;
 import arch.system;
 import lib;
-import std;
+import cppstd;
 
 export namespace cpu
 {

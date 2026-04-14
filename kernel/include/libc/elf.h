@@ -49,6 +49,20 @@ typedef struct
     Elf64_Half e_shstrndx;
 } Elf64_Ehdr;
 
+#define ELFMAG "\177ELF"
+#define	SELFMAG 4
+
+#define EI_CLASS 4
+#define ELFCLASS64 2
+
+#define EI_DATA 5
+#define ELFDATA2LSB 1
+
+#define EI_OSABI 7
+#define ELFOSABI_SYSV 0
+
+#define ET_DYN 3
+
 typedef struct
 {
     Elf64_Word p_type;
@@ -61,7 +75,9 @@ typedef struct
     Elf64_Xword p_align;
 } Elf64_Phdr;
 
+#define PT_NULL 0
 #define PT_LOAD 1
+#define PT_DYNAMIC 2
 
 #define PF_X (1 << 0)
 #define PF_W (1 << 1)
@@ -98,6 +114,47 @@ typedef struct
 #define ELF32_ST_TYPE(val) ((val) & 0xf)
 #define ELF64_ST_TYPE(val) ELF32_ST_TYPE (val)
 
-#define STT_NOTYPE 0
-#define STT_OBJECT 1
 #define STT_FUNC 2
+#define SHT_RELA 4
+#define SHT_NOBITS 8
+
+typedef struct
+{
+    Elf64_Sxword d_tag;
+    union
+    {
+        Elf64_Xword d_val;
+        Elf64_Addr d_ptr;
+    } d_un;
+} Elf64_Dyn;
+
+#define DT_NULL 0
+#define DT_PLTRELSZ 2
+#define DT_STRTAB 5
+#define DT_SYMTAB 6
+#define DT_RELA 7
+#define DT_RELASZ 8
+#define DT_RELAENT 9
+#define DT_STRSZ 10
+#define DT_SYMENT 11
+#define DT_JMPREL 23
+#define	DT_INIT_ARRAY 25
+#define	DT_FINI_ARRAY 26
+#define	DT_INIT_ARRAYSZ 27
+#define	DT_FINI_ARRAYSZ 28
+#define DT_LOOS 0x60000000
+
+typedef struct
+{
+    Elf64_Addr r_offset;
+    Elf64_Xword r_info;
+    Elf64_Sxword r_addend;
+} Elf64_Rela;
+
+#define ELF64_R_SYM(i) ((i) >> 32)
+#define ELF64_R_TYPE(i) ((i) & 0xffffffff)
+
+#define R_X86_64_64 1
+#define R_X86_64_GLOB_DAT 6
+#define R_X86_64_JUMP_SLOT 7
+#define R_X86_64_RELATIVE 8

@@ -5,7 +5,7 @@ module;
 #include <cerrno>
 
 export module lib:misc;
-import std;
+import cppstd;
 
 export namespace lib
 {

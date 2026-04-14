@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module system.cpu;
-import std;
+import cppstd;
 
 #if defined(__x86_64__)
 export import x86_64.system.cpu;

@@ -7,3 +7,5 @@ serial.txt
 log.txt
 
 build*
+
+userspace/sysroot

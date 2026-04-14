@@ -3,7 +3,7 @@
 export module lib:rwlock;
 
 import :mutex;
-import std;
+import cppstd;
 
 export namespace lib
 {

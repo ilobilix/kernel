@@ -6,7 +6,7 @@ import :ether;
 import :addr;
 import :packet;
 
-import std;
+import cppstd;
 import lib;
 
 namespace net::arp

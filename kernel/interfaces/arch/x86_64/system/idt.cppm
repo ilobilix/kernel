@@ -4,7 +4,7 @@ export module x86_64.system.idt;
 
 import x86_64.system.gdt;
 import system.interrupts;
-import std;
+import cppstd;
 
 namespace cpu
 {

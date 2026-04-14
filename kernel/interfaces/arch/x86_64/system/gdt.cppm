@@ -3,7 +3,7 @@
 export module x86_64.system.gdt;
 
 import system.cpu;
-import std;
+import cppstd;
 
 export namespace x86_64::gdt
 {

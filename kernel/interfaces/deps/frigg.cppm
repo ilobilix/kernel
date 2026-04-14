@@ -9,7 +9,7 @@ module;
 #include <frg/slab.hpp>
 
 export module frigg;
-import std;
+import cppstd;
 
 export namespace frg
 {

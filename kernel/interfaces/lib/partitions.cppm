@@ -3,7 +3,7 @@
 export module lib:partitions;
 
 import :math;
-import std;
+import cppstd;
 
 export namespace lib::part
 {

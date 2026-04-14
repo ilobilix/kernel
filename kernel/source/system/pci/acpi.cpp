@@ -15,7 +15,7 @@ module system.pci;
 import system.memory.virt;
 import system.acpi;
 import lib;
-import std;
+import cppstd;
 
 namespace pci::acpi
 {

@@ -10,7 +10,7 @@ import system.memory.phys;
 import magic_enum;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 import :pagemap;
 
@@ -18,8 +18,8 @@ namespace vmm
 {
     namespace
     {
-        std::uintptr_t vspace_base;
-        std::uintptr_t vspaces[magic_enum::enum_count<space_type>()];
+        constinit std::uintptr_t vspace_base;
+        constinit std::uintptr_t vspaces[magic_enum::enum_count<space_type>()];
     } // namespace
 
     auto pagemap::getlvl(entry &entry, bool allocate) -> table *
@@ -76,6 +76,34 @@ namespace vmm
                 pte.setaddr(paddr + i);
                 pte.setflags(aflags, true);
             }
+        }
+
+        return { };
+    }
+
+    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
+    {
+        psize = fixpsize(psize);
+
+        const auto npsize = from_page_size(psize);
+        if (vaddr % npsize)
+            return std::unexpected { error::addr_not_aligned };
+
+        const std::unique_lock _ { _lock };
+
+        const auto aflags = to_arch(flags, cache, psize);
+
+        for (std::size_t i = 0; i < length; i += npsize)
+        {
+            const auto ret = getpte(vaddr + i, psize, false);
+            if (ret.has_value())
+            {
+                auto &pte = ret.value().get();
+                pte.clearflags();
+                pte.setflags(aflags, true);
+                invalidate(vaddr + i);
+            }
+            else return std::unexpected { ret.error() };
         }
 
         return { };

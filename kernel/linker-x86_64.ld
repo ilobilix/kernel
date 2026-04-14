@@ -33,6 +33,12 @@ SECTIONS
         *(.rodata .rodata.*)
     } :rodata
 
+    .modules : {
+        __section_modules_start = .;
+        KEEP(*(.modules))
+        __section_modules_end = .;
+    } :rodata
+
     .init_array : {
         PROVIDE_HIDDEN(__init_array_start = .);
         KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))

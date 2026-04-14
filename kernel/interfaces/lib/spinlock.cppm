@@ -2,7 +2,7 @@
 
 export module lib:spinlock;
 
-import std;
+import cppstd;
 
 export namespace lib
 {

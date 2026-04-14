@@ -5,7 +5,7 @@ export import :pagemap;
 export import :mmap;
 
 import magic_enum;
-import std;
+import cppstd;
 
 export namespace vmm
 {
@@ -17,7 +17,7 @@ export namespace vmm
 
     enum class space_type : std::size_t
     {
-        drivers,
+        modules,
         acpi, pci,
         other
     };

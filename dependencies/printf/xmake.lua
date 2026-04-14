@@ -1,5 +1,14 @@
 -- Copyright (C) 2024-2025  ilobilo
 
+target("printf-headers")
+    set_kind("headeronly")
+
+    add_defines("PRINTF_INCLUDE_CONFIG_H=1")
+
+    add_includedirs("printf/src", { public = true })
+    add_includedirs("printf", { public = true })
+    add_includedirs(".")
+
 target("printf")
     set_kind("static")
     set_toolchains("ilobilix-clang")

@@ -22,7 +22,7 @@ import drivers.timers.acpipm;
 import arch;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 namespace acpi
 {

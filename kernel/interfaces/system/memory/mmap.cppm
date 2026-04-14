@@ -5,7 +5,7 @@ export module system.memory.virt:mmap;
 import system.cpu;
 import system.vfs;
 import :pagemap;
-import std;
+import cppstd;
 
 export namespace vmm
 {

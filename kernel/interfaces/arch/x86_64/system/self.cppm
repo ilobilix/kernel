@@ -7,7 +7,7 @@ import x86_64.system.idt;
 import system.interrupts;
 import frigg;
 import lib;
-import std;
+import cppstd;
 
 export namespace cpu::arch
 {

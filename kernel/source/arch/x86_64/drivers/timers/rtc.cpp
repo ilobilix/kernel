@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module x86_64.drivers.timers.rtc;
-import std;
+import cppstd;
 
 namespace x86_64::timers::rtc
 {

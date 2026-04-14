@@ -4,7 +4,7 @@ export module lib:bitmap;
 
 import :ensure;
 import :math;
-import std;
+import cppstd;
 
 export namespace lib
 {

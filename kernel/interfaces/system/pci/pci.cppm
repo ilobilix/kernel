@@ -4,7 +4,7 @@ export module system.pci;
 export import :regs;
 
 import lib;
-import std;
+import cppstd;
 
 namespace pci
 {

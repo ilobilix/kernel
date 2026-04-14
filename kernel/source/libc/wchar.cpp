@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-import std;
+import cppstd;
 
 extern "C"
 {

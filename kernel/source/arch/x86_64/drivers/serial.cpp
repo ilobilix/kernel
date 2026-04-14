@@ -4,7 +4,7 @@ module drivers.serial;
 
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace serial
 {
