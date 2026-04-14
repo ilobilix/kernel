@@ -587,7 +587,7 @@ namespace vmm
                 if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                     return std::unexpected { ret.error() };
 
-                remove(wlocked, ent);
+                wlocked->remove(ent);
 
                 if (ent->endp > endp)
                 {
@@ -596,7 +596,7 @@ namespace vmm
                     const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                     const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                    insert(wlocked, new entry {
+                    wlocked->insert(new entry {
                         .startp = endp,
                         .endp = ent->endp,
                         .obj = ent->obj,
@@ -614,7 +614,7 @@ namespace vmm
                 if (ent->startp < startp)
                 {
                     ent->endp = startp;
-                    insert(wlocked, ent);
+                    wlocked->insert(ent);
                 }
                 else delete ent;
             }
@@ -629,7 +629,7 @@ namespace vmm
             endp = (*ret + length) / npsize;
         }
 
-        insert(wlocked, new entry {
+        wlocked->insert(new entry {
             .startp = startp,
             .endp = endp,
             .obj = std::move(target_obj),
@@ -695,7 +695,7 @@ namespace vmm
             if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                 return std::unexpected { ret.error() };
 
-            remove(wlocked, ent);
+            wlocked->remove(ent);
 
             if (ent->endp > overlap_end)
             {
@@ -704,7 +704,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                insert(wlocked, new entry {
+                wlocked->insert(new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -721,7 +721,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                insert(wlocked, new entry {
+                wlocked->insert(new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -800,7 +800,7 @@ namespace vmm
             const auto overlap_start = std::max(startp, ent->startp);
             const auto overlap_end = std::min(endp, ent->endp);
 
-            remove(wlocked, ent);
+            wlocked->remove(ent);
 
             if (ent->endp > overlap_end)
             {
@@ -809,7 +809,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                insert(wlocked, new entry {
+                wlocked->insert(new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -826,7 +826,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                insert(wlocked, new entry {
+                wlocked->insert(new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -851,7 +851,7 @@ namespace vmm
                 ent->anon_idx += pages;
             ent->prot = prot;
 
-            insert(wlocked, ent);
+            wlocked->insert(ent);
 
             startp = overlap_end;
         }
@@ -860,18 +860,6 @@ namespace vmm
             return std::unexpected { ret.error() };
 
         return { };
-    }
-
-    void vmspace::insert(auto &locked, entry *ent)
-    {
-        locked->insert(ent);
-        gen.fetch_add(1, std::memory_order_release);
-    }
-
-    void vmspace::remove(auto &locked, entry *ent)
-    {
-        locked->remove(ent);
-        gen.fetch_add(1, std::memory_order_release);
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
@@ -993,11 +981,8 @@ namespace vmm
         std::uint64_t obj_offp;
         std::uint64_t anon_idx;
 
-        std::uint64_t gen;
         {
             const auto rlocked = vmspace->tree.read_lock();
-            gen = vmspace->gen.load(std::memory_order_acquire);
-
             const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
             if (ret.empty())
                 return false;
@@ -1085,7 +1070,6 @@ namespace vmm
                     {
                         if (opg->refcount.load(std::memory_order_acquire) != 1)
                         {
-                            // cow
                             if (!copy_old(opg, slot, false))
                                 return false;
                             goto end;
@@ -1146,7 +1130,7 @@ namespace vmm
                     }
                     else
                     {
-                        auto opg = amap->slots[anon_idx + offp]->pg;
+                        opg = amap->slots[anon_idx + offp]->pg;
                         opg->ref();
                     }
 
@@ -1209,11 +1193,8 @@ namespace vmm
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            if (vmspace->gen.load(std::memory_order_acquire) != gen)
-                goto fail;
-
-#if ILOBILIX_DEBUG
             const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
+
             if (ret.empty())
                 goto fail;
 
@@ -1230,7 +1211,6 @@ namespace vmm
                 goto fail;
             if (amap && (entry.amap != amap || (entry.anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
-#endif
         }
 
         // TODO: tlb shootdown if (state.is_present && state.is_write)
