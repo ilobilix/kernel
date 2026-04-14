@@ -92,29 +92,9 @@ target("kallsyms-syms")
     set_kind("binary")
     add_deps("ilobilix.headers")
 
-rule("nasm")
-    set_extensions(".asm")
-    on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
-        batchcmds:mkdir(target:targetdir())
-
-        local objectfile = target:objectfile(sourcefile)
-        batchcmds:mkdir(path.directory(objectfile))
-
-        table.insert(target:objectfiles(), objectfile)
-
-        batchcmds:vrunv('nasm', { "-Wall", "-w-unknown-warning", "-w-reloc", "-felf64", "-o", objectfile, sourcefile })
-        batchcmds:show_progress(opt.progress, "${color.build.object}compiling.nasm %s", sourcefile)
-
-        batchcmds:add_depfiles(sourcefile)
-        batchcmds:set_depmtime(os.mtime(objectfile))
-        batchcmds:set_depcache(target:dependfile(objectfile))
-    end)
-
 target("ilobilix.elf")
     set_default(false)
     set_kind("binary")
-
-    add_rules("nasm")
 
     add_deps("modules", { inherit = false })
     add_deps("ilobilix.modules")
@@ -133,8 +113,6 @@ target("ilobilix.elf")
     end
 
     if is_arch("x86_64") then
-        add_files("source/arch/x86_64/system/smp.asm")
-
         add_ldflags(
             "-T" .. "$(projectdir)/kernel/linker-x86_64.ld",
             { force = true }
