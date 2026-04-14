@@ -50,6 +50,7 @@ namespace sched
             queue.pop_front();
             return thread;
         }
+
         void save(std::shared_ptr<thread> thread, cpu::registers *regs)
         {
             std::memcpy(&thread->regs, regs, sizeof(cpu::registers));
@@ -185,6 +186,8 @@ namespace sched
 
     [[noreturn]] void start()
     {
+        static std::atomic_bool should_start = false;
+
         static auto idle_pagemap = std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get());
         auto idle_proc = std::make_shared<process>();
         idle_proc->pagemap = idle_pagemap;
@@ -192,11 +195,22 @@ namespace sched
         auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
         idle_thread->status = status::ready;
 
-        cpu::self()->sched.idle_proc = idle_proc;
-        cpu::self()->sched.idle_thread = idle_thread;
+        auto self = cpu::self();
+        self->sched.idle_proc = idle_proc;
+        self->sched.idle_thread = idle_thread;
 
         arch::init();
         ::arch::int_switch(true);
+
+        if (self->idx == cpu::bsp_idx)
+        {
+            should_start = true;
+            initialised = true;
+        }
+
+        while (!should_start)
+            ::arch::pause();
+
         arch::reschedule(0);
         ::arch::halt(true);
     }

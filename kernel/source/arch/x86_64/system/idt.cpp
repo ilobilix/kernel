@@ -68,12 +68,15 @@ namespace x86_64::idt
     extern "C" void *isr_table[];
     extern "C" void isr_handler(cpu::registers *regs)
     {
-        if (regs->vector >= irq(0) && regs->vector <= 0xFF)
+        const auto vector = regs->vector;
+        const auto self = cpu::self();
+
+        if (vector >= irq(0) && vector <= 0xFF)
         {
-            const auto ptr = cpu::self() ?: &cpu::processors[cpu::bsp_idx];
+            const auto ptr = self ?: &cpu::processors[cpu::bsp_idx];
             auto &handlers = ptr->arch.int_handlers;
 
-            const auto idx = regs->vector - irq(0);
+            const auto idx = vector - irq(0);
             if (handlers.size() > idx)
             {
                 auto &handler = handlers[idx];
@@ -81,12 +84,16 @@ namespace x86_64::idt
                     handler(regs);
             }
 
-            eoi(regs->vector);
+            eoi(vector);
         }
-        else if (regs->vector < irq(0))
-            lib::panic(regs, "exception {}: '{}'", regs->vector, exception_messages[regs->vector]);
-        else
-            lib::panic(regs, "unknown interrupt {}", regs->vector);
+        else if (vector < irq(0))
+        {
+            if (self)
+                lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
+            else
+                lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+        }
+        else lib::panic(regs, "unknown interrupt {}", vector);
     }
 
     void init_on(cpu::processor *cpu)

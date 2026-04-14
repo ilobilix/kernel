@@ -59,55 +59,6 @@ namespace x86_64::apic
             else
                 lib::mmio::out<32>(mmio + reg, val);
         }
-
-        bool calibrate_timer()
-        {
-            if (tsc_deadline)
-            {
-                log::debug("lapic: using tsc deadline");
-                return true;
-            }
-
-            auto self = cpu::self();
-            std::uint64_t freq = 0;
-
-            std::uint32_t a, b, c, d;
-            if (cpu::id(0x15, 0, a, b, c, d) && c != 0)
-            {
-                freq = c;
-                self->arch.lapic.calibrated = true;
-            }
-            else
-            {
-                auto calibrator = ::timers::calibrator();
-                if (!calibrator)
-                    return false;
-
-                write(reg::tdc, 0b1011);
-
-                static constexpr std::size_t millis = 10;
-                static constexpr std::size_t times = 3;
-
-                for (std::size_t i = 0; i < times; i++)
-                {
-                    write(reg::tic, 0xFFFFFFFF);
-                    calibrator(millis);
-                    auto count = read(reg::tcc);
-                    write(reg::tic, 0);
-
-                    freq += (0xFFFFFFFF - count) * 100;
-                }
-                freq /= times;
-                self->arch.lapic.calibrated = true;
-            }
-            log::debug("lapic: timer frequency: {} hz", freq);
-
-            auto &n = self->arch.lapic.n;
-            auto &p = self->arch.lapic.p;
-            std::tie(p, n) = lib::freq2nspn(freq);
-
-            return true;
-        }
     } // namespace
 
     std::pair<bool, bool> supported()
@@ -148,6 +99,56 @@ namespace x86_64::apic
         return { lapic, x2apic && cached };
     }
 
+    void calibrate_timer()
+    {
+        auto self = cpu::self();
+        lib::ensure(!!supported().first && self->arch.lapic.calibrated == false);
+
+        if (tsc_deadline)
+        {
+            log::debug("lapic: using tsc deadline");
+            self->arch.lapic.calibrated = true;
+            return;
+        }
+
+        std::uint64_t freq = 0;
+
+        std::uint32_t a, b, c, d;
+        if (cpu::id(0x15, 0, a, b, c, d) && c != 0)
+        {
+            freq = c;
+            self->arch.lapic.calibrated = true;
+        }
+        else
+        {
+            auto calibrator = ::timers::calibrator();
+            if (!calibrator)
+                lib::panic("lapic: could not calibrate timer");
+
+            write(reg::tdc, 0b1011);
+
+            static constexpr std::size_t millis = 10;
+            static constexpr std::size_t times = 3;
+
+            for (std::size_t i = 0; i < times; i++)
+            {
+                write(reg::tic, 0xFFFFFFFF);
+                calibrator(millis);
+                auto count = read(reg::tcc);
+                write(reg::tic, 0);
+
+                freq += (0xFFFFFFFF - count) * 100;
+            }
+            freq /= times;
+            self->arch.lapic.calibrated = true;
+        }
+        log::debug("lapic: timer frequency: {} hz", freq);
+
+        auto &n = self->arch.lapic.n;
+        auto &p = self->arch.lapic.p;
+        std::tie(p, n) = lib::freq2nspn(freq);
+    }
+
     void eoi() { write(0xB0, 0); }
     void ipi(std::uint8_t id, dest dsh, std::uint8_t vector)
     {
@@ -162,10 +163,12 @@ namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
+        auto self = cpu::self();
+        lib::ensure(self->arch.lapic.calibrated);
+
         if (ns == 0)
             ns = 1;
 
-        auto self = cpu::self();
         if (tsc_deadline)
         {
             auto val = timers::tsc::rdtsc();
@@ -228,7 +231,7 @@ namespace x86_64::apic
         // Enable APIC and set spurious interrupt vector to 0xFF
         write(reg::siv, (1 << 8) | 0xFF);
 
-        if (!calibrate_timer())
-            lib::panic("lapic: could not calibrate timer");
+        if (!is_bsp)
+            calibrate_timer();
     }
 } // namespace x86_64::apic
