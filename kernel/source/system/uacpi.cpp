@@ -1,6 +1,7 @@
 // Copyright (C) 2024  ilobilo
 
 #include <uacpi/kernel_api.h>
+#include <lib/lock.hpp>
 
 import ilobilix;
 import std;
@@ -245,7 +246,7 @@ extern "C"
     void uacpi_kernel_vlog(uacpi_log_level lvl, const uacpi_char *_str, uacpi_va_list va)
     {
         auto str = const_cast<uacpi_char *>(_str);
-        auto len = std::strlen(str);
+        const auto len = std::strlen(str);
 
         if (str[len - 1] == '\n')
             str[len - 1] = 0;
@@ -278,7 +279,7 @@ extern "C"
 
     uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot()
     {
-        auto clock = time::main_clock();
+        const auto clock = time::main_clock();
         if (clock == nullptr)
             return 0;
         return clock->ns();
@@ -296,7 +297,7 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_mutex()
     {
-        return reinterpret_cast<uacpi_handle>(new std::mutex);
+        return reinterpret_cast<uacpi_handle>(new std::mutex { false });
     }
 
     void uacpi_kernel_free_mutex(uacpi_handle handle)
@@ -388,9 +389,9 @@ extern "C"
     uacpi_status uacpi_kernel_install_interrupt_handler(uacpi_u32 irq, uacpi_interrupt_handler func, uacpi_handle ctx, uacpi_handle *out_irq_handle)
     {
 #if defined(__x86_64__)
-        auto vector = irq + 0x20;
+        const auto vector = irq + 0x20;
 #else
-        auto vector = irq;
+        const auto vector = irq;
 #endif
 
         auto handler = interrupts::get(cpu::bsp_idx, vector).value();
@@ -406,7 +407,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler, uacpi_handle irq_handle)
     {
-        auto vector = reinterpret_cast<std::size_t>(irq_handle);
+        const auto vector = reinterpret_cast<std::size_t>(irq_handle);
         interrupts::mask(vector);
 
         auto handler = interrupts::get(cpu::bsp_idx, vector).value();
@@ -417,22 +418,23 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_spinlock()
     {
-        return uacpi_kernel_create_mutex();
+        return reinterpret_cast<uacpi_handle>(new ticket_lock { true });
     }
 
     void uacpi_kernel_free_spinlock(uacpi_handle handle)
     {
-        uacpi_kernel_free_mutex(handle);
+        delete reinterpret_cast<ticket_lock *>(handle);
     }
 
     uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle handle)
     {
-        return uacpi_kernel_acquire_mutex(handle, 0xFFFF);
+        reinterpret_cast<ticket_lock *>(handle)->lock();
+        return 0;
     }
 
     void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags)
     {
-        uacpi_kernel_release_mutex(handle);
+        reinterpret_cast<ticket_lock *>(handle)->unlock();
     }
 
     // TODO

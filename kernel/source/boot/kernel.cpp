@@ -3,24 +3,33 @@
 import ilobilix;
 import std;
 
-extern "C" std::uint8_t kernel_stack[boot::kernel_stack_size] { };
-extern "C" auto kernel_stack_top = kernel_stack + boot::kernel_stack_size;
-
-extern "C" void kmain()
+extern "C"
 {
-    serial::early_init();
-    boot::check_requests();
+    std::uint8_t kernel_stack[boot::kernel_stack_size] { };
+    auto kernel_stack_top = kernel_stack + boot::kernel_stack_size;
 
-    memory::init();
-    serial::init();
-    cxxabi::construct();
+    void kmain()
+    {
+        serial::early_init();
+        boot::check_requests();
 
-    acpi::early();
-    arch::init();
-    pmm::reclaim();
-    acpi::init();
+        memory::init();
+        serial::init();
+        cxxabi::construct();
 
-    lib::panic("get stick bugged lol");
+        acpi::early();
+        arch::init();
+        pmm::reclaim();
 
-    arch::halt();
-}
+        pci::register_ios();
+        acpi::init();
+        pci::register_rbs();
+        pci::init();
+
+        lib::ensure(time::stall_ns(3'000'000'000));
+
+        lib::panic("get stick bugged lol");
+
+        arch::halt();
+    }
+} // extern "C"

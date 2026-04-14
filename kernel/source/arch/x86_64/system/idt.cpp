@@ -15,10 +15,13 @@ namespace x86_64::idt
 {
     namespace
     {
-        entry idt[num_ints];
-        ptr idtr { sizeof(idt) - 1, reinterpret_cast<std::uintptr_t>(&idt) };
+        std::array<entry, num_ints> idt;
+        const ptr idtr {
+            sizeof(idt) - 1,
+            reinterpret_cast<std::uintptr_t>(idt.data())
+        };
 
-        const char *exception_messages[32]
+        std::array<const char *, 32> exception_messages
         {
             "Division by zero", "Debug",
             "Non-maskable interrupt",
@@ -65,10 +68,10 @@ namespace x86_64::idt
     {
         if (regs->vector >= irq(0) && regs->vector <= 0xFF)
         {
-            auto ptr = cpu::self() ?: &cpu::processors[cpu::bsp_idx];
+            const auto ptr = cpu::self() ?: &cpu::processors[cpu::bsp_idx];
             auto &handlers = ptr->arch.int_handlers;
 
-            auto idx = regs->vector - irq(0);
+            const auto idx = regs->vector - irq(0);
             if (handlers.size() > idx)
             {
                 auto &handler = handlers[idx];
@@ -93,8 +96,8 @@ namespace x86_64::idt
             for (std::size_t i = 0; i < num_ints; i++)
                 idt[i].set(isr_table[i]);
 
-            // page fault ist 2. see TSS
-            idt[14].ist = 2;
+            // page fault ist 0. see TSS
+            idt[14].ist = 1;
         }
 
         cpu->arch.int_handlers.resize(num_preints);

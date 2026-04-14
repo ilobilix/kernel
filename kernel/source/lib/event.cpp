@@ -33,7 +33,7 @@ namespace lib
         _lock.unlock();
 
         auto start = clock->ns();
-        auto end = start + ns;
+        const auto end = start + ns;
 
         while (start < end)
         {

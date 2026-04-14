@@ -33,7 +33,7 @@ export namespace lib
             if (_awaiters == 0)
                 return false;
 
-            std::size_t dropped = _triggers;
+            const std::size_t dropped = _triggers;
             _triggers.store(0, std::memory_order_release);
             return dropped;
         }

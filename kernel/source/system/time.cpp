@@ -43,19 +43,21 @@ namespace time
         return main;
     }
 
-    void stall_ns(std::uint64_t ns)
+    bool stall_ns(std::uint64_t ns)
     {
-        if (!main)
-            return;
+        if (main == nullptr)
+            return false;
 
-        auto target = main->ns() + ns;
+        const auto target = main->ns() + ns;
         while (main->ns() < target)
             arch::pause();
+
+        return true;
     }
 
-    void sleep_ns(std::size_t ns)
+    bool sleep_ns(std::size_t ns)
     {
         // TODO: propa eep
-        stall_ns(ns);
+        return stall_ns(ns);
     }
 } // namespace time

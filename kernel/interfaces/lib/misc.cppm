@@ -127,8 +127,8 @@ export namespace lib
         constexpr chain_wrapper() : _val { }, _chained { false } { }
         constexpr chain_wrapper(Type val) : _val { val }, _chained { false } { }
 
-        constexpr chain_wrapper(const chain_wrapper &other) :
-            _other { const_cast<chain_wrapper *>(std::addressof(other)) }, _chained(true) { }
+        constexpr chain_wrapper(const chain_wrapper &other)
+            : _other { const_cast<chain_wrapper *>(std::addressof(other)) }, _chained(true) { }
 
         constexpr chain_wrapper(chain_wrapper &&other) = delete;
 

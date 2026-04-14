@@ -154,7 +154,7 @@ export namespace boot
 
     limine_file *find_module(std::string_view name)
     {
-        auto mods = requests::module_.response;
+        const auto mods = requests::module_.response;
         for (std::size_t i = 0; i < mods->module_count; i++)
         {
             if (mods->modules[i]->cmdline == name)

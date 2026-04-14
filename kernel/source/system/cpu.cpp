@@ -34,7 +34,7 @@ namespace cpu
     extern "C" std::uint8_t kernel_stack[];
     void init_bsp()
     {
-        auto smp = boot::requests::smp.response;
+        const auto smp = boot::requests::smp.response;
 
         processors = new processor[smp->cpu_count] { };
         bsp_aid = get_bsp_id(smp);
@@ -42,7 +42,7 @@ namespace cpu
         for (std::size_t i = 0; i < smp->cpu_count; i++)
         {
             auto cpu = smp->cpus[i];
-            auto aid = get_arch_id(cpu);
+            const auto aid = get_arch_id(cpu);
 
             if (aid != bsp_aid)
                 continue;
@@ -63,13 +63,13 @@ namespace cpu
     extern "C" void cpu_entry(boot::limine_smp_info *);
     void init()
     {
-        auto smp = boot::requests::smp.response;
+        const auto smp = boot::requests::smp.response;
         log::info("Number of available processors: {}", smp->cpu_count);
 
         for (std::size_t i = 0; i < smp->cpu_count; i++)
         {
             auto cpu = smp->cpus[i];
-            auto aid = get_arch_id(cpu);
+            const auto aid = get_arch_id(cpu);
 
             if (aid == bsp_aid)
                 continue;

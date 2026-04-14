@@ -27,14 +27,14 @@ export namespace lib
             swap(lhs._allocated, rhs._allocated);
         }
 
-        constexpr bitmap() :
-            _data { nullptr }, _count { 0 }, _initialised { false }, _allocated { false } { };
-        bitmap(std::uint8_t *data, std::size_t count) :
-            _data { data }, _count { count }, _initialised { true }, _allocated { false } { };
+        constexpr bitmap()
+            : _data { nullptr }, _count { 0 }, _initialised { false }, _allocated { false } { };
+        bitmap(std::uint8_t *data, std::size_t count)
+            : _data { data }, _count { count }, _initialised { true }, _allocated { false } { };
 
         bitmap(std::size_t count)
         {
-            auto size = div_roundup(count, 8u);
+            const auto size = div_roundup(count, 8u);
 
             _data = new std::uint8_t[size]();
             _count = count;
@@ -68,8 +68,8 @@ export namespace lib
             bitmap &parent;
             std::size_t index;
 
-            constexpr bit(bitmap &parent, std::size_t index) :
-                parent(parent), index(index) { }
+            constexpr bit(bitmap &parent, std::size_t index)
+                : parent(parent), index(index) { }
 
             constexpr void operator=(bool value)
             {
@@ -97,7 +97,7 @@ export namespace lib
         constexpr bool set(std::size_t index, bool value)
         {
             lib::ensure(!!_initialised);
-            auto ret = get(index);
+            const auto ret = get(index);
 
             if (value == true)
                 _data[index / 8] |= (1 << (index % 8));

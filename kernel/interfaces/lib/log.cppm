@@ -104,10 +104,10 @@ export namespace log
     {
         std::unique_lock _ { _lock };
 
-        auto index = std::to_underlying(lvl);
+        const auto index = std::to_underlying(lvl);
 
         auto n = get_time();
-        auto [h, m, s] = lib::time_from(n / 1'000'000'000);
+        const auto [h, m, s] = lib::time_from(n / 1'000'000'000);
         n %= 1'000'000'000;
         n /= 1'000;
 

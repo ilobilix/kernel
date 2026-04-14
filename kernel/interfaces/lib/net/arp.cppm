@@ -194,7 +194,7 @@ namespace net::arp
                 return route->mac;
             }
 
-            auto &route = routes.emplace_back(new arp::route(ipv4, { }, false));
+            const auto &route = routes.emplace_back(new arp::route(ipv4, { }, false));
             submit_query(ipv4);
 
             // route->doorbell.await();

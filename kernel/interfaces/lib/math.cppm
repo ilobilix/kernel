@@ -85,22 +85,22 @@ export namespace lib
         return szudzik(a, unique_from(std::forward<Args>(args)...));
     }
 
-    inline constexpr auto log2(std::unsigned_integral auto val)
+    template<std::unsigned_integral Type>
+    inline constexpr auto log2(Type val)
     {
-        return std::bit_width(val) - 1;
+        return std::bit_width<Type>(val) - 1;
     }
 
-    // Thank you qookie and korona
     inline constexpr std::pair<std::uint64_t, std::uint64_t> freq2nspn(std::uint64_t freq)
     {
-        std::uint64_t p = 64 - lib::log2(freq);
+        std::uint64_t p = lib::log2<std::uint64_t>(freq);
         std::uint64_t n = (1'000'000'000ull << p) / freq;
         return { p, n };
     }
 
-    inline constexpr std::uint64_t ticks2ns(std::uint64_t ticks, std::uint64_t p, std::uint64_t n)
+    inline constexpr std::uint64_t ticks2ns(uint128_t ticks, std::uint64_t p, std::uint64_t n)
     {
-        return ((static_cast<uint128_t>(ticks) * n) >> p);
+        return (ticks * n) >> p;
     }
 
     inline constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)

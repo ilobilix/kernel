@@ -23,7 +23,7 @@ namespace log
 {
     std::uint64_t get_time()
     {
-        auto clock = time::main_clock();
+        const auto clock = time::main_clock();
         if (!clock)
             return 0;
 

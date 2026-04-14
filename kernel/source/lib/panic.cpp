@@ -52,8 +52,8 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
         const char *_file;
         const char *_func;
 
-        custom_location(const char *file, int line, const char *func) :
-            _line { line }, _file { file }, _func { func } { }
+        custom_location(const char *file, int line, const char *func)
+            : _line { line }, _file { file }, _func { func } { }
 
         constexpr std::uint_least32_t line() const noexcept
         { return _line; }

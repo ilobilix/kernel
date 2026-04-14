@@ -12,13 +12,13 @@ export namespace lib
 #if ILOBILIX_DEBUG
         constexpr ensure(std::convertible_to<bool> auto x, std::source_location location = std::source_location::current())
         {
-            if (bool(x) == false)
+            if (static_cast<bool>(x) == false)
                 vpanic("Assertion failed", std::make_format_args(), nullptr, location);
         }
 
         constexpr ensure(std::convertible_to<bool> auto x, std::string_view message, Args &&...args, std::source_location location = std::source_location::current())
         {
-            if (bool(x) == false)
+            if (static_cast<bool>(x) == false)
                 vpanic(message, std::make_format_args(args...), nullptr, location);
         }
 #else

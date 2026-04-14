@@ -25,7 +25,7 @@ export namespace x86_64::gdt
 
     struct [[gnu::packed]] entry
     {
-        std::uint16_t limit0;
+        std::uint16_t limit;
         std::uint16_t base0;
         std::uint8_t base1;
         std::uint8_t access;

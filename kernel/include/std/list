@@ -193,8 +193,8 @@ namespace std
         public:
         list() : list(allocator_type()) { }
 
-        explicit list(const allocator_type &alloc) :
-            _allocator { alloc }, _node_allocator { }, _begin { nullptr }, _end { _begin } { }
+        explicit list(const allocator_type &alloc)
+            : _allocator { alloc }, _node_allocator { }, _begin { nullptr }, _end { _begin } { }
 
         list(size_type count, const value_type &value, const allocator_type &alloc = allocator_type()) : list(alloc)
         {

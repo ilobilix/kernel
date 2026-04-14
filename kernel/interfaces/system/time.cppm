@@ -16,13 +16,13 @@ export namespace time
 
         std::uint64_t (*ns)();
 
-        clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)()) :
-            name { name }, priority { priority }, ns { time_ns } { }
+        clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
+            : name { name }, priority { priority }, ns { time_ns } { }
     };
 
     void register_clock(clock &timer);
     clock *main_clock();
 
-    void stall_ns(std::size_t ns);
-    void sleep_ns(std::size_t ns);
+    bool stall_ns(std::size_t ns);
+    bool sleep_ns(std::size_t ns);
 } // export namespace time
