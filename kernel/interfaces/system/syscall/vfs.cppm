@@ -45,6 +45,9 @@ export namespace syscall::vfs
 
     char *getcwd(char __user *buf, std::size_t size);
 
+    int chdir(const char __user *pathname);
+    int fchdir(int fd);
+
     int pipe2(int __user *pipefd, int flags);
     int pipe(int __user *pipefd);
 
