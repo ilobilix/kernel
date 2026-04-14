@@ -58,8 +58,6 @@ namespace arch
 
     bool in_interrupt()
     {
-        if (!cpu::local::available())
-            return false;
         sched::disable();
         auto ret = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire);
         sched::enable();

@@ -115,7 +115,7 @@ namespace x86_64::output::uart8250
             return true;
         }
 
-        void irq_swtich(std::uint16_t port, bool on)
+        void set_irqs(std::uint16_t port, bool on)
         {
             lib::io::out<8>(port + 1, on);
         }
@@ -233,12 +233,11 @@ namespace x86_64::output::uart8250
             lib::unused(drv, inst);
         }
 
-        serial_driver(std::string_view driver_name, std::string_view name, std::size_t name_base,
-            std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices, tty::flag flags)
-            : driver { driver_name, name, name_base, major, minor_start, num_devices, flags } { }
+        serial_driver()
+            : driver { "serial", "ttyS", 0, 4, 64, num_ports, tty::flag::none } { }
     };
 
-    serial_driver driver { "serial", "ttyS", 0, 4, 64, num_ports, tty::flag::none };
+    serial_driver driver { };
 
     lib::initgraph::task com_task
     {
@@ -246,7 +245,6 @@ namespace x86_64::output::uart8250
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::devtmpfs::mounted_stage() },
         [] {
-
             for (std::size_t i = 0; i < num_ports; i++)
             {
                 if (usable[i])
@@ -260,7 +258,7 @@ namespace x86_64::output::uart8250
                         handler.set(irq_handler);
                         interrupts::unmask(vector);
                     }
-                    irq_swtich(ports[i], true);
+                    set_irqs(ports[i], true);
                 }
             }
 

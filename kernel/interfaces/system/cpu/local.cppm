@@ -126,8 +126,6 @@ export namespace cpu
         std::uintptr_t nth_base(std::size_t n);
 
         std::size_t arch2idx(std::size_t arch_id);
-
-        bool available();
     } // namespace local
 
     local::storage<processor> &self();

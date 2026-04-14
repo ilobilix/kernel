@@ -20,8 +20,6 @@ namespace cpu
             local::storage<processor> me;
 
             std::uintptr_t *bases;
-
-            bool _available = false;
         } // namespace
 
         extern "C"
@@ -90,11 +88,12 @@ namespace cpu
             lib::bug_on(base != reinterpret_cast<std::uintptr_t>(proc));
 
             proc->self = proc;
+            proc->stack_top = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
             proc->idx = idx;
             proc->arch_id = aid;
-            proc->stack_top = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+            proc->in_interrupt = false;
+            proc->online = false;
 
-            _available = true;
             return proc;
         }
 
@@ -122,11 +121,6 @@ namespace cpu
             std::unreachable();
         }
 
-        bool available()
-        {
-            return _available;
-        }
-
         void begin_access()
         {
             sched::disable();
@@ -140,7 +134,6 @@ namespace cpu
 
     local::storage<processor> &self()
     {
-        lib::bug_on(!local::bases);
         return local::me;
     }
 } // namespace cpu

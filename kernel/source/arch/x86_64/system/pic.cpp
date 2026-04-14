@@ -98,7 +98,7 @@ namespace x86_64::pic
         // lib::io::out<8>(port::slave_data, i2);
 
         disable();
-        unmask(0x20 + 2);
+        // unmask(0x20 + 2);
         arch::int_switch(true);
     }
 } // namespace x86_64::pic
