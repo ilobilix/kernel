@@ -34,10 +34,6 @@
 	path = dependencies/magic_enum/magic_enum
 	url = https://github.com/Neargye/magic_enum
 	shallow = true
-[submodule "dependencies/ovmf-binaries/ovmf-binaries"]
-	path = dependencies/ovmf-binaries/ovmf-binaries
-	url = https://github.com/ilobilo/ovmf-binaries
-	shallow = true
 [submodule "dependencies/parallel-hashmap/parallel-hashmap"]
 	path = dependencies/parallel-hashmap/parallel-hashmap
 	url = https://github.com/greg7mdp/parallel-hashmap
