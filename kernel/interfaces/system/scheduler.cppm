@@ -15,6 +15,17 @@ namespace cpu
     extern "C++" struct processor;
 } // namespace cpu
 
+namespace sched
+{
+    struct friends
+    {
+        static void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
+        static void create_pid0();
+        static void start();
+    };
+    void create_pid0();
+} // namespace sched
+
 export namespace sched
 {
     constexpr std::size_t timeslice = 6;
@@ -24,7 +35,6 @@ export namespace sched
         not_ready,
         ready,
         running,
-        blocked,
         sleeping,
         killed
     };
@@ -70,16 +80,19 @@ export namespace sched
 #elif defined(__aarch64__)
 #endif
 
-        static std::uintptr_t allocate_ustack(std::shared_ptr<process> &proc);
-        static std::uintptr_t allocate_kstack(std::shared_ptr<process> &proc);
-
-        static std::shared_ptr<thread> create(std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg = 0);
+        static std::uintptr_t allocate_ustack(const std::shared_ptr<process> &proc);
+        static std::uintptr_t allocate_kstack(const std::shared_ptr<process> &proc);
 
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
 
         thread() = default;
         ~thread();
+
+        private:
+        static std::shared_ptr<thread> create(const std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg);
+
+        friend struct friends;
     };
 
     struct process
@@ -111,52 +124,35 @@ export namespace sched
         std::uintptr_t next_stack_top = initial_stck_top;
         std::uintptr_t mmap_anon_base = initial_mmap_anon;
 
-        static std::shared_ptr<process> create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap);
-
         void prepare_sleep();
 
         process() = default;
         ~process();
+
+        private:
+        static std::shared_ptr<process> create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap);
+
+        friend struct friends;
     };
-
-    struct percpu
-    {
-        struct compare
-        {
-            constexpr bool operator()(const std::shared_ptr<thread> &lhs, const std::shared_ptr<thread> &rhs) const
-            {
-                return lhs->vruntime < rhs->vruntime;
-            }
-        };
-
-        lib::locker<
-            lib::btree::multiset<
-                std::shared_ptr<thread>,
-                compare
-            >, lib::rwspinlock_preempt
-        > queue;
-        std::shared_ptr<thread> running_thread;
-
-        std::shared_ptr<process> idle_proc;
-        std::shared_ptr<thread> idle_thread;
-    };
-    cpu_local<percpu> percpu;
-
-    std::shared_ptr<process> &proc_for(std::size_t pid);
 
     bool is_initialised();
 
-    std::shared_ptr<thread> this_thread();
+    // references shouldn't be held outside the scheduler
+    process *proc_for(std::size_t pid);
+    thread *this_thread();
+
     std::size_t yield();
 
     std::size_t allocate_cpu();
-    void enqueue(std::shared_ptr<thread> &thread, std::size_t cpu_idx);
+
+    void spawn(std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
+    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
 
     void enable();
     void disable();
     bool is_enabled();
 
-    [[noreturn]] void start();
-
     initgraph::stage *available_stage();
+
+    [[noreturn]] void start();
 } // export namespace sched

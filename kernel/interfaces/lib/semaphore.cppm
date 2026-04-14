@@ -13,14 +13,14 @@ export namespace lib
     {
         private:
         spinlock lock;
-        std::list<std::shared_ptr<sched::thread_base>> threads;
+        std::list<sched::thread_base *> threads;
         std::ssize_t signals;
 
         bool test();
 
         public:
         constexpr semaphore()
-            : lock { }, threads {}, signals { 0 } { }
+            : lock { }, threads { }, signals { 0 } { }
 
         semaphore(const semaphore &) = delete;
         semaphore(semaphore &&) = delete;

@@ -11,26 +11,42 @@ namespace uacpi
 {
     namespace
     {
-        using queue_type = lib::locker<std::deque<std::pair<uacpi_work_handler, uacpi_handle>>, lib::rwspinlock>;
+        using queue_type = lib::locker<
+            std::deque<
+                std::pair<uacpi_work_handler, uacpi_handle>
+            >, lib::rwspinlock
+        >;
         queue_type notify { };
         queue_type gpe { };
 
-        std::atomic_size_t workers { 0 };
-        lib::semaphore semaphore { };
+        lib::semaphore added { };
+        lib::semaphore completed { };
+
+        bool is_empty()
+        {
+            const auto nlocked = notify.read_lock();
+            const auto glocked = gpe.read_lock();
+            return nlocked->empty() && glocked->empty();
+        }
     } // namespace
 
     void worker_caller(queue_type &queue)
     {
         while (true)
         {
-            while (queue.read_lock()->empty())
-                sched::yield();
-
-            auto [handler, handle] = queue.write_lock()->pop_front_element();
-            handler(handle);
-
-            workers.fetch_sub(1, std::memory_order_acq_rel);
-            semaphore.signal(0, true);
+            added.wait();
+            bool worked = false;
+            {
+                auto locked = queue.write_lock();
+                while (!locked->empty())
+                {
+                    auto [handler, handle] = locked->pop_front_element();
+                    handler(handle);
+                    worked = true;
+                }
+            }
+            if (worked)
+                completed.signal(0, true);
         }
     }
 
@@ -52,19 +68,8 @@ namespace uacpi
         initgraph::require { sched::available_stage(), acpi::initialised_stage() },
         initgraph::entail { acpi::uacpi_stage() },
         [] {
-            auto pid0 = sched::proc_for(0);
-            auto notify_thread = sched::thread::create(
-                pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
-            );
-            auto gpe_thread = sched::thread::create(
-                pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
-            );
-
-            notify_thread->status = sched::status::ready;
-            gpe_thread->status = sched::status::ready;
-
-            sched::enqueue(notify_thread, sched::allocate_cpu());
-            sched::enqueue(gpe_thread, sched::allocate_cpu());
+            sched::spawn(0, reinterpret_cast<std::uintptr_t>(notify_worker));
+            sched::spawn(0, reinterpret_cast<std::uintptr_t>(gpe_worker));
         }
     };
 } // namespace uacpi
@@ -369,7 +374,7 @@ extern "C"
     {
         if (sched::is_initialised())
         {
-            const auto &thread = sched::percpu->running_thread;
+            const auto &thread = sched::this_thread();
             return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->pid));
         }
 
@@ -510,11 +515,11 @@ extern "C"
         {
             case UACPI_WORK_GPE_EXECUTION:
                 uacpi::gpe.write_lock()->emplace_back(handler, ctx);
-                uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
+                uacpi::added.signal();
                 break;
             case UACPI_WORK_NOTIFICATION:
                 uacpi::notify.write_lock()->emplace_back(handler, ctx);
-                uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
+                uacpi::added.signal();
                 break;
             default:
                 return UACPI_STATUS_INVALID_ARGUMENT;
@@ -524,9 +529,8 @@ extern "C"
 
     uacpi_status uacpi_kernel_wait_for_work_completion()
     {
-        while (uacpi::workers.load(std::memory_order_acquire))
-            uacpi::semaphore.wait();
-
+        if (!uacpi::is_empty())
+            uacpi::completed.wait();
         return UACPI_STATUS_OK;
     }
 } // extern "C"

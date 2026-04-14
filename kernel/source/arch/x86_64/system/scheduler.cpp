@@ -36,7 +36,7 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, sched_vector);
     }
 
-    void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg)
+    void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         auto &regs = thread->regs;
         regs.rflags = 0x202;
@@ -79,7 +79,7 @@ namespace sched::arch
         }
     }
 
-    void deinitialise(std::shared_ptr<process> &proc, thread *thread)
+    void deinitialise(process *proc, thread *thread)
     {
         const auto &fpu = cpu::features::fpu;
         const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
@@ -87,7 +87,7 @@ namespace sched::arch
             lib::panic("could not unmap thread fpu storage: {}", magic_enum::enum_name(ret.error()));
     }
 
-    void save(std::shared_ptr<thread> &thread)
+    void save(const std::shared_ptr<thread> &thread)
     {
         if (thread->is_user)
         {
@@ -97,7 +97,7 @@ namespace sched::arch
         }
     }
 
-    void load(std::shared_ptr<thread> &thread)
+    void load(const std::shared_ptr<thread> &thread)
     {
         x86_64::gdt::tss::self().ist[0] = thread->pfstack_top;
         x86_64::gdt::tss::self().rsp[0] = thread->kstack_top;
