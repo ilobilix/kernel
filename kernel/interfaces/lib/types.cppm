@@ -26,6 +26,16 @@ export namespace lib
     template<std::size_t N>
     using bits2uint_t = bits2uint<N>::type;
 
+    template<typename Type, typename MType, MType Type::*Member>
+    class compare
+    {
+        public:
+        static bool operator()(const Type &lhs, const Type &rhs)
+        {
+            return lhs.*Member < rhs.*Member;
+        }
+    };
+
     template<typename ...Funcs>
     struct overloaded : Funcs... { using Funcs::operator()...; };
 

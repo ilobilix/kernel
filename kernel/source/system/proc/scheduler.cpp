@@ -27,6 +27,27 @@ namespace sched
 
         std::atomic_bool should_start = false;
 
+        struct sleep_entry_t
+        {
+            thread_t *thread;
+            std::uint64_t deadline_ns;
+            bool expired;
+
+            lib::rbtree_hook<sleep_entry_t> hook;
+        };
+
+        lib::locker<
+            lib::rbtree<
+                sleep_entry_t,
+                &sleep_entry_t::hook,
+                lib::compare<
+                    sleep_entry_t,
+                    std::uint64_t,
+                    &sleep_entry_t::deadline_ns
+                >
+            >, lib::spinlock_irq
+        > sleep_list;
+
         std::atomic<pid_t> next_id = 1;
         pid_t alloc_id()
         {
@@ -229,8 +250,7 @@ namespace sched
                     rq.enqueue(prev);
                 break;
             case thread_state::runnable:
-                lib::panic("invalid thread state");
-                std::unreachable();
+                break;
             case thread_state::sleeping:
             case thread_state::blocked:
             case thread_state::stopped:
@@ -433,7 +453,7 @@ namespace sched
             if (preempt && rq.check_preempt_wakeup(thread))
                 rq.current->flags |= thread_flags::needs_resched;
         }
-        if (preempt_enable())
+        if (preempt_enable() && preempt)
             schedule();
 
         return true;
@@ -455,8 +475,36 @@ namespace sched
 
     std::uint64_t sleep_for_ns(std::uint64_t ns)
     {
-        // TODO-SCHED-REWRITE
-        return ns;
+        if (ns == 0)
+            return 0;
+
+        const auto timer = chrono::main_timer();
+        const auto deadline = timer->ns() + ns;
+
+        auto thread = current_thread();
+        sleep_entry_t entry {
+            .thread = thread,
+            .deadline_ns = deadline,
+            .expired = false,
+            .hook = { }
+        };
+
+        {
+            auto locked = sleep_list.lock();
+            locked->insert(&entry);
+            thread->state = thread_state::sleeping;
+        }
+
+        schedule();
+
+        if (!entry.expired)
+        {
+            auto locked = sleep_list.lock();
+            locked->remove(&entry);
+        }
+
+        const auto now = timer->ns();
+        return now >= deadline ? 0 : deadline - now;
     }
 
     void yield()
@@ -479,15 +527,86 @@ namespace sched
 
     [[noreturn]] void thread_exit(int exit_code)
     {
-        // TODO-SCHED-REWRITE
-        lib::panic("thread exit");
+        preempt_disable();
+
+        auto thread = current_thread();
+        auto proc = thread->proc;
+
+        thread->exit_code = exit_code;
+        thread->state = thread_state::zombie;
+
+        lib::bug_on(!proc->threads.lock()->erase(thread->tid));
+
+        if (proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        {
+            lib::panic_if(proc->pid == 0, "attempted to kill kernel process");
+            lib::panic_if(proc->pid == 1, "attempted to kill init");
+
+            proc->exit_code = exit_code;
+            proc->is_zombie = true;
+
+            auto init = get_process(1);
+            lib::bug_on(!init);
+
+            {
+                auto locked = proc->children.lock();
+                for (auto &[pid, child] : *locked)
+                {
+                    child->parent = init;
+                    (*init->children.lock())[pid] = child;
+                }
+                locked->clear();
+            }
+
+            if (proc->parent)
+            {
+                // TODO: send SIGCHLD to parent and wake up waitpid
+            }
+        }
+
+        lib::debug("thread [{}:{}] exited with code {}", proc->pid, thread->tid, exit_code);
+
+        preempt_enable();
+        schedule();
         std::unreachable();
     }
 
     [[noreturn]] void process_exit(int exit_code)
     {
-        // TODO-SCHED-REWRITE
-        lib::panic("process exit");
+        preempt_disable();
+
+        auto current = current_thread();
+        auto proc = current->proc;
+
+        {
+            auto locked = proc->threads.lock();
+            for (auto &[tid, thread] : *locked)
+            {
+                if (thread == current)
+                    continue;
+
+                switch (thread->state)
+                {
+                    case thread_state::sleeping:
+                    case thread_state::blocked:
+                    case thread_state::stopped:
+                        // TODO: remove from wait queue
+                        [[fallthrough]];
+                    case thread_state::running:
+                    case thread_state::runnable:
+                        thread->exit_code = exit_code;
+                        thread->state = thread_state::dead;
+                        break;
+                    case thread_state::zombie:
+                    case thread_state::dead:
+                        break;
+                }
+
+                proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
+            }
+        }
+
+        thread_exit(exit_code);
         std::unreachable();
     }
 
@@ -511,6 +630,25 @@ namespace sched
                 arch::arm_timer_ns(timeslice);
             }
         }
+
+        {
+            const auto timer = chrono::main_timer();
+            const auto now = timer->ns();
+
+            auto locked = sleep_list.lock();
+            auto it = locked->begin();
+            while (it != locked->end())
+            {
+                auto entry = (it++).value();
+                if (entry->deadline_ns > now)
+                    break;
+
+                locked->remove(entry);
+                entry->expired = true;
+                wake_up(entry->thread, false);
+            }
+        }
+
         load_balance();
     }
 

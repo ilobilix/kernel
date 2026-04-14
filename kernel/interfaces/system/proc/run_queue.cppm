@@ -9,16 +9,6 @@ import :thread;
 
 namespace sched
 {
-    template<typename Type, typename MType, MType Type::*Member>
-    class compare
-    {
-        public:
-        static bool operator()(const Type &lhs, const Type &rhs)
-        {
-            return lhs.*Member < rhs.*Member;
-        }
-    };
-
     constexpr auto weight0 = nice_to_weight(0);
 
     constexpr std::uint64_t latency_ns = 6'000'000;
@@ -42,7 +32,7 @@ export namespace sched
 
         lib::rbtree<
             thread_t, &thread_t::hook,
-            compare<
+            lib::compare<
                 thread_t,
                 std::uint64_t,
                 &thread_t::vruntime

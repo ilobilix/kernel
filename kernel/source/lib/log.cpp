@@ -17,8 +17,8 @@ namespace lib::log
 {
     namespace
     {
-        lib::semaphore available;
-        lib::semaphore finished;
+        sched::wait_queue_t available;
+        sched::wait_queue_t finished;
 
         constinit std::atomic_uint64_t last_published = 0;
         constinit std::atomic_uint64_t last_consumed = 0;
@@ -773,7 +773,7 @@ namespace lib::log
 
                 buffer.publish(*res);
                 last_published.store(res->info_ptr->seq, std::memory_order_release);
-                available.signal();
+                available.wake_all();
             }
         }
     } // namespace detail
@@ -791,8 +791,8 @@ namespace lib::log
             {
                 if (res.error() == ring_type::error::not_yet_available)
                 {
-                    finished.signal();
-                    available.wait();
+                    finished.wake_all();
+                    available.wait_unint();
                     continue;
                 }
                 next_seq = buffer.first_seq();
