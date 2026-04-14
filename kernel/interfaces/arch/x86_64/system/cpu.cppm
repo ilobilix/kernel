@@ -228,7 +228,7 @@ export namespace cpu
 
     namespace gs
     {
-        std::uintptr_t read()
+        std::uintptr_t read_self()
         {
             std::uintptr_t addr;
             asm volatile ("mov %0, gs:[0]" : "=r"(addr) :: "memory");
@@ -245,19 +245,14 @@ export namespace cpu
             return msr::read(0xC0000102);
         }
 
-        void write_user(std::uintptr_t addr)
+        void write(std::uintptr_t addr)
         {
             msr::write(0xC0000101, addr);
         }
 
-        std::uintptr_t read_user()
+        std::uintptr_t read()
         {
             return msr::read(0xC0000101);
-        }
-
-        bool is_set()
-        {
-            return read_user() != 0;
         }
     } // namespace gs
 
@@ -274,5 +269,5 @@ export namespace cpu
         }
     } // namespace gs
 
-    std::uintptr_t self_addr() { return gs::read(); }
+    std::uintptr_t self_addr() { return gs::read_self(); }
 } // export namespace cpu

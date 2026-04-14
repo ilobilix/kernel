@@ -36,49 +36,54 @@ namespace sched
 
 export namespace sched
 {
-    struct cfs_run_queue_t
+    struct run_queue_t
     {
+        lib::spinlock lock;
+
         lib::rbtree<
-            entity_t, &entity_t::hook,
+            thread_t, &thread_t::hook,
             compare<
-                entity_t,
+                thread_t,
                 std::uint64_t,
-                &entity_t::vruntime
+                &thread_t::vruntime
             >
         > queue;
-
-        entity_t *current;
 
         std::uint64_t total_weight;
         std::uint64_t _min_vruntime;
 
-        inline std::size_t num_entities() const
-        {
-            return queue.size();
-        }
+        std::size_t cpu_idx;
+        std::uint64_t nr_running;
 
-        cfs_run_queue_t()
-            : queue { }, current { nullptr }, total_weight { 0 }, _min_vruntime { 0 } { }
+        thread_t *current;
+        thread_t *idle;
 
-        // enqueue when entity becomes runnable
-        void enqueue(entity_t *entity);
-        // dequeue when entity leaves runnable state
-        void dequeue(entity_t *entity);
+        std::uint64_t nr_switches;
 
-        // pick the next entity to run (least amount of vruntime)
+        std::uint64_t load_update;
+        std::uint64_t load_active;
+
+        bool needs_resched;
+
+        // enqueue when thread becomes runnable
+        void enqueue(thread_t *thread);
+        // dequeue when thread leaves runnable state
+        void dequeue(thread_t *thread);
+
+        // pick the next thread to run (least amount of vruntime)
         // nullptr if empty
-        entity_t *pick_next();
+        thread_t *pick_next();
 
-        // update current entity vruntime
+        // update current thread vruntime
         void update_current(std::uint64_t now);
 
         // adjust vruntime
-        void adjust(entity_t *entity, bool initial);
+        void adjust(thread_t *thread, bool initial);
 
-        // check if current should be preempted with entity
-        bool check_preempt_wakeup(entity_t *entity);
+        // check if current should be preempted with thread
+        bool check_preempt_wakeup(thread_t *thread);
 
-        // calculate fair timeslice for an entity
+        // calculate fair timeslice for a thread
         std::uint64_t calc_timeslice(std::uint64_t weight);
 
         std::uint64_t calc_vruntime(
@@ -87,25 +92,5 @@ export namespace sched
         );
 
         void update_min_vruntime();
-    };
-
-    struct run_queue_t
-    {
-        lib::spinlock_preempt lock;
-
-        std::size_t cpu_idx;
-        std::uint64_t nr_running;
-
-        thread_t *current;
-        thread_t *idle;
-
-        cfs_run_queue_t cfs;
-
-        std::uint64_t nr_switches;
-
-        std::uint64_t load_update;
-        std::uint64_t load_active;
-
-        bool needs_resched;
     };
 } // export namespace sched
