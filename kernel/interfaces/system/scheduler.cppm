@@ -122,7 +122,6 @@ export namespace sched
     struct process
     {
         static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
-        static constexpr std::uintptr_t initial_mmap_anon = 0x80'000'000'000;
 
         std::size_t pid;
         // std::size_t pgid;
@@ -146,7 +145,6 @@ export namespace sched
 
         std::atomic<std::size_t> next_tid = 1;
         std::uintptr_t next_stack_top = initial_stck_top;
-        std::uintptr_t mmap_anon_base = initial_mmap_anon;
 
         static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
 

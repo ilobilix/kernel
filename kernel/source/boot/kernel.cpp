@@ -11,6 +11,40 @@ extern "C"
     [[gnu::used]]
     auto kernel_stack_top = kernel_stack + boot::kstack_size;
 
+    void kthread()
+    {
+        lib::path_view path { "/usr/bin/bash" };
+        log::info("loading {}", path);
+
+        auto ret = vfs::resolve(std::nullopt, path);
+        if (!ret.has_value())
+            lib::panic("could not resolve {}", path);
+
+        auto format = bin::exec::identify(ret->target.dentry);
+        if (!format)
+            lib::panic("could not identify {} file format", path);
+
+        bin::exec::request req
+        {
+            .file = ret->target,
+            .interp = std::nullopt,
+            .argv = { "bash" },
+            .envp = { "HOME=/home/ilobilix", "PATH=/bin:/usr/bin:/sbin:/usr/sbin" }
+        };
+
+        auto pmap = std::make_shared<vmm::pagemap>();
+        auto proc = sched::process::create(nullptr, pmap);
+
+        auto thread = format->load(req, proc);
+        if (!thread)
+            lib::panic("could not create a thread for {}", path);
+
+        thread->status = sched::status::ready;
+        sched::enqueue(thread, sched::allocate_cpu());
+
+        arch::halt();
+    }
+
     [[noreturn]]
     void kmain()
     {
@@ -23,6 +57,8 @@ extern "C"
         cxxabi::construct();
 
         initgraph::global_init_engine.run();
+
+        sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread));
 
         sched::start();
     }

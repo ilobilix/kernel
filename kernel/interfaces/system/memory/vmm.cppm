@@ -92,6 +92,7 @@ export namespace vmm
         );
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);
+        std::uintptr_t find_free_region(std::size_t length);
     };
 
     std::size_t default_page_size();

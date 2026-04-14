@@ -64,7 +64,7 @@ namespace lib::syscall
                 [](cpu::registers *regs, std::string_view name, void *handler) -> std::uintptr_t
                 {
                     using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
-                    static_assert(std::integral<typename sign::return_type>);
+                    static_assert(std::is_trivially_default_constructible_v<typename sign::return_type>);
 
                     const auto arr = Getter::get_args(regs);
                     typename sign::args_type args;
@@ -89,9 +89,11 @@ namespace lib::syscall
 
                     errno = no_error;
                     const auto ret = std::apply(reinterpret_cast<sign::type *>(handler), args);
+                    const auto uptr_ret = std::uintptr_t(ret);
+                    const auto iptr_ret = std::intptr_t(ret);
 
                     const auto error = magic_enum::enum_cast<errnos>(errno);
-                    if (error.has_value() && static_cast<std::intptr_t>(ret) < 0)
+                    if (error.has_value() && iptr_ret < 0)
                     {
 #if ILOBILIX_SYSCALL_LOG
                         log::debug(
@@ -102,9 +104,14 @@ namespace lib::syscall
                         return -errno;
                     }
 #if ILOBILIX_SYSCALL_LOG
-                    log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, ret);
+                    if constexpr (std::is_same_v<typename sign::return_type, void>)
+                        log::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
+                    else if constexpr (std::is_pointer_v<typename sign::return_type>)
+                        log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, reinterpret_cast<const void *>(uptr_ret));
+                    else
+                        log::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
 #endif
-                    return static_cast<std::uintptr_t>(ret);
+                    return uptr_ret;
                 }
             } { }
 
