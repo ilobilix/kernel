@@ -62,9 +62,9 @@ namespace cpu
             const std::size_t idx = next++;
 
             if (idx == 0)
-                log::info("cpu: initialising bsp: arch id: {}", aid);
+                log::info("cpu: initialising bsp");
             else
-                log::info("cpu: bringing up ap {}", idx, aid);
+                log::info("cpu: bringing up ap {}", idx);
 
             const auto base = per::init();
             me.initialise_base(bases[idx] = base);

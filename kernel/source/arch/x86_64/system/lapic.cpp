@@ -147,7 +147,7 @@ namespace x86_64::apic
         }
 
         log::debug("lapic: timer frequency: {} hz", val);
-        freq = (val);
+        freq = val;
         is_calibrated = true;
     }
 

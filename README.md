@@ -22,16 +22,20 @@ Make sure you have recent versions of the following programs installed:
 
 ## Building and Running
 
-* Clone this repository: ``git clone --depth=1 --recursive https://github.com/ilobilo/ilobilix``
-* (Optional) Configure the kernel: ``./xmake.sh f --option=value``
+* Clone this repository:
+  * ``git clone --depth=1 --recursive https://github.com/ilobilo/ilobilix``
+* (Optional) Configure the kernel:
+  * ``./xmake.sh f --option=value``
   * Change architecture: ``./xmake.sh f --arch=[x86_64|aarch64]``
   * Change build mode: ``./xmake.sh f --mode=[release|releasedbg|debug]``
   * For all options see: ``./xmake.sh f --help``
-* Build and run the kernel: ``./xmake.sh run``
+* Build and run the kernel:
+  * ``./xmake.sh run``
 * Run targets are ``[bios|uefi](-[debug|gdb])``. For example: ``bios-debug`` or ``uefi-gdb``
   * Default run target is ``uefi``. (same as ``./xmake.sh run uefi``)
-* Fully rebuild the kernel: ``./xmake.sh build -r --all``
-* To build an iso (available in ``build/ilobilix/[arch]/[mode]/image.iso``):
+* Fully rebuild the kernel:
+  * ``./xmake.sh build -r --all``
+* To build an iso (``build/ilobilix/[arch]/[mode]/image.iso``):
   * ``./xmake.sh build iso``
 
 ## Known Bugs

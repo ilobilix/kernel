@@ -10,13 +10,15 @@ namespace timers::arch
     using namespace aarch64::timers;
 
     template<auto Func>
-    void use_timer(std::size_t ms)
+    std::size_t use_timer(std::size_t ms)
     {
-        auto end = Func() + (ms * 1'000'000);
+        const auto start = Func();
+        const auto end = start + (ms * 1'000'000);
         while (Func() < end) { }
+        return Func() - start;
     }
 
-    auto calibrator() -> void (*)(std::size_t ms)
+    auto calibrator() -> std::size_t (*)(std::size_t ms)
     {
         return use_timer<generic::time_ns>;
     }
