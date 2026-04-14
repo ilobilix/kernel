@@ -3,7 +3,7 @@
 module;
 
 #include <flanterm.h>
-#include <backends/fb.h>
+#include <flanterm_backends/fb.h>
 
 module drivers.terminal;
 
