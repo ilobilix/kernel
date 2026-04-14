@@ -284,7 +284,6 @@ namespace vmm
         };
 
         return { };
-
     }
 
     std::expected<void, error> vmspace::protect(std::uintptr_t address, std::size_t length, std::uint8_t prot)

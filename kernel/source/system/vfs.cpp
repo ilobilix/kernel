@@ -73,7 +73,7 @@ namespace vfs
 
     std::string pathname_from(path path)
     {
-        std::string result;
+        std::size_t len = 0;
         std::vector<std::string_view> segments;
         while (true)
         {
@@ -84,9 +84,12 @@ namespace vfs
                 break;
 
             segments.push_back(path.dentry->name);
+            len += path.dentry->name.size();
             path.dentry = path.dentry->parent.lock();
         }
-        for (auto it = segments.rbegin(); it != segments.rend(); ++it)
+        std::string result;
+        result.reserve(std::max(1zu, len + segments.size()));
+        for (auto it = segments.rbegin(); it != segments.rend(); it++)
         {
             result += '/';
             result += *it;
