@@ -221,15 +221,18 @@ export namespace vfs
     {
         static std::shared_ptr<dentry> root(bool absolute);
 
-        lib::mutex lock;
-
         std::string name;
         std::string symlinked_to;
 
         std::shared_ptr<inode> inode;
 
         std::weak_ptr<dentry> parent;
-        lib::map::flat_hash<std::string_view, std::shared_ptr<dentry>> children;
+        lib::locker<
+            lib::map::flat_hash<
+                std::string_view,
+                std::shared_ptr<dentry>
+            >, lib::rwmutex
+        > children;
 
         std::list<std::weak_ptr<mount>> child_mounts;
     };

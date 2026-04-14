@@ -438,7 +438,7 @@ namespace bin::elf::mod
                 auto dir = ret->target;
                 vfs::populate(dir);
 
-                for (auto &[name, child] : dir.dentry->children)
+                for (const auto &[name, child] : dir.dentry->children.read_lock().value())
                 {
                     if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
                         continue;
