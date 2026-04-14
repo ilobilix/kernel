@@ -1,15 +1,7 @@
-.cache
-.vscode
-.xmake
-.xmake-local
+/.cache
+/.vscode
 
-build
-build-cmake
+/build
 
-serial.txt
-log.txt
-
-userspace/*
-!userspace/jinx
-userspace/jinx/.jinx-cache
-userspace/jinx/sources
+/serial.txt
+/log.txt
