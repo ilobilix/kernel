@@ -141,7 +141,7 @@ export namespace vmm
         };
 
         table *_table;
-        lib::spinlock _lock;
+        lib::spinlock_irq _lock;
 
         static table *new_table();
         static void free_table(table *ptr);

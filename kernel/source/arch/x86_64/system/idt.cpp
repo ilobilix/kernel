@@ -92,7 +92,7 @@ namespace x86_64::idt
         }
 
         const auto self = cpu::self();
-        const bool old = self->in_interrupt.exchange(true, std::memory_order_release);
+        const bool old = self->in_interrupt.exchange(true, std::memory_order_acquire);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
@@ -100,7 +100,7 @@ namespace x86_64::idt
             if (irq_handlers->size() > idx)
             {
                 auto &handler = irq_handlers[idx];
-                if (handler.used())
+                if (handler.used()) [[likely]]
                     handler(regs);
                 else
                     lib::panic(regs, "unhandled irq {}", vector);

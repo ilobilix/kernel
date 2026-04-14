@@ -8,7 +8,6 @@ namespace lib::lock
 {
     bool acquire_irq();
     void release_irq(bool irq);
-    bool in_interrupt();
 
     void acquire_preempt();
     void release_preempt();
@@ -116,8 +115,7 @@ export namespace lib
         void lock()
         {
             spinlock_base<lock_type::none>::lock();
-            if (!lock::in_interrupt())
-                _interrupts = lock::acquire_irq();
+            _interrupts = lock::acquire_irq();
         }
 
         bool unlock()
@@ -125,8 +123,7 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            if (!lock::in_interrupt())
-                lock::release_irq(_interrupts);
+            lock::release_irq(_interrupts);
             return true;
         }
     };

@@ -15,7 +15,7 @@ namespace pmm
 {
     namespace
     {
-        constinit lib::spinlock lock;
+        constinit lib::spinlock_irq lock;
         constinit memory mem;
         constinit bool initialised = false;
 
