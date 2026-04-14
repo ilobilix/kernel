@@ -114,8 +114,10 @@ export namespace cpu
 
         struct guard
         {
-            guard() { disable(); }
-            ~guard() { enable(); }
+            bool can_smap;
+
+            guard();
+            ~guard();
         };
 
         template<typename Func, typename ...Args>
@@ -172,7 +174,6 @@ export namespace cpu
 
     namespace features
     {
-
         constexpr std::uint64_t rfbm = ~0ull;
         constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
         constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
@@ -203,7 +204,7 @@ export namespace cpu
         }
 
         using fpu_func = void (*)(std::byte *);
-        std::tuple<std::size_t, fpu_func, fpu_func> enable()
+        std::pair<bool, std::tuple<std::size_t, fpu_func, fpu_func>> enable()
         {
             // SSE
             {
@@ -217,6 +218,7 @@ export namespace cpu
             }
 
             // UMIP SMEP SMAP
+            bool can_smap = false;
             {
                 static std::uint32_t a, b, c, d;
                 static const auto cached = [] { return cpu::id(0x07, 0, a, b, c, d); } ();
@@ -232,7 +234,10 @@ export namespace cpu
                             cr4 |= (1 << 20);
 
                         if (b & (1 << 20))
+                        {
                             cr4 |= (1 << 21);
+                            can_smap = true;
+                        }
                     }
                     wrreg(cr4, cr4);
                 }
@@ -265,9 +270,9 @@ export namespace cpu
                 assert(cpu::id(0x0D, 0, a, b, c, d));
 
                 bool xopt = cpu::id(0x0D, 1, a, b, c, d) && (a & (1 << 0));
-                return { c, xopt ? xsaveopt : xsave, xrstor };
+                return { can_smap, { c, xopt ? xsaveopt : xsave, xrstor } };
             }
-            else return { 512, fxsave, fxrstor };
+            else return { can_smap, { 512, fxsave, fxrstor } };
         }
     } // namespace features
 

@@ -90,8 +90,14 @@ namespace arch
 
             cpu::gs::write_user(cpu->extra_argument);
 
-            auto &fpu = ptr->arch.fpu;
-            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+            auto &arch = ptr->arch;
+            auto [can_smap, fpu] = cpu::features::enable();
+            arch.can_smap = can_smap;
+            std::tie(
+                arch.fpu.size,
+                arch.fpu.save,
+                arch.fpu.restore
+            ) = fpu;
 
             x86_64::syscall::init_cpu();
 
@@ -113,8 +119,14 @@ namespace arch
 
             cpu::gs::write_user(cpu->extra_argument);
 
-            auto &fpu = ptr->arch.fpu;
-            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+            auto &arch = ptr->arch;
+            auto [can_smap, fpu] = cpu::features::enable();
+            arch.can_smap = can_smap;
+            std::tie(
+                arch.fpu.size,
+                arch.fpu.save,
+                arch.fpu.restore
+            ) = fpu;
 
             x86_64::syscall::init_cpu();
 

@@ -21,6 +21,8 @@ export namespace cpu::arch
         x86_64::gdt::entries gdt;
         x86_64::gdt::tss::ptr tss;
 
+        bool can_smap = false;
+
         struct {
             std::size_t size;
             void (*save)(std::byte *);

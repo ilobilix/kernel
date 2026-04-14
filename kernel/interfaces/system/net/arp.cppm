@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:arp;
+export module system.net:arp;
 
 import :ether;
 import :addr;
