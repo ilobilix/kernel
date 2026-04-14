@@ -32,6 +32,8 @@ export namespace syscall::vfs
     int fstat(int fd, struct stat __user *statbuf);
     int lstat(const char __user *pathname, struct stat __user *statbuf);
 
+    int statx(int dirfd, const char __user *pathname, int flags, unsigned int mask, struct statx __user *statxbuf);
+
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags);
     int faccessat(int dirfd, const char __user *pathname, int mode);
     int access(const char __user *pathname, int mode);

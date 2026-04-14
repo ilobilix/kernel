@@ -99,6 +99,7 @@ namespace x86_64::syscall
         [296] = { "pwritev", vfs::pwritev },
         [302] = { "prlimit", proc::prlimit },
         [318] = { "getrandom", misc::getrandom },
+        [332] = { "statx", vfs::statx },
         [334] = { "rseq", proc::rseq },
         [435] = { "clone3", proc::clone3 },
         [439] = { "faccessat2", vfs::faccessat2 }
