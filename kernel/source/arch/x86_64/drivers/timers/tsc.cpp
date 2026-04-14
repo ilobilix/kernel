@@ -119,7 +119,7 @@ namespace x86_64::timers::tsc
         if (!is_calibrated)
             return;
 
-        static chrono::clock clock { "tsc", 75, time_ns };
-        chrono::register_clock(clock);
+        static chrono::timer timer { "tsc", 75, time_ns };
+        chrono::register_timer(timer);
     }
 } // namespace x86_64::timers::tsc

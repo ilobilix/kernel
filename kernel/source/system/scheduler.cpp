@@ -516,8 +516,8 @@ namespace sched
         // moving them back into the run queue is handled in thread::wake_up
         if (eeping && thread->sleep_for.has_value())
         {
-            const auto clock = chrono::main_clock();
-            thread->sleep_until = clock->ns() + thread->sleep_for.value();
+            const auto timer = chrono::main_timer();
+            thread->sleep_until = timer->ns() + thread->sleep_for.value();
             thread->sleep_for = std::nullopt;
 
             percpu->sleep_queue.lock()->insert(thread);
@@ -641,8 +641,8 @@ namespace sched
                 lib::bug_on(elocked->empty());
             }
 
-            const auto clock = chrono::main_clock();
-            const auto time = clock->ns();
+            const auto timer = chrono::main_timer();
+            const auto time = timer->ns();
 
             const auto begin = elocked->begin();
             for (auto it = begin; it != elocked->end(); )
@@ -708,8 +708,8 @@ namespace sched
         }
         pcpu.in_scheduler.store(true, std::memory_order_release);
 
-        const auto clock = chrono::main_clock();
-        auto time = clock->ns();
+        const auto timer = chrono::main_timer();
+        auto time = timer->ns();
 
         const auto self = cpu::self();
         auto &dead = pcpu.dead_threads;
@@ -852,10 +852,10 @@ namespace sched
             load(same_pid, next, regs);
         }
 
-        time = clock->ns();
+        time = timer->ns();
         if (next != pcpu.idle_thread)
         {
-            next->schedule_time = clock->ns();
+            next->schedule_time = time;
             arch::reschedule(timeslice);
         }
         else // don't tick on idle cpus

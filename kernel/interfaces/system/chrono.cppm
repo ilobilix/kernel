@@ -8,11 +8,17 @@ import std;
 
 export namespace chrono
 {
-    struct clock
+    enum type : clockid_t
     {
-        friend void register_clock(clock &timer);
+        realtime,
+        monotonic
+    };
 
-        frg::pairing_heap_hook<clock> hook;
+    struct timer
+    {
+        friend void register_timer(timer &timer);
+
+        frg::pairing_heap_hook<timer> hook;
 
         private:
         std::string _name;
@@ -22,7 +28,7 @@ export namespace chrono
         std::uint64_t (*_ns)();
 
         public:
-        clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)());
+        timer(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)());
 
         std::string_view name() const { return _name; }
         std::size_t priority() const { return _priority; }
@@ -30,10 +36,18 @@ export namespace chrono
         std::uint64_t ns() const;
     };
 
-    void register_clock(clock &timer);
-    clock *main_clock();
+    struct rtc
+    {
+        std::string _name;
+        std::uint64_t (*unix)();
+    };
+
+    void register_timer(timer &timer);
+    timer *main_timer();
 
     bool stall_ns(std::size_t ns);
 
-    timespec now(clockid_t clockid = 0);
+    void register_rtc(rtc &rtc);
+
+    timespec now(type clockid);
 } // export namespace chrono

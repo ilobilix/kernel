@@ -14,45 +14,48 @@ namespace chrono
     {
         struct higher_priority
         {
-            constexpr bool operator()(const clock *lhs, const clock *rhs) const
+            constexpr bool operator()(const timer *lhs, const timer *rhs) const
             {
                 return lhs->priority() < rhs->priority();
             }
         };
 
         frg::pairing_heap<
-            clock,
+            timer,
             frg::locate_member<
-                clock,
-                frg::pairing_heap_hook<clock>,
-                &clock::hook
+                timer,
+                frg::pairing_heap_hook<timer>,
+                &timer::hook
             >,
             higher_priority
-        > clocks;
-        clock *main = nullptr;
+        > timers;
+        timer *main = nullptr;
+        rtc *main_rtc = nullptr;
+
+        std::uint64_t realtime_base_ns = 0;
     } // namespace
 
-    clock::clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
+    timer::timer(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
             : _name { name }, _priority { priority }, _offset { 0 }, _ns { time_ns } { }
 
-    std::uint64_t clock::ns() const
+    std::uint64_t timer::ns() const
     {
         return _ns() - _offset;
     }
 
-    void register_clock(clock &clock)
+    void register_timer(timer &timer)
     {
         if (main != nullptr)
-            clock._offset = clock._ns() - main->ns();
+            timer._offset = timer._ns() - main->ns();
         else
-            clock._offset = clock._ns();
+            timer._offset = timer._ns();
 
-        lib::info("chrono: registering clock source '{}'", clock.name());
-        clocks.push(&clock);
-        lib::debug("chrono: main clock is set to '{}'", (main = clocks.top())->name());
+        lib::info("chrono: registering timer '{}'", timer.name());
+        timers.push(&timer);
+        lib::debug("chrono: main timer is set to '{}'", (main = timers.top())->name());
     }
 
-    clock *main_clock()
+    timer *main_timer()
     {
         return main;
     }
@@ -60,7 +63,7 @@ namespace chrono
     bool stall_ns(std::uint64_t ns)
     {
         if (main == nullptr)
-            lib::panic("chrono: no clock available");
+            lib::panic("chrono: no timer available");
 
         const auto target = main->ns() + ns;
         while (main->ns() < target)
@@ -69,19 +72,42 @@ namespace chrono
         return true;
     }
 
-    // TODO: this is terrible and only temporary
-    timespec now(clockid_t clockid)
+    void register_rtc(rtc &rtc)
     {
-        lib::unused(clockid);
+        if (main_rtc != nullptr)
+            lib::panic("chrono: rtc already registered");
 
+        lib::info("chrono: registering rtc source '{}'", rtc._name);
+        main_rtc = &rtc;
+
+        lib::bug_on(main == nullptr);
+
+        auto prev = main_rtc->unix();
+        std::uint64_t unix_secs;
+        while ((unix_secs = main_rtc->unix()) == prev)
+            arch::pause();
+
+        realtime_base_ns = unix_secs * 1'000'000'000ul - main->ns();
+    }
+
+    // TODO: realtime is ~1 second behind
+    timespec now(type clockid)
+    {
         if (main == nullptr)
-            lib::panic("chrono: no clock available");
+            return { };
 
-        const auto boot_time_s = boot::time();
-        const auto clock_ns = main->ns();
-        return timespec {
-            static_cast<time_t>(boot_time_s + clock_ns / 1'000'000'000),
-            static_cast<long>(clock_ns % 1'000'000'000)
-        };
+        if (clockid == type::monotonic)
+            return main->ns();
+
+        lib::panic_if(
+            clockid != type::realtime,
+            "unsupported clockid {}",
+            static_cast<clockid_t>(clockid)
+        );
+
+        if (realtime_base_ns != 0)
+            return realtime_base_ns + main->ns();
+
+        return boot::time() * 1'000'000'000ul + main->ns();
     }
 } // namespace chrono
