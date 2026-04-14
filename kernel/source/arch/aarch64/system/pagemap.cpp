@@ -140,6 +140,13 @@ namespace vmm
         return (addr & (1ul << 63)) ? accessor.ttbr1 : _table;
     }
 
+    bool pagemap::is_canonical(std::uintptr_t addr)
+    {
+        // TODO
+        lib::unused(addr);
+        return true;
+    }
+
     [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
         lib::bug_on(!magic_enum::enum_contains(psize));
@@ -196,10 +203,20 @@ namespace vmm
             mair_el1 |= (0x00 << (2 * 8)); // nGnRnE
             msr(mair_el1, mair_el1);
 
-            asm volatile("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(accessor.ttbr1)) : "memory");
+            asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(accessor.ttbr1)) : "memory");
             n++;
         }
-        asm volatile("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
+        asm volatile ("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
+    }
+
+    void pagemap::save()
+    {
+        std::uintptr_t addr;
+        asm volatile ("mrs %0, ttbr0_el1" : "=r" (addr) :: "memory");
+        _table = reinterpret_cast<table *>(addr);
+
+        asm volatile ("mrs %0, ttbr1_el1" : "=r" (addr) :: "memory");
+        accessor.ttbr1 = reinterpret_cast<table *>(addr);
     }
 
     pagemap::pagemap() : _table { new_table() }

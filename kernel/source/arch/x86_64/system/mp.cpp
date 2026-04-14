@@ -15,6 +15,8 @@ import arch;
 import lib;
 import cppstd;
 
+#if !ILOBILIX_LIMINE_MP
+
 namespace cpu::mp
 {
     using namespace x86_64;
@@ -70,15 +72,33 @@ namespace cpu::mp
         lib::bug_on(smp_trampoline_size > pmm::page_size);
         lib::bug_on(trampoline_pages == 0);
 
+        const auto map = []<typename ...Args>(std::string_view str, Args &&...args)
+        {
+            auto inner = [&](auto &obj) {
+                if (const auto ret = obj->map(std::forward<Args>(args)...); !ret)
+                    lib::panic("could not map {}: {}", str, magic_enum::enum_name(ret.error()));
+            };
+            inner(vmm::limine_pagemap);
+            inner(vmm::kernel_pagemap);
+        };
+
+        const auto unmap = []<typename ...Args>(std::string_view str, Args &&...args)
+        {
+            auto inner = [&](auto &obj) {
+                if (const auto ret = obj->unmap(std::forward<Args>(args)...); !ret)
+                    lib::panic("could not unmap {}: {}", str, magic_enum::enum_name(ret.error()));
+            };
+            inner(vmm::limine_pagemap);
+            inner(vmm::kernel_pagemap);
+        };
+
         log::debug("cpu: trampoline address 0x{:X}", trampoline_pages);
-        if (const auto ret = vmm::kernel_pagemap->map(trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::pflag::rwx); !ret)
-            lib::panic("could not map trampoline address: {}", magic_enum::enum_name(ret.error()));
+        map("trampoline address", trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::pflag::rwx);
         std::memcpy(reinterpret_cast<void *>(trampoline_pages), smp_trampoline_start, smp_trampoline_size);
 
         const auto temp_stack = trampoline_pages + pmm::page_size;
         log::debug("cpu: temporary stack address 0x{:X}", temp_stack);
-        if (const auto ret = vmm::kernel_pagemap->map(temp_stack, temp_stack, pmm::page_size, vmm::pflag::rwx); !ret)
-            lib::panic("could not map temporary stack: {}", magic_enum::enum_name(ret.error()));
+        map("temporary stack", temp_stack, temp_stack, pmm::page_size, vmm::pflag::rwx);
 
         const bool x2apic = x86_64::apic::supported().second;
         mtrr::save();
@@ -91,6 +111,7 @@ namespace cpu::mp
             struct trampoline_info
             {
                 std::uint64_t booted_flag;
+                std::uint64_t early_pagemap;
                 std::uint64_t pagemap;
                 std::uint64_t bsp_apic_addr;
                 std::uint64_t mtrr_restore;
@@ -104,6 +125,8 @@ namespace cpu::mp
             volatile auto info = reinterpret_cast<trampoline_info *>(trampoline_pages + smp_trampoline_size - sizeof(trampoline_info));
             *info = trampoline_info {
                 .booted_flag = 0,
+                // TODO: instead of reusing the limine pagemap, create a minimal one that's stored in the first 4 gib
+                .early_pagemap = reinterpret_cast<std::uint64_t>(vmm::limine_pagemap->get_arch_table()),
                 .pagemap = reinterpret_cast<std::uint64_t>(vmm::kernel_pagemap->get_arch_table()),
                 .bsp_apic_addr = msr::read(0x1B),
                 .mtrr_restore = reinterpret_cast<std::uint64_t>(mtrr::restore),
@@ -172,10 +195,9 @@ namespace cpu::mp
             lib::panic("could not boot up cores");
         } ();
 
-        if (const auto ret = vmm::kernel_pagemap->unmap(trampoline_pages, smp_trampoline_size); !ret)
-            lib::panic("could not unmap trampoline address: {}", magic_enum::enum_name(ret.error()));
-
-        if (const auto ret = vmm::kernel_pagemap->unmap(temp_stack, pmm::page_size); !ret)
-            lib::panic("could not unmap temporary stack: {}", magic_enum::enum_name(ret.error()));
+        unmap("trampoline address", trampoline_pages, smp_trampoline_size);
+        unmap("temporary stack", temp_stack, pmm::page_size);
     }
 } // export namespace cpu::mp
+
+#endif

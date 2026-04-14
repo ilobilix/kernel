@@ -1,5 +1,23 @@
 # Copyright (C) 2024-2025  ilobilo
 
+#if ILOBILIX_LIMINE_MP
+
+.code64
+.extern generic_mp_entry
+.global mp_entry
+mp_entry:
+    mov rax, [rdi + 24]
+    mov rcx, [rax]
+    mov cr3, rcx
+
+    mov rax, [rax + 8]
+    mov rsp, [rax + 8]
+
+    call generic_mp_entry
+    ud2
+
+#else
+
 # based on https://github.com/limine-bootloader/limine/blob/7952e9c79a1ee9e6536b366bf8fc42a662b3ba92/common/sys/smp_trampoline.asm_x86
 
 #define SETX(name) .name: .set .L ## name, (.name - smp_trampoline_start);
@@ -81,11 +99,12 @@ smp_trampoline_start:
     xor edx, edx
     wrmsr
 
+    # 5 level paging
     # mov eax, cr4
     # bts eax, 12
     # mov cr4, eax
 
-    mov eax, dword ptr [ebx + .Lpassed_info.pagemap]
+    mov eax, dword ptr [ebx + .Lpassed_info.early_pagemap]
     mov cr3, eax
 
     mov eax, cr0
@@ -124,6 +143,9 @@ smp_trampoline_start:
     # synchronise MTRRs with BSP
     call [rbx + .Lpassed_info.mtrr_restore]
 
+    mov rax, qword ptr [rbx + .Lpassed_info.pagemap]
+    mov cr3, rax
+
     mov rdi, qword ptr [rbx + .Lpassed_info.proc]
 
     mov rax, 1
@@ -155,6 +177,7 @@ SET(temp_gdtr)
 .balign 16
 passed_info:
     SETX(passed_info.booted_flag) .quad 0
+    SETX(passed_info.early_pagemap) .quad 0
     SETX(passed_info.pagemap) .quad 0
     SETX(passed_info.bsp_apic_addr_msr_lo) .int 0
     SETX(passed_info.bsp_apic_addr_msr_hi) .int 0
@@ -167,5 +190,7 @@ smp_trampoline_end:
 
 .global smp_trampoline_size
 smp_trampoline_size: .quad smp_trampoline_end - smp_trampoline_start
+
+#endif
 
 .section ".note.GNU-stack", "", @progbits

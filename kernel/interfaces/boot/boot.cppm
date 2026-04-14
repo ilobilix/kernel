@@ -26,7 +26,9 @@ export namespace boot
 
     constexpr std::size_t limine_rev = 3;
 
+#if ILOBILIX_LIMINE_MP
     using limine_mp_info = ::limine_mp_info;
+#endif
     using limine_memmap_entry = ::limine_memmap_entry;
 
     enum class memmap : std::uint64_t
@@ -133,14 +135,20 @@ export namespace boot
             .response = nullptr
         };
 
+#if ILOBILIX_LIMINE_MP
         [[gnu::used, gnu::section(".requests")]]
-        volatile limine_stack_size_request stack_size
+        volatile limine_mp_request mp
         {
-            .id = LIMINE_STACK_SIZE_REQUEST,
+            .id = LIMINE_MP_REQUEST,
             .revision = 0,
             .response = nullptr,
-            .stack_size = kstack_size
+#  if defined(__x86_64__)
+            .flags = LIMINE_MP_X2APIC
+#  else
+            .flags = 0
+#  endif
         };
+#endif
     } // namespace requests
 
     limine_file *find_module(std::string_view name)
@@ -190,6 +198,10 @@ export namespace boot
             lib::panic("could not get a response to the module request");
         if (requests::boot_time.response == nullptr)
             lib::panic("could not get a response to the boot time request");
+#if ILOBILIX_LIMINE_MP
+        if (requests::mp.response == nullptr)
+            lib::panic("could not get a response to the mp request");
+#endif
 
 // #if defined(__aarch64__)
 //         if (requests::dtb.response == nullptr)

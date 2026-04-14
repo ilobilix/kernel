@@ -40,4 +40,4 @@ Make sure you have recent versions of the following programs installed:
 
 ## Known Bugs
 * aarch64 basically doesn't work
-* (unconfirmed) threads sometimes do not execute after yielding in debug mode
+* sometimes sleeping thread doesn't wake up on bare metal

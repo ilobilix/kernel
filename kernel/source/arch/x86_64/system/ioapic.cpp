@@ -208,7 +208,7 @@ namespace x86_64::apic::io
                             static_cast<std::uint32_t>(entry.gsi), src + 0x20, cpu::bsp_aid(),
                             static_cast<flag>(entry.flags) | flag::masked, delivery::fixed
                         );
-                        if (auto handler = idt::handler_at(cpu::bsp_aid(), src + 0x20))
+                        if (auto handler = idt::handler_at(cpu::bsp_idx(), src + 0x20))
                             handler.value().get().reserve();
                         goto end;
                     }
@@ -219,7 +219,7 @@ namespace x86_64::apic::io
                     flag::masked, delivery::fixed
                 );
 
-                if (auto handler = idt::handler_at(cpu::bsp_aid(), i + 0x20))
+                if (auto handler = idt::handler_at(cpu::bsp_idx(), i + 0x20))
                     handler.value().get().reserve();
                 end:
             }
