@@ -13,25 +13,28 @@ namespace slab
 {
     struct policy
     {
+        // TODO
         std::uintptr_t map(std::size_t length)
         {
-            const auto pages = lib::div_roundup(length, pmm::page_size);
-            const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, pages);
+            return lib::tohh(pmm::alloc<std::uintptr_t>(lib::div_roundup(length, pmm::page_size)));
+            // const auto pages = lib::div_roundup(length, pmm::page_size);
+            // const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, pages);
 
-            const auto psize = vmm::page_size::small;
-            const auto flags = vmm::pflag::rw;
+            // const auto psize = vmm::page_size::small;
+            // const auto flags = vmm::pflag::rw;
 
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(vaddr, length, flags, psize); !ret)
-                lib::panic("could not map slab memory: {}", magic_enum::enum_name(ret.error()));
+            // if (const auto ret = vmm::kernel_pagemap->map_alloc(vaddr, length, flags, psize); !ret)
+            //     lib::panic("could not map slab memory: {}", magic_enum::enum_name(ret.error()));
 
-            return vaddr;
+            // return vaddr;
         }
 
         void unmap(std::uintptr_t addr, std::size_t length)
         {
-            const auto psize = vmm::page_size::small;
-            if (const auto ret = vmm::kernel_pagemap->unmap_dealloc(addr, length, psize); !ret)
-                lib::panic("could not unmap slab memory: {}", magic_enum::enum_name(ret.error()));
+            pmm::free(lib::fromhh(addr), lib::div_roundup(length, pmm::page_size));
+            // const auto psize = vmm::page_size::small;
+            // if (const auto ret = vmm::kernel_pagemap->unmap_dealloc(addr, length, psize); !ret)
+            //     lib::panic("could not unmap slab memory: {}", magic_enum::enum_name(ret.error()));
         }
     };
 
