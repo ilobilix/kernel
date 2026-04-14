@@ -3,6 +3,7 @@
 module;
 
 #include <uacpi/sleep.h>
+#include <version.h>
 
 module system.syscall.misc;
 
