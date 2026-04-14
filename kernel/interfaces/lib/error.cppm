@@ -43,7 +43,7 @@ export namespace lib
         interrupted,
         inappropriate_ioctl,
         mapping_unsupported,
-        io,
+        io_error,
 
         addr_not_aligned,
         addr_in_use,
@@ -100,7 +100,7 @@ export namespace lib
                 return ENOTTY;
             case err::mapping_unsupported:
                 return ENODEV;
-            case err::io:
+            case err::io_error:
                 return EIO;
             // case err::addr_not_aligned:
             //     return ;
