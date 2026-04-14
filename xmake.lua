@@ -177,6 +177,7 @@ toolchain("ilobilix-clang")
             "-fno-stack-protector",
             "-fno-strict-aliasing",
             "-fstrict-vtable-pointers",
+            "-funsigned-char",
 
             "-mgeneral-regs-only",
 

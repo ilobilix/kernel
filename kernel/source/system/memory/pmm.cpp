@@ -176,6 +176,14 @@ namespace pmm
         }
     };
 
+#if defined(__x86_64__)
+    extern "C" std::uintptr_t trampoline_pages = 0;
+    constexpr std::size_t range_start = 0x1000;
+    constexpr std::size_t range_end = 0x100000;
+    // one page for trampoline and the other for temporary stack
+    constexpr std::size_t requested_size = page_size * 2;
+#endif
+
     void init()
     {
         log::info("pmm: initialising the physical memory allocator");
@@ -221,34 +229,50 @@ namespace pmm
             const std::uintptr_t end = memmap->base + memmap->length;
             mem.usable_top = std::max(mem.usable_top, end);
 
-            auto base = lib::tohh(memmap->base);
-            auto size = memmap->length;
-            mem.usable += size;
-
-            while (size >= page_size)
+            auto add = [](std::uintptr_t base, std::size_t size)
             {
-                const auto pg = reinterpret_cast<page *>(base);
-                auto sorder = prev_order_from(size);
-                if (sorder < 0)
-                    break;
+                mem.usable += size;
 
-                auto order = std::min(static_cast<std::size_t>(sorder), max_order);
-                while (base % (page_size * lib::pow2(order)))
+                while (size >= page_size)
                 {
-                    order--;
-                    if (order < 0)
+                    const auto pg = reinterpret_cast<page *>(base);
+                    auto sorder = prev_order_from(size);
+                    if (sorder < 0)
                         break;
+
+                    auto order = std::min(static_cast<std::size_t>(sorder), max_order);
+                    while (base % (page_size * lib::pow2(order)))
+                    {
+                        order--;
+                        if (order < 0)
+                            break;
+                    }
+
+                    put(order, pg);
+
+                    const auto offset = page_size * lib::pow2(order);
+                    size -= offset;
+                    base += offset;
                 }
 
-                put(order, pg);
+                // wasted
+                mem.used += size;
+            };
 
-                const auto offset = page_size * lib::pow2(order);
-                size -= offset;
-                base += offset;
+#if defined(__x86_64__)
+            const auto rstart = std::max(memmap->base, range_start);
+            auto rend = std::min(end, range_end);
+            if (rstart < rend && (rend - rstart) >= requested_size)
+            {
+                trampoline_pages = rstart;
+                rend = rstart + requested_size;
+
+                add(lib::tohh(memmap->base), rstart - memmap->base);
+                add(lib::tohh(rend), end - rend);
             }
-
-            // wasted
-            mem.used += size;
+            else
+#endif
+            add(lib::tohh(memmap->base), memmap->length);
         }
 
         // uacpi points or something idk

@@ -14,29 +14,17 @@ namespace cpu
 {
     namespace
     {
-#if defined(__x86_64__)
-            auto get_arch_id(auto *cpu) { return cpu->lapic_id; }
-            auto get_bsp_id(auto *smp) { return smp->bsp_lapic_id; }
-#elif defined(__aarch64__)
-            auto get_arch_id(auto *cpu) { return cpu->mpidr; }
-            auto get_bsp_id(auto *smp) { return smp->bsp_mpidr; }
-#else
-#  error Unsupported architecture
-#endif
-
         [[gnu::section(".percpu_head")]]
         per::storage<processor> me;
 
         std::uintptr_t *bases;
 
-        std::size_t _bsp_idx;
+        constexpr std::size_t _bsp_idx = 0;
         std::size_t _bsp_aid;
-        std::size_t _cpu_count = 0;
     } // namespace
 
     std::size_t bsp_idx() { return _bsp_idx; }
     std::size_t bsp_aid() { return _bsp_aid; }
-    std::size_t cpu_count() { return _cpu_count; }
 
     namespace per
     {
@@ -46,7 +34,7 @@ namespace cpu
         extern "C" char __start_percpu[];
         extern "C" char __end_percpu[];
 
-        extern "C++" std::uintptr_t init()
+        std::uintptr_t init()
         {
             static std::size_t offset = 0;
 
@@ -64,124 +52,64 @@ namespace cpu
             offset += size;
             return base;
         }
-    } // namespace per
 
-    processor *nth(std::size_t n)
-    {
-        return bases ? std::addressof(me.get(bases[n])) : nullptr;
-    }
-
-    std::uintptr_t nth_base(std::size_t n)
-    {
-        return bases ? bases[n] : 0;
-    }
-
-    bool percpu_available()
-    {
-        return bases != nullptr;
-    }
-
-    extern "C++" processor *self()
-    {
-        return bases ? std::addressof(me.get()) : nullptr;
-    }
-
-    extern "C" std::uint8_t kernel_stack[];
-    void init_bsp()
-    {
-        const auto smp = boot::requests::smp.response;
-
-        bases = new std::uintptr_t[smp->cpu_count] { };
-        _bsp_aid = get_bsp_id(smp);
-
-        for (std::size_t i = 0; i < smp->cpu_count; i++)
+        processor *request(std::size_t aid)
         {
-            auto cpu = smp->cpus[i];
-            const auto aid = get_arch_id(cpu);
+            static std::size_t next = 0;
+            const std::size_t idx = next++;
 
-            if (aid != _bsp_aid)
-                continue;
-
-            log::info("cpu: {} {}: arch id: {}", "initialising bsp", i, aid);
+            if (idx == 0)
+                log::info("cpu: initialising bsp: arch id: {}", aid);
+            else
+                log::info("cpu: bringing up cpu {}: arch id: {}", idx, aid);
 
             const auto base = per::init();
-            me.initialise_base(bases[i] = base);
+            me.initialise_base(bases[idx] = base);
 
-            auto proc = nth(i);
+            auto proc = nth(idx);
             lib::ensure(base == reinterpret_cast<std::uintptr_t>(proc));
 
             proc->self = proc;
-            proc->idx = _bsp_idx = i;
-            proc->arch_id = aid;
-
-            // unnecessary
-            // proc->stack_top = reinterpret_cast<std::uintptr_t>(kernel_stack) + boot::kstack_size;
-
-            cpu->extra_argument = base;
-            arch::core::bsp(cpu);
-        }
-    }
-
-    struct extra_arg { std::uintptr_t pmap; std::uintptr_t pcpu; };
-    // * NOTICE: we do not initialise cores in parallel so this works fine
-    extra_arg earg;
-
-    extern "C" void cpu_entry(boot::limine_mp_info *);
-    extern "C" void generic_core_entry(boot::limine_mp_info *cpu)
-    {
-        // auto earg = reinterpret_cast<extra_arg *>(cpu->extra_argument);
-        // cpu->extra_argument = earg->pcpu;
-        // delete earg;
-        cpu->extra_argument = earg.pcpu;
-        arch::core::entry(cpu);
-    }
-
-    void init()
-    {
-        const auto smp = boot::requests::smp.response;
-        log::info("cpu: number of available processors: {}", smp->cpu_count);
-
-        _cpu_count = smp->cpu_count;
-
-        for (std::size_t i = 0; i < _cpu_count; i++)
-        {
-            auto cpu = smp->cpus[i];
-            const auto aid = get_arch_id(cpu);
-
-            if (aid == _bsp_aid)
-                continue;
-
-            log::info("cpu: {} {}: arch id: {}", "bringing up cpu", i, aid);
-
-            const auto base = per::init();
-            me.initialise_base(bases[i] = base);
-
-            auto proc = nth(i);
-            lib::ensure(base == reinterpret_cast<std::uintptr_t>(proc));
-
-            proc->self = proc;
-            proc->idx = i;
+            proc->idx = idx;
             proc->arch_id = aid;
 
             const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
             if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
-                lib::panic("could not map cpu {} kernel stack: {}", i, magic_enum::enum_name(ret.error()));
+                lib::panic("could not map cpu {} kernel stack: {}", idx, magic_enum::enum_name(ret.error()));
 
             proc->stack_top = stack + boot::kstack_size;
-
-            // cpu->extra_argument = reinterpret_cast<std::uintptr_t>(
-            //     new extra_arg { reinterpret_cast<std::uintptr_t>(vmm::kernel_pagemap->get_arch_table()), base }
-            // );
-
-            earg.pmap = reinterpret_cast<std::uintptr_t>(vmm::kernel_pagemap->get_arch_table());
-            earg.pcpu = base;
-
-            cpu->extra_argument = reinterpret_cast<std::uintptr_t>(&earg);
-            // cpu->goto_address = &cpu_entry;
-            __atomic_store_n(&cpu->goto_address, cpu_entry, __ATOMIC_SEQ_CST);
-
-            while (!proc->online)
-                arch::pause();
+            return proc;
         }
+    } // namespace per
+
+    processor *nth(std::size_t n) { return bases ? std::addressof(me.get(bases[n])) : nullptr; }
+    std::uintptr_t nth_base(std::size_t n) { return bases ? bases[n] : 0; }
+
+    bool percpu_available() { return bases != nullptr; }
+    extern "C++" processor *self() { return bases ? std::addressof(me.get()) : nullptr; }
+
+    namespace mp
+    {
+        std::size_t num_cores();
+        std::size_t bsp_aid();
+
+        void boot_cores(processor *(*request)(std::size_t));
+    } // namespace mp
+
+    std::size_t cpu_count() { return mp::num_cores(); }
+
+    void init_bsp()
+    {
+        bases = new std::uintptr_t[mp::num_cores()] { };
+
+        _bsp_aid = bsp_aid();
+        const auto proc = per::request(_bsp_aid);
+        arch::core::bsp(reinterpret_cast<std::uintptr_t>(proc));
+    }
+
+    void init()
+    {
+        log::info("cpu: number of available processors: {}", mp::num_cores());
+        mp::boot_cores(per::request);
     }
 } // namespace cpu

@@ -29,6 +29,12 @@ export namespace cpu
         }
     };
 
+    struct id_res
+    {
+        std::uint32_t a, b, c, d;
+        constexpr id_res() : a { 0 }, b { 0 }, c { 0 }, d { 0 } { }
+    };
+
     bool id(std::uint32_t leaf, std::uint32_t subleaf, std::uint32_t &eax, std::uint32_t &ebx, std::uint32_t &ecx, std::uint32_t &edx, bool check_max = true)
     {
         static const auto cached = []
@@ -45,12 +51,23 @@ export namespace cpu
         return true;
     }
 
+    bool id(std::uint32_t leaf, std::uint32_t subleaf, id_res &res, bool check_max = true)
+    {
+        return id(leaf, subleaf, res.a, res.b, res.c, res.d, check_max);
+    }
+
+    std::optional<id_res> id(std::uint32_t leaf, std::uint32_t subleaf, bool check_max = true)
+    {
+        id_res res;
+        return id(leaf, subleaf, res, check_max) ? std::optional<id_res> { res } : std::nullopt;
+    }
+
     bool in_hypervisor()
     {
         static const auto cached = [] -> bool
         {
-            std::uint32_t a, b, c, d;
-            return cpu::id(1, 0, a, b, c, d) && (c & (1 << 31));
+            id_res res;
+            return cpu::id(1, 0, res) && (res.c & (1 << 31));
         } ();
         return cached;
     }
@@ -152,6 +169,22 @@ export namespace cpu
         }
     } // namespace smap
 
+    namespace mtrr
+    {
+        bool supported()
+        {
+            static const auto cached = [] -> bool
+            {
+                id_res res;
+                return cpu::id(1, 0, res) && (res.d & (1 << 12));
+            } ();
+            return cached;
+        }
+
+        void save();
+        void restore();
+    } // namespace mtrr
+
     namespace pat
     {
         enum entries : std::uint64_t
@@ -176,8 +209,8 @@ export namespace cpu
         {
             static const auto cached = [] -> bool
             {
-                std::uint32_t a, b, c, d;
-                return cpu::id(1, 0, a, b, c, d) && (d & (1 << 8));
+                id_res res;
+                return cpu::id(1, 0, res) && (res.d & (1 << 8));
             } ();
             return cached;
         }

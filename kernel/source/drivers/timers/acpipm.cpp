@@ -17,11 +17,11 @@ namespace timers::acpipm
 {
     namespace
     {
+        constexpr std::size_t frequency = 3579545;
+
         acpi_gas timer_block;
         uacpi_mapped_gas *mapped;
         std::size_t mask;
-        // std::int64_t offset = 0;
-        // std::uint64_t overflows = 0;
 
         std::uint64_t read()
         {

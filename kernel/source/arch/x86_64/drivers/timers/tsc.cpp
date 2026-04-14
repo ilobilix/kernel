@@ -26,9 +26,8 @@ namespace x86_64::timers::tsc
     {
         static const auto cached = []
         {
-            std::uint32_t a, b, c, d;
-            // auto tsc = cpu::id(0x01, 0, a, b, c, d) && (d & (1 << 4));
-            auto invariant = cpu::id(0x80000007, 0, a, b, c, d) && (d & (1 << 8));
+            cpu::id_res res;
+            const auto invariant = cpu::id(0x80000007, 0, res) && (res.d & (1 << 8));
             log::info("tsc: is invariant: {}", invariant);
             return invariant;
         } ();
@@ -61,25 +60,24 @@ namespace x86_64::timers::tsc
         {
             std::uint64_t val = 0;
 
-            std::uint32_t a, b, c, d;
-            if (cpu::id(0x15, 0, a, b, c, d) && a != 0 && b != 0 && c != 0)
+            if (const auto res = cpu::id(0x15, 0); res && res->a != 0 && res->b != 0 && res->c != 0)
             {
-                val = c * b / a;
+                val = res->c * res->b / res->a;
             }
             else if (kvm::supported())
             {
                 val = kvm::tsc_freq();
             }
-            else if (auto calibrator = ::timers::calibrator())
+            else if (const auto calibrator = ::timers::calibrator())
             {
                 static constexpr std::size_t millis = 50;
                 static constexpr std::size_t times = 3;
 
                 for (std::size_t i = 0; i < times; i++)
                 {
-                    auto start = rdtsc();
+                    const auto start = rdtsc();
                     calibrator(millis);
-                    auto end = rdtsc();
+                    const auto end = rdtsc();
 
                     val += (end - start) * (1'000 / millis);
                 }

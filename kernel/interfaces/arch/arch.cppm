@@ -44,7 +44,7 @@ export namespace arch
 
     namespace core
     {
-        void entry(boot::limine_mp_info *cpu);
-        void bsp(boot::limine_mp_info *cpu);
+        void entry(std::uintptr_t addr);
+        void bsp(std::uintptr_t addr);
     } // namespace core
 } // export namespace arch

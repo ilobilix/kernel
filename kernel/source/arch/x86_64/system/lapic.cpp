@@ -18,21 +18,6 @@ namespace x86_64::apic
 {
     namespace
     {
-        namespace reg
-        {
-            constexpr std::uintptr_t apic_base = 0x1B;
-            constexpr std::uintptr_t tpr = 0x80;
-            constexpr std::uintptr_t siv = 0xF0;
-            constexpr std::uintptr_t icrl = 0x300;
-            constexpr std::uintptr_t icrh = 0x310;
-            constexpr std::uintptr_t lvt = 0x320;
-            constexpr std::uintptr_t tdc = 0x3E0;
-            constexpr std::uintptr_t tic = 0x380;
-            constexpr std::uintptr_t tcc = 0x390;
-
-            constexpr std::uintptr_t deadline = 0x6E0;
-        } // namespace reg
-
         std::uintptr_t pmmio;
         std::uintptr_t mmio;
 
@@ -46,30 +31,14 @@ namespace x86_64::apic
         {
             return (reg >> 4) + 0x800;
         }
-
-        std::uint32_t read(std::uint32_t reg)
-        {
-            if (x2apic)
-                return cpu::msr::read(to_x2apic(reg));
-
-            return lib::mmio::in<32>(mmio + reg);
-        }
-
-        void write(std::uint32_t reg, std::uint32_t val)
-        {
-            if (x2apic)
-                cpu::msr::write(to_x2apic(reg), val);
-            else
-                lib::mmio::out<32>(mmio + reg, val);
-        }
     } // namespace
 
     std::pair<bool, bool> supported()
     {
-        std::uint32_t a, b, c, d;
-        const bool cpuid = cpu::id(1, 0, a, b, c, d);
-        const bool lapic = cpuid && (d & (1 << 9));
-        const bool x2apic = cpuid && (c & (1 << 21));
+        cpu::id_res res;
+        const bool cpuid = cpu::id(1, 0, res);
+        const bool lapic = cpuid && (res.d & (1 << 9));
+        const bool x2apic = cpuid && (res.c & (1 << 21));
 
         static const auto cached = []
         {
@@ -85,21 +54,37 @@ namespace x86_64::apic
             uacpi_table table;
             if (uacpi_table_find_by_signature("DMAR", &table) == UACPI_STATUS_OK)
             {
-                auto flags = static_cast<acpi_dmar *>(table.ptr)->flags;
+                const auto flags = static_cast<acpi_dmar *>(table.ptr)->flags;
                 uacpi_table_unref(&table);
                 if ((flags & (1 << 0)) && (flags & (1 << 1)))
                     return false;
             }
 
-            auto tsc_supported = timers::tsc::supported();
-            std::uint32_t a, b, c, d;
-            tsc_deadline = tsc_supported && cpu::id(0x01, 0, a, b, c, d) && (c & (1 << 24));
+            const auto tsc_supported = timers::tsc::supported();
+            cpu::id_res res;
+            tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
             log::debug("lapic: tsc deadline supported: {}", tsc_deadline);
 
             return true;
         } ();
 
         return { lapic, x2apic && cached };
+    }
+
+    std::uint32_t read(std::uint32_t reg)
+    {
+        if (x2apic)
+            return cpu::msr::read(to_x2apic(reg));
+
+        return lib::mmio::in<32>(mmio + reg);
+    }
+
+    void write(std::uint32_t reg, std::uint64_t val)
+    {
+        if (x2apic)
+            cpu::msr::write(to_x2apic(reg), val);
+        else
+            lib::mmio::out<32>(mmio + reg, val);
     }
 
     // the frequency should be the same on all cores
@@ -120,11 +105,11 @@ namespace x86_64::apic
 
         std::uint64_t val = 0;
 
-        std::uint32_t a, b, c, d;
-        if (cpu::id(0x15, 0, a, b, c, d) && c != 0) { val = c; }
-        else
+        // if (const auto res = cpu::id(0x15, 0); res && res->a != 0 && res->b != 0 && res->c != 0) { val = res->c; }
+        // else if (const auto res = cpu::id(0x16, 0); res && res->a != 0 && res->b != 0 && res->c != 0) { val = res->c; }
+        // else
         {
-            auto calibrator = ::timers::calibrator();
+            const auto calibrator = ::timers::calibrator();
             if (!calibrator)
                 lib::panic("lapic: could not calibrate timer");
 
@@ -137,10 +122,10 @@ namespace x86_64::apic
             {
                 write(reg::tic, 0xFFFFFFFF);
                 calibrator(millis);
-                auto count = read(reg::tcc);
+                const auto count = read(reg::tcc);
                 write(reg::tic, 0);
 
-                val += (0xFFFFFFFF - count) * 100;
+                val += (0xFFFFFFFF - count) * (1'000 / millis);
             }
             val /= times;
         }
@@ -151,15 +136,20 @@ namespace x86_64::apic
     }
 
     void eoi() { write(0xB0, 0); }
-    void ipi(std::uint8_t id, dest dsh, std::uint8_t vector)
+    void ipi(std::uint32_t id, dest dsh, std::uint64_t args)
     {
-        auto flags = (static_cast<std::uint32_t>(dsh) << 18) | vector;
+        const auto flags = (static_cast<std::uint32_t>(dsh) << 18) | args;
         if (!x2apic)
         {
-            write(reg::icrh, static_cast<std::uint32_t>(id) << 24);
+            asm volatile ("" ::: "memory");
+            write(reg::icrh, id << 24);
             write(reg::icrl, flags);
         }
-        else write(reg::icrl, (static_cast<std::uint64_t>(id) << 32) | flags);
+        else
+        {
+            asm volatile ("mfence; lfence" ::: "memory");
+            write(reg::icrl, (static_cast<std::uint64_t>(id) << 32) | flags);
+        }
     }
 
     void arm(std::size_t ns, std::uint8_t vector)
@@ -171,8 +161,8 @@ namespace x86_64::apic
 
         if (tsc_deadline)
         {
-            auto val = timers::tsc::rdtsc();
-            auto ticks = timers::tsc::frequency().ticks(ns);
+            const auto val = timers::tsc::rdtsc();
+            const auto ticks = timers::tsc::frequency().ticks(ns);
             write(reg::lvt, (0b10 << 17) | vector);
             asm volatile ("mfence" ::: "memory");
             cpu::msr::write(reg::deadline, val + ticks);
@@ -181,7 +171,7 @@ namespace x86_64::apic
         {
             write(reg::tic, 0);
             write(reg::lvt, vector);
-            auto ticks = freq.ticks(ns);
+            const auto ticks = freq.ticks(ns);
             write(reg::tic, ticks);
         }
     }
