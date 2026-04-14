@@ -22,5 +22,5 @@ export namespace cpu
 
     void invlpg(std::uintptr_t) { }
 
-    std::uintptr_t arch_self() { return 0; }
+    std::uintptr_t self_addr() { return 0; }
 } // export namespace cpu

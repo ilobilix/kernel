@@ -134,7 +134,7 @@ namespace bin::elf::mod
             log::info("elf: module: loading '{}'", node->name);
             auto &back = node->backing;
 
-            auto ehdr = std::make_unique<Elf64_Ehdr>();
+            const auto ehdr = std::make_unique<Elf64_Ehdr>();
             lib::ensure(back->read(0, std::span {
                 reinterpret_cast<std::byte *>(ehdr.get()),
                 sizeof(Elf64_Ehdr)
@@ -166,7 +166,7 @@ namespace bin::elf::mod
                 return false;
             }
 
-            auto phdrs = std::make_unique<std::uint8_t[]>(ehdr->e_phnum * ehdr->e_phentsize);
+            const auto phdrs = std::make_unique<std::uint8_t[]>(ehdr->e_phnum * ehdr->e_phentsize);
             lib::ensure(back->read(ehdr->e_phoff, std::span {
                 reinterpret_cast<std::byte *>(phdrs.get()),
                 static_cast<std::size_t>(ehdr->e_phnum * ehdr->e_phentsize)
@@ -187,11 +187,17 @@ namespace bin::elf::mod
 
             decltype(entry::pages) memory;
 
-            auto loaded_at = vmm::alloc_vpages(vmm::space_type::modules, max_size);
-            for (std::size_t i = 0; i < max_size; i += pmm::page_size)
+            const auto loaded_at = vmm::alloc_vpages(vmm::space_type::modules, max_size);
+
+            const auto flags = vmm::flag::rw;
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto npages = lib::div_roundup(npsize, pmm::page_size);
+
+            for (std::size_t i = 0; i < max_size; i += npsize)
             {
-                const auto paddr = pmm::alloc<std::uintptr_t>(1, true);
-                if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, pmm::page_size, vmm::flag::rw); !ret)
+                const auto paddr = pmm::alloc<std::uintptr_t>(npages, true);
+                if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize); !ret)
                     lib::panic("could not map memory for a module: {}", magic_enum::enum_name(ret.error()));
 
                 memory.emplace_back(loaded_at + i, paddr);
@@ -251,7 +257,7 @@ namespace bin::elf::mod
                     }
                     case PT_DYNAMIC:
                     {
-                        auto dyntable = std::make_unique<Elf64_Dyn[]>(phdr->p_filesz / sizeof(Elf64_Dyn));
+                        const auto dyntable = std::make_unique<Elf64_Dyn[]>(phdr->p_filesz / sizeof(Elf64_Dyn));
                         lib::ensure(back->read(phdr->p_offset, std::span {
                             reinterpret_cast<std::byte *>(dyntable.get()),
                             phdr->p_filesz
@@ -300,7 +306,7 @@ namespace bin::elf::mod
 
             auto reloc = [&](Elf64_Rela &rel) -> bool
             {
-                std::uintptr_t loc = loaded_at + rel.r_offset;
+                const std::uintptr_t loc = loaded_at + rel.r_offset;
                 switch (auto type = ELF64_R_TYPE(rel.r_info))
                 {
 #if defined(__x86_64__)
@@ -381,14 +387,14 @@ namespace bin::elf::mod
                 if (phdr->p_flags & PF_X)
                     flags |= vmm::flag::exec;
 
-                auto aligned = lib::align_down(loaded_at + phdr->p_vaddr, pmm::page_size);
-                auto size = lib::align_up(phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size);
+                const auto aligned = lib::align_down(loaded_at + phdr->p_vaddr, pmm::page_size);
+                const auto size = lib::align_up(phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size);
 
                 if (auto ret = vmm::kernel_pagemap->protect(aligned, size, flags, vmm::page_size::small); !ret)
                     lib::panic("could not change module memory mapping flags: {}", magic_enum::enum_name(ret.error()));
             }
 
-            auto nmod = load(
+            const auto nmod = load(
                 false, modules_start, modules_start + modules_size,
                 std::move(memory), std::move(symbols),
                 {

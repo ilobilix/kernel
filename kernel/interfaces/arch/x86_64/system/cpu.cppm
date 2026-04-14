@@ -319,5 +319,5 @@ export namespace cpu
         }
     } // namespace gs
 
-    std::uintptr_t arch_self() { return gs::read(); }
+    std::uintptr_t self_addr() { return gs::read(); }
 } // export namespace cpu
