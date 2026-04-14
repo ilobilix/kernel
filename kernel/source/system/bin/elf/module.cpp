@@ -418,7 +418,7 @@ namespace bin::elf::mod
 
         void load_external()
         {
-            auto ret = vfs::resolve(nullptr, "/usr/lib/modules");
+            auto ret = vfs::resolve(nullptr, nullptr, "/usr/lib/modules");
             if (!ret || ret->target->inode->stat.type() != stat::type::s_ifdir)
             {
                 log::error("elf: module: directory '/usr/lib/modules' not found");
