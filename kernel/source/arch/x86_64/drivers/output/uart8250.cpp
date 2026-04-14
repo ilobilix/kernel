@@ -27,6 +27,33 @@ namespace x86_64::output::uart8250
         constinit std::array<bool, num_ports> usable { };
         std::array<std::function<void (char)>, num_ports> hooks;
 
+        constexpr std::uint32_t speed_to_baud(fs::dev::tty::speed_t speed)
+        {
+            using enum fs::dev::tty::ktermios::baud;
+            switch (speed)
+            {
+                case b0: return 0;
+                case b50: return 50;
+                case b75: return 75;
+                case b110: return 110;
+                case b134: return 134;
+                case b150: return 150;
+                case b200: return 200;
+                case b300: return 300;
+                case b600: return 600;
+                case b1200: return 1200;
+                case b1800: return 1800;
+                case b2400: return 2400;
+                case b4800: return 4800;
+                case b9600: return 9600;
+                case b19200: return 19200;
+                case b38400: return 38400;
+                case b57600: return 57600;
+                case b115200: return 115200;
+                default: return speed;
+            }
+        }
+
         void irq_handler(cpu::registers *regs)
         {
             const auto read = [](std::size_t idx)
@@ -155,6 +182,42 @@ namespace x86_64::output::uart8250
                 hooks[minor - 64] = nullptr;
                 return { };
             };
+
+            void set_termios(tty::ktermios &current, const tty::ktermios &old) override
+            {
+                const auto idx = minor - 64;
+                if (!usable[idx])
+                    return;
+
+                const auto ospeed = current.get_ospeed();
+                if (ospeed != current.get_ispeed())
+                    current.set_ispeed(ospeed);
+
+                if (ospeed != old.get_ospeed())
+                {
+                    const auto baud = speed_to_baud(ospeed);
+                    if (baud == 0)
+                        return;
+
+                    const std::uint16_t divisor = 115200 / baud;
+                    if (divisor == 0)
+                        return;
+
+                    const auto actual_baud = 115200 / divisor;
+                    current.set_ispeed(actual_baud);
+                    current.set_ospeed(actual_baud);
+
+                    const auto port = ports[idx];
+                    const auto lcr = lib::io::in<8>(port + 3);
+
+                    lib::io::out<8>(port + 3, lcr | 0x80);
+
+                    lib::io::out<8>(port + 0, divisor & 0xFF);
+                    lib::io::out<8>(port + 1, (divisor >> 8) & 0xFF);
+
+                    lib::io::out<8>(port + 3, lcr & ~0x80);
+                }
+            }
 
             serial_instance(tty::driver *drv, std::uint32_t minor)
                 : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }

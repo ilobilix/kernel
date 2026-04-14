@@ -806,10 +806,18 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tcsetsw2:
-                // TODO: allow the output buffer to drain
-                if (!argp.read(inst->termios.write_lock().value()))
+            {
+                // TODO: do it better
+                while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
+                    sched::yield();
+
+                auto wlocked = inst->termios.write_lock();
+                const auto old = wlocked.value();
+                if (!argp.read(wlocked.value()))
                     return std::unexpected { lib::err::invalid_address };
+                inst->set_termios(wlocked.value(), old);
                 return 0;
+            }
         }
         return std::unexpected { lib::err::inappropriate_ioctl };
     }
