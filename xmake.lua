@@ -216,7 +216,6 @@ toolchain("ilobilix-clang")
         local cx_args = {
             "-ffreestanding",
             "-fno-stack-protector",
-            "-fno-strict-aliasing",
             "-fstrict-vtable-pointers",
             "-funsigned-char",
 

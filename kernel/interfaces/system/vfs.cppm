@@ -7,6 +7,8 @@ import cppstd;
 
 export namespace vfs
 {
+    inline constexpr std::size_t symloop_max = 40;
+
     enum class error
     {
         todo,
@@ -27,7 +29,8 @@ export namespace vfs
 
         invalid_filesystem,
         invalid_mount,
-        invalid_symlink
+        invalid_symlink,
+        invalid_arguments
     };
 
     template<typename Type>
@@ -141,9 +144,6 @@ export namespace vfs
         lib::map::flat_hash<std::string_view, std::shared_ptr<dentry>> children;
 
         std::list<std::weak_ptr<mount>> child_mounts;
-
-        static constexpr auto symloop_max = 40;
-        expect<std::shared_ptr<dentry>> reduce(std::size_t symlink_depth = symloop_max);
     };
 
     struct resolve_res
@@ -157,13 +157,14 @@ export namespace vfs
 
     auto path_for(lib::path _path) -> expect<path>;
     auto resolve(std::optional<path> parent, lib::path path) -> expect<resolve_res>;
+    auto reduce(path src, std::size_t symlink_depth = symloop_max) -> expect<path>;
 
     auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> expect<void>;
     auto unmount(lib::path target) -> expect<void>;
 
     auto create(std::optional<path> parent, lib::path _path, mode_t mode) -> expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>;
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target) -> expect<path>;
+    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;
 
     auto stat(std::optional<path> parent, lib::path path) -> expect<stat>;
