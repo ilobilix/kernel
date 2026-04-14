@@ -53,11 +53,12 @@ namespace sched
 
         std::shared_ptr<thread> next_thread()
         {
-            const std::unique_lock _ { percpu->lock };
-            auto left = percpu->queue.begin();
-            if (left == percpu->queue.end())
+            auto locked = percpu->queue.write_lock();
+
+            const auto left = locked->begin();
+            if (left == locked->end())
                 return percpu->idle_thread;
-            return std::move(percpu->queue.extract(left).value());
+            return std::move(locked->extract(left).value());
         }
 
         void save(std::shared_ptr<thread> thread, cpu::registers *regs)
@@ -240,9 +241,7 @@ namespace sched
         for (std::size_t i = 0; i < cpu::cpu_count(); i++)
         {
             auto &obj = percpu.get(cpu::nth_base(i));
-            obj.lock.lock();
-            const auto size = obj.queue.size();
-            obj.lock.unlock();
+            const auto size = obj.queue.read_lock()->size();
             if (size < min)
             {
                 min = size;
@@ -258,8 +257,7 @@ namespace sched
             thread->status = status::ready;
 
         auto &obj = percpu.get(cpu::nth_base(cpu_idx));
-        const std::unique_lock _ { obj.lock };
-        obj.queue.insert(thread);
+        obj.queue.write_lock()->insert(thread);
     }
 
     void schedule(cpu::registers *regs)

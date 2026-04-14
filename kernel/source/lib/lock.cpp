@@ -9,27 +9,27 @@ import cppstd;
 
 namespace lib::lock
 {
-    bool lock_ints()
+    bool acquire_irq()
     {
-        auto ints = arch::int_status();
+        auto irq = arch::int_status();
         arch::int_switch(false);
-        return ints;
+        return irq;
     }
 
-    void unlock_ints(bool ints)
+    void release_irq(bool irq)
     {
-        if (arch::int_status() != ints)
-            arch::int_switch(ints);
+        if (arch::int_status() != irq)
+            arch::int_switch(irq);
     }
 
-    bool lock_preempt()
+    bool acquire_preempt()
     {
         auto preempt = sched::is_enabled();
         sched::disable();
         return preempt;
     }
 
-    void unlock_preempt(bool preempt)
+    void release_preempt(bool preempt)
     {
         if (sched::is_enabled() != preempt)
         {
@@ -40,10 +40,7 @@ namespace lib::lock
         }
     }
 
-    void pause()
-    {
-        arch::pause();
-    }
+    void pause() { arch::pause(); }
 
     // auto clock() -> std::uint64_t (*)();
     std::uint64_t (*clock())()

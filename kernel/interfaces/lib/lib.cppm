@@ -10,6 +10,7 @@ export import :ensure;
 export import :hash;
 export import :initgraph;
 export import :io;
+export import :locker;
 export import :log;
 export import :map;
 export import :math;

@@ -123,9 +123,12 @@ export namespace sched
             }
         };
 
-        lib::spinlock_preempt lock;
-
-        lib::btree::multiset<std::shared_ptr<thread>, compare> queue;
+        lib::locker<
+            lib::btree::multiset<
+                std::shared_ptr<thread>,
+                compare
+            >, lib::rwspinlock_preempt
+        > queue;
         std::shared_ptr<thread> running_thread;
 
         std::shared_ptr<process> idle_proc;

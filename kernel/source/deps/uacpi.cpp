@@ -11,26 +11,22 @@ namespace uacpi
 {
     namespace
     {
-        using queue_type = std::deque<std::pair<uacpi_work_handler, uacpi_handle>>;
+        using queue_type = lib::locker<std::deque<std::pair<uacpi_work_handler, uacpi_handle>>, lib::rwspinlock>;
         queue_type notify { };
         queue_type gpe { };
 
         std::atomic_size_t workers { 0 };
         lib::semaphore semaphore { };
-        lib::spinlock lock;
     } // namespace
 
-    void worker_caller(queue_type *queue)
+    void worker_caller(queue_type &queue)
     {
         while (true)
         {
-            while (queue->empty())
+            while (queue.read_lock()->empty())
                 sched::yield();
 
-            lock.lock();
-            auto [handler, handle] = queue->pop_front_element();
-            lock.unlock();
-
+            auto [handler, handle] = queue.write_lock()->pop_front_element();
             handler(handle);
 
             workers.fetch_sub(1, std::memory_order_acq_rel);
@@ -40,13 +36,13 @@ namespace uacpi
 
     void notify_worker()
     {
-        worker_caller(&notify);
+        worker_caller(notify);
         arch::halt(true);
     }
 
     void gpe_worker()
     {
-        worker_caller(&gpe);
+        worker_caller(gpe);
         arch::halt(true);
     }
 
@@ -488,37 +484,36 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_spinlock()
     {
-        return reinterpret_cast<uacpi_handle>(new lib::spinlock_ints);
+        return reinterpret_cast<uacpi_handle>(new lib::spinlock_irq);
     }
 
     void uacpi_kernel_free_spinlock(uacpi_handle handle)
     {
-        delete reinterpret_cast<lib::spinlock_ints *>(handle);
+        delete reinterpret_cast<lib::spinlock_irq *>(handle);
     }
 
     uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle handle)
     {
-        reinterpret_cast<lib::spinlock_ints *>(handle)->lock();
+        reinterpret_cast<lib::spinlock_irq *>(handle)->lock();
         return 0;
     }
 
     void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags)
     {
-        reinterpret_cast<lib::spinlock_ints *>(handle)->unlock();
+        reinterpret_cast<lib::spinlock_irq *>(handle)->unlock();
     }
 
     uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx)
     {
-        const std::unique_lock _ { uacpi::lock };
         log::debug("uacpi: scheduling work of type {}", magic_enum::enum_name(type));
         switch (type)
         {
             case UACPI_WORK_GPE_EXECUTION:
-                uacpi::gpe.emplace_back(handler, ctx);
+                uacpi::gpe.write_lock()->emplace_back(handler, ctx);
                 uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
                 break;
             case UACPI_WORK_NOTIFICATION:
-                uacpi::notify.emplace_back(handler, ctx);
+                uacpi::notify.write_lock()->emplace_back(handler, ctx);
                 uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
                 break;
             default:

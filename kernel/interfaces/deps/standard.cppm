@@ -422,6 +422,7 @@ export namespace std
     using std::atomic_unsigned_lock_free;
     using std::atomic_ushort;
     using std::atomic_wchar_t;
+    using std::atomic_ref;
     using std::kill_dependency;
     using std::memory_order;
     using std::memory_order_acq_rel;

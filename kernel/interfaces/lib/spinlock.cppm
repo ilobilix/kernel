@@ -1,34 +1,42 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:spinlock;
-
 import cppstd;
 
 namespace lib::lock
 {
-    bool lock_ints();
-    void unlock_ints(bool ints);
-    bool lock_preempt();
-    void unlock_preempt(bool preempt);
+    bool acquire_irq();
+    void release_irq(bool irq);
+
+    bool acquire_preempt();
+    void release_preempt(bool preempt);
+
     void pause();
 
     // auto clock() -> std::uint64_t (*)();
     std::uint64_t (*clock())();
 } // namespace lib::lock
 
+namespace lib
+{
+    enum class lock_type
+    {
+        none,
+        spin = none,
+        irq,
+        preempt,
+        block,
+    };
+} // namespace lib
+
 export namespace lib
 {
-    enum lock_type { none, ints, preempt };
-
     template<lock_type Type>
     class spinlock_base { };
 
     template<>
     class spinlock_base<lock_type::none>
     {
-        friend class spinlock_base<lock_type::ints>;
-        friend class spinlock_base<lock_type::preempt>;
-
         private:
         std::atomic_size_t _next_ticket;
         std::atomic_size_t _serving_ticket;
@@ -92,7 +100,7 @@ export namespace lib
     };
 
     template<>
-    class spinlock_base<lock_type::ints> : public spinlock_base<lock_type::none>
+    class spinlock_base<lock_type::irq> : public spinlock_base<lock_type::none>
     {
         private:
         bool _interrupts;
@@ -106,7 +114,7 @@ export namespace lib
         void lock()
         {
             spinlock_base<lock_type::none>::lock();
-            _interrupts = lock::lock_ints();
+            _interrupts = lock::acquire_irq();
         }
 
         bool unlock()
@@ -114,7 +122,7 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::unlock_ints(_interrupts);
+            lock::release_irq(_interrupts);
             return true;
         }
     };
@@ -134,7 +142,7 @@ export namespace lib
         void lock()
         {
             spinlock_base<lock_type::none>::lock();
-            _preempt = lock::lock_preempt();
+            _preempt = lock::acquire_preempt();
         }
 
         bool unlock()
@@ -142,12 +150,12 @@ export namespace lib
             if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::unlock_preempt(_preempt);
+            lock::release_preempt(_preempt);
             return true;
         }
     };
 
     using spinlock = spinlock_base<lock_type::none>;
-    using spinlock_ints = spinlock_base<lock_type::ints>;
+    using spinlock_irq = spinlock_base<lock_type::irq>;
     using spinlock_preempt = spinlock_base<lock_type::preempt>;
 } // export namespace lib
