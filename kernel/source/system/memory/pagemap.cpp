@@ -78,7 +78,7 @@ namespace vmm
         psize = fixpsize(psize);
 
         const auto npsize = from_page_size(psize);
-        if (paddr % npsize || vaddr % npsize)
+        if (/* paddr % npsize || */ vaddr % npsize)
             return std::unexpected { error::addr_not_aligned };
 
         const std::unique_lock _ { _lock };
@@ -267,7 +267,11 @@ namespace vmm
         if (!ret.has_value())
             return std::unexpected { ret.error() };
 
-        return ret->get().access().getaddr();
+        const auto addr = ret->get().access().getaddr();
+        if (!is_canonical(addr))
+            return std::unexpected { error::invalid_entry };
+
+        return addr;
     }
 
     pagemap::~pagemap()
@@ -384,7 +388,7 @@ namespace vmm
     {
         vspace_base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
         for (std::size_t i = 0; auto &entry : vspaces)
-            entry = vspace_base + (lib::gib(1 /* TODO: more than 1 gib? */) * (i++));
+            entry = vspace_base + (lib::gib(4) * (i++));
     }
 
     std::uintptr_t alloc_vpages(space_type type, std::size_t pages)

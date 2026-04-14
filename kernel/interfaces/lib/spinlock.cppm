@@ -141,8 +141,14 @@ export namespace lib
 
         void lock()
         {
-            spinlock_base<lock_type::none>::lock();
-            _preempt = lock::acquire_preempt();
+            while (true)
+            {
+                _preempt = lock::acquire_preempt();
+                if (spinlock_base<lock_type::none>::try_lock())
+                    break;
+                lock::release_preempt(_preempt);
+                lock::pause();
+            }
         }
 
         bool unlock()

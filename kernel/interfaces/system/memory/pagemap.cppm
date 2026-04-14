@@ -156,6 +156,14 @@ export namespace vmm
         [[gnu::pure]] static std::size_t from_page_size(page_size psize);
         [[gnu::pure]] static page_size max_page_size(std::size_t size);
 
+        [[gnu::pure]] static inline page_size max_page_size(std::uintptr_t addr, std::size_t size)
+        {
+            auto ret = max_page_size(size);
+            while (ret != page_size::small && addr % from_page_size(ret) != 0)
+                ret = static_cast<page_size>(std::to_underlying(ret) - 1);
+            return ret;
+        }
+
         std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
         std::expected<void, error> map_alloc(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
 

@@ -62,7 +62,6 @@ namespace cpu::mp
 
     extern "C" char smp_trampoline_start[];
     extern "C" std::size_t smp_trampoline_size;
-    extern "C" std::uintptr_t trampoline_pages;
 
     extern "C" bool pagemap_use_lowmem;
 
@@ -72,7 +71,9 @@ namespace cpu::mp
             return;
 
         lib::bug_on(smp_trampoline_size > pmm::page_size);
-        lib::bug_on(trampoline_pages == 0);
+
+        const auto trampoline_page = pmm::alloc<std::uintptr_t>(1, false, pmm::type::sub1mib);
+        const auto temp_stack_page = pmm::alloc<std::uintptr_t>(1, false, pmm::type::sub1mib);
 
         pagemap_use_lowmem = true;
             vmm::pagemap temp_map { };
@@ -100,18 +101,17 @@ namespace cpu::mp
             inner(*vmm::kernel_pagemap);
         };
 
-        log::debug("cpu: trampoline address 0x{:X}", trampoline_pages);
-        map("trampoline address", trampoline_pages, trampoline_pages, smp_trampoline_size, vmm::pflag::rwx);
-        std::memcpy(reinterpret_cast<void *>(trampoline_pages), smp_trampoline_start, smp_trampoline_size);
+        log::debug("cpu: trampoline address 0x{:X}", trampoline_page);
+        map("trampoline address", trampoline_page, trampoline_page, smp_trampoline_size, vmm::pflag::rwx);
+        std::memcpy(reinterpret_cast<void *>(trampoline_page), smp_trampoline_start, smp_trampoline_size);
 
-        const auto temp_stack = trampoline_pages + pmm::page_size;
-        log::debug("cpu: temporary stack address 0x{:X}", temp_stack);
-        map("temporary stack", temp_stack, temp_stack, pmm::page_size, vmm::pflag::rwx);
+        log::debug("cpu: temporary stack address 0x{:X}", temp_stack_page);
+        map("temporary stack", temp_stack_page, temp_stack_page, pmm::page_size, vmm::pflag::rwx);
 
         const bool x2apic = x86_64::apic::supported().second;
         mtrr::save();
 
-        auto start_ap = [&request, &temp_map, temp_stack](std::size_t lapic_id)
+        auto start_ap = [&](std::size_t lapic_id)
         {
             if (lapic_id == bsp_aid())
                 return;
@@ -130,14 +130,14 @@ namespace cpu::mp
 
             const auto cpu = request(lapic_id);
 
-            volatile auto info = reinterpret_cast<trampoline_info *>(trampoline_pages + smp_trampoline_size - sizeof(trampoline_info));
+            volatile auto info = reinterpret_cast<trampoline_info *>(trampoline_page + smp_trampoline_size - sizeof(trampoline_info));
             *info = trampoline_info {
                 .booted_flag = 0,
                 .early_pagemap = reinterpret_cast<std::uint64_t>(temp_map.get_arch_table()),
                 .pagemap = reinterpret_cast<std::uint64_t>(vmm::kernel_pagemap->get_arch_table()),
                 .bsp_apic_addr = msr::read(0x1B),
                 .mtrr_restore = reinterpret_cast<std::uint64_t>(mtrr::restore),
-                .temp_stack = temp_stack + pmm::page_size,
+                .temp_stack = temp_stack_page + pmm::page_size,
                 .proc = reinterpret_cast<std::uint64_t>(cpu),
                 .jump_addr = reinterpret_cast<std::uint64_t>(arch::core::entry)
             };
@@ -145,9 +145,9 @@ namespace cpu::mp
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::init, 0);
             time::stall_ns(10'000'000);
 
-            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_pages >> 12));
+            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
             time::stall_ns(200'000);
-            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_pages >> 12));
+            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
             time::stall_ns(200'000);
 
             for (std::size_t i = 0; i < 1000; i++)
@@ -202,8 +202,8 @@ namespace cpu::mp
             lib::panic("could not boot up cores");
         } ();
 
-        unmap("trampoline address", trampoline_pages, smp_trampoline_size);
-        unmap("temporary stack", temp_stack, pmm::page_size);
+        unmap("trampoline address", trampoline_page, smp_trampoline_size);
+        unmap("temporary stack", temp_stack_page, pmm::page_size);
     }
 } // export namespace cpu::mp
 

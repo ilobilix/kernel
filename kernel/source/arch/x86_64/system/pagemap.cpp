@@ -51,7 +51,8 @@ namespace vmm
     auto pagemap::new_table() -> table *
     {
         static_assert(sizeof(table) == pmm::page_size);
-        return pmm::alloc<table *>(1, true, pagemap_use_lowmem);
+        const auto flag = pagemap_use_lowmem ? pmm::type::sub4gib : pmm::type::normal;
+        return pmm::alloc<table *>(1, true, flag);
     }
 
     void pagemap::free_table(table *ptr)
