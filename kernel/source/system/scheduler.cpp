@@ -47,7 +47,7 @@ namespace sched
             auto left = percpu->queue.begin();
             if (left == percpu->queue.end())
                 return percpu->idle_thread;
-            return percpu->queue.extract(left).value();
+            return std::move(percpu->queue.extract(left).value());
         }
 
         void save(std::shared_ptr<thread> thread, cpu::registers *regs)
@@ -320,6 +320,7 @@ namespace sched
 
         percpu->running_thread = next;
         next->schedule_time = time;
+        next->status = status::running;
 
         load(next, regs);
         arch::reschedule(timeslice);
