@@ -8,7 +8,7 @@ import system.time;
 import drivers.timers;
 
 import lib;
-import cppstd;
+import std;
 
 namespace aarch64::timers::generic
 {

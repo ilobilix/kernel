@@ -5,7 +5,7 @@ export module lib:log;
 import :spinlock;
 import :math;
 import fmt;
-import cppstd;
+import std;
 
 namespace log
 {

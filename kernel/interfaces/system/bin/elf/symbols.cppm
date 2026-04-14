@@ -3,7 +3,7 @@
 export module system.bin.elf:symbols;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace bin::elf::sym
 {

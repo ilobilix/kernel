@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 import ilobilix;
-import cppstd;
+import std;
 
 extern "C"
 {
@@ -20,7 +20,7 @@ extern "C"
         sched::thread *thread = nullptr;
         {
             lib::path_view path { "/usr/bin/bash" };
-            log::info("loading {}", path);
+            // log::info("loading {}", path);
 
             auto ret = vfs::resolve(std::nullopt, path);
             if (!ret.has_value())

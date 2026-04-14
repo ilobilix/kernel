@@ -3,7 +3,7 @@
 export module lib:semaphore;
 
 import system.scheduler.base;
-import cppstd;
+import std;
 
 import :spinlock;
 

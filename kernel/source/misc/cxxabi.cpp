@@ -2,7 +2,7 @@
 
 import arch;
 import lib;
-import cppstd;
+import std;
 
 extern "C"
 {

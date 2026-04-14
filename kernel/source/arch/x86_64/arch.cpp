@@ -7,7 +7,7 @@ import x86_64.system.idt;
 import drivers.timers;
 import system;
 import lib;
-import cppstd;
+import std;
 
 namespace arch
 {

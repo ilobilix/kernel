@@ -4,8 +4,8 @@ export module drivers.fs.tmpfs;
 
 import system.memory.virt;
 import system.vfs;
-import cppstd;
 import lib;
+import std;
 
 export namespace fs::tmpfs
 {

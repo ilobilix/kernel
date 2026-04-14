@@ -3,7 +3,7 @@
 export module lib:random;
 
 import :user;
-import cppstd;
+import std;
 
 export namespace lib
 {

@@ -4,7 +4,7 @@ export module system.bin.elf:mod;
 
 import :symbols;
 import lib;
-import cppstd;
+import std;
 
 export namespace bin::elf::mod
 {

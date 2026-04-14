@@ -4,7 +4,7 @@ export module x86_64.drivers.timers.tsc;
 
 import system.cpu.self;
 import lib;
-import cppstd;
+import std;
 
 export namespace x86_64::timers::tsc
 {

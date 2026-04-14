@@ -4,7 +4,7 @@ export module lib:mutex;
 
 import :semaphore;
 import :spinlock;
-import cppstd;
+import std;
 
 export namespace lib
 {

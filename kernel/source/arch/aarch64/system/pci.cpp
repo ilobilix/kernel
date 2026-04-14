@@ -3,7 +3,7 @@
 module system.pci;
 
 import lib;
-import cppstd;
+import std;
 
 namespace pci
 {

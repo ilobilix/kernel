@@ -7,7 +7,7 @@ module;
 export module lib:path;
 
 import fmt;
-import cppstd;
+import std;
 
 export namespace lib
 {

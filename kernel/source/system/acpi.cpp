@@ -24,7 +24,7 @@ import system.pci;
 import arch;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace acpi
 {

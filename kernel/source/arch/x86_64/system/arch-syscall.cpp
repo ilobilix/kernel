@@ -5,7 +5,7 @@ module x86_64.system.syscall;
 import system.scheduler;
 import system.cpu;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::syscall::arch
 {

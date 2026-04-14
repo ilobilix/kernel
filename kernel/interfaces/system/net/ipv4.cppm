@@ -8,7 +8,7 @@ import :ether;
 import :packet;
 
 import lib;
-import cppstd;
+import std;
 
 namespace net::ipv4
 {
@@ -33,22 +33,19 @@ namespace net::ipv4
 
         ether::packet ether;
 
-        packet(const ether::packet &ether)
+        packet(const ether::packet &ether) : ether { ether }
         {
-            this->ether = ether;
+            const auto bytes = reinterpret_cast<std::uint8_t *>(ether.data);
 
-            auto bytes = reinterpret_cast<std::uint8_t *>(ether.data);
-            {
-                sip = addr::ip::v4 { bytes + 12 };
-                dip = addr::ip::v4 { bytes + 16 };
-                ihl = bytes[0] & 0xF;
-                ttl = bytes[8];
-                proto = bytes[9];
-                length = (static_cast<std::uint16_t>(bytes[2]) << 8) | bytes[3];
+            sip = addr::ip::v4 { bytes + 12 };
+            dip = addr::ip::v4 { bytes + 16 };
+            ihl = bytes[0] & 0xF;
+            ttl = bytes[8];
+            proto = bytes[9];
+            length = (static_cast<std::uint16_t>(bytes[2]) << 8) | bytes[3];
 
-                data = reinterpret_cast<std::byte *>(bytes + (ihl * 4));
-                data_size = length - (ihl * 4);
-            }
+            data = reinterpret_cast<std::byte *>(bytes + (ihl * 4));
+            data_size = length - (ihl * 4);
         }
 
         std::byte *to_bytes(std::byte *ptr) const
@@ -56,6 +53,7 @@ namespace net::ipv4
             // TODO: options
             if (ihl != 5)
                 lib::panic("ipv4: options not supported");
+
             auto bytes = reinterpret_cast<std::uint8_t *>(ptr);
 
             *bytes++ = (4 << 4) | ihl;
@@ -90,14 +88,14 @@ namespace net::ipv4
 
         void do_checksum(std::byte *ptr, std::ptrdiff_t offset, std::size_t len)
         {
-            auto bytes = reinterpret_cast<std::byte *>(ptr + offset);
+            const auto bytes = reinterpret_cast<std::byte *>(ptr + offset);
             auto hdr = reinterpret_cast<std::uint8_t *>(bytes);
 
             len -= offset;
             hdr[2] = len >> 8;
             hdr[3] = len & 0xFF;
 
-            auto sum = checksum::compute(bytes, size());
+            const auto sum = checksum::compute(bytes, size());
 
             hdr[10] = sum >> 8;
             hdr[11] = sum & 0xFF;

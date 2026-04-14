@@ -10,7 +10,7 @@ import system.memory.phys;
 import magic_enum;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 import :pagemap;
 

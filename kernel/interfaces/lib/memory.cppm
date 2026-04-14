@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:memory;
-import cppstd;
+import std;
 
 namespace lib::detail
 {

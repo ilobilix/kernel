@@ -6,7 +6,7 @@ export import drivers.timers.acpipm;
 export import arch.drivers.timers;
 
 import lib;
-import cppstd;
+import std;
 
 export namespace timers
 {

@@ -17,13 +17,6 @@
 #define __glibcxx_make_unique __cplusplu
 
 #include_next <memory>
-#include <new>
-
-namespace std { void __throw_bad_array_new_length(); }
-
-#include <bits/allocator.h>
-#include <smart_ptr/shared_ptr.h>
-#include <smart_ptr/shared_ptr_atomic.h>
 
 namespace std
 {

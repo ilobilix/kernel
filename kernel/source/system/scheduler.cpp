@@ -12,7 +12,7 @@ import frigg;
 import boot;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace sched
 {

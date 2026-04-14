@@ -3,7 +3,7 @@
 module lib;
 
 import system.time;
-import cppstd;
+import std;
 
 void stat::update_time(std::uint8_t flags)
 {

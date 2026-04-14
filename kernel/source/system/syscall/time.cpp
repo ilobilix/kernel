@@ -4,7 +4,7 @@ module system.syscall.time;
 
 import system.time;
 import lib;
-import cppstd;
+import std;
 
 namespace syscall::time
 {

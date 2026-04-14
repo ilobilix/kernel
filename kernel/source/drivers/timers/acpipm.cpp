@@ -12,7 +12,7 @@ import system.scheduler;
 import system.acpi;
 import system.time;
 import lib;
-import cppstd;
+import std;
 
 namespace timers::acpipm
 {

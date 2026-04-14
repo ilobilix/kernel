@@ -3,7 +3,7 @@
 module lib;
 
 import system.memory.virt;
-import cppstd;
+import std;
 
 namespace lib
 {

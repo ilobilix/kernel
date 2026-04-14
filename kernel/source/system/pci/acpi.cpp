@@ -16,7 +16,7 @@ import system.memory.virt;
 import system.acpi;
 import magic_enum;
 import lib;
-import cppstd;
+import std;
 
 namespace pci
 {

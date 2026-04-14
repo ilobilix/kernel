@@ -8,7 +8,7 @@ import system.dev;
 import system.vfs;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 namespace fs::dev::mem
 {

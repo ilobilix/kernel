@@ -18,10 +18,6 @@
 	path = dependencies/freestnd-c-hdrs/freestnd-c-hdrs
 	url = https://codeberg.org/osdev/freestnd-c-hdrs
 	shallow = true
-[submodule "dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs"]
-	path = dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs
-	url = https://codeberg.org/osdev/freestnd-cxx-hdrs
-	shallow = true
 [submodule "dependencies/frigg/frigg"]
 	path = dependencies/frigg/frigg
 	url = https://github.com/managarm/frigg
@@ -33,10 +29,6 @@
 [submodule "dependencies/parallel-hashmap/parallel-hashmap"]
 	path = dependencies/parallel-hashmap/parallel-hashmap
 	url = https://github.com/greg7mdp/parallel-hashmap
-	shallow = true
-[submodule "dependencies/hosted-libstdcxx/hosted-libstdcxx"]
-	path = dependencies/hosted-libstdcxx/hosted-libstdcxx
-	url = https://github.com/ilobilo/hosted-libstdcxx
 	shallow = true
 [submodule "dependencies/string/string"]
 	path = dependencies/string/string
@@ -58,4 +50,8 @@
 [submodule "dependencies/demangler/demangler"]
 	path = dependencies/demangler/demangler
 	url = https://github.com/ilobilo/demangler
+	shallow = true
+[submodule "dependencies/libstdcxx-headers/libstdcxx-headers"]
+	path = dependencies/libstdcxx-headers/libstdcxx-headers
+	url = https://github.com/ilobilo/libstdcxx-headers
 	shallow = true

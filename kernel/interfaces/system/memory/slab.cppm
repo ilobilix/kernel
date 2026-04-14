@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module system.memory.slab;
-import cppstd;
+import std;
 
 export namespace slab
 {

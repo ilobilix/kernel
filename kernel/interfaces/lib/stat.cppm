@@ -4,7 +4,7 @@ export module lib:stat;
 
 import :types;
 import :time;
-import cppstd;
+import std;
 
 export
 {

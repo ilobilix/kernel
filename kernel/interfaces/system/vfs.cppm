@@ -4,7 +4,7 @@ export module system.vfs;
 
 import system.memory.virt;
 import lib;
-import cppstd;
+import std;
 
 export namespace vfs
 {

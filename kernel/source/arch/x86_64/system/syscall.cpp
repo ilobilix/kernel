@@ -10,7 +10,7 @@ import system.cpu.self;
 import system.cpu;
 import arch;
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::syscall
 {

@@ -3,7 +3,7 @@
 module lib;
 
 import system.scheduler;
-import cppstd;
+import std;
 
 namespace lib::syscall
 {

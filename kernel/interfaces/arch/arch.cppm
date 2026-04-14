@@ -5,7 +5,7 @@ export module arch;
 import system.cpu;
 import boot;
 import lib;
-import cppstd;
+import std;
 
 export namespace arch
 {

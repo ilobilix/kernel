@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
-import cppstd;
 import lib;
+import std;
 
 // phd memcpy from managarm
 

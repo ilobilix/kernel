@@ -9,7 +9,7 @@ import system.cpu;
 import system.time;
 
 import lib;
-import cppstd;
+import std;
 
 namespace x86_64::timers::tsc
 {

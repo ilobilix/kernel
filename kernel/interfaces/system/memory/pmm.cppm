@@ -1,7 +1,7 @@
 // Copyright (C) 2022-2024  ilobilo
 
 export module system.memory.phys;
-import cppstd;
+import std;
 
 namespace pmm
 {

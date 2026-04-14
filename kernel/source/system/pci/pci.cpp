@@ -6,7 +6,7 @@ import system.memory;
 import system.acpi;
 import magic_enum;
 import lib;
-import cppstd;
+import std;
 
 namespace pci
 {

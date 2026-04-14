@@ -3,7 +3,7 @@
 export module lib:rbtree;
 
 import :bug_on;
-import cppstd;
+import std;
 
 namespace lib
 {
