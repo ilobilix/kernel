@@ -122,7 +122,7 @@ export namespace sched
 
     struct cred_t
     {
-        uid_t ruid = 0;   // real
+        uid_t ruid = 0;  // real
         uid_t euid = 0;  // effective
         uid_t suid = 0;  // saved
         uid_t fsuid = 0; // filesystem

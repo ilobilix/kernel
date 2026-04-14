@@ -39,7 +39,7 @@ namespace sched
             >, lib::spinlock_irq
         > sleep_list;
 
-        std::atomic<pid_t> next_id = 1;
+        std::atomic<pid_t> next_id = 2;
         pid_t alloc_id()
         {
             const auto ret = next_id.fetch_add(1, std::memory_order_relaxed);
@@ -317,6 +317,47 @@ namespace sched
         }
     }
 
+    process_t *create_process(process_t *parent)
+    {
+        auto proc = new process_t { };
+
+        if (parent == nullptr)
+        {
+            proc->pid = 1;
+            proc->parent = proc;
+
+            proc->session = new session_t { };
+            proc->session->sid = proc->pid;
+            proc->session->leader = proc;
+
+            proc->group = new group_t { };
+            proc->group->pgid = proc->pid;
+            proc->group->session = proc->session;
+            proc->group->leader = proc;
+
+            proc->session->foreground_pg = proc->group;
+
+            (*proc->group->members.lock())[proc->pid] = proc;
+            (*proc->session->members.lock())[proc->group->pgid] = proc->group;
+        }
+        else
+        {
+            proc->pid = alloc_id();
+            proc->parent = parent;
+
+            proc->session = proc->parent->session;
+            proc->group = proc->parent->group;
+
+            (*proc->group->members.lock())[proc->pid] = proc;
+        }
+
+        lib::bug_on(get_process(proc->pid));
+        (*processes.lock())[proc->pid] = proc;
+
+        // the caller will set up the rest of the fields
+        return proc;
+    }
+
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
     {
         auto proc = get_process(0);
@@ -356,7 +397,11 @@ namespace sched
         auto thread = new thread_t { };
         thread->self = thread;
 
-        thread->tid = alloc_id();
+        if (auto locked = proc->threads.lock(); locked->empty())
+            thread->tid = proc->pid;
+        else
+            thread->tid = alloc_id();
+
         thread->proc = proc;
 
         thread->nice = nice;

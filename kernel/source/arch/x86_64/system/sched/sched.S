@@ -67,14 +67,10 @@ sched_context_switch:
 sched_return_to_user:
     push 0x23 # ss
     push rsi # rsp
-
-    # rflags
-    # TODO-SCHED-REWRITE
-    pushfq
-    or qword ptr [rsp], 0x200
-    # push 0x202
-
+    pushfq # rflags
     push 0x2B # cs
     push rdi # rip
+
+    swapgs
     iretq
 .global sched_return_to_user

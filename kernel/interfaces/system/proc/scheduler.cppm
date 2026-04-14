@@ -104,6 +104,8 @@ export namespace sched
     // called on yield, block, timer or wake up
     void schedule();
 
+    process_t *create_process(process_t *parent);
+
     // create a new kernel thread under pid 0
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
 
