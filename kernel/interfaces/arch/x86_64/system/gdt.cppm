@@ -18,7 +18,7 @@ export namespace x86_64::gdt
         constexpr std::uint8_t tss = 0x30;
     }
 
-    struct [[gnu::packed]] ptr
+    struct [[gnu::packed]] reg
     {
         std::uint16_t size;
         std::uint64_t offset;
@@ -37,7 +37,7 @@ export namespace x86_64::gdt
 
     namespace tss
     {
-        struct [[gnu::packed]] ptr
+        struct [[gnu::packed]] reg
         {
             std::uint32_t reserved0;
             std::uint64_t rsp[3];
@@ -61,7 +61,7 @@ export namespace x86_64::gdt
             std::uint32_t reserved;
         };
 
-        ptr &self();
+        reg &self();
     } // namespace tss
 
     struct [[gnu::packed]] entries
@@ -75,5 +75,6 @@ export namespace x86_64::gdt
         tss::entry tss;
     };
 
+    void init();
     void init_on(cpu::processor *cpu);
 } // export namespace x86_64::gdt

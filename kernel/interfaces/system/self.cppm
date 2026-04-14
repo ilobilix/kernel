@@ -45,7 +45,7 @@ export namespace cpu
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
                 const auto peraddr = reinterpret_cast<std::uintptr_t>(__percpu_start);
                 const auto offset =  addr - peraddr;
-                return *std::launder(reinterpret_cast<Type *>(reinterpret_cast<std::uintptr_t>(base) + offset));
+                return *const_cast<Type *>(std::launder(reinterpret_cast<volatile Type *>(reinterpret_cast<std::uintptr_t>(base) + offset)));
             }
 
             Type *operator->() { return std::addressof(get()); }

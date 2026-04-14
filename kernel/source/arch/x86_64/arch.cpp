@@ -67,6 +67,12 @@ namespace arch
         log::println(lvl, " - cr2: 0x{:X}, cr3: 0x{:X}, cr4: 0x{:X}", eregs.cr2, eregs.cr3, eregs.cr4);
     }
 
+    void early_init()
+    {
+        x86_64::gdt::init();
+        x86_64::idt::init();
+    }
+
     void init()
     {
         cpu::init_bsp();

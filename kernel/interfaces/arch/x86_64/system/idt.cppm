@@ -39,7 +39,7 @@ export namespace x86_64::idt
         }
     };
 
-    struct [[gnu::packed]] ptr
+    struct [[gnu::packed]] reg
     {
         std::uint16_t limit;
         std::uint64_t base;
@@ -56,7 +56,7 @@ export namespace x86_64::idt
     constexpr std::size_t num_preints = 20;
     constexpr std::uint8_t panic_int = irq(16);
 
-    constexpr ptr invalid { 0, 0 };
+    constexpr reg invalid { 0, 0 };
 
     [[nodiscard]]
     auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>;

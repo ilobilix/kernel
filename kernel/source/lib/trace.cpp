@@ -15,6 +15,9 @@ namespace lib
 {
     void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip)
     {
+        if (!bin::elf::sym::kernel_loaded())
+            return;
+
         if (fp == 0)
             fp = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
 

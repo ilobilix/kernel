@@ -13,7 +13,7 @@ namespace x86_64::gdt
 {
     namespace
     {
-        [[gnu::naked]] void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss)
+        extern "C" [[gnu::naked]] void load_early(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code)
         {
             asm volatile (R"(
                 lgdt [rdi]
@@ -30,22 +30,51 @@ namespace x86_64::gdt
                 push rax
                 retfq
                 1:
+                ret
+            )");
+        }
+
+        [[gnu::naked]] void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss)
+        {
+            asm volatile (R"(
+                call load_early
                 ltr cx
                 ret
             )");
         }
+
+        constinit entries default_gdt
+        {
+            { 0x0000, 0x0000, 0x00, 0b00000000, 0x0, 0b0000, 0x00 }, // null
+            { 0x0000, 0x0000, 0x00, 0b10011010, 0x0, 0b0010, 0x00 }, // kernel code
+            { 0x0000, 0x0000, 0x00, 0b10010010, 0x0, 0b0010, 0x00 }, // kernel data
+            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0100, 0x00 }, // user code 32 bit
+            { 0x0000, 0x0000, 0x00, 0b11110010, 0x0, 0b0010, 0x00 }, // user data
+            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0010, 0x00 }, // user code
+            { 0, 0, 0, 0b10001001, 0x0, 0x0, 0, 0, 0x00000000 } // tss
+        };
     } // namespace
 
     cpu_local<entries> gdt_local;
-    cpu_local<tss::ptr> tss_local;
+    cpu_local<tss::reg> tss_local;
 
     cpu_local_init(gdt_local);
     cpu_local_init(tss_local);
 
     namespace tss
     {
-        ptr &self() { return tss_local.get(); }
+        reg &self() { return tss_local.get(); }
     } // namespace tss
+
+    void init()
+    {
+        static entries early = default_gdt;
+        const reg gdtr {
+            sizeof(entries) - 1,
+            reinterpret_cast<std::uintptr_t>(&early),
+        };
+        load_early(reinterpret_cast<std::uintptr_t>(&gdtr), segment::data, segment::code);
+    }
 
     void init_on(cpu::processor *cpu)
     {
@@ -73,30 +102,19 @@ namespace x86_64::gdt
         tss_local->ist[0] = allocate_stack(); // page fault
         tss_local->ist[1] = allocate_stack(); // scheduler
 
-        tss_local->iopboffset = sizeof(tss::ptr);
+        tss_local->iopboffset = sizeof(tss::reg);
 
         const auto base = reinterpret_cast<std::uintptr_t>(&tss_local.get());
-        const std::uint16_t limit = sizeof(tss::ptr) - 1;
+        const std::uint16_t limit = sizeof(tss::reg) - 1;
 
-        gdt_local = entries {
-            { 0x0000, 0x0000, 0x00, 0b00000000, 0x0, 0b0000, 0x00 }, // null
-            { 0x0000, 0x0000, 0x00, 0b10011010, 0x0, 0b0010, 0x00 }, // kernel code
-            { 0x0000, 0x0000, 0x00, 0b10010010, 0x0, 0b0010, 0x00 }, // kernel data
-            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0100, 0x00 }, // user code 32 bit
-            { 0x0000, 0x0000, 0x00, 0b11110010, 0x0, 0b0010, 0x00 }, // user data
-            { 0x0000, 0x0000, 0x00, 0b11111010, 0x0, 0b0010, 0x00 }, // user code
-            { // tss
-                limit,
-                static_cast<std::uint16_t>(base),
-                static_cast<std::uint8_t>(base >> 16),
-                0b10001001, 0x0, 0x0,
-                static_cast<std::uint8_t>(base >> 24),
-                static_cast<std::uint32_t>(base >> 32),
-                0x00000000
-            }
-        };
+        gdt_local = default_gdt;
+        gdt_local->tss.limit0 = limit;
+        gdt_local->tss.limit0 = limit;
+        gdt_local->tss.base1 = base >> 16;
+        gdt_local->tss.base2 = base >> 24;
+        gdt_local->tss.base3 = base >> 32;
 
-        const ptr gdtr {
+        const reg gdtr {
             sizeof(entries) - 1,
             reinterpret_cast<std::uintptr_t>(&gdt_local.get()),
         };

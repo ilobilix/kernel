@@ -43,6 +43,8 @@ extern "C"
 
     void kmain()
     {
+        arch::early_init();
+
         serial::early_init();
         term::early_init();
 

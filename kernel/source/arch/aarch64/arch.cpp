@@ -42,6 +42,7 @@ namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs, log::level lvl) { lib::unused(regs, lvl); }
 
+    void early_init() { }
     void init()
     {
         cpu::init();
