@@ -1539,6 +1539,9 @@ export namespace std
     using std::operator<=>;
     using std::operator<<;
     using std::operator>>;
+
+    using std::hardware_constructive_interference_size;
+    using std::hardware_destructive_interference_size;
 } // namespace std
 
 export

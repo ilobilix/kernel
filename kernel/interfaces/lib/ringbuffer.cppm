@@ -26,10 +26,9 @@ export namespace lib
     class ringbuffer
     {
         static_assert(Mode == rb_mode::overwrite || Mode == rb_mode::discard, "invalid rb_mode");
-        static_assert(!MultiProducer || Mode == rb_mode::discard, "MultiProducer can only be used with rb_mode::discard");
         static_assert((Cap != 0) && ((Cap & (Cap - 1)) == 0), "capacity must be a power of 2");
-        public:
 
+        public:
         static inline constexpr std::size_t capacity = Cap;
         static inline constexpr rb_mode mode = Mode;
         static inline constexpr bool multi_producer = MultiProducer;
@@ -39,6 +38,7 @@ export namespace lib
 
         private:
         static inline constexpr std::size_t mask = capacity - 1;
+        static inline constexpr std::size_t alignment = std::hardware_destructive_interference_size;
 
         struct cell_t
         {
@@ -46,12 +46,16 @@ export namespace lib
             alignas(value_type) std::byte data[sizeof(value_type)];
         };
 
-        struct alignas(64)
+        struct alignas(alignment)
         {
-            std::conditional_t<multi_producer, std::atomic<std::size_t>, std::size_t> _head;
-            char pad[64 - sizeof(std::size_t)];
-            std::conditional_t<multi_consumer, std::atomic<std::size_t>, std::size_t> _tail;
-        } _cursors;
+            std::conditional_t<multi_producer, std::atomic<std::size_t>, std::size_t> value;
+        } _head;
+
+        static inline constexpr bool tail_is_atomic = multi_consumer || mode == rb_mode::overwrite;
+        struct alignas(alignment)
+        {
+            std::conditional_t<tail_is_atomic, std::atomic<std::size_t>, std::size_t> value;
+        } _tail;
 
         cell_t *_storage;
 
@@ -60,9 +64,9 @@ export namespace lib
         {
             if constexpr (multi_producer)
             {
-                lib::bug_on(mode != rb_mode::discard);
+                bool overwritten = false;
 
-                auto pos = _cursors._head.load(std::memory_order_relaxed);
+                auto pos = _head.value.load(std::memory_order_relaxed);
                 while (true)
                 {
                     auto &cell = _storage[pos & mask];
@@ -71,22 +75,43 @@ export namespace lib
                     const auto dif = static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos);
                     if (dif == 0)
                     {
-                        if (_cursors._head.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
+                        if (_head.value.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
                         {
                             func(reinterpret_cast<void *>(cell.data));
                             cell.sequence.store(pos + 1, std::memory_order_release);
-                            return { };
+
+                            if constexpr (Mode == rb_mode::overwrite)
+                                return overwritten;
+                            else
+                                return { };
                         }
                     }
-                    else if (dif > 0)
-                        pos = _cursors._head.load(std::memory_order_relaxed);
-                    else
-                        return std::unexpected { rb_error::full };
+                    else if (dif < 0)
+                    {
+                        if constexpr (mode == rb_mode::overwrite)
+                        {
+                            auto current_tail = _tail.value.load(std::memory_order_relaxed);
+                            const auto diff = static_cast<std::ssize_t>(pos) - static_cast<std::ssize_t>(current_tail);
+                            if (diff >= static_cast<std::ssize_t>(capacity))
+                            {
+                                if (_tail.value.compare_exchange_weak(current_tail, current_tail + 1, std::memory_order_relaxed))
+                                {
+                                    auto &tail_cell = _storage[current_tail & mask];
+                                    reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
+                                    tail_cell.sequence.store(current_tail + mask + 1, std::memory_order_release);
+                                    overwritten = true;
+                                }
+                            }
+                            pos = _head.value.load(std::memory_order_relaxed);
+                        }
+                        else return std::unexpected { rb_error::full };
+                    }
+                    else pos = _head.value.load(std::memory_order_relaxed);
                 }
             }
             else
             {
-                auto pos = _cursors._head;
+                auto pos = _head.value;
                 auto &cell = _storage[pos & mask];
                 const auto seq = cell.sequence.load(std::memory_order_acquire);
 
@@ -101,25 +126,36 @@ export namespace lib
                     lib::bug_on(mode != rb_mode::overwrite);
                     lib::bug_on(dif > 0);
 
-                    std::size_t current_tail;
-                    if constexpr (multi_consumer)
-                        current_tail = _cursors._tail.load(std::memory_order_relaxed);
+                    if constexpr (tail_is_atomic)
+                    {
+                        auto current_tail = _tail.value.load(std::memory_order_relaxed);
+                        if (pos - current_tail >= capacity)
+                        {
+                            if (_tail.value.compare_exchange_strong(current_tail, current_tail + 1, std::memory_order_acq_rel))
+                            {
+                                auto &tail_cell = _storage[current_tail & mask];
+                                reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
+                                tail_cell.sequence.store(current_tail + mask + 1, std::memory_order_release);
+                                overwritten = true;
+                            }
+                        }
+                    }
                     else
-                        current_tail = _cursors._tail;
+                    {
+                        const auto current_tail = _tail.value;
 
-                    auto &tail_cell = _storage[current_tail & mask];
-                    reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
+                        auto &tail_cell = _storage[current_tail & mask];
+                        reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
 
-                    if constexpr (multi_consumer)
-                        _cursors._tail.fetch_add(1, std::memory_order_acq_rel);
-                    else
-                        _cursors._tail++;
+                        _tail.value++;
+                        tail_cell.sequence.store(current_tail + mask + 1, std::memory_order_release);
 
-                    overwritten = true;
+                        overwritten = true;
+                    }
                 }
 
                 func(reinterpret_cast<void *>(cell.data));
-                _cursors._head++;
+                _head.value++;
                 cell.sequence.store(pos + 1, std::memory_order_release);
 
                 if constexpr (mode == rb_mode::overwrite)
@@ -130,20 +166,19 @@ export namespace lib
         }
 
         public:
-        ringbuffer()
-            : _storage { lib::allocz<cell_t *>(sizeof(cell_t) * capacity) }
+        ringbuffer() : _storage { lib::allocz<cell_t *>(sizeof(cell_t) * capacity) }
         {
             for (std::size_t i = 0; i < capacity; i++)
                 new (&_storage[i].sequence) std::atomic<std::size_t> { i };
 
             if constexpr (multi_producer)
-                _cursors._head.store(0, std::memory_order_relaxed);
+                _head.value.store(0, std::memory_order_relaxed);
             else
-                _cursors._head = 0;
-            if constexpr (multi_consumer)
-                _cursors._tail.store(0, std::memory_order_relaxed);
+                _head.value = 0;
+            if constexpr (tail_is_atomic)
+                _tail.value.store(0, std::memory_order_relaxed);
             else
-                _cursors._tail = 0;
+                _tail.value = 0;
         }
 
         ~ringbuffer()
@@ -153,14 +188,14 @@ export namespace lib
 
             std::size_t head;
             if constexpr (multi_producer)
-                head = _cursors._head.load(std::memory_order_relaxed);
+                head = _head.value.load(std::memory_order_relaxed);
             else
-                head = _cursors._head;
+                head = _head.value;
             std::size_t tail;
-            if constexpr (multi_consumer)
-                tail = _cursors._tail.load(std::memory_order_relaxed);
+            if constexpr (tail_is_atomic)
+                tail = _tail.value.load(std::memory_order_relaxed);
             else
-                tail = _cursors._tail;
+                tail = _tail.value;
 
             while (tail < head)
             {
@@ -202,9 +237,9 @@ export namespace lib
 
         std::expected<value_type, rb_error> pop()
         {
-            if constexpr (multi_consumer)
+            if constexpr (tail_is_atomic)
             {
-                auto pos = _cursors._tail.load(std::memory_order_relaxed);
+                auto pos = _tail.value.load(std::memory_order_relaxed);
                 while (true)
                 {
                     auto &cell = _storage[pos & mask];
@@ -213,7 +248,7 @@ export namespace lib
                     const auto dif = static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos + 1);
                     if (dif == 0)
                     {
-                        if (_cursors._tail.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
+                        if (_tail.value.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
                         {
                             auto *ptr = reinterpret_cast<value_type *>(cell.data);
                             auto value = std::move(*ptr);
@@ -223,14 +258,15 @@ export namespace lib
                         }
                     }
                     else if (dif > 0)
-                        pos = _cursors._tail.load(std::memory_order_relaxed);
+                        pos = _tail.value.load(std::memory_order_relaxed);
                     else
                         return std::unexpected { rb_error::empty };
                 }
             }
             else
             {
-                std::size_t pos = _cursors._tail;
+                std::size_t pos = _tail.value;
+
                 auto &cell = _storage[pos & mask];
                 const auto seq = cell.sequence.load(std::memory_order_acquire);
 
@@ -241,7 +277,9 @@ export namespace lib
                 auto *ptr = reinterpret_cast<value_type *>(cell.data);
                 auto value = std::move(*ptr);
                 ptr->~value_type();
-                _cursors._tail++;
+
+                _tail.value++;
+
                 cell.sequence.store(pos + mask + 1, std::memory_order_release);
                 return value;
             }
@@ -251,15 +289,15 @@ export namespace lib
         {
             std::size_t head;
             if constexpr (multi_producer)
-                head = _cursors._head.load(std::memory_order_relaxed);
+                head = _head.value.load(std::memory_order_relaxed);
             else
-                head = _cursors._head;
+                head = _head.value;
             std::size_t tail;
-            if constexpr (multi_consumer)
-                tail = _cursors._tail.load(std::memory_order_relaxed);
+            if constexpr (tail_is_atomic)
+                tail = _tail.value.load(std::memory_order_relaxed);
             else
-                tail = _cursors._tail;
-            return (head >= tail) ? (head - tail) : 0;
+                tail = _tail.value;
+            return head - tail;
         }
 
         std::size_t length() const { return size(); }
@@ -279,7 +317,12 @@ export namespace lib
     using rbspmcd = ringbuffer<Type, Cap, rb_mode::discard, false, true>;
 
     template<typename Type, std::size_t Cap>
-    using rbmpsc = ringbuffer<Type, Cap, rb_mode::discard, true, false>;
+    using rbmpsco = ringbuffer<Type, Cap, rb_mode::overwrite, true, false>;
     template<typename Type, std::size_t Cap>
-    using rbmpmc = ringbuffer<Type, Cap, rb_mode::discard, true, true>;
+    using rbmpscd = ringbuffer<Type, Cap, rb_mode::discard, true, false>;
+
+    template<typename Type, std::size_t Cap>
+    using rbmpmco = ringbuffer<Type, Cap, rb_mode::overwrite, true, true>;
+    template<typename Type, std::size_t Cap>
+    using rbmpmcd = ringbuffer<Type, Cap, rb_mode::discard, true, true>;
 } // export namespace lib
