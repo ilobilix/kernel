@@ -603,129 +603,132 @@ namespace sched
         }
     }
 
-    void reaper()
+    namespace
     {
-        auto &pcpu = percpu.unsafe_get();
-        auto &dead = pcpu.dead_threads;
-        auto &me = pcpu.reaper_thread;
-
-        while (true)
+        void reaper()
         {
+            auto &pcpu = percpu.unsafe_get();
+            auto &dead = pcpu.dead_threads;
+            auto &me = pcpu.reaper_thread;
+
             while (true)
             {
-                if (!dead.empty())
-                    break;
-
-                me->prepare_sleep();
-                lib::bug_on(me->sleep_until.has_value());
-                yield();
-                lib::bug_on(dead.empty());
-            }
-
-            // for batch reaping
-            me->prepare_sleep(timeslice * 5);
-            yield();
-
-            disable();
-            auto list = std::move(dead);
-            enable();
-
-            while (!list.empty())
-            {
-                // TODO
-                const auto thread = list.front();
-                list.pop_front();
-
-                auto proc = thread->parent;
-                const std::unique_lock _ { proc->lock };
-                lib::bug_on(proc->threads.erase(thread->tid) != 1);
-
-                delete thread;
-                if (proc->threads.empty())
-                    lib::panic("TODO: process {} exit", proc->pid);
-
-                // TODO: thread, process, group and session cleanup
-            }
-        }
-        std::unreachable();
-    }
-
-    void sleeper()
-    {
-        auto &pcpu = percpu.unsafe_get();
-        auto &queue = pcpu.queue;
-        auto &eepers = pcpu.sleep_queue;
-        auto &dead = pcpu.dead_threads;
-        auto &me = pcpu.sleeper_thread;
-
-        while (true)
-        {
-            auto elocked = eepers.lock();
-            while (elocked->empty())
-            {
-                me->prepare_sleep();
-                lib::bug_on(me->sleep_until.has_value());
-                elocked.unlock();
-                yield();
-                elocked.lock();
-            }
-
-            const auto timer = chrono::main_timer();
-            const auto time = timer->ns();
-
-            const auto begin = elocked->begin();
-            for (auto it = begin; it != elocked->end(); )
-            {
-                const auto thread = (it++).value();
-                lib::bug_on(!thread->sleep_until.has_value());
-
-                switch (thread->status)
+                while (true)
                 {
-                    case status::ready:
-                        thread->sleep_until = std::nullopt;
-                        elocked->remove(thread);
-                        queue.lock()->insert(thread);
+                    if (!dead.empty())
                         break;
-                    case status::killed:
-                        thread->sleep_until = std::nullopt;
-                        elocked->remove(thread);
-                        dead.push_back(thread);
-                        break;
-                    case status::sleeping:
-                    {
-                        if (time < thread->sleep_until.value())
-                            continue;
 
-                        elocked->remove(thread);
+                    me->prepare_sleep();
+                    lib::bug_on(me->sleep_until.has_value());
+                    yield();
+                    lib::bug_on(dead.empty());
+                }
 
-                        thread->sleep_until = std::nullopt;
-                        thread->status = status::ready;
-                        thread->wake_reason = wake_reason::success;
-                        {
-                            // if the woken one has been sleeping for too long
-                            auto qlocked = queue.lock();
-                            if (!qlocked->empty())
-                                thread->vruntime = qlocked->first()->vruntime;
-                            qlocked->insert(thread);
-                        }
-                        break;
-                    }
-                    case status::not_ready:
-                    case status::running:
-                        lib::panic(
-                            "found a {} thread in sleep queue",
-                            magic_enum::enum_name(thread->status)
-                        );
-                        std::unreachable();
-                    default:
-                        std::unreachable();
+                // for batch reaping
+                me->prepare_sleep(timeslice * 5);
+                yield();
+
+                disable();
+                auto list = std::move(dead);
+                enable();
+
+                while (!list.empty())
+                {
+                    // TODO
+                    const auto thread = list.front();
+                    list.pop_front();
+
+                    auto proc = thread->parent;
+                    const std::unique_lock _ { proc->lock };
+                    lib::bug_on(proc->threads.erase(thread->tid) != 1);
+
+                    delete thread;
+                    if (proc->threads.empty())
+                        lib::panic("TODO: process {} exit", proc->pid);
+
+                    // TODO: thread, process, group and session cleanup
                 }
             }
-            elocked.unlock();
-            yield();
+            std::unreachable();
         }
-        std::unreachable();
-    }
+
+        void sleeper()
+        {
+            auto &pcpu = percpu.unsafe_get();
+            auto &queue = pcpu.queue;
+            auto &eepers = pcpu.sleep_queue;
+            auto &dead = pcpu.dead_threads;
+            auto &me = pcpu.sleeper_thread;
+
+            while (true)
+            {
+                auto elocked = eepers.lock();
+                while (elocked->empty())
+                {
+                    me->prepare_sleep();
+                    lib::bug_on(me->sleep_until.has_value());
+                    elocked.unlock();
+                    yield();
+                    elocked.lock();
+                }
+
+                const auto timer = chrono::main_timer();
+                const auto time = timer->ns();
+
+                const auto begin = elocked->begin();
+                for (auto it = begin; it != elocked->end(); )
+                {
+                    const auto thread = (it++).value();
+                    lib::bug_on(!thread->sleep_until.has_value());
+
+                    switch (thread->status)
+                    {
+                        case status::ready:
+                            thread->sleep_until = std::nullopt;
+                            elocked->remove(thread);
+                            queue.lock()->insert(thread);
+                            break;
+                        case status::killed:
+                            thread->sleep_until = std::nullopt;
+                            elocked->remove(thread);
+                            dead.push_back(thread);
+                            break;
+                        case status::sleeping:
+                        {
+                            if (time < thread->sleep_until.value())
+                                continue;
+
+                            elocked->remove(thread);
+
+                            thread->sleep_until = std::nullopt;
+                            thread->status = status::ready;
+                            thread->wake_reason = wake_reason::success;
+                            {
+                                // if the woken one has been sleeping for too long
+                                auto qlocked = queue.lock();
+                                if (!qlocked->empty())
+                                    thread->vruntime = qlocked->first()->vruntime;
+                                qlocked->insert(thread);
+                            }
+                            break;
+                        }
+                        case status::not_ready:
+                        case status::running:
+                            lib::panic(
+                                "found a {} thread in sleep queue",
+                                magic_enum::enum_name(thread->status)
+                            );
+                            std::unreachable();
+                        default:
+                            std::unreachable();
+                    }
+                }
+                elocked.unlock();
+                yield();
+            }
+            std::unreachable();
+        }
+    } // namespace
 
     void schedule(cpu::registers *regs)
     {

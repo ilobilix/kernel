@@ -128,37 +128,37 @@ namespace cpu
             constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
             constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
 
+            void xsaveopt(std::byte *region)
+            {
+                asm volatile ("xsaveopt [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+            }
+
+            void xsave(std::byte *region)
+            {
+                asm volatile ("xsave [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+            }
+
+            void xrstor(std::byte *region)
+            {
+                asm volatile ("xrstor [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+            }
+
+            void fxsave(std::byte *region)
+            {
+                asm volatile ("fxsave [%0]" :: "r"(region) : "memory");
+            }
+
+            void fxrstor(std::byte *region)
+            {
+                asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
+            }
+
             cpu_local(fpu, fpu_percpu);
         } // namespace
 
         fpu &get_fpu()
         {
             return fpu_percpu.unsafe_get();
-        }
-
-        void xsaveopt(std::byte *region)
-        {
-            asm volatile ("xsaveopt [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
-
-        void xsave(std::byte *region)
-        {
-            asm volatile ("xsave [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
-
-        void xrstor(std::byte *region)
-        {
-            asm volatile ("xrstor [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
-
-        void fxsave(std::byte *region)
-        {
-            asm volatile ("fxsave [%0]" :: "r"(region) : "memory");
-        }
-
-        void fxrstor(std::byte *region)
-        {
-            asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
         }
 
         void enable()
