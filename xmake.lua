@@ -267,7 +267,8 @@ toolchain("ilobilix-clang")
                 "-mno-sse",
                 "-mno-sse2",
                 "-mno-80387",
-                "-mcmodel=kernel"
+                "-mcmodel=kernel",
+                "-mstack-alignment=8"
             )
         elseif is_arch("aarch64") then
             target = "aarch64-elf"
