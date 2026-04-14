@@ -126,6 +126,8 @@ export namespace lib::initgraph
             >
         > _pending;
 
+        std::string_view _name;
+
         protected:
         void on_realise_node(initgraph::node *node)
         {
@@ -163,11 +165,14 @@ export namespace lib::initgraph
         }
 
         public:
-        constexpr engine() = default;
+        constexpr engine(std::string_view name) : _name { name } { }
         ~engine() = default;
 
         void run()
         {
+            if constexpr (debug)
+                log::debug("initgraph: running engine '{}'", _name);
+
             for (auto node : _nodes)
                 node->_wanted = true;
 
@@ -211,22 +216,20 @@ export namespace lib::initgraph
                 if (!node->_wanted || node->_done)
                     continue;
 
-                if constexpr (debug)
-                    report_unreached(node);
-
+                report_unreached(node);
                 unreached++;
             }
 
+            if (unreached != 0)
+                on_unreached();
+
             if constexpr (debug)
-            {
-                if (unreached != 0)
-                    on_unreached();
-            }
+                log::debug("initgraph: finished running engine '{}'", _name);
         }
     };
 
-    constinit engine presched_init_engine { };
-    constinit engine postsched_init_engine { };
+    constinit engine presched_init_engine { "presched-engine" };
+    constinit engine postsched_init_engine { "postsched-engine" };
 
     inline void realise_node(node *node)
     {

@@ -91,6 +91,7 @@ namespace x86_64::idt
         }
 
         const auto self = cpu::self();
+        const bool old = self->in_interrupt.exchange(true, std::memory_order_release);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
@@ -100,6 +101,8 @@ namespace x86_64::idt
                 auto &handler = irq_handlers[idx];
                 if (handler.used())
                     handler(regs);
+                else
+                    lib::panic(regs, "unhandled irq {}", vector);
             }
 
             eoi(vector);
@@ -110,13 +113,22 @@ namespace x86_64::idt
             {
                 const bool by_write = (regs->error_code & (1 << 2)) != 0;
                 if (vmm::handle_pfault(rdreg(cr2), by_write))
-                    return;
+                    goto end;
             }
 
             if (self)
+            {
+                if (sched::is_initialised())
+                {
+                    const auto thread = sched::this_thread();
+                    lib::panic(regs, "exception {}: '{}' on cpu {} on thread [{}:{}]",
+                        vector, exception_messages[vector],
+                        self->idx, thread->parent->pid, thread->tid
+                    );
+                }
                 lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
-            else
-                lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            }
+            lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
             std::unreachable();
         }
         else
@@ -124,6 +136,9 @@ namespace x86_64::idt
             lib::panic(regs, "unknown interrupt {}", vector);
             std::unreachable();
         }
+
+        end:
+        self->in_interrupt.store(old, std::memory_order_release);
     }
 
     void init()

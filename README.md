@@ -45,3 +45,4 @@ Make sure you have recent versions of the following programs installed:
 ## Known Bugs
 * ``aarch64`` basically doesn't work
 * unconfirmed: sometimes sleeping thread doesn't wake up on bare metal
+* unconfirmed: slab allocator mapping breaks on that one laptop

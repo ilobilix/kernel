@@ -18,6 +18,7 @@ export namespace arch
 
     void int_switch(bool on);
     bool int_status();
+    bool in_interrupt();
 
     inline bool int_switch_status(bool on)
     {

@@ -94,6 +94,7 @@ export namespace vmm
             std::shared_ptr<object> obj, off_t offset
         );
         std::expected<void, error> unmap(std::uintptr_t address, std::size_t length);
+        std::expected<void, error> unmap(std::shared_ptr<object> obj);
         std::expected<void, error> protect(std::uintptr_t address, std::size_t length,std::uint8_t prot);
 
         bool is_mapped(std::uintptr_t addr, std::size_t length);

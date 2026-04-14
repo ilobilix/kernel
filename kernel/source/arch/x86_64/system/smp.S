@@ -149,6 +149,11 @@ smp_trampoline_start:
     mov rax, cr3
     mov cr3, rax
 
+    xor rax, rax
+    xor rdx, rdx
+    mov ecx, 0xC0000101
+    wrmsr
+
     mov rdi, qword ptr [rbx + .Lpassed_info.proc]
 
     mov rax, 1

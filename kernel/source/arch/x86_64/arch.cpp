@@ -56,6 +56,11 @@ namespace arch
         return rflags & (1 << 9);
     }
 
+    bool in_interrupt()
+    {
+        return cpu::percpu_available() && cpu::self()->in_interrupt.load(std::memory_order_acquire);
+    }
+
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, log::level lvl)
     {
         log::println(lvl, "cpu context:");

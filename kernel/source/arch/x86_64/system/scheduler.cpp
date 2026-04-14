@@ -26,7 +26,7 @@ namespace sched::arch
 
     void init()
     {
-        // x86_64::idt::table()[14].ist = 1;
+        x86_64::idt::table()[sched_vector].ist = 2;
         auto [handler, _] = interrupts::allocate(cpu::self()->idx, sched_vector).value();
         handler.set(schedule);
     }
@@ -54,8 +54,6 @@ namespace sched::arch
 
         thread->fpu = reinterpret_cast<std::byte *>(vfpu);
         thread->fpu_size = fpu.size;
-
-        thread->pfstack_top = thread::allocate_kstack(proc);
 
         if (thread->is_user)
         {
@@ -90,11 +88,6 @@ namespace sched::arch
         const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
         if (const auto ret = pmap->unmap_dealloc(vaddr, thread->fpu_size, vmm::page_size::small); !ret)
             lib::panic("could not unmap thread's fpu storage: {}", magic_enum::enum_name(ret.error()));
-
-        const auto size = boot::kstack_size;
-        const std::uintptr_t bottom = thread->pfstack_top - size;
-        if (const auto ret = pmap->unmap_dealloc(bottom, size, vmm::page_size::small); !ret)
-            lib::panic("could not unmap thread's page fault stack: {}", magic_enum::enum_name(ret.error()));
     }
 
     void save(thread *thread)
@@ -109,14 +102,13 @@ namespace sched::arch
 
     void load(thread *thread)
     {
-        auto &tss = x86_64::gdt::tss::self();
-        tss.ist[0] = thread->pfstack_top;
-        tss.rsp[0] = thread->kstack_top;
-
         cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread));
 
         if (thread->is_user)
         {
+            auto &tss = x86_64::gdt::tss::self();
+            tss.rsp[0] = thread->kstack_top;
+
             cpu::gs::write_kernel(thread->gs_base);
             cpu::fs::write(thread->fs_base);
             cpu::features::get_fpu().restore(thread->fpu);

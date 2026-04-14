@@ -22,23 +22,10 @@ namespace lib::lock
             arch::int_switch(irq);
     }
 
-    bool acquire_preempt()
-    {
-        auto preempt = sched::is_enabled();
-        sched::disable();
-        return preempt;
-    }
+    bool in_interrupt() { return arch::in_interrupt(); }
 
-    void release_preempt(bool preempt)
-    {
-        if (sched::is_enabled() != preempt)
-        {
-            if (preempt)
-                sched::enable();
-            else
-                sched::disable();
-        }
-    }
+    void acquire_preempt() { sched::disable(); }
+    void release_preempt() { sched::enable(); }
 
     void pause() { arch::pause(); }
 

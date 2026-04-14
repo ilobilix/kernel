@@ -486,7 +486,7 @@ namespace pmm
 
     void free(void *ptr, std::size_t npages)
     {
-        if (npages == 0)
+        if (npages == 0 || ptr == nullptr)
             return;
 
         if (initialised)
@@ -500,7 +500,7 @@ namespace pmm
             else if (normal.in_range(ptr))
                 mem.used -= normal.free(ptr, npages);
             else
-                lib::panic("pmm: attempted to free memory outside managed ranges");
+                lib::panic("pmm: attempted to free memory outside managed ranges: 0x{:X}", reinterpret_cast<std::uintptr_t>(ptr));
         }
         else lib::panic("pmm: attempted to free bootstrap memory");
     }

@@ -95,11 +95,20 @@ namespace cpu
         }
     } // namespace per
 
-    processor *nth(std::size_t n) { return bases ? std::addressof(me.get(bases[n])) : nullptr; }
-    std::uintptr_t nth_base(std::size_t n) { return bases ? bases[n] : 0; }
+    processor *nth(std::size_t n)
+    {
+        return bases ? std::addressof(me.get(bases[n])) : nullptr;
+    }
 
-    bool percpu_available() { return bases != nullptr; }
-    extern "C++" processor *self() { return bases ? std::addressof(me.get()) : nullptr; }
+    std::uintptr_t nth_base(std::size_t n)
+    {
+        return bases ? bases[n] : 0;
+    }
+
+    extern "C++" processor *self()
+    {
+        return bases ? std::addressof(me.get()) : nullptr;
+    }
 
 #if ILOBILIX_LIMINE_MP
     extern "C" void mp_entry(boot::limine_mp_info *);
