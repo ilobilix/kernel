@@ -33,4 +33,4 @@ export namespace bin::elf::sym
     std::uintptr_t klookup(std::string_view name);
 
     auto get_symbols(const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz, std::uintptr_t offset = 0) -> symbol_table;
-} // namespace bin::elf::sym
+} // export namespace bin::elf::sym

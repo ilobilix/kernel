@@ -2,4 +2,5 @@
 
 export module system.bin;
 
+export import system.bin.exec;
 export import system.bin.elf;

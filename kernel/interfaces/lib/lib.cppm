@@ -28,6 +28,8 @@ export import :rwlock;
 export import :semaphore;
 export import :set;
 export import :spinlock;
+export import :syscall;
 export import :trace;
 export import :types;
 export import :unused;
+export import :user;

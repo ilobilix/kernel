@@ -3,6 +3,7 @@
 export module lib:types;
 
 import magic_enum;
+import fmt;
 import cppstd;
 
 export namespace lib
@@ -30,11 +31,60 @@ export namespace lib
 
     template<typename ...Funcs>
     overloaded(Funcs ...) -> overloaded<Funcs...>;
+
+    template<typename>
+    class signature;
+
+    template<typename Ret, typename ...Args>
+    class signature<Ret(Args...)>
+    {
+        public:
+        using type = Ret(Args...);
+        using return_type = Ret;
+        using args_type = std::tuple<Args...>;
+    };
+
+    template<typename Type>
+    struct remove_address_space { using type = Type; };
+
+    template<typename Type, std::size_t N>
+    struct remove_address_space<Type __attribute__((address_space(N)))> { using type = Type; };
+
+    template<typename Type>
+    struct remove_address_space_helper
+    {
+        using base_type = typename std::remove_pointer<Type>::type;
+        using clean_type = typename remove_address_space<base_type>::type;
+        using type = clean_type *;
+    };
+
+    template<typename Type>
+    struct remove_address_space<Type *> : remove_address_space_helper<Type *> { };
+
+    template<typename Type>
+    using remove_address_space_t = typename remove_address_space<Type>::type;
+
+    struct nullable_string
+    {
+        const char *str;
+        explicit constexpr nullable_string(const char *s) : str { s } { }
+    };
 } // export namespace lib
+
+template<>
+struct fmt::formatter<lib::nullable_string> : fmt::formatter<const char *>
+{
+    template<typename FormatContext>
+    auto format(lib::nullable_string str, FormatContext &ctx) const
+    {
+        return formatter<const char *>::format(str.str ?: "(null)", ctx);
+    }
+};
 
 export
 {
     using time_t = std::int64_t;
+    using pid_t = std::int32_t;
 
     using dev_t = std::uint64_t;
     using ino_t = std::uint64_t;

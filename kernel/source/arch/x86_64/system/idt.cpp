@@ -11,6 +11,7 @@ import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.memory.virt;
 import system.interrupts;
+import system.scheduler;
 import system.cpu.self;
 import system.cpu;
 import frigg;
@@ -62,6 +63,8 @@ namespace x86_64::idt
     > irq_handlers;
     cpu_local_init(irq_handlers);
 
+    std::array<entry, num_ints> &table() { return idt; }
+
     [[nodiscard]]
     auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>
     {
@@ -103,9 +106,12 @@ namespace x86_64::idt
         }
         else if (vector < irq(0))
         {
-            const bool by_write = (regs->error_code & (1 << 2)) != 0;
-            if (vector == 14 && (regs->cs & 0x03) && vmm::handle_pfault(rdreg(cr2), by_write))
-                return;
+            if (vector == 14 && sched::is_initialised() && sched::this_thread()->is_user)
+            {
+                const bool by_write = (regs->error_code & (1 << 2)) != 0;
+                if (vmm::handle_pfault(rdreg(cr2), by_write))
+                    return;
+            }
 
             if (self)
                 lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
@@ -137,7 +143,7 @@ namespace x86_64::idt
             log::info("idt: setting up irq handlers");
 
             // page fault ist 0
-            // idt[14].ist = 1;
+            idt[14].ist = 1;
         }
 
         irq_handlers.get(cpu::nth_base(cpu->idx)).resize(num_preints);

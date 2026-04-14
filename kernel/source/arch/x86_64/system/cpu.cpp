@@ -184,11 +184,15 @@ namespace cpu
                 wrreg(cr4, cr4);
             }
 
-            static cpu::id_res res1;
-            static const auto cached1 = cpu::id(0x01, 0, res1);
+            cpu::id_res res1;
+            const auto cached1 = cpu::id(0x01, 0, res1);
 
-            static cpu::id_res res7;
-            static const auto cached7 = cpu::id(0x07, 0, res7);
+            cpu::id_res res7;
+            const auto cached7 = cpu::id(0x07, 0, res7);
+
+            cpu::id_res res13;
+            if (!cpu::id(0x0D, 0, res13))
+                lib::panic("cpu::id(0x0D, 0) failed");
 
             // UMIP SMEP SMAP INVPCID
             if (cached7)
@@ -239,13 +243,10 @@ namespace cpu
 
                 asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
 
-                cpu::id_res res;
-                lib::bug_on(!cpu::id(0x0D, 0, res));
-
-                bool xopt = cpu::id(0x0D, 1, res) && (res.a & (1 << 0));
+                bool xopt = cpu::id(0x0D, 1).value_or(cpu::id_res { }).a & (1 << 0);
 
                 auto &fpu = get_fpu();
-                fpu.size = res.c;
+                fpu.size = res13.c;
                 fpu.save = xopt ? xsaveopt : xsave;
                 fpu.restore = xrstor;
             }

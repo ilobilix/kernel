@@ -1,7 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module lib:bug_on;
+
 import :panic;
+import fmt;
 import cppstd;
 
 export namespace lib
@@ -33,7 +35,7 @@ export namespace lib
             std::source_location location = std::source_location::current()
         ) {
             if (condition)
-                vpanic("BUG BUG BUG!!!!!", std::make_format_args(), nullptr, location);
+                vpanic("BUG BUG BUG!!!!!", fmt::make_format_args(), nullptr, location);
         }
 
         constexpr bug_on(
@@ -41,7 +43,7 @@ export namespace lib
             std::source_location location = std::source_location::current()
         ) {
             if (condition)
-                vpanic(message, std::make_format_args(args...), nullptr, location);
+                vpanic(message, fmt::make_format_args(args...), nullptr, location);
         }
 #else
         public:

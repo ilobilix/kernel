@@ -1,5 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
+module;
+
+#include <cerrno>
+
 export module system.scheduler;
 
 import system.scheduler.base;
@@ -38,14 +42,6 @@ namespace sched
         };
         return table[prio + 20];
     }
-
-    struct friends
-    {
-        static void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority);
-        static void create_pid0();
-        static void start();
-    };
-    void create_pid0();
 } // namespace sched
 
 export namespace sched
@@ -93,7 +89,7 @@ export namespace sched
         std::optional<std::size_t> sleep_until;
 
 #if defined(__x86_64__)
-        // std::uintptr_t pfstack_top;
+        std::uintptr_t pfstack_top;
 
         std::uintptr_t gs_base;
         std::uintptr_t fs_base;
@@ -103,27 +99,29 @@ export namespace sched
 #elif defined(__aarch64__)
 #endif
 
+        errnos err = no_error;
+
         lib::rbtree_hook rbtree_hook;
         frg::default_list_hook<thread> list_hook;
 
         static std::uintptr_t allocate_ustack(process *proc);
         static std::uintptr_t allocate_kstack(process *proc);
 
+        std::uintptr_t modify_ustack();
+        void update_ustack(std::uintptr_t addr);
+
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
 
+        static thread *create(process *parent, std::uintptr_t ip, bool is_user);
+
         thread() = default;
         ~thread();
-
-        private:
-        static thread *create(process *parent, std::uintptr_t ip);
-
-        friend struct friends;
     };
 
     struct process
     {
-        static constexpr std::uintptr_t initial_stck_top = 0x70'000'000'000; // 0x7FF'FFF'FFF'000
+        static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
         static constexpr std::uintptr_t initial_mmap_anon = 0x80'000'000'000;
 
         std::size_t pid;
@@ -135,8 +133,8 @@ export namespace sched
 
         std::shared_ptr<vmm::vmspace> vmspace;
 
-        std::shared_ptr<vfs::dentry> root;
-        std::shared_ptr<vfs::dentry> cwd;
+        vfs::path root;
+        vfs::path cwd;
         mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
         // TODO: fd table
 
@@ -150,13 +148,10 @@ export namespace sched
         std::uintptr_t next_stack_top = initial_stck_top;
         std::uintptr_t mmap_anon_base = initial_mmap_anon;
 
-        process() = default;
-        ~process();
-
-        private:
         static process *create(process *parent, std::shared_ptr<vmm::pagemap> pagemap);
 
-        friend struct friends;
+        process() = default;
+        ~process();
     };
 
     bool is_initialised();
@@ -169,6 +164,7 @@ export namespace sched
     std::size_t yield();
 
     std::size_t allocate_cpu();
+    void enqueue(thread *thread, std::size_t cpu_idx);
 
     void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);
     void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);

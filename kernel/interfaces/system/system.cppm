@@ -12,5 +12,6 @@ export import system.memory;
 export import system.net;
 export import system.pci;
 export import system.scheduler;
+export import system.syscall;
 export import system.time;
 export import system.vfs;

@@ -94,6 +94,8 @@ namespace sched
 
         void save(thread *thread);
         void load(thread *thread);
+
+        void update_stack(thread *thread, std::uintptr_t addr);
     } // namespace arch
 
     namespace
@@ -157,11 +159,48 @@ namespace sched
     std::uintptr_t thread::allocate_kstack(process *proc)
     {
         auto &pmap = proc->vmspace->pmap;
-        auto vaddr = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
+        const auto vaddr = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
         if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::kstack_size;
+    }
+
+    std::uintptr_t thread::modify_ustack()
+    {
+        lib::bug_on(!is_user);
+
+        auto &pmap = vmm::kernel_pagemap;
+        auto &upmap = proc_for(pid)->vmspace->pmap;
+
+        const auto psize = vmm::pagemap::from_page_size(vmm::page_size::small);
+
+        const auto bottom = ustack_top - boot::ustack_size;
+        for (std::uintptr_t i = 0; i < boot::ustack_size; i += psize)
+        {
+            const auto vaddr = bottom + i;
+            const auto ret = upmap->translate(vaddr, vmm::page_size::small);
+            if (!ret.has_value())
+                lib::panic("could not translate user stack page at 0x{:X}", vaddr);
+
+            const auto paddr = ret.value();
+            if (const auto ret = pmap->map(vaddr, paddr, psize, vmm::pflag::rw, vmm::page_size::small); !ret)
+                lib::panic("could not map user stack page into kernel pagemap: {}", magic_enum::enum_name(ret.error()));
+        }
+
+        return ustack_top;
+    }
+
+    void thread::update_ustack(std::uintptr_t addr)
+    {
+        lib::bug_on(!is_user);
+
+        auto &pmap = vmm::kernel_pagemap;
+        const auto bottom = ustack_top - boot::ustack_size;
+        if (const auto ret = pmap->unmap(bottom, boot::ustack_size, vmm::page_size::small); !ret)
+            lib::panic("could not unmap user stack page from kernel pagemap: {}", magic_enum::enum_name(ret.error()));
+
+        arch::update_stack(this, addr);
     }
 
     void thread::prepare_sleep(std::size_t ms)
@@ -216,19 +255,28 @@ namespace sched
         lib::panic("TODO: thread {} deconstructor", tid);
     }
 
-    thread *thread::create(process *parent, std::uintptr_t ip)
+    thread *thread::create(process *parent, std::uintptr_t ip, bool is_user)
     {
+        lib::bug_on(!parent);
         auto thread = new sched::thread { };
 
         thread->tid = parent->next_tid++;
         thread->pid = parent->pid;
         thread->status = status::not_ready;
-        thread->is_user = false;
+        thread->is_user = is_user;
         thread->priority = default_prio;
         thread->vruntime = 0;
 
         auto stack = thread::allocate_kstack(parent);
-        thread->kstack_top = thread->ustack_top = stack;
+        thread->kstack_top = stack;
+
+        if (is_user)
+        {
+            auto ustack = thread::allocate_ustack(parent);
+            thread->ustack_top = ustack;
+        }
+        else thread->ustack_top = stack;
+
         arch::finalise(parent, thread, ip);
 
         const std::unique_lock _ { parent->lock };
@@ -244,6 +292,7 @@ namespace sched
 
     process *process::create(process *parent, std::shared_ptr<vmm::pagemap> pagemap)
     {
+        lib::bug_on(!pagemap);
         auto proc = new process { };
 
         proc->pid = alloc_pid(proc);
@@ -258,7 +307,7 @@ namespace sched
             const std::unique_lock _ { parent->lock };
             parent->children[proc->pid] = proc;
         }
-        else proc->root = proc->cwd = vfs::dentry::root(true);
+        else proc->root = proc->cwd = vfs::get_root(true);
 
         return proc;
     }
@@ -337,14 +386,6 @@ namespace sched
         }
     }
 
-    void friends::spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
-    {
-        const auto thread = thread::create(processes.read_lock()->at(pid), ip);
-        thread->priority = priority;
-        thread->status = status::ready;
-        enqueue(thread, cpu);
-    }
-
     void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority)
     {
         spawn_on(allocate_cpu(), pid, ip, priority);
@@ -352,7 +393,10 @@ namespace sched
 
     void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
     {
-        friends::spawn_on(cpu, pid, ip, priority);
+        const auto thread = thread::create(processes.read_lock()->at(pid), ip, false);
+        thread->priority = priority;
+        thread->status = status::ready;
+        enqueue(thread, cpu);
     }
 
     void reaper()
@@ -572,21 +616,22 @@ namespace sched
         return &stage;
     }
 
-    void friends::create_pid0()
-    {
-        auto proc = process::create(
-            nullptr,
-            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-        );
-        lib::bug_on(proc->pid != 0);
-    }
-
     initgraph::task scheduler_task
     {
         "init-pid0",
-        initgraph::require { ::arch::cpus_stage(), timers::available_stage() },
+        initgraph::require {
+            ::arch::cpus_stage(),
+            timers::available_stage(),
+            vfs::root_mounted_stage()
+        },
         initgraph::entail { available_stage() },
-        friends::create_pid0
+        [] {
+            auto proc = process::create(
+                nullptr,
+                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+            );
+            lib::bug_on(proc->pid != 0);
+        }
     };
 
     void enable()
@@ -610,7 +655,7 @@ namespace sched
         return initialised && preemption.get();
     }
 
-    void friends::start()
+    [[noreturn]] void start()
     {
         static std::atomic_bool should_start = false;
 
@@ -624,7 +669,7 @@ namespace sched
         idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = static_cast<std::size_t>(-1);
 
-        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
+        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), false);
         idle_thread->status = status::ready;
 
         percpu->idle_proc = idle_proc;
@@ -649,11 +694,6 @@ namespace sched
             ::arch::pause();
 
         arch::reschedule(0);
-    }
-
-    [[noreturn]] void start()
-    {
-        friends::start();
         ::arch::halt(true);
     }
 } // namespace sched

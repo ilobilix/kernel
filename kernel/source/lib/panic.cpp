@@ -7,6 +7,7 @@ import system.cpu;
 import boot;
 import arch;
 import lib;
+import fmt;
 import cppstd;
 
 #if ILOBILIX_EXTRA_PANIC_MSG
@@ -35,7 +36,7 @@ namespace lib
     }
 
     [[noreturn, clang::no_sanitize("undefined")]]
-    void vpanic(std::string_view fmt, std::format_args args, cpu::registers *regs, std::source_location location)
+    void vpanic(std::string_view fmt, fmt::format_args args, cpu::registers *regs, std::source_location location)
     {
         arch::halt_others();
 
@@ -97,6 +98,6 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
         { return _func; }
     };
     const custom_location loc { file, line, func };
-    lib::vpanic(message, std::make_format_args(), nullptr, loc);
+    lib::vpanic(message, fmt::make_format_args(), nullptr, loc);
 }
 #endif

@@ -24,6 +24,18 @@ namespace vfs
         lib::mutex lock;
     } // namespace
 
+    path get_root(bool absolute)
+    {
+        if (!absolute && sched::is_initialised())
+            return sched::proc_for(sched::this_thread()->pid)->root;
+
+        path ret { .mnt = nullptr, .dentry = dentry::root(true) };
+        // hmmmm is this correct? what about multiple mounts?
+        if (!ret.dentry->child_mounts.empty())
+            ret.mnt = ret.dentry->child_mounts.front().lock();
+        return ret;
+    }
+
     bool register_fs(std::unique_ptr<filesystem> fs)
     {
         const std::unique_lock _ { lock };
@@ -43,30 +55,29 @@ namespace vfs
         return std::unexpected(error::invalid_filesystem);
     }
 
-    std::shared_ptr<dentry> dentry::root(bool from_sched)
+    std::shared_ptr<dentry> dentry::root(bool absolute)
     {
-        if (!from_sched && sched::is_initialised())
-            return sched::proc_for(sched::this_thread()->pid)->root;
+        if (!absolute && sched::is_initialised())
+            return sched::proc_for(sched::this_thread()->pid)->root.dentry;
         return vfs::root;
     }
 
     auto path_for(lib::path _path) -> expect<path>
     {
-        auto res = resolve(std::nullopt, _path);
-        // TODO: relative path based on cwd
+        std::optional<path> parent { };
+        if (sched::is_initialised())
+            parent = sched::proc_for(sched::this_thread()->pid)->root;
+        auto res = resolve(parent, _path);
+        if (!res)
+            return std::unexpected(res.error());
         return res->target;
     }
 
     auto resolve(std::optional<path> parent, lib::path _path) -> expect<resolve_res>
     {
-        auto root = dentry::root();
-
         if (!parent || _path.is_absolute())
-        {
-            parent = path { .mnt = nullptr, .dentry = root };
-            if (!root->child_mounts.empty())
-                parent->mnt = root->child_mounts.front().lock();
-        }
+            parent = get_root(false);
+
         lib::bug_on(!parent.has_value());
 
         if (_path == "/" || _path.empty() || _path == ".")

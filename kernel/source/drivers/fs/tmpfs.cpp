@@ -11,11 +11,9 @@ namespace fs::tmpfs
 {
     struct inode : vfs::inode
     {
-        std::vector<std::byte> data;
-
         inode(ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op) : vfs::inode { op }
         {
-            can_mmap = true;
+            memory = std::make_shared<vmm::memobject>();
 
             stat.st_size = 0;
             stat.st_blocks = 0;
@@ -57,7 +55,10 @@ namespace fs::tmpfs
             if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
                 real_size = size - ((offset + size) - back->stat.st_size);
 
-            std::memcpy(buffer.data(), back->data.data() + offset, real_size);
+            if (real_size == 0)
+                return 0;
+
+            self->memory->read(offset, buffer.subspan(0, real_size));
             return real_size;
         }
 
@@ -67,8 +68,7 @@ namespace fs::tmpfs
             const std::unique_lock _ { back->lock };
 
             auto size = buffer.size_bytes();
-            back->data.resize(std::max(back->data.size(), offset + size));
-            std::memcpy(back->data.data() + offset, buffer.data(), size);
+            self->memory->write(offset, buffer.subspan(0, size));
 
             if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
             {
@@ -78,25 +78,15 @@ namespace fs::tmpfs
             return size;
         }
 
-        std::uintptr_t mmap(std::shared_ptr<vfs::inode> self, std::uintptr_t page, int flags) override
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
         {
-            auto back = reinterpret_cast<inode *>(self.get());
-            const std::unique_lock _ { back->lock };
-
-            lib::bug_on(page * pmm::page_size >= back->data.size());
-
-            if (flags & vmm::flag::shared)
-                return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
-
-            auto copy = pmm::alloc();
-            std::memcpy(lib::tohh(copy), back->data.data() + (page * pmm::page_size), std::min(pmm::page_size, back->data.size()));
-            return reinterpret_cast<std::uintptr_t>(copy);
-        }
-
-        bool munmap(std::shared_ptr<vfs::inode> self, std::uintptr_t page) override
-        {
-            lib::unused(self, page);
-            return false;
+            if (priv)
+            {
+                auto memory = std::make_shared<vmm::memobject>();
+                self->memory->copy_to(*memory, 0, static_cast<std::size_t>(self->stat.st_size));
+                return memory;
+            }
+            return self->memory;
         }
 
         bool sync() override { return true; }

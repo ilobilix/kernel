@@ -61,6 +61,20 @@ typedef struct
 #define EI_OSABI 7
 #define ELFOSABI_SYSV 0
 
+#define EM_AARCH64 183
+#define EM_X86_64 62
+
+#define EI_VERSION 6
+#define EV_CURRENT 1
+
+#if defined(__x86_64__)
+#  define EM_CURRENT EM_X86_64
+#elif defined(__aarch64__)
+#  define EM_CURRENT EM_AARCH64
+#else
+#  error "elf.h: unsupported architecture"
+#endif
+
 #define ET_DYN 3
 
 typedef struct
@@ -78,6 +92,8 @@ typedef struct
 #define PT_NULL 0
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
+#define PT_INTERP 3
+#define PT_PHDR 6
 
 #define PF_X (1 << 0)
 #define PF_W (1 << 1)
@@ -158,3 +174,9 @@ typedef struct
 #define R_X86_64_GLOB_DAT 6
 #define R_X86_64_JUMP_SLOT 7
 #define R_X86_64_RELATIVE 8
+
+#define AT_NULL 0
+#define AT_PHDR 3
+#define AT_PHENT 4
+#define AT_PHNUM 5
+#define AT_ENTRY 9

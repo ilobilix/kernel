@@ -1,7 +1,0 @@
-// Copyright (C) 2024-2025  ilobilo
-
-#pragma once
-
-#include <fmt/color.h>
-
-namespace std { using namespace fmt; }

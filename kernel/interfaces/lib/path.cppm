@@ -5,6 +5,8 @@ module;
 #include <cwalk.h>
 
 export module lib:path;
+
+import fmt;
 import cppstd;
 
 export namespace lib
@@ -331,7 +333,7 @@ export namespace lib
 } // export namespace lib
 
 template<>
-struct std::formatter<lib::path_view> : std::formatter<std::string_view>
+struct fmt::formatter<lib::path_view> : fmt::formatter<std::string_view>
 {
     template<typename FormatContext>
     auto format(lib::path_view path, FormatContext &ctx) const
@@ -341,7 +343,7 @@ struct std::formatter<lib::path_view> : std::formatter<std::string_view>
 };
 
 template<>
-struct std::formatter<lib::path> : std::formatter<std::string>
+struct fmt::formatter<lib::path> : fmt::formatter<std::string>
 {
     template<typename FormatContext>
     auto format(lib::path path, FormatContext &ctx) const

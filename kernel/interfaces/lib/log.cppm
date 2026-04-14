@@ -4,6 +4,7 @@ export module lib:log;
 
 import :spinlock;
 import :math;
+import fmt;
 import cppstd;
 
 namespace log
@@ -23,23 +24,23 @@ namespace log
     namespace detail
     {
         // no memory allocation needed
-        inline void vprint(std::string_view fmt, std::format_args args)
+        inline void vprint(std::string_view fmt, fmt::format_args args)
         {
             struct {
                 using value_type = char;
                 void push_back(char chr) { unsafe::printc(chr); }
             } printer;
 
-            std::vformat_to(std::back_inserter(printer), fmt, args);
+            fmt::vformat_to(std::back_inserter(printer), fmt, args);
         }
 
         template<typename ...Args> requires (sizeof...(Args) > 0)
         inline void print(std::string_view fmt, Args &&...args)
         {
-            if constexpr (sizeof...(Args) == 1 && std::same_as<std::remove_cvref_t<std::tuple_element_t<0, std::tuple<Args...>>>, std::format_args>)
+            if constexpr (sizeof...(Args) == 1 && std::same_as<std::remove_cvref_t<std::tuple_element_t<0, std::tuple<Args...>>>, fmt::format_args>)
                 vprint(fmt, args...);
             else
-                vprint(fmt, std::make_format_args(args...));
+                vprint(fmt, fmt::make_format_args(args...));
         }
 
         template<typename ...Args>

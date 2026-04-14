@@ -69,6 +69,18 @@ target("ilobilix.modules")
     on_run(function (target)
     end)
 
+target("ilobilix.kerneldefs")
+    set_kind("phony")
+
+    add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage", { public = true })
+    add_defines("cpu_local_init(name, ...)=" ..
+        "void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base)" ..
+            "{ name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); };" ..
+        "[[gnu::section(\".percpu_init\"), gnu::used]]" ..
+        "const auto name ## _init_ptr__ = name ## _init_func__",
+        { public = true }
+    )
+
 target("kallsyms")
     set_default(false)
     set_kind("binary")
@@ -97,6 +109,7 @@ target("ilobilix.elf")
 
     add_deps("modules", { inherit = false })
     add_deps("ilobilix.modules")
+    add_deps("ilobilix.kerneldefs")
     add_deps("kallsyms")
 
     add_files("source/**.cpp")
