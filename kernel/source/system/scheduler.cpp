@@ -753,11 +753,11 @@ namespace sched
         pcpu.in_scheduler.store(false, std::memory_order_release);
     }
 
-    lib::initgraph::stage *pid0_initialised_stage()
+    lib::initgraph::stage *pid0_created_stage()
     {
         static lib::initgraph::stage stage
         {
-            "sched.pid0.initialised",
+            "sched.pid0.created",
             lib::initgraph::presched_init_engine
         };
         return &stage;
@@ -765,10 +765,13 @@ namespace sched
 
     lib::initgraph::task pid0_task
     {
-        "sched.pid0.initialise",
+        "sched.pid0.create",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { arch::cpus_stage(), timers::initialised_stage() },
-        lib::initgraph::entail { pid0_initialised_stage() },
+        lib::initgraph::require {
+            arch::cpus_stage(),
+            timers::initialised_stage()
+        },
+        lib::initgraph::entail { pid0_created_stage() },
         [] {
             auto proc = process::create(
                 nullptr,

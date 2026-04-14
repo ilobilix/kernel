@@ -91,7 +91,7 @@ namespace acpi
     {
         static lib::initgraph::stage stage
         {
-            "acpi.tables-access",
+            "acpi.tables-available",
             lib::initgraph::presched_init_engine
         };
         return &stage;
@@ -121,7 +121,10 @@ namespace acpi
     {
         "acpi.initialise",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { workers_stage() },
+        lib::initgraph::require {
+            pci::acpi::ios_discovered_stage(),
+            workers_stage()
+        },
         lib::initgraph::entail { initialised_stage() },
         [] {
             delete[] early_table_buffer;

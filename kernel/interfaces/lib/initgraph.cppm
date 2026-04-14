@@ -24,11 +24,14 @@ export namespace lib::initgraph
     struct engine;
     struct edge;
 
+    void print_mermaid();
+
     struct edge
     {
         friend struct node;
         friend struct engine;
         friend void realise_edge(edge *edge);
+        friend void print_mermaid();
 
         private:
         node *_source;
@@ -53,10 +56,12 @@ export namespace lib::initgraph
         friend struct engine;
         friend void realise_edge(edge *edge);
         friend void realise_node(node *node);
+        friend void print_mermaid();
 
         private:
         node_type _type;
         engine *_engine;
+        bool _mvisited;
         std::string_view _name;
 
         lib::intrusive_list<edge, &edge::_outhook> _outlist;
@@ -76,7 +81,7 @@ export namespace lib::initgraph
 
         public:
         node(node_type type, engine *engine, std::string_view name = "")
-            : _type { type }, _engine { engine }, _name { name } { realise_node(this); }
+            : _type { type }, _engine { engine }, _mvisited { false }, _name { name } { realise_node(this); }
 
         node(const node &) = delete;
         node &operator=(const node &) = delete;
@@ -84,13 +89,14 @@ export namespace lib::initgraph
         node_type type() const { return _type; }
         engine *engine() { return _engine; }
 
-        std::string_view name() { return _name; }
+        std::string_view name() const { return _name; }
     };
 
     struct engine final
     {
         friend void realise_edge(edge *edge);
         friend void realise_node(node *node);
+        friend void print_mermaid();
 
         private:
         lib::intrusive_list<node, &node::_nodeshook> _nodes;
@@ -200,6 +206,73 @@ export namespace lib::initgraph
 
     constinit engine presched_init_engine { "presched-engine" };
     constinit engine postsched_init_engine { "postsched-engine" };
+
+    void print_mermaid()
+    {
+        static std::array engines {
+            std::ref(presched_init_engine),
+            std::ref(postsched_init_engine)
+        };
+
+        lib::println("---");
+        lib::println("config:");
+        lib::println("  layout: elk");
+        lib::println("---");
+        lib::println("flowchart TD");
+
+        auto print_engine_nodes = [&](engine &eng, std::string_view label)
+        {
+            lib::println("  subgraph {}", label);
+            for (const auto &node : eng._nodes)
+            {
+                if (node.type() == initgraph::node_type::task)
+                    lib::println("    {}", node.name());
+            }
+            lib::println("  end");
+        };
+
+        auto print_engine_edges = [&](engine &eng)
+        {
+            for (auto &start_node : eng._nodes)
+            {
+                if (start_node.type() != initgraph::node_type::task)
+                    continue;
+
+                for (auto &engine : engines)
+                {
+                    for (auto &n : engine.get()._nodes)
+                        n._mvisited = false;
+                    for (auto &n : engine.get()._nodes)
+                        n._mvisited = false;
+                }
+
+                start_node._mvisited = true;
+
+                auto traverse = [&](this auto &self, initgraph::node *curr) -> void
+                {
+                    for (auto &edge : curr->_outlist)
+                    {
+                        auto next = edge._target;
+                        if (next->_mvisited)
+                            continue;
+                        next->_mvisited = true;
+
+                        if (next->type() == initgraph::node_type::task)
+                            lib::println("  {} --> {}", start_node.name(), next->name());
+                        else if (next->type() == initgraph::node_type::stage)
+                            self(next);
+                    }
+                };
+                traverse(&start_node);
+            }
+        };
+
+        for (auto &engine : engines)
+            print_engine_nodes(engine.get(), engine.get()._name);
+
+        for (auto &engine : engines)
+            print_engine_edges(engine.get());
+    }
 
     inline void realise_node(node *node)
     {

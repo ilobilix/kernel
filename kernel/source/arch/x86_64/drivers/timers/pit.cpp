@@ -70,9 +70,9 @@ namespace x86_64::timers::pit
 
     lib::initgraph::task pit_task
     {
-        "timers.arch.pit.initialise",
+        "timers.arch.pit",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::require { arch::bsp_initialised_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
             const std::uint16_t divisor = 1193180 / frequency;

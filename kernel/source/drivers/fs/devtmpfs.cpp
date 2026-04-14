@@ -87,7 +87,10 @@ namespace fs::devtmpfs
     {
         "vfs.devtmpfs.mount",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { vfs::root_mounted_stage(), registered_stage() },
+        lib::initgraph::require {
+            vfs::root_mounted_stage(),
+            registered_stage()
+        },
         lib::initgraph::entail { mounted_stage() },
         [] {
             const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);

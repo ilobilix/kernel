@@ -215,7 +215,7 @@ export namespace sched
     void enable();
     void disable();
 
-    lib::initgraph::stage *pid0_initialised_stage();
+    lib::initgraph::stage *pid0_created_stage();
 
     [[noreturn]] void start();
 } // export namespace sched

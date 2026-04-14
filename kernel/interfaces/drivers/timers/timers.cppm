@@ -23,7 +23,6 @@ export namespace timers
 
     namespace arch
     {
-        lib::initgraph::stage *can_initialise_stage();
         lib::initgraph::stage *initialised_stage();
     } // namespace arch
 } // export namespace timers

@@ -134,7 +134,7 @@ namespace pci
         lib::initgraph::task ios_task
         {
             "pci.arch.discover-ios",
-            lib::initgraph::presched_init_engine,
+            lib::initgraph::postsched_init_engine,
             lib::initgraph::require { acpi::ios_discovered_stage() },
             lib::initgraph::entail { ios_discovered_stage() },
             [] {

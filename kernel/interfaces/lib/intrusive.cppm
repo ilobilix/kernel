@@ -41,6 +41,11 @@ export namespace lib
             return Locate::operator()(*item);
         }
 
+        static inline constexpr intrusive_list_hook<Type> &hook(const Type *item)
+        {
+            return hook(const_cast<Type *>(item));
+        }
+
         static inline constexpr intrusive_list_hook<Type> &hook(void *item)
         {
             return hook(static_cast<Type *>(item));

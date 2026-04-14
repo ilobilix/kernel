@@ -29,7 +29,7 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log_level lvl);
 
-    lib::initgraph::stage *bsp_stage()
+    lib::initgraph::stage *bsp_initialised_stage()
     {
         static lib::initgraph::stage stage
         {
