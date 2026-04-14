@@ -26,8 +26,6 @@ extern "C"
         pci::register_rbs();
         pci::init();
 
-        lib::ensure(time::stall_ns(3'000'000'000));
-
         lib::panic("get stick bugged lol");
 
         arch::halt();

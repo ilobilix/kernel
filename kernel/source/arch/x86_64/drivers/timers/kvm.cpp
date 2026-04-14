@@ -43,7 +43,7 @@ namespace x86_64::timers::kvm
                 std::uint32_t a, b, c, d;
                 kvmclock = cpu::id(base + 1, 0, a, b, c, d) && (a & (1 << 3));
             }
-            log::info("KVM clock supported: {}", kvmclock);
+            log::info("kvmclock: supported: {}", kvmclock);
             return kvmclock;
         } ();
         return cached;

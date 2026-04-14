@@ -19,7 +19,7 @@ namespace x86_64::timers::tsc
             std::uint32_t a, b, c, d;
             // auto tsc = cpu::id(0x01, 0, a, b, c, d) && (d & (1 << 4));
             auto invariant = cpu::id(0x80000007, 0, a, b, c, d) && (d & (1 << 8));
-            log::info("Invariant TSC supported: {}", invariant);
+            log::info("tsc: invariant TSC supported: {}", invariant);
             return invariant;
         } ();
         return cached;
@@ -86,7 +86,7 @@ namespace x86_64::timers::tsc
                 if (const auto clock = time::main_clock(); clock)
                     self.tsc.offset = time_ns() - clock->ns();
 
-                log::debug("TSC frequency: {} hz", freq);
+                log::debug("tsc: frequency: {} hz", freq);
 
                 is_calibrated = true;
             }
@@ -102,7 +102,7 @@ namespace x86_64::timers::tsc
         calibrate(self);
 
         if (!self.tsc.calibrated)
-            log::debug("TSC not calibrated");
+            log::debug("tsc: not calibrated");
     }
 
     void finalise()

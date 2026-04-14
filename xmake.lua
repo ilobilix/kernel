@@ -117,10 +117,10 @@ local logfile = os.projectdir() .. "/log.txt"
 local qemu_args = {
     "-rtc", "base=localtime", "-serial", "stdio",
     "-boot", "order=d,menu=on,splash-time=100",
-    "-drive", "file=" .. os.projectdir() .. "/misc/nvme.img,format=raw,if=none,id=nvm",
-    "-device", "nvme,serial=nvme,drive=nvm",
-    "-nic", "user,model=rtl8139",
-    "-nic", "user,model=e1000"
+    -- "-drive", "file=" .. os.projectdir() .. "/misc/nvme.img,format=raw,if=none,id=nvm",
+    -- "-device", "nvme,serial=nvme,drive=nvm",
+    -- "-nic", "user,model=rtl8139",
+    -- "-nic", "user,model=e1000"
 }
 
 local qemu_accel_args = {
@@ -155,7 +155,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_SYSCALL_LOG=" .. (get_config("syscall_log") and "1" or "0"))
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
-    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_KERNEL_INITIALIZATION")
+    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_KERNEL_INITIALIZATION", "UACPI_OVERRIDE_LIBC")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
     add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
@@ -251,6 +251,7 @@ toolchain("ilobilix-clang")
             "$(projectdir)/kernel/include/std/stubs",
             "$(projectdir)/kernel/include/libc",
             "$(projectdir)/kernel/include/kernel",
+            "$(projectdir)/kernel/include/kernel/uacpi",
             "$(projectdir)/kernel/include/modules"
         )
     end)
@@ -487,8 +488,8 @@ task("qemu")
             bios = true
 
             multi_insert(qemu_args,
-                "-cpu", "max,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35",
-                "-audiodev", "id=audio,driver=alsa", "-machine", "pcspk-audiodev=audio"
+                "-cpu", "max,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35"
+                -- "-audiodev", "id=audio,driver=alsa", "-machine", "pcspk-audiodev=audio"
             )
 
             multi_insert(qemu_dbg_args,

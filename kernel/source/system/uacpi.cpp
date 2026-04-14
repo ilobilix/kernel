@@ -1,7 +1,6 @@
 // Copyright (C) 2024  ilobilo
 
 #include <uacpi/kernel_api.h>
-#include <lib/lock.hpp>
 
 import ilobilix;
 import std;
@@ -132,23 +131,24 @@ extern "C"
         return UACPI_STATUS_UNIMPLEMENTED;
     }
 
-    // TODO
-    /*
-    * NOTE:
-    * 'byte_width' is ALWAYS one of 1, 2, 4. Since PCI registers are 32 bits wide
-    * this must be able to handle e.g. a 1-byte access by reading at the nearest
-    * 4-byte aligned offset below, then masking the value to select the target
-    * byte.
-    */
     uacpi_status uacpi_kernel_pci_read(uacpi_pci_address *address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 *value)
     {
-        lib::unused(address, offset, byte_width, value);
-        return UACPI_STATUS_UNIMPLEMENTED;
+        auto io = pci::getio(address->segment, address->bus);
+        if (!io) [[unlikely]]
+            return UACPI_STATUS_INTERNAL_ERROR;
+
+        *value = io->read(address->segment, address->bus, address->device, address->function, offset, byte_width);
+        return UACPI_STATUS_OK;
     }
+
     uacpi_status uacpi_kernel_pci_write(uacpi_pci_address *address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
     {
-        lib::unused(address, offset, byte_width, value);
-        return UACPI_STATUS_UNIMPLEMENTED;
+        auto io = pci::getio(address->segment, address->bus);
+        if (!io) [[unlikely]]
+            return UACPI_STATUS_INTERNAL_ERROR;
+
+        io->write(address->segment, address->bus, address->device, address->function, offset, value, byte_width);
+        return UACPI_STATUS_OK;
     }
 
     uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size, uacpi_handle *out_handle)
@@ -181,8 +181,8 @@ extern "C"
 
         const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::vspace::acpi, lib::div_roundup(size, pmm::page_size)));
 
-        if (!pmap->map(vaddr, paddr, size, vmm::flag::rw, psize, vmm::caching::mmio))
-            lib::panic("Could not map acpi memory");
+        if (!pmap->map(vaddr, paddr, size, vmm::flag::rw, psize))
+            lib::panic("could not map acpi memory");
 
         return reinterpret_cast<std::uint8_t *>(vaddr) + (addr - paddr);
     }
@@ -199,7 +199,7 @@ extern "C"
         const auto size = lib::align_up((paddr - vaddr) + len, npsize);
 
         if (!pmap->unmap(vaddr, size, psize))
-            lib::panic("Could not unmap acpi memory");
+            lib::panic("could not unmap acpi memory");
     }
 
     void *uacpi_kernel_alloc(uacpi_size size) { return std::malloc(size); }
@@ -218,16 +218,16 @@ extern "C"
         {
             case UACPI_LOG_DEBUG:
             case UACPI_LOG_TRACE:
-                log::debug("{}", str);
+                log::debug("uacpi: {}", str);
                 break;
             case UACPI_LOG_INFO:
-                log::info("{}", str);
+                log::info("uacpi: {}", str);
                 break;
             case UACPI_LOG_WARN:
-                log::warn("{}", str);
+                log::warn("uacpi: {}", str);
                 break;
             case UACPI_LOG_ERROR:
-                log::error("{}", str);
+                log::error("uacpi: {}", str);
                 break;
             default:
                 std::unreachable();
@@ -250,8 +250,8 @@ extern "C"
 
         if (str[len - 1] == '\n')
             str[len - 1] = 0;
-        if (std::isalpha(str[0]))
-            str[0] = std::toupper(str[0]);
+        // if (std::isalpha(str[0]))
+        //     str[0] = std::toupper(str[0]);
 
         char *buffer;
         std::vasprintf(&buffer, str, va);
@@ -259,16 +259,16 @@ extern "C"
         {
             case UACPI_LOG_DEBUG:
             case UACPI_LOG_TRACE:
-                log::debug("{}", buffer);
+                log::debug("uacpi: {}", buffer);
                 break;
             case UACPI_LOG_INFO:
-                log::info("{}", buffer);
+                log::info("uacpi: {}", buffer);
                 break;
             case UACPI_LOG_WARN:
-                log::warn("{}", buffer);
+                log::warn("uacpi: {}", buffer);
                 break;
             case UACPI_LOG_ERROR:
-                log::error("{}", buffer);
+                log::error("uacpi: {}", buffer);
                 break;
             default:
                 std::unreachable();
@@ -297,7 +297,7 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_mutex()
     {
-        return reinterpret_cast<uacpi_handle>(new std::mutex { false });
+        return reinterpret_cast<uacpi_handle>(new std::mutex);
     }
 
     void uacpi_kernel_free_mutex(uacpi_handle handle)
@@ -373,10 +373,10 @@ extern "C"
         switch (req->type)
         {
             case UACPI_FIRMWARE_REQUEST_TYPE_BREAKPOINT:
-                log::info("uACPI: Ignoring breakpoint");
+                log::info("uACPI: ignoring breakpoint");
                 break;
             case UACPI_FIRMWARE_REQUEST_TYPE_FATAL:
-                log::error("Fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
+                log::error("fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
                     static_cast<int>(req->fatal.type), req->fatal.code, req->fatal.arg
                 );
                 break;
@@ -396,7 +396,7 @@ extern "C"
 
         auto handler = interrupts::get(cpu::bsp_idx, vector).value();
         if (handler.get().used())
-            lib::panic("Requested uACPI interrupt vector {} is already in use", vector);
+            lib::panic("requested uACPI interrupt vector {} is already in use", vector);
 
         handler.get().set([](cpu::registers *, auto func, auto ctx) { func(ctx); }, func, ctx);
         interrupts::unmask(vector);
@@ -418,23 +418,23 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_spinlock()
     {
-        return reinterpret_cast<uacpi_handle>(new ticket_lock { true });
+        return reinterpret_cast<uacpi_handle>(new lib::spinlock);
     }
 
     void uacpi_kernel_free_spinlock(uacpi_handle handle)
     {
-        delete reinterpret_cast<ticket_lock *>(handle);
+        delete reinterpret_cast<lib::spinlock *>(handle);
     }
 
     uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle handle)
     {
-        reinterpret_cast<ticket_lock *>(handle)->lock();
+        reinterpret_cast<lib::spinlock *>(handle)->lock();
         return 0;
     }
 
     void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags)
     {
-        reinterpret_cast<ticket_lock *>(handle)->unlock();
+        reinterpret_cast<lib::spinlock *>(handle)->unlock();
     }
 
     // TODO

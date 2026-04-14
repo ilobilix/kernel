@@ -22,7 +22,7 @@ export namespace cpu::arch
         x86_64::gdt::entries gdt;
         x86_64::gdt::tss::ptr tss;
 
-        lib::lazy_init<x86_64::apic::lapic> lapic;
+        frg::manual_box<x86_64::apic::lapic> lapic;
 
         struct {
             void *pvclock = nullptr;

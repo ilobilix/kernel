@@ -13,7 +13,7 @@ namespace pmm
         constexpr std::size_t available = 0;
         constexpr std::size_t used = 1;
 
-        constinit std::mutex lock;
+        constinit lib::spinlock lock;
         constinit lib::bitmap bitmap;
         std::size_t index = 0;
 
@@ -61,7 +61,7 @@ namespace pmm
             ret = inner_alloc(i);
 
             if (ret == nullptr)
-                lib::panic("Out of physical memory to allocate");
+                lib::panic("out of physical memory to allocate");
         }
         std::memset(lib::tohh(ret), 0, count * page_size);
 
@@ -85,7 +85,7 @@ namespace pmm
 
     void reclaim()
     {
-        log::debug("Reclaiming bootloader memory");
+        log::debug("pmm: reclaiming bootloader memory");
 
         const auto memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -102,12 +102,12 @@ namespace pmm
 
     void init()
     {
-        log::info("Initialising the physical memory manager");
+        log::info("pmm: initialising the bitmap allocator");
 
         const auto memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
 
-        log::debug("Memory map entries: {}", num);
+        log::debug("pmm: number of memory maps: {}", num);
 
         for (std::size_t i = 0; i < num; i++)
         {
@@ -152,7 +152,7 @@ namespace pmm
                 std::memset(data, 0xFF, bitmap_entries);
                 bitmap.initialise(data, bitmap_entries);
 
-                log::debug("Bitmap address: 0x{:X}, size: {} Bytes", addr, bitmap_size);
+                log::debug("pmm: bitmap address: 0x{:X}, size: {} bytes", addr, bitmap_size);
 
                 memmap->length -= bitmap_size;
                 memmap->base += bitmap_size;
@@ -165,7 +165,7 @@ namespace pmm
         }
 
         if (found == false)
-            lib::panic("Could not find large enough continuous usable memory space for the pmm bitmap");
+            lib::panic("could not find large enough continuous usable memory space for the pmm bitmap");
 
         for (std::size_t i = 0; i < num; i++)
         {
@@ -177,9 +177,9 @@ namespace pmm
                 bitmap[(memmap->base + ii) / page_size] = available;
         }
 
-        // sometimes a useable memmap entry starts at 0
+        // sometimes a usable memmap entry starts at 0
         bitmap[0] = used;
 
-        log::info("Usable memory: {} Mebibytes", mem.usable / 1024 / 1024);
+        log::info("pmm: usable physical memory: {} mib", mem.usable / 1024 / 1024);
     }
 } // namespace pmm

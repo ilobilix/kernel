@@ -7,7 +7,7 @@ import std;
 
 extern "C"
 {
-    static std::mutex lock;
+    static lib::spinlock lock;
 
     int vprintf(const char *format, va_list arg)
     {

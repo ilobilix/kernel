@@ -86,24 +86,24 @@ namespace x86_64::timers::hpet
     time::clock clock { "hpet", 125, time_ns };
     void init()
     {
-        log::info("HPET supported: {}", supported());
+        log::info("hpet: supported: {}", supported());
 
         const auto vaddr = vmm::alloc_vpages(vmm::vspace::other, 1);
-        log::debug("Mapping HPET to 0x{:X}", vaddr);
+        log::debug("hpet: mapping to 0x{:X}", vaddr);
 
         if (!vmm::kernel_pagemap->map(vaddr, paddr, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))
-            lib::panic("Could not map HPET");
+            lib::panic("could not map HPET");
 
         regs = reinterpret_cast<decltype(regs)>(vaddr);
 
         is_64bit = (regs->cap & ACPI_HPET_COUNT_SIZE_CAP);
         if (is_64bit == false)
-            lib::panic("TODO: 32 bit timer");
+            lib::panic("hpet: TODO: 32 bit timer");
 
         frequency = 1'000'000'000'000'000ull / (regs->cap >> 32);
         std::tie(p, n) = lib::freq2nspn(frequency);
 
-        log::debug("HPET is {} bit, frequency: {} hz", is_64bit ? "64" : "32", frequency);
+        log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", frequency);
 
         // enable main counter
         regs->cfg = 1;

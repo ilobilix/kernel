@@ -4,6 +4,7 @@ module;
 
 #include <uacpi/uacpi.h>
 #include <uacpi/tables.h>
+#include <uacpi/context.h>
 #include <uacpi/acpi.h>
 #include <uacpi/utilities.h>
 #include <uacpi/event.h>
@@ -26,7 +27,7 @@ namespace acpi
     namespace
     {
         constexpr std::size_t early_table_buffer_size = 1024;
-        std::uint8_t early_table_buffer[early_table_buffer_size];
+        std::uint8_t *early_table_buffer;
 
         void parse_madt()
         {
@@ -67,11 +68,13 @@ namespace acpi
 
     void init()
     {
+        delete[] early_table_buffer;
+
         uacpi_status ret = UACPI_STATUS_OK;
         auto check = [ret]
         {
             if (ret != UACPI_STATUS_OK) [[unlikely]]
-                lib::panic("Could not initialise ACPI: {}", uacpi_status_to_string(ret));
+                lib::panic("could not initialise ACPI: {}", uacpi_status_to_string(ret));
         };
 
         ret = uacpi_initialize(0); check();
@@ -132,7 +135,11 @@ namespace acpi
 
     void early()
     {
-        log::debug("Setting up ACPI early table access");
+        log::debug("acpi: setting up early table access");
+
+        early_table_buffer = new std::uint8_t[early_table_buffer_size];
+
+        uacpi_context_set_log_level(UACPI_LOG_INFO);
         uacpi_setup_early_table_access(early_table_buffer, early_table_buffer_size);
 
         uacpi_table_fadt(&fadt);

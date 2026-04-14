@@ -12,8 +12,6 @@ namespace x86_64::gdt
 {
     namespace
     {
-        std::mutex lock;
-
         [[gnu::naked]] void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss)
         {
             asm volatile (R"(
@@ -32,21 +30,22 @@ namespace x86_64::gdt
                 retfq
                 1:
                 ltr cx
+                ret
             )");
         }
     } // namespace
 
     void init_on(cpu::processor *cpu)
     {
-        std::unique_lock _ { lock };
-
         if (cpu->idx == cpu::bsp_idx)
-            log::info("Loading GDT");
+            log::info("gdt: loading on BSP");
 
         auto &gdt = cpu->arch.gdt;
         auto &tss = cpu->arch.tss;
 
-        auto allocate_stack = [] { return lib::tohh(pmm::alloc<std::uint64_t>(boot::kernel_stack_size / pmm::page_size)) + boot::kernel_stack_size; };
+        auto allocate_stack = [] {
+            return lib::tohh(pmm::alloc<std::uint64_t>(boot::kernel_stack_size / pmm::page_size)) + boot::kernel_stack_size;
+        };
         tss.rsp[0] = allocate_stack(); // cpl3 to cpl0
         tss.ist[0] = allocate_stack(); // page fault
         tss.ist[1] = allocate_stack(); // scheduler

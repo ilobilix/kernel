@@ -31,9 +31,9 @@ namespace lib
         log::println("{}", very_important_message());
 #endif
 
-        log::fatal("Kernel panicked with the following message:");
+        log::fatal("kernel panicked with the following message:");
         log::fatal(fmt, args);
-        log::fatal("At {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
+        log::fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
 
         if (regs)
             arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);

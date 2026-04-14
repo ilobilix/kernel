@@ -9,7 +9,7 @@ export import :endian;
 export import :ensure;
 export import :event;
 export import :io;
-export import :lazy_init;
+export import :lock;
 export import :log;
 export import :map;
 export import :math;

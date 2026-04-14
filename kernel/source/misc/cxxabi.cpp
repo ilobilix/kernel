@@ -100,24 +100,6 @@ extern "C"
     }
 } // extern "C"
 
-void ticket_lock::arch_lock()
-{
-    if (_is_spinlock)
-    {
-        _interrupts = arch::int_status();
-        arch::int_toggle(false);
-    }
-}
-
-void ticket_lock::arch_unlock() const
-{
-    if (_is_spinlock)
-    {
-        if (arch::int_status() != _interrupts)
-            arch::int_toggle(_interrupts);
-    }
-}
-
 void ticket_lock::arch_pause() const
 {
     arch::pause();

@@ -1,6 +1,8 @@
 // Copyright (C) 2024  ilobilo
 
 export module lib:event;
+
+import :lock;
 import std;
 
 export namespace lib
@@ -8,13 +10,18 @@ export namespace lib
     struct simple_event
     {
         private:
-        std::atomic_size_t _triggers = 0;
-        std::atomic_size_t _awaiters = 0;
-        std::mutex _lock;
+        std::atomic_size_t _triggers;
+        std::atomic_size_t _awaiters;
+        lib::spinlock _lock;
 
         void arch_pause();
 
         public:
+        simple_event() : _triggers { 0 }, _awaiters { 0 }, _lock { } { }
+
+        simple_event(const simple_event &) = delete;
+        simple_event &operator=(const simple_event &) = delete;
+
         void await();
         bool await_timeout(std::size_t ns);
 
@@ -42,7 +49,5 @@ export namespace lib
         {
             return _awaiters;
         }
-
-        simple_event() = default;
     };
 } // export namespace lib

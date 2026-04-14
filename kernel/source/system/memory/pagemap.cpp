@@ -122,21 +122,14 @@ namespace vmm
 
     void init()
     {
-        log::info("Initialising kernel pagemap");
-        log::debug("HHDM offset is: 0x{:X}", boot::get_hhdm_offset());
+        log::info("vmm: setting up the kernel pagemap");
+        log::debug("vmm: HHDM offset is: 0x{:X}", boot::get_hhdm_offset());
 
-        kernel_pagemap.initialise();
+        kernel_pagemap.initialize();
 
-        log::debug("Mapping:");
-        // {
-        //     log::debug(" - First four gibibytes");
-
-        //     auto psize = pagemap::max_page_size(lib::gib(4));
-        //     if (!kernel_pagemap->map(boot::get_hhdm_offset(), 0, lib::gib(4), flag::rw, psize, caching::normal))
-        //         lib::panic("Could not map virtual memory");
-        // }
+        log::debug("vmm: mapping:");
         {
-            log::debug(" - Memory map entries");
+            log::debug("vmm: memory map entries");
 
             const auto memmaps = boot::requests::memmap.response->entries;
             const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -156,9 +149,6 @@ namespace vmm
                 const auto base = lib::align_down(memmap->base, npsize);
                 const auto end = lib::align_up(memmap->base + memmap->length, npsize);
 
-                // if (end < lib::gib(4))
-                //     continue;
-
                 auto cache = caching::normal;
                 if (type == boot::memmap::framebuffer)
                     cache = caching::framebuffer;
@@ -166,10 +156,10 @@ namespace vmm
                 const auto vaddr = lib::tohh(base);
                 const auto len = end - base;
 
-                log::debug("   - type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
+                log::debug("vmm: - type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
                 if (!kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache))
-                    lib::panic("Could not map virtual memory");
+                    lib::panic("could not map virtual memory");
             }
         }
         {
@@ -180,13 +170,13 @@ namespace vmm
             const auto kernel_file = boot::requests::kernel_file.response->kernel_file;
             const auto kernel_addr = boot::requests::kernel_address.response;
 
-            log::debug(" - Kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);
+            log::debug("vmm: kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);
 
             if (!kernel_pagemap->map(kernel_addr->virtual_base, kernel_addr->physical_base, kernel_file->size, flags, psize, cache))
-                lib::panic("Could not map virtual memory");
+                lib::panic("could not map virtual memory");
         }
 
-        log::debug("Loading the pagemap");
+        log::debug("vmm: loading the pagemap");
         kernel_pagemap->load();
 
         vspace_base = lib::tohh(lib::align_up(pmm::info().top, lib::gib(1)));

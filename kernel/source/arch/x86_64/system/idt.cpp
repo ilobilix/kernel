@@ -23,21 +23,21 @@ namespace x86_64::idt
 
         std::array<const char *, 32> exception_messages
         {
-            "Division by zero", "Debug",
-            "Non-maskable interrupt",
-            "Breakpoint", "Detected overflow",
-            "Out-of-bounds", "Invalid opcode",
-            "No coprocessor", "Double fault",
-            "Coprocessor segment overrun",
-            "Bad TSS", "Segment not present",
-            "Stack fault", "General protection fault",
-            "Page fault", "Unknown interrupt",
-            "Coprocessor fault", "Alignment check",
-            "Machine check", "Reserved",
-            "Reserved", "Reserved", "Reserved",
-            "Reserved", "Reserved", "Reserved",
-            "Reserved", "Reserved", "Reserved",
-            "Reserved", "Reserved", "Reserved"
+            "division by zero", "debug",
+            "non-maskable interrupt",
+            "breakpoint", "detected overflow",
+            "out-of-bounds", "invalid opcode",
+            "no coprocessor", "double fault",
+            "coprocessor segment overrun",
+            "bad TSS", "segment not present",
+            "stack fault", "general protection fault",
+            "page fault", "unknown interrupt",
+            "coprocessor fault", "alignment check",
+            "machine check", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved"
         };
 
         void eoi(std::uint8_t vector)
@@ -82,16 +82,16 @@ namespace x86_64::idt
             eoi(regs->vector);
         }
         else if (regs->vector < irq(0))
-            lib::panic(regs, "Exception '{}'", exception_messages[regs->vector]);
+            lib::panic(regs, "exception {}: '{}'", regs->vector, exception_messages[regs->vector]);
         else
-            lib::panic(regs, "Unknown interrupt {}", regs->vector);
+            lib::panic(regs, "unknown interrupt {}", regs->vector);
     }
 
     void init_on(cpu::processor *cpu)
     {
         if (cpu->idx == cpu::bsp_idx)
         {
-            log::info("Setting up IDT");
+            log::info("idt: setting up and loading");
 
             for (std::size_t i = 0; i < num_ints; i++)
                 idt[i].set(isr_table[i]);

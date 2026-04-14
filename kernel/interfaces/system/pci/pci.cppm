@@ -16,11 +16,10 @@ export namespace pci
 {
     class configio
     {
-        private:
+        public:
         virtual std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) = 0;
         virtual void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) = 0;
 
-        public:
         template<std::unsigned_integral Type> requires (sizeof(Type) <= sizeof(std::uint32_t))
         Type read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, enum_or_int auto offset)
         {
@@ -139,12 +138,12 @@ export namespace pci
     {
         std::uint8_t dev, func;
         std::shared_ptr<pci::bus> parent;
+        std::vector<std::pair<std::uint8_t, std::uint16_t>> caps;
 
         bool is_pcie;
         bool is_secondary;
 
-        entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-            : dev { dev }, func { func }, parent { parent } { }
+        entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func);
 
         template<typename Type>
         Type read(auto offset) const
@@ -175,6 +174,7 @@ export namespace pci
         virtual std::span<bar> get_bars() = 0;
         virtual ~entity() { }
     };
+
     struct bridge : entity
     {
         std::uint8_t secondary_bus;
@@ -187,6 +187,7 @@ export namespace pci
 
         std::span<bar> get_bars() override { return bars; }
     };
+
     struct device : entity
     {
         std::uint16_t venid, devid;
