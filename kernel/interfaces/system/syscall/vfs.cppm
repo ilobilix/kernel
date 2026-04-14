@@ -16,9 +16,21 @@ export namespace syscall::vfs
     std::ssize_t read(int fd, void __user *buf, std::size_t count);
     std::ssize_t write(int fd, const void __user *buf, std::size_t count);
 
+    std::ssize_t pread(int fd, void __user *buf, std::size_t count, off_t offset);
+    std::ssize_t pwrite(int fd, const void __user *buf, std::size_t count, off_t offset);
+
+    std::ssize_t readv(int fd, const struct iovec __user *iov, int iovcnt);
+    std::ssize_t writev(int fd, const struct iovec __user *iov, int iovcnt);
+
+    std::ssize_t preadv(int fd, const struct iovec __user *iov, int iovcnt, off_t offset);
+    std::ssize_t pwritev(int fd, const struct iovec __user *iov, int iovcnt, off_t offset);
+
     off_t lseek(int fd, off_t offset, int whence);
 
     int fstatat(int dirfd, const char __user *pathname, stat __user *statbuf, int flags);
+    int stat(const char __user *pathname, struct stat __user *statbuf);
+    int fstat(int fd, struct stat __user *statbuf);
+    int lstat(const char __user *pathname, struct stat __user *statbuf);
 
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);

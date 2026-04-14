@@ -276,6 +276,225 @@ namespace syscall::vfs
         return ret;
     }
 
+    std::ssize_t pread(int fd, void __user *buf, std::size_t count, off_t offset)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_read(file->flags))
+            return (errno = EBADF, -1);
+
+        auto &stat = file->path.dentry->inode->stat;
+        if (stat.type() == stat::type::s_ifdir)
+            return (errno = EISDIR, -1);
+
+        lib::membuffer buffer { count };
+        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), buffer.span());
+        if (ret < 0)
+            return (errno = -ret, -1);
+
+        if (ret > 0)
+            lib::copy_to_user(buf, buffer.data(), static_cast<std::size_t>(ret));
+
+        stat.update_time(stat::time::access);
+        return ret;
+    }
+
+    std::ssize_t pwrite(int fd, const void __user *buf, std::size_t count, off_t offset)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_write(file->flags))
+            return (errno = EBADF, -1);
+
+        lib::membuffer buffer { count };
+        lib::copy_from_user(buffer.data(), buf, count);
+
+        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), buffer.span());
+        if (ret < 0)
+            return (errno = -ret, -1);
+
+        auto &stat = file->path.dentry->inode->stat;
+        stat.update_time(stat::time::modify | stat::time::status);
+        return ret;
+    }
+
+    struct iovec
+    {
+        void *iov_base;
+        std::size_t iov_len;
+    };
+
+    std::ssize_t readv(int fd, const struct iovec __user *iov, int iovcnt)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_read(file->flags))
+            return (errno = EBADF, -1);
+
+        std::size_t total_read = 0;
+        for (int i = 0; i < iovcnt; i++)
+        {
+            struct iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+
+            lib::membuffer buffer { local_iov.iov_len };
+            const auto ret = fdesc->file->read(buffer.span());
+            if (ret < 0)
+                return (errno = -ret, -1);
+
+            if (ret == 0)
+                break;
+
+            auto uptr = (__force void __user *)local_iov.iov_base;
+            lib::copy_to_user(uptr, buffer.data(), static_cast<std::size_t>(ret));
+            total_read += static_cast<std::size_t>(ret);
+        }
+
+        auto &stat = file->path.dentry->inode->stat;
+        stat.update_time(stat::time::access);
+
+        return static_cast<std::ssize_t>(total_read);
+    }
+
+    std::ssize_t writev(int fd, const struct iovec __user *iov, int iovcnt)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_write(file->flags))
+            return (errno = EBADF, -1);
+
+        std::size_t total_written = 0;
+        for (int i = 0; i < iovcnt; i++)
+        {
+            struct iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+
+            lib::membuffer buffer { local_iov.iov_len };
+            const auto uptr = (__force const void __user *)local_iov.iov_base;
+            lib::copy_from_user(buffer.data(), uptr, local_iov.iov_len);
+
+            const auto ret = fdesc->file->write(buffer.span());
+            if (ret < 0)
+                return (errno = -ret, -1);
+
+            total_written += static_cast<std::size_t>(ret);
+        }
+
+        auto &stat = file->path.dentry->inode->stat;
+        stat.update_time(stat::time::modify | stat::time::status);
+
+        return static_cast<std::ssize_t>(total_written);
+    }
+
+    std::ssize_t preadv(int fd, const struct iovec __user *iov, int iovcnt, off_t offset)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_read(file->flags))
+            return (errno = EBADF, -1);
+
+        std::size_t total_read = 0;
+        for (int i = 0; i < iovcnt; i++)
+        {
+            struct iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+
+            lib::membuffer buffer { local_iov.iov_len };
+            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), buffer.span());
+            if (ret < 0)
+                return (errno = -ret, -1);
+
+            if (ret == 0)
+                break;
+
+            auto uptr = (__force void __user *)local_iov.iov_base;
+            lib::copy_to_user(uptr, buffer.data(), static_cast<std::size_t>(ret));
+            total_read += static_cast<std::size_t>(ret);
+            offset += static_cast<off_t>(ret);
+        }
+
+        auto &stat = file->path.dentry->inode->stat;
+        stat.update_time(stat::time::access);
+
+        return static_cast<std::ssize_t>(total_read);
+    }
+
+    std::ssize_t pwritev(int fd, const struct iovec __user *iov, int iovcnt, off_t offset)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (fd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto &file = fdesc->file;
+        if (!is_write(file->flags))
+            return (errno = EBADF, -1);
+
+        std::size_t total_written = 0;
+        for (int i = 0; i < iovcnt; i++)
+        {
+            struct iovec local_iov;
+            lib::copy_from_user(&local_iov, &iov[i], sizeof(struct iovec));
+
+            lib::membuffer buffer { local_iov.iov_len };
+            const auto uptr = (__force const void __user *)local_iov.iov_base;
+            lib::copy_from_user(buffer.data(), uptr, local_iov.iov_len);
+
+            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), buffer.span());
+            if (ret < 0)
+                return (errno = -ret, -1);
+
+            total_written += static_cast<std::size_t>(ret);
+            offset += static_cast<off_t>(ret);
+        }
+
+        auto &stat = file->path.dentry->inode->stat;
+        stat.update_time(stat::time::modify | stat::time::status);
+
+        return static_cast<std::ssize_t>(total_written);
+    }
+
+    // std::ssize_t preadv2(int fd, const struct iovec __user *iov, int iovcnt, off_t offset, int flags);
+    // std::ssize_t pwritev2(int fd, const struct iovec __user *iov, int iovcnt, off_t offset, int flags);
+
     off_t lseek(int fd, off_t offset, int whence)
     {
         const auto proc = sched::this_thread()->parent;
@@ -375,6 +594,21 @@ namespace syscall::vfs
         return 0;
     }
 
+    int stat(const char __user *pathname, struct stat __user *statbuf)
+    {
+        return fstatat(at_fdcwd, pathname, statbuf, 0);
+    }
+
+    int fstat(int fd, struct stat __user *statbuf)
+    {
+        return fstatat(fd, nullptr, statbuf, at_empty_path);
+    }
+
+    int lstat(const char __user *pathname, struct stat __user *statbuf)
+    {
+        return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow);
+    }
+
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
         const auto proc = sched::this_thread()->parent;
@@ -412,16 +646,31 @@ namespace syscall::vfs
                     return (errno = EMFILE, -1);
                 return static_cast<int>(new_fd.value());
             }
+            case 1030: // F_DUPFD_CLOEXEC
+            {
+                const auto newfd = static_cast<int>(arg);
+                if (newfd < 0)
+                    return (errno = EINVAL, -1);
+                const auto newfdesc = std::make_shared<filedesc>(*fdesc);
+                newfdesc->closexec = true;
+                const auto new_fd = proc->fdt.allocate_fd(newfdesc, newfd, false);
+                if (!new_fd.has_value())
+                    return (errno = EMFILE, -1);
+                return static_cast<int>(new_fd.value());
+            }
             case 1: // F_GETFD
-                return fdesc->file->flags | (fdesc->closexec ? o_closexec : 0);
+                return fdesc->closexec ? o_closexec : 0;
             case 2: // F_SETFD
                 fdesc->closexec = (arg & o_closexec) != 0;
-                fdesc->file->flags = static_cast<int>(arg) & ~o_closexec;
                 break;
-            // case 3: // F_GETFL
-            //     break;
-            // case 4: // F_SETFL
-            //     break;
+            case 3: // F_GETFL
+                return fdesc->file->flags;
+            case 4: // F_SETFL
+            {
+                const auto new_flags = (static_cast<int>(arg) & changeable_status_flags);
+                fdesc->file->flags = (fdesc->file->flags & ~changeable_status_flags) | new_flags;
+                break;
+            }
             default:
                 return (errno = EINVAL, -1);
         }

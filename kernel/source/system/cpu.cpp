@@ -29,11 +29,13 @@ namespace cpu
 
     namespace per
     {
-        extern "C" void (*__start_percpu_init[])(std::uintptr_t);
-        extern "C" void (*__end_percpu_init[])(std::uintptr_t);
+        extern "C"
+        {
+            extern void (*__start_percpu_init[])(std::uintptr_t);
+            extern void (*__end_percpu_init[])(std::uintptr_t);
 
-        extern "C" char __start_percpu[];
-        extern "C" char __end_percpu[];
+            extern char __start_percpu[], __end_percpu[];
+        } // extern "C"
 
         std::uintptr_t init()
         {
