@@ -8,6 +8,7 @@ export import :buffer;
 export import :endian;
 export import :ensure;
 export import :event;
+export import :hash;
 export import :io;
 export import :lock;
 export import :log;

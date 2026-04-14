@@ -395,7 +395,7 @@ extern "C"
 #endif
 
         auto handler = interrupts::get(cpu::bsp_idx, vector).value();
-        if (handler.get().used())
+        if (handler.get().used()) [[unlikely]]
             lib::panic("requested uACPI interrupt vector {} is already in use", vector);
 
         handler.get().set([](cpu::registers *, auto func, auto ctx) { func(ctx); }, func, ctx);

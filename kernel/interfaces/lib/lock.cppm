@@ -63,6 +63,10 @@ namespace lib
         }
     };
 
+#if ILOBILIX_MAX_UACPI_POINTS
+    export using spinlock = spinlock_base<false>;
+#else
     export using spinlock = spinlock_base<true>;
+#endif
     export using spinlock_noints = spinlock_base<false>;
 } // export namespace lib

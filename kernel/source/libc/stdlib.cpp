@@ -8,8 +8,11 @@ extern "C"
 {
     void *malloc(std::size_t size)
     {
-        // return slab::alloc(size);
+#if ILOBILIX_MAX_UACPI_POINTS
+        return slab::alloc(size);
+#else
         return std::calloc(1, size);
+#endif
     }
 
     void *calloc(std::size_t num, std::size_t size)

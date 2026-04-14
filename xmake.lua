@@ -155,6 +155,8 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_SYSCALL_LOG=" .. (get_config("syscall_log") and "1" or "0"))
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
+    add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
+
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_KERNEL_INITIALIZATION", "UACPI_OVERRIDE_LIBC")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
@@ -488,7 +490,7 @@ task("qemu")
             bios = true
 
             multi_insert(qemu_args,
-                "-cpu", "max,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35"
+                "-cpu", "max,migratable=off,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35"
                 -- "-audiodev", "id=audio,driver=alsa", "-machine", "pcspk-audiodev=audio"
             )
 

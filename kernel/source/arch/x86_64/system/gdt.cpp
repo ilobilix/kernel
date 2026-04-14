@@ -50,6 +50,8 @@ namespace x86_64::gdt
         tss.ist[0] = allocate_stack(); // page fault
         tss.ist[1] = allocate_stack(); // scheduler
 
+        tss.iopboffset = sizeof(tss);
+
         const auto base = reinterpret_cast<std::uintptr_t>(&tss);
         const std::uint16_t limit = sizeof(tss::ptr) - 1;
 
