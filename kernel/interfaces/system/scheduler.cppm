@@ -99,6 +99,7 @@ export namespace sched
         std::uintptr_t fs_base;
 
         std::byte *fpu;
+        std::size_t fpu_size;
 #elif defined(__aarch64__)
 #endif
 

@@ -126,9 +126,20 @@ namespace cpu
 
     namespace features
     {
-        constexpr std::uint64_t rfbm = ~0ull;
-        constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
-        constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
+        namespace
+        {
+            constexpr std::uint64_t rfbm = ~0ull;
+            constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
+            constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
+
+            cpu_local<fpu> fpu_percpu;
+            cpu_local_init(fpu_percpu);
+        } // namespace
+
+        fpu &get_fpu()
+        {
+            return fpu_percpu.get();
+        }
 
         void xsaveopt(std::byte *region)
         {
@@ -228,20 +239,19 @@ namespace cpu
 
                 asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
 
-                if (fpu.save != nullptr && fpu.restore != nullptr)
-                    return;
-
                 cpu::id_res res;
                 lib::bug_on(!cpu::id(0x0D, 0, res));
 
                 bool xopt = cpu::id(0x0D, 1, res) && (res.a & (1 << 0));
 
+                auto &fpu = get_fpu();
                 fpu.size = res.c;
                 fpu.save = xopt ? xsaveopt : xsave;
                 fpu.restore = xrstor;
             }
-            else if (fpu.save == nullptr || fpu.restore == nullptr)
+            else
             {
+                auto &fpu = get_fpu();
                 fpu.size = 512;
                 fpu.save = fxsave;
                 fpu.restore = fxrstor;

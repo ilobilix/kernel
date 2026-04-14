@@ -224,14 +224,15 @@ export namespace cpu
     namespace features
     {
         // other cores probably share the same state
-        struct
+        struct fpu
         {
             std::size_t size = 0;
             void (*save)(std::byte *) = nullptr;
             void (*restore)(std::byte *) = nullptr;
-        } fpu [[maybe_unused]];
+        };
 
         void enable();
+        fpu &get_fpu();
     } // namespace features
 
     namespace gs
