@@ -78,6 +78,25 @@ namespace fs::tmpfs
             return size;
         }
 
+        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override
+        {
+            auto back = reinterpret_cast<inode *>(self.get());
+            const std::unique_lock _ { back->lock };
+
+            const auto current_size = static_cast<std::size_t>(back->stat.st_size);
+            if (size == current_size)
+                return true;
+
+            if (size < current_size)
+                self->memory->clear(size, 0, current_size - size);
+            else
+                self->memory->clear(current_size, 0, size - current_size);
+
+            back->stat.st_size = size;
+            back->stat.st_blocks = lib::div_roundup(size, static_cast<std::size_t>(back->stat.st_blksize));
+            return true;
+        }
+
         std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override
         {
             if (priv)

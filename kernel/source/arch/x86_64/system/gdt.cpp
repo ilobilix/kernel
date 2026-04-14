@@ -55,10 +55,7 @@ namespace x86_64::gdt
             log::info("gdt: loading on bsp");
 
         auto allocate_stack = [] {
-            const auto stack = vmm::alloc_vpages(
-                vmm::space_type::stack,
-                boot::kstack_size / pmm::page_size
-            );
+            const auto stack = vmm::alloc_vspace(boot::kstack_size / pmm::page_size);
             if (const auto ret = vmm::kernel_pagemap->map_alloc(stack, boot::kstack_size, vmm::pflag::rw); !ret)
                 lib::panic("could not map kernel stack: {}", magic_enum::enum_name(ret.error()));
 

@@ -159,7 +159,7 @@ namespace sched
     std::uintptr_t thread::allocate_kstack(process *proc)
     {
         auto &pmap = proc->vmspace->pmap;
-        const auto vaddr = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
+        const auto vaddr = vmm::alloc_vspace(boot::kstack_size / pmm::page_size);
         if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
 

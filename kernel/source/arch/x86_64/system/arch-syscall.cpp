@@ -16,8 +16,8 @@ namespace x86_64::syscall::arch
 {
     int arch_prctl(int op, unsigned long __user *addr)
     {
-        auto thread = sched::this_thread();
-        auto address = reinterpret_cast<std::uintptr_t>(addr);
+        const auto thread = sched::this_thread();
+        const auto address = reinterpret_cast<std::uintptr_t>(addr);
         switch (op)
         {
             case 0x1001: // ARCH_SET_GS

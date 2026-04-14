@@ -24,18 +24,21 @@ extern "C"
         if (!format)
             lib::panic("could not identify {} file format", path);
 
-        bin::exec::request req
-        {
-            .file = ret->target,
-            .interp = std::nullopt,
-            .argv = { "bash" },
-            .envp = { "HOME=/home/ilobilix", "PATH=/bin:/usr/bin:/sbin:/usr/sbin" }
-        };
-
         auto pmap = std::make_shared<vmm::pagemap>();
         auto proc = sched::process::create(nullptr, pmap);
 
-        auto thread = format->load(req, proc);
+        auto thread = format->load({
+            .file = ret->target,
+            .interp = std::nullopt,
+            .argv = { "bash" },
+            .envp = {
+                "TERM=linux",
+                "USER=ilobilix",
+                "HOME=/home/ilobilix",
+                "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
+            }
+        }, proc);
+
         if (!thread)
             lib::panic("could not create a thread for {}", path);
 
@@ -57,6 +60,8 @@ extern "C"
         cxxabi::construct();
 
         initgraph::global_init_engine.run();
+
+        pmm::reclaim_bootloader_memory();
 
         sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread));
 

@@ -43,7 +43,7 @@ namespace pci::acpi
 
             static constexpr auto size = 1zu << 20;
             // TODO: random page faults when it's in higher half
-            const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::space_type::pci, size));
+            const auto vaddr = lib::fromhh(vmm::alloc_vspace(size));
 
             const auto flags = vmm::pflag::rw;
             const auto psize = vmm::pagemap::max_page_size(size);

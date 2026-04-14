@@ -145,19 +145,18 @@ namespace vfs
                 if (last)
                     return resolve_res { current, next };
 
-                current = next;
-
-                if (current.dentry->inode->stat.type() == stat::type::s_iflnk)
+                if (next.dentry->inode->stat.type() == stat::type::s_iflnk)
                 {
-                    const auto reduced = reduce(current);
+                    const auto reduced = reduce(current, next);
                     if (!reduced)
                         return std::unexpected(reduced.error());
-                    current = reduced.value();
+                    next = reduced.value();
                 }
 
-                if (current.dentry->inode->stat.type() != stat::type::s_ifdir)
+                if (next.dentry->inode->stat.type() != stat::type::s_ifdir)
                     return std::unexpected(error::not_a_dir);
 
+                current = next;
                 continue;
             }
 
@@ -169,7 +168,7 @@ namespace vfs
         return std::unexpected(error::not_found);
     }
 
-    auto reduce(path src, std::size_t symlink_depth) -> expect<path>
+    auto reduce(path parent, path src, std::size_t symlink_depth) -> expect<path>
     {
         const auto is_symlink = [&src]
         {
@@ -185,10 +184,11 @@ namespace vfs
             if (!is_symlink())
                 return src;
 
-            const auto ret = resolve(src, src.dentry->symlinked_to);
+            const auto ret = resolve(parent, src.dentry->symlinked_to);
             if (!ret || ret->target.dentry == src.dentry)
                 return std::unexpected(error::invalid_symlink);
 
+            parent = ret->parent;
             src = ret->target;
             symlink_depth--;
         }
@@ -332,7 +332,7 @@ namespace vfs
         const auto type = tgt.dentry->inode->stat.type();
         if (follow_links && type == stat::s_iflnk)
         {
-            const auto reduced = reduce(res->target);
+            const auto reduced = reduce(res->parent, res->target);
             if (!reduced)
                 return std::unexpected(reduced.error());
             res->target = reduced.value();

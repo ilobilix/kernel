@@ -34,7 +34,7 @@ namespace bin::elf::exec
             auto &inode = file.dentry->inode;
 
             Elf64_Ehdr ehdr;
-            lib::bug_on(inode->read(0, std::span {
+            lib::panic_if(inode->read(0, std::span {
                 reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
             }) != sizeof(ehdr));
 
@@ -47,7 +47,7 @@ namespace bin::elf::exec
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
-                lib::bug_on(inode->read(
+                lib::panic_if(inode->read(
                     ehdr.e_phoff + i * sizeof(Elf64_Phdr),
                     std::span { reinterpret_cast<std::byte *>(&phdr), sizeof(phdr) }
                 ) != sizeof(phdr));
@@ -72,11 +72,11 @@ namespace bin::elf::exec
                         auto obj = std::make_shared<vmm::memobject>();
 
                         lib::membuffer file_buffer { phdr.p_filesz };
-                        lib::bug_on(inode->read(
+                        lib::panic_if(inode->read(
                             phdr.p_offset, file_buffer.span()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz));
 
-                        lib::bug_on(obj->write(
+                        lib::panic_if(obj->write(
                             misalign, file_buffer.span()
                         ) != phdr.p_filesz);
 
@@ -86,12 +86,12 @@ namespace bin::elf::exec
                             lib::membuffer zeroes { zeroes_len };
                             std::memset(zeroes.data(), 0, zeroes.size());
 
-                            lib::bug_on(obj->write(
+                            lib::panic_if(obj->write(
                                 misalign + phdr.p_filesz, zeroes.span()
                             ) != zeroes_len);
                         }
 
-                        lib::bug_on(!vmspace->map(
+                        lib::panic_if(!vmspace->map(
                             address, phdr.p_memsz + misalign,
                             prot, vmm::flag::private_,
                             obj, 0
@@ -105,7 +105,7 @@ namespace bin::elf::exec
                     case PT_INTERP:
                     {
                         lib::membuffer buffer { phdr.p_filesz - 1 };
-                        lib::bug_on(inode->read(
+                        lib::panic_if(inode->read(
                             phdr.p_offset, buffer.span()
                         ) != static_cast<std::ssize_t>(phdr.p_filesz - 1));
 
@@ -154,7 +154,7 @@ namespace bin::elf::exec
                 ehdr.e_machine == EM_CURRENT;
         }
 
-        sched::thread *load(bin::exec::request &req,  sched::process *proc) const override
+        sched::thread *load(const bin::exec::request &req,  sched::process *proc) const override
         {
             lib::bug_on(!proc);
 

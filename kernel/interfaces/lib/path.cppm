@@ -146,6 +146,8 @@ export namespace lib
         path(std::string_view source) : _str { source } { normalise(); }
         path(const char *source) : _str { source } { normalise(); }
 
+        path(std::size_t n, char c) : _str(n, c) { }
+
         ~path() = default;
 
         path &operator=(const path &) = default;

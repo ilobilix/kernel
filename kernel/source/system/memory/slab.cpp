@@ -18,7 +18,7 @@ namespace slab
         {
             // return lib::tohh(pmm::alloc<std::uintptr_t>(lib::div_roundup(length, pmm::page_size)));
             const auto pages = lib::div_roundup(length, pmm::page_size);
-            const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, pages);
+            const auto vaddr = vmm::alloc_vspace(pages);
 
             const auto psize = vmm::page_size::small;
             const auto flags = vmm::pflag::rw;

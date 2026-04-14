@@ -142,7 +142,7 @@ namespace bin::elf::mod
             auto &back = node->inode;
 
             const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
-            lib::bug_on(back->read(0, std::span {
+            lib::panic_if(back->read(0, std::span {
                 file.get(), static_cast<std::size_t>(back->stat.st_size)
             }) != back->stat.st_size);
 
@@ -194,7 +194,7 @@ namespace bin::elf::mod
 
             decltype(entry::pages) memory;
 
-            const auto loaded_at = vmm::alloc_vpages(vmm::space_type::modules, max_size);
+            const auto loaded_at = vmm::alloc_vspace(max_size);
 
             const auto flags = vmm::pflag::rw;
             const auto psize = vmm::page_size::small;
@@ -294,7 +294,7 @@ namespace bin::elf::mod
                                 default: break;
                             }
                         }
-                        lib::bug_on(
+                        lib::panic_if(
                             dt_strtab == 0 || dt_symtab == 0 || /* dt_strsz == 0 || */
                             dt_rela == 0 || dt_relasz == 0 || dt_relaent == 0
                         );

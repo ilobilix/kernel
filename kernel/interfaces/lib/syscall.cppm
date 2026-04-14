@@ -16,16 +16,13 @@ import cppstd;
 
 namespace lib::syscall
 {
-    template<typename Type>
+    template<typename Type, typename CType = remove_address_space_t<Type>>
     using to_formattable_ptr =
         typename std::conditional_t<
-            std::is_pointer_v<Type>,
+            std::is_pointer_v<CType>,
             std::conditional_t<
-                std::is_constructible_v<
-                    std::string_view,
-                    Type
-                >,
-                nullable_string,
+                std::is_constructible_v<std::string_view, CType>,
+                user_string,
                 const void *
             >, Type
         >;
@@ -35,9 +32,9 @@ namespace lib::syscall
     {
         return std::apply(
             [](const auto &...args) {
-                return std::tuple<to_formattable_ptr<Ts>...>(
-                    ((__force remove_address_space_t<std::remove_cvref_t<decltype(args)>>)args)...
-                );
+                return std::tuple {
+                    ((__force to_formattable_ptr<Ts>)args)...
+                };
             }, tup
         );
     }

@@ -207,6 +207,8 @@ export namespace boot
 //         if (requests::dtb.response == nullptr)
 //             lib::panic("could not get a response to the dtb request");
 // #endif
+
+        get_hhdm_offset(); time();
     }
 } // export namespace boot
 

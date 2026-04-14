@@ -24,10 +24,18 @@ namespace x86_64::syscall
     using namespace ::syscall;
     lib::syscall::entry<6, getter> table[]
     {
+        [0] = { "read", vfs::read },
+        [1] = { "write", vfs::write },
+        [2] = { "open", vfs::open },
+        [3] = { "close", vfs::close },
+        [8] = { "lseek", vfs::lseek },
         [9] = { "mmap", memory::mmap },
+        [10] = { "mprotect", memory::mprotect },
         [11] = { "munmap", memory::munmap },
+        [85] = { "creat", vfs::creat },
         [158] = { "arch_prctl", arch::arch_prctl },
-        [186] = { "gettid", proc::gettid }
+        [186] = { "gettid", proc::gettid },
+        [257] = { "openat", vfs::openat }
     };
 
     extern "C" void syscall_entry();

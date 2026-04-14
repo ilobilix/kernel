@@ -505,26 +505,22 @@ namespace pmm
         else lib::panic("pmm: attempted to free bootstrap memory");
     }
 
-    initgraph::task reclaim_task
+    void reclaim_bootloader_memory()
     {
-        "pmm-reclaim-memory",
-        initgraph::require { initramfs::extracted_stage() },
-        [] {
-            log::debug("pmm: reclaiming bootloader memory");
+        log::debug("pmm: reclaiming bootloader memory");
 
-            const auto memmaps = boot::requests::memmap.response->entries;
-            const std::size_t num = boot::requests::memmap.response->entry_count;
+        const auto memmaps = boot::requests::memmap.response->entries;
+        const std::size_t num = boot::requests::memmap.response->entry_count;
 
-            for (std::size_t i = 0; i < num; i++)
-            {
-                const auto memmap = memmaps[i];
-                if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
-                    continue;
+        for (std::size_t i = 0; i < num; i++)
+        {
+            const auto memmap = memmaps[i];
+            if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
+                continue;
 
-                add_range(memmap->base, memmap->length, true);
-            }
+            add_range(memmap->base, memmap->length, true);
         }
-    };
+    }
 
     void init()
     {

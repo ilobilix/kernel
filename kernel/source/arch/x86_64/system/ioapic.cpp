@@ -59,7 +59,7 @@ namespace x86_64::apic::io
             public:
             ioapic(std::uintptr_t mmio, std::uint32_t gsi_base) : _gsi_base { gsi_base }
             {
-                _mmio = vmm::alloc_vpages(vmm::space_type::other, 1);
+                _mmio = vmm::alloc_vspace(1);
 
                 log::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
 

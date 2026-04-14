@@ -18,8 +18,7 @@ namespace vmm
 {
     namespace
     {
-        constinit std::uintptr_t vspace_base;
-        constinit std::uintptr_t vspaces[magic_enum::enum_count<space_type>()];
+        std::uintptr_t vspace_base;
     } // namespace
 
     auto pagemap::getlvl(entry &entry, bool allocate) -> table *
@@ -387,22 +386,12 @@ namespace vmm
     void init_vspaces()
     {
         vspace_base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
-        for (std::size_t i = 0; auto &entry : vspaces)
-            entry = vspace_base + (lib::gib(4) * (i++));
     }
 
-    std::uintptr_t alloc_vpages(space_type type, std::size_t pages)
+    std::uintptr_t alloc_vspace(std::size_t pages)
     {
-        const auto index = std::to_underlying(type);
-        auto entry = &vspaces[index];
-
-        const auto increment = pages * pmm::page_size;
-
-        if (type != space_type::other && increment && *entry + increment > (vspace_base + (lib::gib(1) * (index + 1))))
-            entry = &vspaces[std::to_underlying(space_type::other)];
-
-        const auto ret = *entry;
-        *entry += increment;
+        const auto ret = vspace_base;
+        vspace_base += pages * pmm::page_size;
         return ret;
     }
 } // namespace vmm

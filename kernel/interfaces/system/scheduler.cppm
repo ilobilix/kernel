@@ -10,6 +10,7 @@ import system.scheduler.base;
 import system.memory.virt;
 import system.cpu.self;
 import system.cpu;
+import system.vfs.file;
 import system.vfs;
 import frigg;
 import lib;
@@ -135,7 +136,7 @@ export namespace sched
         vfs::path root;
         vfs::path cwd;
         mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
-        // TODO: fd table
+        vfs::fdtable fdt;
 
         lib::spinlock lock;
 

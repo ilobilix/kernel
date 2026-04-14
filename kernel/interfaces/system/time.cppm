@@ -2,6 +2,7 @@
 
 export module system.time;
 
+import lib;
 import frigg;
 import cppstd;
 
@@ -24,4 +25,6 @@ export namespace time
     clock *main_clock();
 
     bool stall_ns(std::size_t ns);
+
+    timespec now();
 } // export namespace time

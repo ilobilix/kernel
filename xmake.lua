@@ -150,6 +150,7 @@ end
 local logfile = os.projectdir() .. "/log.txt"
 
 local qemu_args = {
+    "-no-reboot", "-no-shutdown",
     "-rtc", "base=localtime", "-serial", "stdio",
     "-boot", "order=d,menu=on,splash-time=0",
     -- "-drive", "file=" .. os.projectdir() .. "/misc/nvme.img,format=raw,if=none,id=nvm",
@@ -163,7 +164,6 @@ local qemu_accel_args = {
 }
 
 local qemu_dbg_args = {
-    "-no-reboot", "-no-shutdown",
     "-d", "int", "-D", logfile,
     -- "-monitor", "telnet:127.0.0.1:12345,server,nowait"
 }
