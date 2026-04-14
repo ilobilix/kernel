@@ -17,6 +17,9 @@ extern "C"
         serial::init();
         cxxabi::construct();
 
+        frm::init();
+        term::init();
+
         acpi::early();
         arch::init();
         pmm::reclaim();

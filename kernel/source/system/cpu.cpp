@@ -60,7 +60,7 @@ namespace cpu
         }
     }
 
-    extern "C" void cpu_entry(boot::limine_smp_info *);
+    extern "C" void cpu_entry(boot::limine_mp_info *);
     void init()
     {
         const auto smp = boot::requests::smp.response;
@@ -74,7 +74,7 @@ namespace cpu
             if (aid == bsp_aid)
                 continue;
 
-            log::info("cpu: {} {}: arch id: {}", "bringing up CPU", i, aid);
+            log::info("cpu: {} {}: arch id: {}", "bringing up cpu", i, aid);
 
             auto &proc = processors[i];
             proc.self = &proc;

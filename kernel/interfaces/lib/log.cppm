@@ -89,7 +89,6 @@ export namespace log
     inline void print(std::string_view fmt, auto &&...args)
     {
         std::unique_lock _ { _lock };
-
         detail::print(fmt, args...);
     }
 

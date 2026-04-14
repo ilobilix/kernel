@@ -155,7 +155,9 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_SYSCALL_LOG=" .. (get_config("syscall_log") and "1" or "0"))
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
-    add_defines("ILOBILIX_PHD_MEM=1")
+    add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
+
+    add_defines("LIMINE_API_REVISION=2")
 
     add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
@@ -172,7 +174,7 @@ toolchain("ilobilix-clang")
         local cx_args = {
             "-ffreestanding",
             "-fno-stack-protector",
-            -- "-fno-omit-frame-pointer",
+            "-fno-omit-frame-pointer",
 
             "-nostdinc",
 
@@ -272,7 +274,7 @@ add_requires(
     "freestnd-cxx-hdrs", "freestnd-c-hdrs",
     "string", "smart_ptr", "veque", "parallel_hashmap",
     "fmt", "frigg", "frozen", "magic_enum",
-    "limine-terminal", "limine", "ovmf-binaries"
+    "flanterm", "limine", "ovmf-binaries"
 )
 
 -- <-- dependencies

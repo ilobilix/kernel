@@ -25,6 +25,6 @@ export namespace arch
 
     namespace core
     {
-        void bsp(boot::limine_smp_info *cpu);
+        void bsp(boot::limine_mp_info *cpu);
     } // namespace core
 } // export namespace arch

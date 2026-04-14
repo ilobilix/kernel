@@ -23,7 +23,7 @@ export namespace boot
     constexpr std::uintptr_t kernel_stack_size = 0x4000; // 16 kib
     constexpr std::uintptr_t user_stack_size = 0x200000; // 2 mib
 
-    using limine_smp_info = ::limine_smp_info;
+    using limine_mp_info = ::limine_mp_info;
 
     enum class memmap : std::uint64_t
     {
@@ -33,7 +33,7 @@ export namespace boot
         acpi_nvs = LIMINE_MEMMAP_ACPI_NVS,
         bad_memory = LIMINE_MEMMAP_BAD_MEMORY,
         bootloader_reclaimable = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE,
-        kernel_and_modules = LIMINE_MEMMAP_KERNEL_AND_MODULES,
+        kernel_and_modules = LIMINE_MEMMAP_EXECUTABLE_AND_MODULES,
         framebuffer = LIMINE_MEMMAP_FRAMEBUFFER
     };
 
@@ -61,13 +61,13 @@ export namespace boot
         };
 
         [[gnu::used, gnu::section(".requests")]]
-        volatile limine_smp_request smp
+        volatile limine_mp_request smp
         {
-            .id = LIMINE_SMP_REQUEST,
+            .id = LIMINE_MP_REQUEST,
             .revision = 0,
             .response = nullptr,
 #if defined(__x86_64__)
-            .flags = LIMINE_SMP_X2APIC
+            .flags = LIMINE_MP_X2APIC
 #else
             .flags = 0
 #endif
@@ -111,9 +111,9 @@ export namespace boot
         };
 
         [[gnu::used, gnu::section(".requests")]]
-        volatile limine_kernel_file_request kernel_file
+        volatile limine_executable_file_request kernel_file
         {
-            .id = LIMINE_KERNEL_FILE_REQUEST,
+            .id = LIMINE_EXECUTABLE_FILE_REQUEST,
             .revision = 0,
             .response = nullptr
         };
@@ -135,9 +135,9 @@ export namespace boot
         };
 
         [[gnu::used, gnu::section(".requests")]]
-        volatile limine_kernel_address_request kernel_address
+        volatile limine_executable_address_request kernel_address
         {
-            .id = LIMINE_KERNEL_ADDRESS_REQUEST,
+            .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
             .revision = 0,
             .response = nullptr
         };

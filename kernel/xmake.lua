@@ -11,7 +11,7 @@ target("ilobilix.dependencies")
         "freestnd-cxx-hdrs", "freestnd-c-hdrs",
         "string", "smart_ptr", "veque", "parallel_hashmap",
         "fmt", "frigg", "frozen", "magic_enum",
-        "limine-terminal", "limine",
+        "flanterm", "limine",
         { public = true }
     )
 

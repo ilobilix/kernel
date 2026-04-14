@@ -167,7 +167,7 @@ namespace vmm
             static constexpr auto psize = page_size::small;
             static constexpr auto cache = caching::normal;
 
-            const auto kernel_file = boot::requests::kernel_file.response->kernel_file;
+            const auto kernel_file = boot::requests::kernel_file.response->executable_file;
             const auto kernel_addr = boot::requests::kernel_address.response;
 
             log::debug("vmm: kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);

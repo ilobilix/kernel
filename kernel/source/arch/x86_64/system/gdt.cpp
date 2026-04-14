@@ -44,7 +44,9 @@ namespace x86_64::gdt
         auto &tss = cpu->arch.tss;
 
         auto allocate_stack = [] {
-            return lib::tohh(pmm::alloc<std::uint64_t>(boot::kernel_stack_size / pmm::page_size)) + boot::kernel_stack_size;
+            auto stack = lib::tohh(pmm::alloc(boot::kernel_stack_size / pmm::page_size));
+            std::memset(stack, 0, boot::kernel_stack_size);
+            return reinterpret_cast<std::uintptr_t>(stack) + boot::kernel_stack_size;
         };
         tss.rsp[0] = allocate_stack(); // cpl3 to cpl0
         tss.ist[0] = allocate_stack(); // page fault
