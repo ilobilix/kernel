@@ -106,8 +106,6 @@ namespace x86_64::apic
         }
     }
 
-    // the frequency should be the same on all cores
-    // https://discord.com/channels/440442961147199490/734392369230643320/1398724196154216700
     void calibrate_timer()
     {
         lib::bug_on(!supported().first);
@@ -214,44 +212,48 @@ namespace x86_64::apic
             lib::panic("CPU does not support lapic");
 
         auto val = cpu::msr::read(reg::apic_base);
-        const bool is_bsp = (val & (1 << 8));
         const auto phys_mmio = val & 0xFFFFF000;
 
-        if (!is_bsp)
-            lib::bug_on(x2apic != _x2apic, "x2apic support differs from the bsp");
-        else
+        if (!initialised)
+        {
             x2apic = _x2apic;
-
-        if (is_bsp)
             lib::debug("lapic: x2apic supported: {}", x2apic);
+        }
+        else if (!x2apic && pmmio != phys_mmio)
+        {
+            lib::bug_on(x2apic != _x2apic);
+            val &= ~0xFFFFF000;
+            val |= pmmio;
+        }
 
-        // APIC global enable
+        if (!x2apic && (val & (1 << 10)))
+        {
+            cpu::msr::write(reg::apic_base, val & ~((1 << 11) | (1 << 10)));
+            val = cpu::msr::read(reg::apic_base);
+        }
+
         val |= (1 << 11);
-        // x2APIC enable
         if (x2apic)
             val |= (1 << 10);
         else
             val &= ~(1 << 10);
+
         cpu::msr::write(reg::apic_base, val);
 
-        if (!x2apic)
+        if (!x2apic && !initialised)
         {
-            if (is_bsp)
-            {
-                pmmio = phys_mmio;
-                mmio = vmm::alloc_vspace(1);
+            pmmio = phys_mmio;
+            mmio = vmm::alloc_vspace(1);
 
-                lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
+            lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
 
-                const auto psize = vmm::page_size::small;
-                const auto npsize = vmm::pagemap::from_page_size(psize);
-                const auto flags = vmm::pflag::rwg;
-                const auto cache = vmm::caching::mmio;
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto flags = vmm::pflag::rwg;
+            const auto cache = vmm::caching::mmio;
 
-                if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
-                    lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
-            }
-            else lib::bug_on(phys_mmio != pmmio, "lapic mmio address differs from the bsp");
+            if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
+                lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
         }
 
         // Enable all external interrupts
