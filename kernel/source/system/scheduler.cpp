@@ -32,21 +32,18 @@ namespace sched
         public:
         lib::locker<
             lib::rbtree<
-                thread,
-                &thread::rbtree_hook,
+                thread, &thread::rbtree_hook,
                 compare<
                     std::uint64_t,
                     &thread::vruntime
                 >
-            >,
-            lib::spinlock_preempt
+            >, lib::spinlock_preempt
         > queue;
 
         thread *running_thread;
 
         lib::rbtree<
-            thread,
-            &thread::rbtree_hook,
+            thread, &thread::rbtree_hook,
             compare<
                 std::optional<std::size_t>,
                 &thread::sleep_until
@@ -55,6 +52,7 @@ namespace sched
 
         process *idle_proc;
         thread *idle_thread;
+        thread *reaper_thread;
 
         frg::intrusive_list<
             thread,
@@ -138,6 +136,8 @@ namespace sched
         }
     } // namespace
 
+    bool is_initialised() { return initialised; }
+
     std::shared_ptr<group> create_group(process *proc)
     {
         auto grp = std::make_shared<group>();
@@ -198,8 +198,6 @@ namespace sched
         }
         return false;
     }
-
-    bool is_initialised() { return initialised; }
 
     process *proc_for(pid_t pid)
     {
@@ -399,17 +397,23 @@ namespace sched
         auto thread = this_thread();
 
         const bool eeping = thread->status == status::sleeping;
-        const bool old = eeping ? thread->sleep_ints : ::arch::int_status();
+        const bool old = eeping ? thread->sleep_ints : ::arch::int_switch_status(false);
 
-        if (eeping && thread->sleep_for.has_value())
+        if (eeping)
         {
-            const auto clock = time::main_clock();
-            thread->sleep_until = clock->ns() + thread->sleep_for.value();
-            thread->sleep_for = std::nullopt;
+            if (thread->sleep_for.has_value())
+            {
+                const auto clock = time::main_clock();
+                thread->sleep_until = clock->ns() + thread->sleep_for.value();
+                thread->sleep_for = std::nullopt;
+            }
+            percpu->sleep_queue.insert(thread);
         }
 
+        ::arch::int_switch(true);
         arch::reschedule(0);
         ::arch::int_switch(old);
+
         return eeping ? thread->wake_reason : wake_reason::success;
     }
 
@@ -438,17 +442,11 @@ namespace sched
         {
             [[unlikely]] case status::killed:
             [[unlikely]] case status::not_ready:
+            [[unlikely]] case status::sleeping:
                 lib::panic(
                     "can't enqueue a thread that is {}",
                     magic_enum::enum_name(thread->status)
                 );
-                std::unreachable();
-            case status::sleeping:
-                lib::panic_if(
-                    cpu::self()->idx != cpu_idx,
-                    "can't enqueue a sleeping thread on a different cpu"
-                );
-                obj.sleep_queue.insert(thread);
                 break;
             [[likely]] case status::running:
                 thread->status = status::ready;
@@ -461,30 +459,41 @@ namespace sched
         }
     }
 
-    void spawn(pid_t pid, std::uintptr_t ip, nice_t priority)
+    thread *spawn(pid_t pid, std::uintptr_t ip, nice_t priority)
     {
-        spawn_on(allocate_cpu(), pid, ip, priority);
+        return spawn_on(allocate_cpu(), pid, ip, priority);
     }
 
-    void spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority)
+    thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority)
     {
         const auto thread = thread::create(processes.read_lock()->at(pid), ip, false);
         thread->priority = priority;
         thread->status = status::ready;
         enqueue(thread, cpu);
+        return thread;
     }
 
     void reaper()
     {
         auto &dead = percpu->dead_threads;
+        auto &me = percpu->reaper_thread;
         while (true)
         {
             while (true)
             {
-                if (!dead.empty())
-                    break;
-                yield();
+                if (dead.empty())
+                {
+                    me->status = status::sleeping;
+                    lib::bug_on(me->sleep_until.has_value());
+                    yield();
+                    lib::bug_on(dead.empty());
+                }
+                break;
             }
+
+            // for batch reaping
+            me->prepare_sleep(100);
+            yield();
 
             disable();
             decltype(percpu::dead_threads) list;
@@ -559,6 +568,7 @@ namespace sched
 
                     eepers.remove(thread);
 
+                    thread->sleep_until = std::nullopt;
                     thread->status = status::ready;
                     thread->wake_reason = wake_reason::success;
                     {
@@ -593,6 +603,8 @@ namespace sched
         auto &dead = pcpu.dead_threads;
 
         thread *next = nullptr;
+        bool found_dead = false;
+
         {
             auto locked = pcpu.queue.lock();
 
@@ -616,6 +628,7 @@ namespace sched
                     case status::killed:
                         locked->remove(thread);
                         dead.push_back(thread);
+                        found_dead = true;
                         break;
                     [[unlikely]] case status::not_ready:
                         break;
@@ -651,13 +664,26 @@ namespace sched
                     if (next != current) [[likely]]
                     {
                         save(current, regs);
-                        enqueue(current, self->idx);
+                        if (current->status != status::sleeping)
+                            enqueue(current, self->idx);
                     }
                 }
                 // should it save idle thread ctx?
                 else save(current, regs);
             }
-            else dead.push_back(current);
+            else
+            {
+                dead.push_back(current);
+                found_dead = true;
+            }
+        }
+
+        if (found_dead)
+        {
+            auto &reaper = percpu->reaper_thread;
+            // if the reaper is sleeping and not waiting for a timeout
+            if (reaper->status == status::sleeping && reaper->sleep_until == std::nullopt)
+                reaper->status = status::ready;
         }
 
         if (next == nullptr) [[unlikely]]
@@ -764,7 +790,8 @@ namespace sched
         {
             for (std::size_t idx = 0; idx < cpu::cpu_count(); idx++)
             {
-                sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
+                auto &obj = percpu.get(cpu::nth_base(idx));
+                obj.reaper_thread = sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
                 sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), -5);
             }
 

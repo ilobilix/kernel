@@ -126,7 +126,7 @@ export namespace sched
 
         vfs::path root;
         vfs::path cwd;
-        mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
+        mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
         vfs::fdtable fdt;
 
         bool has_execved = false;
@@ -188,8 +188,8 @@ export namespace sched
     std::size_t allocate_cpu();
     void enqueue(thread *thread, std::size_t cpu_idx);
 
-    void spawn(pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
-    void spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    thread *spawn(pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    thread *spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority = default_prio);
 
     void enable();
     void disable();

@@ -1,12 +1,36 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module lib:misc;
+export module lib:string;
 
 import :errno;
+import :types;
+import fmt;
 import cppstd;
 
 export namespace lib
 {
+    struct user_string
+    {
+        std::string str;
+        explicit user_string(const char __user *ustr);
+    };
+
+    template<std::size_t N>
+    struct comptime_string
+    {
+        char value[N];
+
+        consteval comptime_string(const char (&str)[N])
+        {
+            std::copy_n(str, N, value);
+        }
+
+        consteval bool is_empty() const
+        {
+            return N <= 1;
+        }
+    };
+
     // from mlibc
     template<typename Ret>
     constexpr Ret str2int(const char *nptr, char **endptr, int _base)
@@ -123,63 +147,14 @@ export namespace lib
         }
         return value;
     }
-
-    template<typename Type>
-    struct chain_wrapper
-    {
-        private:
-        union {
-            chain_wrapper *_other;
-            Type _val;
-        };
-        bool _chained;
-
-        public:
-        constexpr chain_wrapper() : _val { }, _chained { false } { }
-        constexpr chain_wrapper(Type val) : _val { val }, _chained { false } { }
-
-        constexpr chain_wrapper(const chain_wrapper &other)
-            : _other { const_cast<chain_wrapper *>(std::addressof(other)) }, _chained(true) { }
-
-        constexpr chain_wrapper(chain_wrapper &&other) = delete;
-
-        constexpr chain_wrapper &operator=(Type val)
-        {
-            _val = val;
-            _chained = false;
-            return *this;
-        }
-
-        constexpr chain_wrapper &operator=(const chain_wrapper &other)
-        {
-            _other = const_cast<chain_wrapper *>(std::addressof(other));
-            _chained = true;
-            return *this;
-        }
-
-        constexpr Type &get()
-        {
-            if (_chained == true)
-                return _other->get();
-            return _val;
-        }
-
-        constexpr Type *operator->()
-        {
-            return std::addressof(get());
-        }
-
-        template<typename Type1>
-        constexpr auto operator[](Type1 &&index) -> decltype(auto)
-        {
-            return get()[std::forward<Type1>(index)];
-        }
-
-        constexpr bool is_chained() const
-        {
-            return _chained;
-        }
-
-        operator Type() { return get(); }
-    };
 } // export namespace lib
+
+template<>
+struct fmt::formatter<lib::user_string> : fmt::formatter<std::string>
+{
+    template<typename FormatContext>
+    auto format(lib::user_string str, FormatContext &ctx) const
+    {
+        return formatter<std::string>::format(str.str.empty() ? std::string { "(null)" } : str.str, ctx);
+    }
+};
