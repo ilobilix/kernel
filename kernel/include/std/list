@@ -214,8 +214,14 @@ namespace std
 
         list(const list &other);
         list(const list &other, const allocator_type &alloc);
-        list(list &&other);
-        list(list &&other, const allocator_type &alloc);
+
+        list(list &&other)
+            : _allocator { std::move(other._allocator) }, _node_allocator { std::move(other._node_allocator) },
+              _begin { std::move(other._begin) }, _end { std::move(other._end) } { }
+
+        list(list &&other, const allocator_type &alloc)
+            : _allocator { alloc }, _node_allocator { std::move(other._node_allocator) },
+              _begin { std::move(other._begin) }, _end { std::move(other._end) } { }
 
         list(initializer_list<value_type> ilist, const allocator_type &alloc = allocator_type()) : list(alloc)
         {
@@ -369,10 +375,10 @@ namespace std
         void pop_front() { erase(begin(), next(begin())); }
 
         template<typename ...Args>
-        reference emplace_back(Args &&...args) { return emplace(end(), forward<Args>(args)...); }
+        reference emplace_back(Args &&...args);
 
         template<typename ...Args>
-        reference emplace_front(Args &&...args) { return emplace(begin(), forward<Args>(args)...); }
+        reference emplace_front(Args &&...args);
 
         template<detail::container_compatible_range<value_type> Range>
         void append_range(Range &&rg) { insert_range(end(), forward<Range>(rg)); }

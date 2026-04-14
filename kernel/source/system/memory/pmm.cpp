@@ -16,6 +16,7 @@ namespace pmm
 
         constinit lib::spinlock<false> lock;
         constinit lib::bitmap bitmap;
+        std::size_t page_count = 0;
         std::size_t index = 0;
 
         memory mem;
@@ -34,7 +35,7 @@ namespace pmm
 
         std::unique_lock _ { lock };
 
-        auto inner_alloc = [count](auto limit) -> void*
+        auto inner_alloc = [count](auto limit) -> void *
         {
             std::size_t p = 0;
             while (index < limit)
@@ -55,7 +56,7 @@ namespace pmm
         };
 
         const auto i = index;
-        void *ret = inner_alloc(mem.usable_top / page_size);
+        void *ret = inner_alloc(page_count);
         if (ret == nullptr)
         {
             index = 0;
@@ -134,9 +135,8 @@ namespace pmm
             mem.total += memmaps[i]->length;
         }
 
-        std::size_t bitmap_entries = mem.usable_top / page_size;
-        const std::size_t bitmap_size = lib::align_up(bitmap_entries / 8, page_size);
-        bitmap_entries = bitmap_size * 8;
+        page_count = lib::div_roundup(mem.usable_top, page_size);
+        const std::size_t bitmap_size = lib::align_up(page_count / 8, page_size);
 
         bool found = false;
         for (std::size_t i = 0; i < num; i++)
@@ -150,8 +150,8 @@ namespace pmm
                 const auto addr = lib::tohh(memmap->base);
 
                 auto data = reinterpret_cast<std::uint8_t *>(addr);
-                std::memset(data, 0xFF, bitmap_entries);
-                bitmap.initialise(data, bitmap_entries);
+                std::memset(data, 0xFF, bitmap_size);
+                bitmap.initialise(data, bitmap_size);
 
                 log::debug("pmm: bitmap address: 0x{:X}, size: {} bytes", addr, bitmap_size);
 

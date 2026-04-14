@@ -35,7 +35,7 @@ namespace term
     void init()
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
-        log::info("initializing the graphical terminal");
+        log::info("initialising the graphical terminal");
 
         for (auto &frm : frm::framebuffers)
         {

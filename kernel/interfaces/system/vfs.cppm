@@ -56,19 +56,43 @@ export namespace vfs
         virtual ~filesystem() = default;
     };
 
-    struct backing
+    struct backing : std::enable_shared_from_this<backing>
     {
         struct ops
         {
             virtual std::ssize_t read(std::shared_ptr<backing> self, std::size_t offset, std::span<std::byte> buffer) = 0;
             virtual std::ssize_t write(std::shared_ptr<backing> self, std::size_t offset, std::span<std::byte> buffer) = 0;
 
+            virtual std::uintptr_t mmap(std::shared_ptr<backing> self, std::uintptr_t page, int flags) = 0;
+            virtual bool munmap(std::shared_ptr<backing> self, std::uintptr_t page) = 0;
+
             virtual ~ops() = default;
         };
+
+        std::ssize_t read(std::size_t offset, std::span<std::byte> buffer)
+        {
+            return op->read(shared_from_this(), offset, buffer);
+        }
+
+        std::ssize_t write(std::size_t offset, std::span<std::byte> buffer)
+        {
+            return op->write(shared_from_this(), offset, buffer);
+        }
+
+        std::uintptr_t mmap(std::uintptr_t page, int flags)
+        {
+            return op->mmap(shared_from_this(), page, flags);
+        }
+
+        bool munmap(std::uintptr_t page)
+        {
+            return op->munmap(shared_from_this(), page);
+        }
 
         lib::mutex lock;
 
         stat stat;
+        bool can_mmap;
         std::atomic_size_t refcount;
         std::shared_ptr<ops> op;
 

@@ -177,7 +177,7 @@ extern "C"
         const auto paddr = lib::align_down(addr, npsize);
         const auto size = lib::align_up((addr - paddr) + len, npsize);
 
-        const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::vspace::acpi, lib::div_roundup(size, pmm::page_size)));
+        const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::space_type::acpi, lib::div_roundup(size, pmm::page_size)));
 
         if (!pmap->map(vaddr, paddr, size, vmm::flag::rw, psize))
             lib::panic("could not map acpi memory");

@@ -88,7 +88,7 @@ namespace x86_64::timers::hpet
     {
         log::info("hpet: supported: {}", supported());
 
-        const auto vaddr = vmm::alloc_vpages(vmm::vspace::other, 1);
+        const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
         log::debug("hpet: mapping to 0x{:X}", vaddr);
 
         if (!vmm::kernel_pagemap->map(vaddr, paddr, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio))

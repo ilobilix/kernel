@@ -62,7 +62,7 @@ namespace sched
         {
             std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
             arch::load(thread);
-            thread->proc.lock()->pagemap->load();
+            thread->proc.lock()->vspace->pmap->load();
         }
 
         void idle()
@@ -78,7 +78,7 @@ namespace sched
         auto vaddr = (parent->next_stack_top -= boot::user_stack_size);
 
         auto psize = vmm::pagemap::max_page_size(boot::user_stack_size);
-        if (!parent->pagemap->map(vaddr, paddr, boot::user_stack_size, vmm::flag::rw, psize))
+        if (!parent->vspace->pmap->map(vaddr, paddr, boot::user_stack_size, vmm::flag::rw, psize))
             lib::panic("could not map user stack");
 
         stacks.push_back(reinterpret_cast<std::byte *>(paddr));
@@ -159,7 +159,7 @@ namespace sched
     {
         auto proc = std::make_shared<process>();
         proc->pid = alloc_pid(proc);
-        proc->pagemap = pagemap;
+        proc->vspace = std::make_shared<vmm::vspace>(pagemap);
 
         if (parent)
         {
@@ -284,9 +284,12 @@ namespace sched
     {
         static std::atomic_bool should_start = false;
 
-        static auto idle_pagemap = std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get());
+        static auto idle_vspace = std::make_shared<vmm::vspace>(
+            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+        );
+
         auto idle_proc = std::make_shared<process>();
-        idle_proc->pagemap = idle_pagemap;
+        idle_proc->vspace = idle_vspace;
         idle_proc->pid = static_cast<std::size_t>(-1);
 
         auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));

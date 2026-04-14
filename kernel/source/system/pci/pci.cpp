@@ -138,7 +138,7 @@ namespace pci
         const auto paddr = lib::align_down(phys, npsize);
         const auto alsize = lib::align_up(size + (phys - paddr), npsize);
 
-        const auto vaddr = vmm::alloc_vpages(vmm::vspace::pci, lib::div_roundup(size, pmm::page_size));
+        const auto vaddr = vmm::alloc_vpages(vmm::space_type::pci, lib::div_roundup(size, pmm::page_size));
 
         if (!pmap->map(vaddr, paddr, alsize, vmm::flag::rw, psize, vmm::caching::mmio))
             lib::panic("could not map pci bar");
