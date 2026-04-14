@@ -114,6 +114,21 @@ export namespace lib
     }
 
     template<typename Type>
+    constexpr Type oct2int(std::string_view str)
+    {
+        Type value = 0;
+        auto ptr = str.data();
+        auto len = str.length();
+
+        while (ptr < str.end() && *ptr && len > 0)
+        {
+            value = value * 8 + (*ptr++ - '0');
+            len--;
+        }
+        return value;
+    }
+
+    template<typename Type>
     struct chain_wrapper
     {
         private:

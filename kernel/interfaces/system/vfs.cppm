@@ -132,7 +132,7 @@ export namespace vfs
 
     auto create(std::shared_ptr<node> parent, lib::path path, mode_t mode) -> expect<std::shared_ptr<node>>;
     auto symlink(std::shared_ptr<node> parent, lib::path path, lib::path target) -> expect<std::shared_ptr<node>>;
-    auto link(std::shared_ptr<node> parent, lib::path path, lib::path target) -> expect<std::shared_ptr<node>>;
+    auto link(std::shared_ptr<node> parent, lib::path path, std::shared_ptr<node> tgtparent, lib::path target) -> expect<std::shared_ptr<node>>;
     auto unlink(std::shared_ptr<node> parent, lib::path path) -> expect<void>;
 
     auto stat(std::shared_ptr<node> parent, lib::path path) -> expect<stat>;
