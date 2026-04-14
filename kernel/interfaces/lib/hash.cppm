@@ -7,7 +7,7 @@ import std;
 export namespace lib::hash
 {
     [[clang::no_sanitize("undefined")]]
-    constexpr uint128_t murmur3_128(const void *key, std::uint64_t len, std::uint64_t seed, std::uint64_t *out = nullptr)
+    uint128_t murmur3_128(const void *key, std::uint64_t len, std::uint64_t seed, std::uint64_t *out = nullptr)
     {
         auto rotl64 = [](std::uint64_t x, std::int8_t r)
         {
@@ -93,7 +93,7 @@ export namespace lib::hash
         return (static_cast<uint128_t>(h1) << 64) | static_cast<uint128_t>(h2);
     }
 
-    constexpr std::uint64_t murmur3_64(const void *key, std::uint64_t len, std::uint64_t seed)
+    std::uint64_t murmur3_64(const void *key, std::uint64_t len, std::uint64_t seed)
     {
         auto val = murmur3_128(key, len, seed);
         return static_cast<std::uint64_t>(val) ^ static_cast<std::uint64_t>(val >> 64);

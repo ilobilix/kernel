@@ -10,20 +10,16 @@ import lib;
 import fmt;
 import std;
 
-#if ILOBILIX_EXTRA_PANIC_MSG
 namespace
 {
     signed char nooo_unicode[] {
         #embed "../../embed/nooo.uni"
     };
 
-#  if !ILOBILIX_MAX_UACPI_POINTS
     char nooo_ascii[] {
         #embed "../../embed/nooo.ascii"
     };
-#  endif
 } // namespace
-#endif
 
 namespace lib
 {
@@ -51,8 +47,6 @@ namespace lib
         lib::log::unsafe::unlock();
 
         lib::println("");
-#if ILOBILIX_EXTRA_PANIC_MSG
-#  if !ILOBILIX_MAX_UACPI_POINTS
         if (auto ctx = output::term::main())
         {
             bool first = true;
@@ -64,11 +58,9 @@ namespace lib
                 output::term::write(ctx, std::string_view { seg });
             }
         }
-#  endif
         for (auto chr : nooo_unicode)
             output::serial::printc(chr);
         lib::println("");
-#endif
 
         lib::fatal("kernel panicked with the following message:");
         lib::fatal(fmt, args);

@@ -110,10 +110,10 @@ extern "C"
     uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
     {
         auto io = pci::getio(address.segment, address.bus);
-        if (!io) [[unlikely]]
-            return UACPI_STATUS_INVALID_ARGUMENT;
+        if (io == nullptr)
+            return UACPI_STATUS_NOT_FOUND;
 
-        *out_handle = new pci_dev { io, address };
+        *out_handle = new pci_dev { std::move(io), address };
         return UACPI_STATUS_OK;
     }
 
@@ -251,7 +251,6 @@ extern "C"
 
     void uacpi_kernel_unmap(void *addr, uacpi_size len)
     {
-#if !ILOBILIX_MAX_UACPI_POINTS
         auto &pmap = vmm::kernel_pagemap;
 
         const auto psize = vmm::page_size::small;
@@ -263,9 +262,6 @@ extern "C"
 
         if (!pmap->unmap(vaddr, size, psize))
             lib::panic("could not unmap acpi memory");
-#else
-        lib::unused(addr, len);
-#endif
     }
 
     void *uacpi_kernel_alloc(uacpi_size size) { return lib::alloc(size); }

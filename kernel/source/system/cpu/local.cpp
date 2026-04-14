@@ -52,10 +52,13 @@ namespace cpu
                     npsize, flags, psize,
                     vmm::caching::normal
                 );
-                lib::panic_if(!ret,
-                    "cpu: could not map percpu area: {}",
-                    magic_enum::enum_name(ret.error())
-                );
+                if (!ret)
+                {
+                    lib::panic(
+                        "cpu: could not map percpu area: {}",
+                        magic_enum::enum_name(ret.error())
+                    );
+                }
             }
 
             for (auto func = __start_percpu_init; func < __end_percpu_init; func++)

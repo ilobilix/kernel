@@ -6,9 +6,7 @@ module;
 
 module lib;
 
-#if !ILOBILIX_MAX_UACPI_POINTS
 import drivers.output.terminal;
-#endif
 import drivers.output.serial;
 import system.chrono;
 import std;
@@ -23,10 +21,8 @@ namespace lib::log
             {
                 for (auto chr : str)
                     output::serial::printc(chr);
-#if !ILOBILIX_MAX_UACPI_POINTS
                 if (auto ctx = output::term::main())
                     output::term::write(ctx, str);
-#endif
             };
 
             bool first = true;
@@ -44,10 +40,8 @@ namespace lib::log
             if (chr == '\n')
                 printc('\r');
             output::serial::printc(chr);
-#if !ILOBILIX_MAX_UACPI_POINTS
             if (auto ctx = output::term::main())
                 output::term::write(ctx, chr);
-#endif
         }
 
         extern "C" void putchar_(char chr) { printc(chr); }

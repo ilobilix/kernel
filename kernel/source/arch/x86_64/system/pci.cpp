@@ -160,6 +160,12 @@ namespace pci
                 bool at_least_one = false;
 
                 auto io = getio(0, 0);
+                if (io == nullptr)
+                {
+                    lib::error("pci: could not get io for 0:0");
+                    return;
+                }
+
                 if (io->read<8>(0, 0, 0, 0, reg::header) & (1 << 7))
                 {
                     for (std::uint8_t i = 0; i < 8; i++)
@@ -168,7 +174,13 @@ namespace pci
                             continue;
 
                         at_least_one = true;
-                        addrb(std::make_shared<bus>(0, i, getio(0, i)));
+                        auto ioi = getio(0, i);
+                        if (ioi == nullptr)
+                        {
+                            lib::error("pci: could not get io for 0:{}", i);
+                            continue;
+                        }
+                        addrb(std::make_shared<bus>(0, i, std::move(ioi)));
                     }
                 }
 
