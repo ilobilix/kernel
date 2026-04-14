@@ -67,8 +67,11 @@ void kthread()
 
         if (!thread)
             lib::panic("could not create a thread for {}", path);
+
+        thread->status = sched::status::ready;
     }
-    thread->status = sched::status::ready;
+
+    lib::log::wait_for_logs();
     sched::enqueue(thread, sched::allocate_cpu());
 
     sched::this_thread()->status = sched::status::killed;

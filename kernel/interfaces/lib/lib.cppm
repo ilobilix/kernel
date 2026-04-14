@@ -2,6 +2,7 @@
 
 export module lib;
 
+export import :barrier;
 export import :bitmap;
 export import :btree;
 export import :buffer;

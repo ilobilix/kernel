@@ -33,6 +33,11 @@ namespace output::term
         constinit void *early_addr = nullptr;
         constinit flanterm_context *early = nullptr;
         std::vector<flanterm_context *> contexts;
+
+        lib::spinlock_irq lock;
+
+        void start() { lock.lock(); }
+        void stop() { lock.unlock(); }
     } // namespace
 
     void write(flanterm_context *ctx, std::string_view str)
@@ -54,6 +59,15 @@ namespace output::term
         return nullptr;
     }
 
+    constinit lib::logger log {
+        [](std::string_view str) {
+            auto ctx = main();
+            if (!ctx)
+                return;
+            write(ctx, str);
+        }, start, stop
+    };
+
     void early_init()
     {
         const auto frm = boot::requests::framebuffer.response->framebuffers[0];
@@ -72,6 +86,7 @@ namespace output::term
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
 
+        register_logger(&log);
         lib::info("initialised the graphical terminal");
     }
 

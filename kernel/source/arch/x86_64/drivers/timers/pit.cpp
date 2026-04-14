@@ -86,6 +86,12 @@ namespace x86_64::timers::pit
         lib::initgraph::require { arch::bsp_initialised_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
+            if (chrono::main_timer())
+            {
+                lib::info("pit: not initialising, a better timer is already available");
+                return;
+            }
+
             const std::uint16_t divisor = 1193180 / frequency;
             const std::uint8_t low = divisor & 0xFF;
             const std::uint8_t high = (divisor >> 8) & 0xFF;

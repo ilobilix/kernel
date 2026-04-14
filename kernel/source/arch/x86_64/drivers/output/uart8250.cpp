@@ -119,16 +119,28 @@ namespace x86_64::output::uart8250
         {
             lib::io::out<8>(port + 1, on);
         }
+
+        lib::spinlock lock;
+        void prints(std::string_view str)
+        {
+            for (const auto chr : str)
+                printc(chr, ports[0]);
+        }
+
+        void start() { lock.lock(); }
+        void stop() { lock.unlock(); }
     } // namespace
+
+    constinit lib::logger log {
+        prints, start, stop
+    };
 
     void init()
     {
         for (std::size_t i = 0; i < num_ports; i++)
             usable[i] = init_port(ports[i]);
 
-        using namespace ::output::serial;
-        static constinit logger log { [](char chr) { printc(chr, ports[0]); } };
-        register_logger(log);
+        register_logger(&log);
     }
 
     namespace tty = fs::dev::tty;
@@ -144,6 +156,7 @@ namespace x86_64::output::uart8250
                 if (!usable[idx])
                     return 0;
 
+                start();
                 const auto com = ports[idx];
                 for (const auto byte : buffer)
                 {
@@ -155,6 +168,7 @@ namespace x86_64::output::uart8250
                     const auto ctx = term::main();
                     term::write(ctx, chr);
                 }
+                stop();
                 return buffer.size_bytes();
             }
 

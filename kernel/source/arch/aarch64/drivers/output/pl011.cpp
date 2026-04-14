@@ -14,7 +14,9 @@ namespace aarch64::output::pl011
     namespace
     {
         constexpr std::uintptr_t uart = 0x9000000;
-        std::uintptr_t addr = -1;
+        constinit std::uintptr_t addr = -1;
+
+        constinit lib::spinlock lock;
     } // namespace
 
     void printc(char chr)
@@ -27,6 +29,19 @@ namespace aarch64::output::pl011
 
         lib::mmio::out<8>(addr, chr);
     }
+
+    void prints(std::string_view str)
+    {
+        for (const auto chr : str)
+            printc(chr);
+    }
+
+    void start() { lock.lock(); }
+    void stop() { lock.unlock(); }
+
+    constinit lib::logger log {
+        prints, start, stop
+    };
 
     void init()
     {
@@ -42,8 +57,6 @@ namespace aarch64::output::pl011
         // Enable UART, TX and RX
         lib::mmio::out<16>(addr + 0x30, (1 << 0) | (1 << 8) | (1 << 9));
 
-        using namespace ::output::serial;
-        static constinit logger log { printc };
-        register_logger(log);
+        register_logger(&log);
     }
 } // namespace aarch64::output::pl011

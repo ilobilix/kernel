@@ -24,13 +24,12 @@ export namespace fmt
     using ::fmt::formatter;
 
     using ::fmt::format;
+    using ::fmt::format_to;
+    using ::fmt::format_to_n;
 
     using ::fmt::vformat;
     using ::fmt::vformat_to;
-
-    using ::fmt::format_to;
-    using ::fmt::format_to_n;
-    using ::fmt::format_to_n_result;
+    using ::fmt::vformat_to_n;
 
     using ::fmt::formatted_size;
 
