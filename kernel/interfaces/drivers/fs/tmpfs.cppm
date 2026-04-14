@@ -25,8 +25,9 @@ export namespace fs::tmpfs
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override;
         lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override;
-
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override;
+
+        lib::expect<std::size_t> getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer) override;
 
         lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<vfs::file> file, bool priv) override;
     };

@@ -67,7 +67,6 @@ namespace vfs::dev
         switch (stat::type(mode))
         {
             case stat::type::s_ifchr:
-            case stat::type::s_ifblk:
             {
                 if (rdev == 0)
                     return std::unexpected { lib::err::invalid_device_or_address };
@@ -76,18 +75,20 @@ namespace vfs::dev
                     return std::unexpected { lib::err::invalid_device_or_address };
                 return ops;
             }
+            case stat::type::s_ifblk:
+                return std::unexpected { lib::err::todo };
             case stat::type::s_ififo:
                 return pipe::get_ops();
             case stat::type::s_ifsock:
                 return std::unexpected { lib::err::todo };
             case stat::type::s_ifreg:
+            case stat::type::s_ifdir:
             {
                 auto ops = get_fs_ops(dev);
                 if (!ops)
                     return std::unexpected { lib::err::invalid_device_or_address };
                 return ops;
             }
-            // case stat::type::s_ifdir:
             // case stat::type::s_iflnk:
             default:
                 return std::unexpected { lib::err::invalid_type };

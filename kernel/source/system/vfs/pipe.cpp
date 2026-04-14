@@ -31,9 +31,9 @@ namespace vfs::pipe
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> self, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override
         {
-            lib::bug_on(!self);
+            lib::bug_on(!file);
 
             const bool rd = is_read(flags);
             const bool wr = is_write(flags);
@@ -41,10 +41,10 @@ namespace vfs::pipe
             if (!(rd ^ wr))
                 return std::unexpected { lib::err::invalid_flags };
 
-            if (!self->private_data)
-                self->private_data = std::make_shared<data>();
+            if (!file->private_data)
+                file->private_data = std::make_shared<data>();
 
-            const auto pdata = std::static_pointer_cast<data>(self->private_data);
+            const auto pdata = std::static_pointer_cast<data>(file->private_data);
             if (rd)
                 pdata->readers++;
             if (wr)
@@ -53,19 +53,19 @@ namespace vfs::pipe
             return { };
         }
 
-        lib::expect<void> close(std::shared_ptr<vfs::file> self) override
+        lib::expect<void> close(std::shared_ptr<vfs::file> file) override
         {
-            lib::bug_on(!self || !self->private_data);
+            lib::bug_on(!file || !file->private_data);
 
-            const auto pdata = std::static_pointer_cast<data>(self->private_data);
+            const auto pdata = std::static_pointer_cast<data>(file->private_data);
             lib::bug_on(pdata->readers == 0 && pdata->writers == 0);
 
-            if (is_read(self->flags))
+            if (is_read(file->flags))
                 pdata->readers--;
-            else if (is_write(self->flags))
+            else if (is_write(file->flags))
                 pdata->writers--;
 
-            self->private_data.reset();
+            file->private_data.reset();
             return { };
         }
 
@@ -184,6 +184,13 @@ namespace vfs::pipe
             lib::unused(file, size);
             return { };
         }
+
+        // TODO: pipe poll
+        // lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt) override
+        // {
+        //     lib::unused(file, pt);
+        //     return { 0 };
+        // }
     };
 
     std::shared_ptr<vfs::ops> get_ops()
