@@ -1,6 +1,6 @@
 -- Copyright (C) 2024-2025  ilobilo
 
--- only for modules
+-- only for the kernel modules
 target("modules.dependencies")
     set_kind("phony")
 
@@ -26,7 +26,7 @@ target("modules.relocatable")
         { force = true, public = true }
     )
 
--- kernel drivers, not C++ modules
+-- loadable kernel modules, not C++ modules
 target("modules")
     set_default(false)
     set_kind("phony")

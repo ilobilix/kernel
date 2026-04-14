@@ -1,8 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-#include <lib/lock.hpp>
-
-import system.time;
 import arch;
 import lib;
 import std;
@@ -99,24 +96,6 @@ extern "C"
         std::unreachable();
     }
 } // extern "C"
-
-void ticket_lock::arch_pause() const
-{
-    arch::pause();
-}
-
-bool ticket_lock::try_lock_until(std::uint64_t ntimeout)
-{
-    auto clock = time::main_clock();
-    if (clock == nullptr)
-        return try_lock();
-
-    auto target = clock->ns() + ntimeout;
-    while (is_locked() && clock->ns() < target)
-        arch_pause();
-
-    return try_lock();
-}
 
 namespace std
 {
