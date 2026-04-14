@@ -136,9 +136,9 @@ namespace bin::elf::mod
             log::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");
         }
 
-        bool load(std::shared_ptr<vfs::dentry> node)
+        bool load(lib::path path, std::shared_ptr<vfs::dentry> node)
         {
-            log::info("elf: module: loading '{}'", node->name);
+            log::info("elf: module: loading '{}'", path / node->name);
             auto &back = node->inode;
 
             const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
@@ -424,23 +424,28 @@ namespace bin::elf::mod
 
         void load_external()
         {
-            auto ret = vfs::resolve(std::nullopt, "/usr/lib/modules");
-            if (!ret || ret->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+            const auto load_from = [](auto path)
             {
-                log::error("elf: module: directory '/usr/lib/modules' not found");
-                return;
-            }
+                auto ret = vfs::resolve(std::nullopt, path);
+                if (!ret || ret->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+                {
+                    log::error("elf: module: directory '{}' not found", path);
+                    return;
+                }
 
-            auto dir = ret->target;
-            vfs::populate(dir);
+                auto dir = ret->target;
+                vfs::populate(dir);
 
-            for (auto &[name, child] : dir.dentry->children)
-            {
-                if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
-                    continue;
+                for (auto &[name, child] : dir.dentry->children)
+                {
+                    if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
+                        continue;
 
-                load(child);
-            }
+                    load(path, child);
+                }
+            };
+            load_from("/usr/lib/modules/noarch");
+            load_from("/usr/lib/modules/" ILOBILIX_ARCH_STR);
         }
     } // namespace
 

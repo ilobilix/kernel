@@ -3,19 +3,19 @@
 include(${CMAKE_SOURCE_DIR}/cmake/shared-toolchain.cmake)
 
 if(ILOBILIX_ARCH STREQUAL "x86_64")
-    set(_KERNEL_ARCH_FLAGS
-        "-masm=intel"
+    string(APPEND CMAKE_EXE_LINKER_FLAGS
+        " -Wl,-T${CMAKE_SOURCE_DIR}/kernel/linker-x86_64.ld"
     )
-    string(JOIN " " _KERNEL_ARCH_FLAGS_STR ${_KERNEL_ARCH_FLAGS})
-    string(APPEND CMAKE_C_FLAGS " ${_KERNEL_ARCH_FLAGS_STR}")
-    string(APPEND CMAKE_CXX_FLAGS " ${_KERNEL_ARCH_FLAGS_STR}")
-    string(APPEND CMAKE_ASM_FLAGS " ${_KERNEL_ARCH_FLAGS_STR}")
+elseif(ILOBILIX_ARCH STREQUAL "aarch64")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS
+        " -Wl,-T${CMAKE_SOURCE_DIR}/kernel/linker-aarch64.ld"
+    )
+else()
+    message(FATAL_ERROR "Unsupported ILOBILIX_ARCH: ${ILOBILIX_ARCH}")
 endif()
 
 set(_KERNEL_FLAGS
-    "-fno-PIC"
+    "-fno-pic"
+    "-fno-pie"
 )
-string(JOIN " " _KERNEL_FLAGS_STR ${_KERNEL_FLAGS})
-string(APPEND CMAKE_C_FLAGS " ${_KERNEL_FLAGS_STR}")
-string(APPEND CMAKE_CXX_FLAGS " ${_KERNEL_FLAGS_STR}")
-string(APPEND CMAKE_ASM_FLAGS " ${_KERNEL_FLAGS_STR}")
+ilobilix_append_flags("C;CXX;ASM" ${_KERNEL_FLAGS})

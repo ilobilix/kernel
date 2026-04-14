@@ -1,6 +1,6 @@
 # Copyright (C) 2024-2025  ilobilo
 
-include(${CMAKE_SOURCE_DIR}/cmake/kernel-toolchain.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/shared-toolchain.cmake)
 
 file(GLOB_RECURSE CXX_MODULE_FILES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cppm
@@ -15,7 +15,7 @@ list(APPEND CXX_MODULE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/arch/arch.cppm)
 list(REMOVE_DUPLICATES CXX_MODULE_FILES)
 
 add_library(cxx_modules)
-
+set_target_properties(cxx_modules PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 target_include_directories(cxx_modules PRIVATE ${DEPENDENCY_INCLUDES})
 target_sources(cxx_modules
     PUBLIC
