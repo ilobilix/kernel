@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 export module lib:syscall;
 
@@ -7,7 +7,7 @@ import :log;
 import :types;
 import :string;
 import :unused;
-import system.cpu;
+import system.cpu.regs;
 import magic_enum;
 import std;
 
@@ -21,7 +21,12 @@ namespace lib::syscall
                 std::is_constructible_v<std::string_view, CType>,
                 user_string,
                 const void *
-            >, Type
+            >,
+            std::conditional_t<
+                std::is_integral_v<CType>,
+                const void *, // print numbers as hex
+                Type
+            >
         >;
 
     template<typename ...Ts>

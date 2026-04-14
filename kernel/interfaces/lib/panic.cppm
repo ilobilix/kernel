@@ -1,9 +1,9 @@
-// Copyright (C) 2024-2025  ilobilo
+// Copyright (C) 2024-2026  ilobilo
 
 export module lib:panic;
 
 import :string;
-import system.cpu;
+import system.cpu.regs;
 import fmt;
 import std;
 

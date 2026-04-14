@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
 
 set(ILOBILIX_SYSCALL_LOG OFF CACHE BOOL "Enable syscall logging")
 set(ILOBILIX_EXTRA_PANIC_MSG ON CACHE BOOL "Enable extra panic diagnostics")

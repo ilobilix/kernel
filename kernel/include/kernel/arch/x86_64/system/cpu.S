@@ -1,4 +1,6 @@
-# Copyright (C) 2024-2025  ilobilo
+# Copyright (C) 2024-2026  ilobilo
+
+# this file is not compiled directly but included by other assembly files
 
 .macro pushall
     push rax
