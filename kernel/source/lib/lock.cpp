@@ -21,7 +21,7 @@ namespace lib::lock
         const auto ret = arch::int_status();
         acquire_preempt();
 
-        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
+        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
         {
             release_preempt();
             return;
@@ -41,7 +41,7 @@ namespace lib::lock
     {
         acquire_preempt();
 
-        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
+        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
         {
             release_preempt();
             return;

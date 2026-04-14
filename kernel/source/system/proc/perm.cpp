@@ -158,8 +158,6 @@ namespace sched
                 return std::unexpected { lib::err::not_permitted };
         }
 
-        // TODO: other failure cases?
-
         auto new_cred = old_cred->clone();
         if (ruid != empty)
             new_cred->ruid = ruid;
@@ -253,8 +251,6 @@ namespace sched
                 egid != old_cred->egid && egid != old_cred->sgid)
                 return std::unexpected { lib::err::not_permitted };
         }
-
-        // TODO: other failure cases?
 
         auto new_cred = old_cred->clone();
         if (rgid != empty)
