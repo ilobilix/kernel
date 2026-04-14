@@ -11,13 +11,13 @@ export namespace lib
     template<typename Type, typename Hook, Hook Type::*Member>
     struct locate_member
     {
-        constexpr Hook &operator()(Type &x) { return x.*Member; }
+        static constexpr Hook &operator()(Type &x) { return x.*Member; }
     };
 
     template<typename Type>
     struct intrusive_list_hook
     {
-        template<typename Type1, typename Locate>
+        template<typename, typename>
         friend class intrusive_list_base;
 
         private:
@@ -38,7 +38,7 @@ export namespace lib
 
         static inline constexpr intrusive_list_hook<Type> &hook(Type *item)
         {
-            return Locate { } (*item);
+            return Locate::operator()(*item);
         }
 
         static inline constexpr intrusive_list_hook<Type> &hook(void *item)
@@ -48,7 +48,7 @@ export namespace lib
 
         class iterator
         {
-            template<typename Type1, typename Locate1>
+            template<typename, typename>
             friend class intrusive_list_base;
 
             private:
@@ -150,8 +150,7 @@ export namespace lib
 
         constexpr iterator insert_after(iterator pos, Type *x)
         {
-            if (!std::is_constant_evaluated())
-                bug_on(pos._lst != this);
+            bug_on(pos._lst != this);
 
             const auto next = hook(pos._current).next;
             hook(pos._current).next = x;
@@ -169,8 +168,7 @@ export namespace lib
 
         constexpr iterator insert_before(iterator pos, Type *x)
         {
-            if (!std::is_constant_evaluated())
-                bug_on(pos._lst != this);
+            bug_on(pos._lst != this);
 
             const auto prev = hook(pos._current).prev;
             hook(pos._current).prev = x;
@@ -200,8 +198,7 @@ export namespace lib
 
         constexpr void remove(iterator x)
         {
-            if (!std::is_constant_evaluated())
-                bug_on(x._lst != this);
+            bug_on(x._lst != this);
 
             const auto prev = hook(x._current).prev;
             const auto next = hook(x._current).next;
@@ -219,8 +216,7 @@ export namespace lib
             hook(x._current).next = nullptr;
             hook(x._current).prev = nullptr;
 
-            if (!std::is_constant_evaluated())
-                bug_on(_size == 0);
+            bug_on(_size == 0);
             _size--;
         }
 

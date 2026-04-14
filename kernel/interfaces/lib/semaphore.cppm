@@ -15,7 +15,7 @@ export namespace lib
         private:
         struct locate
         {
-            lib::intrusive_list_hook<sched::thread_base> &operator()(sched::thread_base &x);
+            static lib::intrusive_list_hook<sched::thread_base> &operator()(sched::thread_base &x);
         };
         spinlock lock;
         lib::intrusive_list_locate<

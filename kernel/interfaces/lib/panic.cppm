@@ -41,12 +41,12 @@ export namespace lib
             vpanic(fmt, fmt::make_format_args(args...), regs, location);
         }
 
-        panic_base(
+        constexpr panic_base(
                 bool condition, std::string_view fmt, Args &&...args,
                 const std::source_location &location = std::source_location::current()
             ) requires Check
         {
-            if (condition)
+            if (!std::is_constant_evaluated() && condition)
                 vpanic(fmt, fmt::make_format_args(args...), nullptr, location);
         }
 
@@ -59,12 +59,12 @@ export namespace lib
                 vpanic(fmt, fmt::make_format_args(args...), regs, location);
         }
 
-        panic_base(
+        constexpr panic_base(
                 bool condition,
                 const std::source_location &location = std::source_location::current()
             ) requires Check
         {
-            if (condition)
+            if (!std::is_constant_evaluated() && condition)
                 vpanic(Str.value, fmt::make_format_args(), nullptr, location);
         }
 

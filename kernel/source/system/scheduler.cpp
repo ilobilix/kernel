@@ -23,7 +23,7 @@ namespace sched
         class compare
         {
             public:
-            bool operator()(const thread &lhs, const thread &rhs) const
+            static bool operator()(const thread &lhs, const thread &rhs)
             {
                 return lhs.*Member < rhs.*Member;
             }
