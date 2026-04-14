@@ -320,8 +320,8 @@ namespace vmm
                 const auto memmap = memmaps[i];
                 const auto type = static_cast<boot::memmap>(memmap->type);
 
-                if (type != boot::memmap::usable && type != boot::memmap::bootloader &&
-                    type != boot::memmap::kernel_and_modules && type != boot::memmap::framebuffer)
+                if (type == boot::memmap::reserved || type == boot::memmap::acpi_reclaimable ||
+                    type == boot::memmap::acpi_nvs || type == boot::memmap::bad_memory)
                     continue;
 
                 if (memmap->length == 0)
