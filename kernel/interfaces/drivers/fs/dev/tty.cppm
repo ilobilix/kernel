@@ -369,13 +369,8 @@ export namespace fs::dev::tty
 
         virtual std::size_t can_transmit() = 0;
 
-        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self)
-        {
-            lib::unused(self);
-            return { };
-        }
-
-        virtual lib::expect<void> close() { return { }; };
+        virtual lib::expect<void> open(std::shared_ptr<vfs::file> self) = 0;
+        virtual lib::expect<void> close() = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
     };
