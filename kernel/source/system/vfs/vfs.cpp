@@ -56,7 +56,7 @@ namespace vfs
         auto &inode = path.dentry->inode;
         dev_t dev, rdev; mode_t mode;
         {
-            std::unique_lock _ { inode->lock };
+            const std::unique_lock _ { inode->lock };
             auto &stat = inode->stat;
             dev = stat.st_dev;
             rdev = stat.st_rdev;
@@ -76,7 +76,7 @@ namespace vfs
         if (!ops.has_value())
             return std::unexpected { ops.error() };
 
-        std::unique_lock _ { lock };
+        const std::unique_lock _ { lock };
         std::size_t progress = 0;
         if (offset < 3)
         {
@@ -142,6 +142,7 @@ namespace vfs
             }
         }
 
+        const std::unique_lock __ { path.dentry->inode->lock };
         const auto res = ops->get()->getdents(shared_from_this(), offset, buffer.subspan(progress));
         if (!res.has_value())
         {

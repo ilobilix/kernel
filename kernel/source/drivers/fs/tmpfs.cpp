@@ -42,7 +42,6 @@ namespace fs::tmpfs
     lib::expect<std::size_t> ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-        const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
         auto real_size = size;
@@ -59,7 +58,6 @@ namespace fs::tmpfs
     lib::expect<std::size_t> ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-        const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
         inod->memory->write(offset, buffer.subspan(0, size));
@@ -75,7 +73,6 @@ namespace fs::tmpfs
     lib::expect<void> ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-        const std::unique_lock _ { inod->lock };
 
         const auto current_size = static_cast<std::size_t>(inod->stat.st_size);
         if (size == current_size)
@@ -94,7 +91,6 @@ namespace fs::tmpfs
     lib::expect<std::size_t> ops::getdents(std::shared_ptr<vfs::file> file, std::uint64_t &offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-        const std::unique_lock _ { inod->lock };
 
         if (inod->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
@@ -143,7 +139,6 @@ namespace fs::tmpfs
     lib::expect<std::shared_ptr<vmm::object>> ops::map(std::shared_ptr<vfs::file> file, bool priv)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
-        const std::unique_lock _ { inod->lock };
 
         if (priv)
         {
@@ -183,6 +178,12 @@ namespace fs::tmpfs
     {
         lib::unused(node, name);
         return std::unexpected { lib::err::todo };
+    }
+
+    auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
+    {
+        lib::unused(inode);
+        return { };
     }
 
     bool fs::instance::sync() { return true; }
