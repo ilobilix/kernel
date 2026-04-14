@@ -85,65 +85,6 @@ namespace util
     inline constexpr make_locked_tag_t make_locked_tag { };
 } // namespace util
 
-export namespace lib
-{
-    template<typename Type, typename Lock>
-    class locker
-    {
-        template<typename, typename>
-        friend class storage;
-
-        private:
-        alignas(alignof(Type)) std::byte _buffer[sizeof(Type)];
-        Lock _lock;
-
-        public:
-        template<typename ...Args>
-        constexpr locker(Args &&...args) : _lock { }
-        {
-            new(_buffer) Type { std::forward<Args>(args)... };
-        }
-
-        ~locker()
-        {
-            std::launder(reinterpret_cast<Type *>(_buffer))->~Type();
-        }
-
-        locker(const locker &) = delete;
-        locker(locker &&) = delete;
-
-        locker &operator=(const locker &) = delete;
-        locker &operator=(locker &&) = delete;
-
-        template<typename Self> requires util::is_lock<Lock>
-        [[nodiscard]] auto lock(this Self &&self)
-        {
-            return util::locked<Type, Lock, true> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
-                std::forward<Self>(self)._lock
-            };
-        }
-
-        template<typename Self> requires util::is_rwlock<Lock>
-        [[nodiscard]] auto read_lock(this Self &&self)
-        {
-            return util::locked<Type, Lock, false> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
-                std::forward<Self>(self)._lock
-            };
-        }
-
-        template<typename Self> requires util::is_rwlock<Lock>
-        [[nodiscard]] auto write_lock(this Self &&self)
-        {
-            return util::locked<Type, Lock, true> {
-                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
-                std::forward<Self>(self)._lock
-            };
-        }
-    };
-} // export namespace lib
-
 namespace lib
 {
     template<typename Type, typename Lock>
@@ -318,4 +259,60 @@ export namespace lib
             util::make_locked_tag, std::forward<Args>(args)...
         };
     }
+
+    template<typename Type, typename Lock>
+    class locker
+    {
+        template<typename, typename>
+        friend class storage;
+
+        private:
+        alignas(alignof(Type)) std::byte _buffer[sizeof(Type)];
+        Lock _lock;
+
+        public:
+        template<typename ...Args>
+        constexpr locker(Args &&...args) : _lock { }
+        {
+            new(_buffer) Type { std::forward<Args>(args)... };
+        }
+
+        ~locker()
+        {
+            std::launder(reinterpret_cast<Type *>(_buffer))->~Type();
+        }
+
+        locker(const locker &) = delete;
+        locker(locker &&) = delete;
+
+        locker &operator=(const locker &) = delete;
+        locker &operator=(locker &&) = delete;
+
+        template<typename Self> requires util::is_lock<Lock>
+        [[nodiscard]] auto lock(this Self &&self)
+        {
+            return util::locked<Type, Lock, true> {
+                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self)._lock
+            };
+        }
+
+        template<typename Self> requires util::is_rwlock<Lock>
+        [[nodiscard]] auto read_lock(this Self &&self)
+        {
+            return util::locked<Type, Lock, false> {
+                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self)._lock
+            };
+        }
+
+        template<typename Self> requires util::is_rwlock<Lock>
+        [[nodiscard]] auto write_lock(this Self &&self)
+        {
+            return util::locked<Type, Lock, true> {
+                std::launder(reinterpret_cast<Type *>(std::forward<Self>(self)._buffer)),
+                std::forward<Self>(self)._lock
+            };
+        }
+    };
 } // export namespace lib
