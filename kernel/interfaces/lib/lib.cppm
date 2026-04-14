@@ -21,6 +21,7 @@ export import :mutex;
 export import :panic;
 export import :partitions;
 export import :path;
+export import :ranged;
 export import :rwlock;
 export import :semaphore;
 export import :set;

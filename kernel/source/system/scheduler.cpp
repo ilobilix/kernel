@@ -194,6 +194,7 @@ namespace sched
         thread->pid = parent->pid;
         thread->status = status::not_ready;
         thread->is_user = false;
+        thread->priority = default_prio;
         thread->vruntime = 0;
 
         auto stack = thread::allocate_kstack(parent);
@@ -412,7 +413,11 @@ namespace sched
                     else if (current->status == status::sleeping)
                         current->sleep_lock.unlock();
 
-                    current->vruntime += time - current->schedule_time;
+                    const std::size_t exec_time = time - current->schedule_time;
+                    const std::size_t weight = prio_to_weight(current->priority);
+                    const std::size_t vtime = (exec_time * weight0) / weight;
+                    current->vruntime += vtime;
+
                     if (next != current) [[likely]]
                     {
                         save(current, regs);
