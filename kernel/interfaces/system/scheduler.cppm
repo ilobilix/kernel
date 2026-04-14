@@ -64,8 +64,8 @@ export namespace sched
 #elif defined(__aarch64__)
 #endif
 
-        std::uintptr_t allocate_ustack();
-        std::uintptr_t allocate_kstack();
+        static std::uintptr_t allocate_ustack(std::shared_ptr<process> &proc);
+        static std::uintptr_t allocate_kstack(std::shared_ptr<process> &proc);
 
         static std::shared_ptr<thread> create(std::shared_ptr<process> &parent, std::uintptr_t ip);
 

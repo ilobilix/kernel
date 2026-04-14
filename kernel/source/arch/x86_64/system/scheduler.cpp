@@ -8,6 +8,7 @@ import system.interrupts;
 import system.memory;
 import system.cpu.self;
 import system.cpu;
+import magic_enum;
 import arch;
 import lib;
 import cppstd;
@@ -33,25 +34,28 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, 0xFF);
     }
 
-    void finalise(std::shared_ptr<thread> &thread, std::uintptr_t ip)
+    void finalise(std::shared_ptr<process> &proc, std::shared_ptr<thread> &thread, std::uintptr_t ip)
     {
-        auto &fpu = cpu::features::fpu;
-
         auto &regs = thread->regs;
         regs.rflags = 0x202;
         regs.rip = ip;
 
-        auto pages = lib::div_roundup(fpu.size, pmm::page_size);
-        thread->fpu = lib::tohh(pmm::alloc<std::byte *>(pages));
+        const auto &fpu = cpu::features::fpu;
+        const auto pages = lib::div_roundup(fpu.size, pmm::page_size);
+        const auto vfpu = vmm::alloc_vpages(vmm::space_type::other, pages);
 
-        thread->pfstack_top = thread->allocate_kstack();
+        if (const auto ret = proc->vmspace->pmap->map_alloc(vfpu, fpu.size, vmm::flag::rw, vmm::page_size::small); !ret)
+            lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));
+        thread->fpu = reinterpret_cast<std::byte *>(vfpu);
+
+        thread->pfstack_top = thread::allocate_kstack(proc);
 
         if (thread->is_user)
         {
             regs.cs = x86_64::gdt::segment::ucode | 0x03;
             regs.ss = x86_64::gdt::segment::udata | 0x03;
 
-            regs.rsp = thread->ustack_top = thread->allocate_ustack();
+            regs.rsp = thread->ustack_top = thread::allocate_ustack(proc);
 
             fpu.restore(thread->fpu);
 
@@ -72,11 +76,12 @@ namespace sched::arch
         }
     }
 
-    void deinitialise(std::shared_ptr<thread> &thread)
+    void deinitialise(std::shared_ptr<process> &proc, thread *thread)
     {
-        auto &fpu = cpu::features::fpu;
-        auto pages = lib::div_roundup(fpu.size, pmm::page_size);
-        pmm::free(lib::fromhh(thread->fpu), pages);
+        const auto &fpu = cpu::features::fpu;
+        const auto vaddr = reinterpret_cast<std::uintptr_t>(thread->fpu);
+        if (const auto ret = proc->vmspace->pmap->unmap_dealloc(vaddr, fpu.size, vmm::page_size::small); !ret)
+            lib::panic("could not unmap thread fpu storage: {}", magic_enum::enum_name(ret.error()));
     }
 
     void save(std::shared_ptr<thread> &thread)

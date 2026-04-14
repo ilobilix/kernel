@@ -126,8 +126,11 @@ export namespace vmm
         static page_size max_page_size(std::size_t size);
 
         std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::normal, caching cache = caching::normal);
+        std::expected<void, error> map_alloc(std::uintptr_t vaddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::normal, caching cache = caching::normal);
+
         std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::normal, caching cache = caching::normal);
         std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::normal);
+        std::expected<void, error> unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::normal);
 
         std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::normal);
 
