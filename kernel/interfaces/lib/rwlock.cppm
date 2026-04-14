@@ -6,11 +6,6 @@ import :spinlock;
 import :mutex;
 import cppstd;
 
-namespace lib::lock
-{
-    std::uintptr_t current_thread();
-} // namespace lib::lock
-
 export namespace lib
 {
     template<lock_type Type>
