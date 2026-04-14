@@ -118,19 +118,38 @@ export namespace sched
     {
         static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
 
-        pid_t pid;
-        pid_t pgid;
-        pid_t sid;
+        pid_t pid, pgid, sid;
 
         gid_t rgid = 0, sgid = 0, egid = 0;
         uid_t ruid = 0, suid = 0, euid = 0;
+
+        lib::locker<
+            std::vector<gid_t>, lib::rwmutex
+        > supplementary_gids;
 
         std::shared_ptr<vmm::vmspace> vmspace;
 
         vfs::path root;
         vfs::path cwd;
         mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
-        vfs::fdtable fdt;
+
+        class fdtable
+        {
+            private:
+            lib::locker<
+                lib::map::flat_hash<
+                    int, std::shared_ptr<vfs::filedesc>
+                >, lib::rwspinlock
+            > fds;
+            int next_fd = 0;
+
+            public:
+            bool close(int fd);
+            std::shared_ptr<vfs::filedesc> get(int fd);
+
+            int allocate_fd(std::shared_ptr<vfs::filedesc> desc, int fd, bool force);
+            int dup(int oldfd, int newfd, bool closexec, bool force);
+        } fdt;
 
         bool has_execved = false;
 

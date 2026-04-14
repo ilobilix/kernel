@@ -16,47 +16,60 @@ extern "C"
         lib::initgraph::postsched_init_engine.run();
         pmm::reclaim_bootloader_memory();
 
-        lib::path_view path { "/usr/bin/bash" };
-        log::info("loading {}", path);
+        sched::thread *thread = nullptr;
+        {
+            lib::path_view path { "/usr/bin/bash" };
+            log::info("loading {}", path);
 
-        auto ret = vfs::resolve(std::nullopt, path);
-        if (!ret.has_value())
-            lib::panic("could not resolve {}", path);
+            auto ret = vfs::resolve(std::nullopt, path);
+            if (!ret.has_value())
+                lib::panic("could not resolve {}", path);
 
-        auto res = vfs::reduce(ret->parent, ret->target);
-        if (!res.has_value())
-            lib::panic("could not reduce {}", path);
+            auto res = vfs::reduce(ret->parent, ret->target);
+            if (!res.has_value())
+                lib::panic("could not reduce {}", path);
 
-        auto file = vfs::file::create(res.value(), 0, 0);
-        auto format = bin::exec::identify(file);
-        if (!format)
-            lib::panic("could not identify {} file format", path);
+            auto file = vfs::file::create(res.value(), 0, 0, 0);
+            auto format = bin::exec::identify(file);
+            if (!format)
+                lib::panic("could not identify {} file format", path);
 
-        auto pmap = std::make_shared<vmm::pagemap>();
-        auto proc = sched::process::create(nullptr, pmap);
+            auto pmap = std::make_shared<vmm::pagemap>();
+            auto proc = sched::process::create(nullptr, pmap);
 
-        auto cons = vfs::create(std::nullopt, "/dev/tty", 0666 | stat::s_ifchr, dev::makedev(5, 0));
-        lib::panic_if(!cons, "could not create /dev/tty");
-        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
-        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
-        proc->fdt.allocate_fd(vfs::filedesc::create(cons.value(), vfs::o_rdwr), 0, false);
+            proc->ruid = proc->euid = proc->suid = 1000;
+            proc->rgid = proc->egid = proc->sgid = 1000;
 
-        auto thread = format->load({
-            .pathname = "/usr/bin/bash",
-            .file = file,
-            .interp = { },
-            .argv = { "bash" },
-            .envp = {
-                "TERM=linux",
-                "USER=ilobilix",
-                "HOME=/home/ilobilix",
-                "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
-            }
-        }, proc);
+            lib::path_view tty_path { "/dev/tty0" };
+            ret = vfs::resolve(std::nullopt, tty_path);
+            if (!ret.has_value())
+                lib::panic("could not resolve {}", tty_path);
+            auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr, proc->pid);
+            if (!tty || !tty->file)
+                lib::panic("could not create {} filedesc", tty_path);
+            if (!tty->file->open())
+                lib::panic("could not open {}", tty_path);
 
-        if (!thread)
-            lib::panic("could not create a thread for {}", path);
+            proc->fdt.allocate_fd(tty, 0, false);
+            proc->fdt.dup(0, 1, false, false);
+            proc->fdt.dup(0, 2, false, false);
 
+            thread = format->load({
+                .pathname = path.data(),
+                .file = file,
+                .interp = { },
+                .argv = { path.basename().data() },
+                .envp = {
+                    "TERM=linux",
+                    "USER=ilobilix",
+                    "HOME=/home/ilobilix",
+                    "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
+                }
+            }, proc);
+
+            if (!thread)
+                lib::panic("could not create a thread for {}", path);
+        }
         thread->status = sched::status::ready;
         sched::enqueue(thread, sched::allocate_cpu());
 

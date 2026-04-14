@@ -445,7 +445,7 @@ namespace bin::elf::mod
                     load(path, vfs::file::create({
                         .mnt = dir.mnt,
                         .dentry = child
-                    }, 0, 0));
+                    }, 0, 0, 0));
                 }
             };
             load_from("/usr/lib/modules/noarch");

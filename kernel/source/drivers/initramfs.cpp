@@ -96,7 +96,7 @@ namespace initramfs
                             ), size
                         ).value();
 
-                        auto file = vfs::file::create(ret.value(), 0, 0);
+                        auto file = vfs::file::create(ret.value(), 0, 0, 0);
                         if (file->pwrite(0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
