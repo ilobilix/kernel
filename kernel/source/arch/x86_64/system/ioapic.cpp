@@ -227,6 +227,8 @@ namespace x86_64::apic::io
             }
         }
 
+        // TODO: nmi
+
         initialised = true;
     }
 } // namespace x86_64::apic::io

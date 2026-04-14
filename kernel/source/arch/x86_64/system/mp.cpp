@@ -28,14 +28,14 @@ namespace cpu::mp
 
             std::size_t max_cpus = 0;
             {
-                for (const auto entry : acpi::madt::lapics)
+                for (const auto &entry : acpi::madt::lapics)
                 {
                     if ((entry.flags & 1) ^ ((entry.flags >> 1) & 1))
                         max_cpus++;
                 }
                 if (x2apic)
                 {
-                    for (const auto entry : acpi::madt::x2apics)
+                    for (const auto &entry : acpi::madt::x2apics)
                     {
                         if ((entry.flags & 1) ^ ((entry.flags >> 1) & 1))
                             max_cpus++;
@@ -158,7 +158,7 @@ namespace cpu::mp
             lib::panic("could not boot up a core");
         };
 
-        for (const auto entry : acpi::madt::lapics)
+        for (const auto &entry : acpi::madt::lapics)
         {
             if (!((entry.flags & 1) ^ ((entry.flags >> 1) & 1)))
                 continue;
@@ -167,7 +167,7 @@ namespace cpu::mp
         }
         if (x2apic)
         {
-            for (const auto entry : acpi::madt::x2apics)
+            for (const auto &entry : acpi::madt::x2apics)
             {
                 if (!((entry.flags & 1) ^ ((entry.flags >> 1) & 1)))
                     continue;

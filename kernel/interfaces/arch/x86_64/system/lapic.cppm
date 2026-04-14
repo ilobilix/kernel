@@ -11,10 +11,13 @@ export namespace x86_64::apic
         constexpr std::uintptr_t id = 0x20;
         constexpr std::uintptr_t tpr = 0x80;
         constexpr std::uintptr_t siv = 0xF0;
+        constexpr std::uintptr_t err = 0x280;
         constexpr std::uintptr_t icr = 0x300;
         constexpr std::uintptr_t icrh = 0x310;
-        constexpr std::uintptr_t lvt = 0x320;
-        constexpr std::uintptr_t lint1 = 0x360;
+        constexpr std::uintptr_t lvt_timer = 0x320;
+        constexpr std::uintptr_t lvt_lint0 = 0x350;
+        constexpr std::uintptr_t lvt_lint1 = 0x360;
+        constexpr std::uintptr_t lvt_error = 0x370;
         constexpr std::uintptr_t tdc = 0x3E0;
         constexpr std::uintptr_t tic = 0x380;
         constexpr std::uintptr_t tcc = 0x390;
