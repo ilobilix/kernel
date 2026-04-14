@@ -24,8 +24,8 @@ namespace pmm
         template<std::uintptr_t Start, std::uintptr_t End>
         struct allocator
         {
-            static inline constexpr std::uintptr_t start = Start;
-            static inline constexpr std::uintptr_t end = End;
+            static constexpr std::uintptr_t start = Start;
+            static constexpr std::uintptr_t end = End;
 
             struct list { list *prev = nullptr; list *next = nullptr; };
             list lists[max_order + 1];

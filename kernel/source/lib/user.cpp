@@ -9,8 +9,8 @@ namespace lib
 {
     address_space classify_address(std::uintptr_t addr, std::size_t len)
     {
-        static const auto [user_start, user_end] = vmm::pagemap::user_range();
-        static const auto [kernel_start, kernel_end] = vmm::pagemap::kernel_range();
+        const auto [user_start, user_end] = vmm::pagemap::user_range();
+        const auto [kernel_start, kernel_end] = vmm::pagemap::kernel_range();
         if (addr >= user_start && (addr + len) <= user_end)
             return address_space::user;
         else if (addr >= kernel_start && (addr + len) <= kernel_end)

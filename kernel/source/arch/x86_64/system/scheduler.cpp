@@ -30,7 +30,7 @@ extern "C"
 
 namespace sched::arch
 {
-    static constexpr std::size_t sched_vector = 0xFE;
+    static constexpr std::size_t sched_vector = 0xFD;
 
     using namespace x86_64;
 

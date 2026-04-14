@@ -59,12 +59,12 @@ namespace x86_64::apic::io
             public:
             ioapic(std::uintptr_t mmio, std::uint32_t gsi_base) : _gsi_base { gsi_base }
             {
-                _mmio = vmm::alloc_vspace(1);
-
-                lib::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
-
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
+
+                _mmio = vmm::alloc_vspace(npsize);
+                lib::debug("ioapic: mapping mmio: 0x{:X} -> 0x{:X}", mmio, _mmio);
+
                 const auto flags = vmm::pflag::rwg;
                 const auto cache = vmm::caching::mmio;
 

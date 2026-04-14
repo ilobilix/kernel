@@ -258,12 +258,13 @@ namespace x86_64::apic
         if (!x2apic)
         {
             pmmio = val & 0xFFFFF000;
-            mmio = vmm::alloc_vspace(1);
-
-            lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", pmmio, mmio);
 
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
+
+            mmio = vmm::alloc_vspace(npsize);
+            lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", pmmio, mmio);
+
             const auto flags = vmm::pflag::rwg;
             const auto cache = vmm::caching::mmio;
 
@@ -288,8 +289,16 @@ namespace x86_64::apic
             enable(val);
         }
 
-        const auto ret = interrupts::allocate(self.idx, 0xFF);
-        lib::bug_on(!ret.has_value() || ret->second != 0xFF);
+        const auto spr = interrupts::allocate(self.idx, 0xFF);
+        lib::bug_on(!spr.has_value() || spr->second != 0xFF);
+        spr->first.set([](auto) { });
+
+        const auto err = interrupts::allocate(self.idx, 0xFE);
+        lib::bug_on(!err.has_value() || err->second != 0xFE);
+        err->first.set([](auto) {
+            const auto err = read(reg::err);
+            lib::error("lapic: got error: 0x{:X}", err);
+        });
 
         write(reg::siv, 0xFF);
         write(reg::err, 0);
@@ -317,10 +326,9 @@ namespace x86_64::apic
             }
         }
 
-        write(reg::lvt_timer, (1 << 16));
         write(reg::lvt_lint0, (1 << 16) | 0xFF);
         write(reg::lvt_lint1, (1 << 16) | 0xFF);
-        // write(reg::lvt_error, );
+        write(reg::lvt_error, 0xFE);
 
         write(reg::siv, (1 << 8) | 0xFF);
 

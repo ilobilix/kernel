@@ -16,19 +16,19 @@ namespace slab
         // TODO: some issues on a certain laptop
         std::uintptr_t map(std::size_t length)
         {
-            // return lib::tohh(pmm::alloc(lib::div_roundup(length, pmm::page_size)));
-            const auto pages = lib::div_roundup(length, pmm::page_size);
-            const auto vaddr = vmm::alloc_vspace(pages);
-
             const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+
+            const auto aligned = lib::align_up(length, npsize);
+            const auto vaddr = vmm::alloc_vspace(aligned);
+
             const auto flags = vmm::pflag::rwg;
 
-            for (std::size_t i = 0; i < pages; i++)
+            for (std::uintptr_t i = vaddr; i < vaddr + aligned; i += npsize)
             {
-                const auto paddr = pmm::alloc(1, true);
+                const auto paddr = pmm::alloc(npsize / pmm::page_size, true);
                 const auto ret = vmm::kernel_pagemap->map(
-                    vaddr + i * pmm::page_size, paddr,
-                    pmm::page_size, flags, psize,
+                    i, paddr, npsize, flags, psize,
                     vmm::caching::normal
                 );
                 if (!ret)
@@ -45,11 +45,12 @@ namespace slab
 
         void unmap(std::uintptr_t addr, std::size_t length)
         {
-            // pmm::free(lib::fromhh(addr), lib::div_roundup(length, pmm::page_size));
-            for (std::size_t offset = 0; offset < length; offset += pmm::page_size)
+            const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
+
+            for (std::uintptr_t i = addr; i < addr + length; i += npsize)
             {
-                const auto vaddr = addr + offset;
-                const auto ret = vmm::kernel_pagemap->translate(vaddr, vmm::page_size::small);
+                const auto ret = vmm::kernel_pagemap->translate(i, psize);
                 if (!ret)
                 {
                     lib::panic(
@@ -58,8 +59,8 @@ namespace slab
                     );
                 }
 
-                const auto paddr = ret.value();
-                if (const auto uret = vmm::kernel_pagemap->unmap(vaddr, pmm::page_size, vmm::page_size::small); !uret)
+                const auto paddr = *ret;
+                if (const auto uret = vmm::kernel_pagemap->unmap(i, npsize, psize); !uret)
                 {
                     lib::panic(
                         "slab: could not unmap page: {}",
@@ -67,7 +68,7 @@ namespace slab
                     );
                 }
 
-                pmm::free(paddr, 1);
+                pmm::free(paddr, npsize / pmm::page_size);
             }
         }
     };

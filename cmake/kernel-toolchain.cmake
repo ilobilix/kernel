@@ -22,8 +22,9 @@ ilobilix_append_flags("C;CXX;ASM" ${_KERNEL_FLAGS})
 
 set(_ILOBILIX_KERNEL_DEFINES
     "cpu_local(Type, name, ...)=\
-        [[gnu::section(\".percpu\")]] \
+        [[gnu::section(\".percpu\"), gnu::used]] \
         ::cpu::local::storage<Type> name^\
+        [[gnu::used]]\
         void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { \
             name.initialise(base __VA_OPT__(,) __VA_ARGS__)^ \
         }^ \

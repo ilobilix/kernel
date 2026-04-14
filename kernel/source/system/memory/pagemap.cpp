@@ -400,10 +400,15 @@ namespace vmm
         vspace_base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
     }
 
-    std::uintptr_t alloc_vspace(std::size_t pages)
+    std::uintptr_t alloc_vspace(std::size_t length)
     {
-        const auto ret = vspace_base;
-        vspace_base += pages * pmm::page_size;
+        lib::bug_on(length == 0);
+
+        const auto psize = vmm::page_size::small;
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+
+        const auto ret = lib::align_up(vspace_base, npsize);
+        vspace_base = ret + length;
         return ret;
     }
 } // namespace vmm

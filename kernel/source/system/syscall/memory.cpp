@@ -22,10 +22,11 @@ namespace syscall::memory
             return (errno = EINVAL, invalid_addr);
 
         const auto psize = vmm::default_page_size();
-        if (offset % psize != 0)
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+        if (offset % npsize != 0)
             return (errno = EINVAL, invalid_addr);
 
-        length = lib::align_up(length, psize);
+        length = lib::align_up(length, npsize);
 
         if (anon && fd != -1)
             return (errno = EINVAL, invalid_addr);
@@ -112,6 +113,7 @@ namespace syscall::memory
         const auto &vmspace = proc->vmspace;
 
         const auto psize = vmm::default_page_size();
+        const auto npsize = vmm::pagemap::from_page_size(psize);
 
         const auto address = reinterpret_cast<std::uintptr_t>(addr);
         const auto old = vmspace->current_brk;
@@ -119,8 +121,8 @@ namespace syscall::memory
         if (address == old || address < vmm::vmspace::mmap_min)
             return reinterpret_cast<void *>(old);
 
-        const auto old_end = lib::align_up(old, psize);
-        const auto new_end = lib::align_up(address, psize);
+        const auto old_end = lib::align_up(old, npsize);
+        const auto new_end = lib::align_up(address, npsize);
 
         if (address > old)
         {

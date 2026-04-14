@@ -47,7 +47,7 @@ namespace cpu
 
             for (std::size_t offset = 0; offset < size; offset += npsize)
             {
-                const auto paddr = pmm::alloc(1, true);
+                const auto paddr = pmm::alloc(npsize / pmm::page_size, true);
                 const auto ret = vmm::kernel_pagemap->map(
                     base + offset, paddr,
                     npsize, flags, psize,

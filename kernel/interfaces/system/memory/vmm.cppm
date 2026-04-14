@@ -218,6 +218,21 @@ export namespace vmm
         }
     };
 
+    constexpr page_size default_page_size()
+    {
+        return page_size::small;
+    }
+
+    page *page_for(std::uintptr_t addr);
+    std::uintptr_t paddr_from(page *pg);
+
+    template<typename Type>
+        requires (std::is_pointer_v<Type>)
+    inline page *page_for(Type ptr)
+    {
+        return page_for(reinterpret_cast<std::uintptr_t>(ptr));
+    }
+
     struct pfault_state
     {
         std::uintptr_t address;
@@ -227,21 +242,9 @@ export namespace vmm
         bool is_user;
     };
 
-    std::size_t default_page_size();
-
-    page *page_for(std::uintptr_t addr);
-
-    template<typename Type> requires (std::is_pointer_v<Type>)
-    inline page *page_for(Type ptr)
-    {
-        return page_for(reinterpret_cast<std::uintptr_t>(ptr));
-    }
-
-    std::uintptr_t paddr_from(page *pg);
-
     bool handle_pfault(pfault_state state);
 
-    std::uintptr_t alloc_vspace(std::size_t pages);
+    std::uintptr_t alloc_vspace(std::size_t length);
 
     void init();
     void init_vspaces();

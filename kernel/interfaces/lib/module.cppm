@@ -26,7 +26,7 @@ export namespace mod
     template<std::size_t NDeps>
     struct deps
     {
-        static inline constexpr std::size_t count = NDeps;
+        static constexpr std::size_t count = NDeps;
         const std::size_t ndeps = NDeps;
         const char *const list[NDeps];
 
@@ -41,7 +41,7 @@ export namespace mod
     template<std::size_t NDeps>
     struct declare
     {
-        static inline constexpr std::uint64_t header_magic = 0x737BDF086B7EF53C;
+        static constexpr std::uint64_t header_magic = 0x737BDF086B7EF53C;
         static inline constexpr std::string_view build_version {
             ILOBILIX_VERSION "-" ILOBILIX_COMMIT
         };

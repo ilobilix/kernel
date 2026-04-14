@@ -42,7 +42,9 @@ namespace cpu
     std::size_t count()
     {
 #if ILOBILIX_LIMINE_MP
-        static const auto cached = [] { return boot::requests::mp.response->cpu_count; } ();
+        static const auto cached = [] {
+            return boot::requests::mp.response->cpu_count;
+        } ();
         return cached;
 #else
         return mp::num_cores();

@@ -146,7 +146,7 @@ namespace pci
         const auto paddr = lib::align_down(phys, npsize);
         const auto alsize = lib::align_up(size + (phys - paddr), npsize);
 
-        const auto vaddr = vmm::alloc_vspace(lib::div_roundup(size, pmm::page_size));
+        const auto vaddr = vmm::alloc_vspace(lib::align_up(size, npsize));
 
         const auto flags = vmm::pflag::rwg;
         const auto cache = vmm::caching::mmio;

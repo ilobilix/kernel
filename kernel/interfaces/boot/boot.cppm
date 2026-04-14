@@ -170,14 +170,17 @@ export namespace boot
 
     std::uintptr_t get_hhdm_offset()
     {
-        static const auto cached = [] { return requests::hhdm.response->offset; } ();
+        static const auto cached = [] {
+            return requests::hhdm.response->offset;
+        } ();
         return cached;
     }
 
-
     std::int64_t time()
     {
-        static const auto cached = [] { return requests::boot_time.response->timestamp; } ();
+        static const auto cached = [] {
+            return requests::boot_time.response->timestamp;
+        } ();
         return cached;
     }
 

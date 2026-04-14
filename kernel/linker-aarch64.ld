@@ -53,7 +53,7 @@ SECTIONS
 
     .percpu_init : {
         __start_percpu_init = .;
-        *(.percpu_init)
+        KEEP(*(.percpu_init))
         __end_percpu_init = .;
     } :rodata
 
