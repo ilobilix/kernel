@@ -80,7 +80,6 @@ static void print(auto message, source_location loc)
     lib::stop_all();
 }
 
-// TODO: details
 extern "C"
 {
     void __ubsan_handle_add_overflow(overflow_data *data, void *, void *)

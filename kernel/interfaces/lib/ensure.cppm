@@ -10,15 +10,29 @@ export namespace lib
     struct ensure
     {
 #if ILOBILIX_DEBUG
-        constexpr ensure(std::convertible_to<bool> auto x, std::source_location location = std::source_location::current())
+        class value
         {
-            if (static_cast<bool>(x) == false)
+            private:
+            bool val;
+
+            public:
+            constexpr value(std::convertible_to<bool> auto x) : val(static_cast<bool>(x)) { }
+
+            template<typename Type, typename Err>
+            constexpr value(std::expected<Type, Err> &&x) : val(x.has_value()) { }
+
+            constexpr operator bool() const { return val; }
+        };
+
+        constexpr ensure(value x, std::source_location location = std::source_location::current())
+        {
+            if (!x)
                 vpanic("Assertion failed", std::make_format_args(), nullptr, location);
         }
 
-        constexpr ensure(std::convertible_to<bool> auto x, std::string_view message, Args &&...args, std::source_location location = std::source_location::current())
+        constexpr ensure(value x, std::string_view message, Args &&...args, std::source_location location = std::source_location::current())
         {
-            if (static_cast<bool>(x) == false)
+            if (!x)
                 vpanic(message, std::make_format_args(args...), nullptr, location);
         }
 #else

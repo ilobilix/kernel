@@ -112,15 +112,19 @@ namespace sched
     {
         auto proc = std::make_shared<process>();
         proc->pid = alloc_pid(proc);
-        proc->root = proc->cwd = vfs::node::root();
         proc->pagemap = pagemap;
 
         if (parent)
         {
+            proc->root = parent->root;
+            proc->cwd = parent->cwd;
             proc->parent = parent;
+
             std::unique_lock _ { parent->lock };
             parent->children[proc->pid] = proc;
         }
+        else proc->root = proc->cwd = vfs::node::root(true);
+
         return proc;
     }
 

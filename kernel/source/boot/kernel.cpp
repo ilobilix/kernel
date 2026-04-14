@@ -10,6 +10,9 @@ void kthread()
     pci::register_rbs();
     pci::init();
 
+    lib::ensure(vfs::register_fs(fs::tmpfs::init()));
+    lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
+
     arch::halt(true);
 }
 

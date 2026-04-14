@@ -27,7 +27,10 @@ namespace sched::arch
 
     void reschedule(std::size_t ms)
     {
-        x86_64::apic::arm(ms * 1'000'000, 0xFF);
+        if (ms == 0)
+            x86_64::apic::ipi(0, x86_64::apic::dest::self, 0xFF);
+        else
+            x86_64::apic::arm(ms * 1'000'000, 0xFF);
     }
 
     void finalise(std::shared_ptr<thread> thread, std::uintptr_t ip)

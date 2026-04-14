@@ -2,6 +2,8 @@
 
 module system.vfs;
 
+import system.scheduler;
+import system.cpu.self;
 import lib;
 import std;
 
@@ -15,31 +17,33 @@ namespace vfs
             root->parent = root;
             return root;
         } ();
-        lib::map::flat_hash<std::string_view, std::shared_ptr<filesystem>> filesystems;
+        lib::map::flat_hash<std::string_view, std::unique_ptr<filesystem>> filesystems;
         lib::mutex lock;
     } // namespace
 
-    bool register_fs(std::shared_ptr<filesystem> fs)
+    bool register_fs(std::unique_ptr<filesystem> fs)
     {
         std::unique_lock _ { lock };
         if (filesystems.contains(fs->name))
             return false;
 
-        filesystems[fs->name] = fs;
+        log::debug("vfs: registering filesystem '{}'", fs->name);
+        filesystems[fs->name] = std::move(fs);
         return true;
     }
 
-    std::shared_ptr<filesystem> find_fs(std::string_view name)
+    auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
     {
         std::unique_lock _ { lock };
         if (auto it = filesystems.find(name); it != filesystems.end())
             return it->second;
-        return nullptr;
+        return std::unexpected(error::invalid_filesystem);
     }
 
-    std::shared_ptr<node> node::root()
+    std::shared_ptr<node> node::root(bool from_sched)
     {
-        // TODO
+        if (!from_sched && sched::initialised)
+            return cpu::self()->sched.running_thread->proc.lock()->root;
         return vfs::root->reduce().value();
     }
 
@@ -100,6 +104,8 @@ namespace vfs
         for (const auto segment_view : std::views::split(path.str(), '/'))
         {
             std::string_view segment { segment_view };
+            if (segment.empty())
+                continue;
 
             bool last = is_last(segment);
             auto current_me = current->me();
@@ -109,7 +115,7 @@ namespace vfs
                 auto parent = current->parent.lock();
                 if (auto root = node::root(); current == root)
                     parent = root;
-                else if (current_me == current->fs->root)
+                else if (current_me == current->fs->root.lock())
                     parent = current->fs->mounted_on.lock()->parent.lock();
 
                 if (!parent)
@@ -156,9 +162,11 @@ namespace vfs
 
     auto mount(std::shared_ptr<node> parent, lib::path source, lib::path target, std::string_view fsname) -> expect<void>
     {
+        // TODO: if fsname is empty, detect fstype from source
+
         auto fs = find_fs(fsname);
         if (!fs)
-            return std::unexpected(error::invalid_filesystem);
+            return std::unexpected(fs.error());
 
         std::unique_lock _ { lock };
 
@@ -183,9 +191,11 @@ namespace vfs
         if (target_node != node::root() && target_node->backing->stat.type() != stat::type::s_ifdir)
             return std::unexpected(error::not_a_dir);
 
-        auto instance = fs->mount(source_node);
-        target_node->mountpoint = instance->root;
+        auto [instance, root] = fs->get()->mount(source_node);
+        target_node->mountpoint = root;
         instance->mounted_on = target_node;
+
+        log::debug("vfs: mount('{}', '{}', '{}')", source, target, fsname);
 
         return { };
     }
@@ -213,6 +223,8 @@ namespace vfs
         if (ret)
         {
             auto node = ret.value();
+            node->fs = parent_node->fs;
+
             std::unique_lock _ { parent_node->lock };
             parent_node->children[node->name] = node;
             return node;
