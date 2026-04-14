@@ -899,7 +899,13 @@ namespace sched
                 arch::reschedule(timeslice);
             }
             else if (earliest_wake > time)
-                arch::reschedule(earliest_wake - time);
+            {
+                const auto slice = std::min(
+                    (earliest_wake - time) / 1'000'000,
+                    max_wait
+                );
+                arch::reschedule(slice);
+            }
         }
 
         pcpu.in_scheduler.store(false, std::memory_order_release);

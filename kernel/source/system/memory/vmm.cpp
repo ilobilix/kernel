@@ -587,7 +587,7 @@ namespace vmm
                 if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                     return std::unexpected { ret.error() };
 
-                wlocked->remove(ent);
+                remove(wlocked, ent);
 
                 if (ent->endp > endp)
                 {
@@ -596,7 +596,7 @@ namespace vmm
                     const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                     const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                    wlocked->insert(new entry {
+                    insert(wlocked, new entry {
                         .startp = endp,
                         .endp = ent->endp,
                         .obj = ent->obj,
@@ -614,7 +614,7 @@ namespace vmm
                 if (ent->startp < startp)
                 {
                     ent->endp = startp;
-                    wlocked->insert(ent);
+                    insert(wlocked, ent);
                 }
                 else delete ent;
             }
@@ -629,7 +629,7 @@ namespace vmm
             endp = (*ret + length) / npsize;
         }
 
-        wlocked->insert(new entry {
+        insert(wlocked, new entry {
             .startp = startp,
             .endp = endp,
             .obj = std::move(target_obj),
@@ -695,7 +695,7 @@ namespace vmm
             if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length); !ret)
                 return std::unexpected { ret.error() };
 
-            wlocked->remove(ent);
+            remove(wlocked, ent);
 
             if (ent->endp > overlap_end)
             {
@@ -704,7 +704,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                wlocked->insert(new entry {
+                insert(wlocked, new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -721,7 +721,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                wlocked->insert(new entry {
+                insert(wlocked, new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -800,7 +800,7 @@ namespace vmm
             const auto overlap_start = std::max(startp, ent->startp);
             const auto overlap_end = std::min(endp, ent->endp);
 
-            wlocked->remove(ent);
+            remove(wlocked, ent);
 
             if (ent->endp > overlap_end)
             {
@@ -809,7 +809,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                wlocked->insert(new entry {
+                insert(wlocked, new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -826,7 +826,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                wlocked->insert(new entry {
+                insert(wlocked, new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -851,7 +851,7 @@ namespace vmm
                 ent->anon_idx += pages;
             ent->prot = prot;
 
-            wlocked->insert(ent);
+            insert(wlocked, ent);
 
             startp = overlap_end;
         }
@@ -860,6 +860,18 @@ namespace vmm
             return std::unexpected { ret.error() };
 
         return { };
+    }
+
+    void vmspace::insert(auto &locked, entry *ent)
+    {
+        locked->insert(ent);
+        gen.fetch_add(1, std::memory_order_release);
+    }
+
+    void vmspace::remove(auto &locked, entry *ent)
+    {
+        locked->remove(ent);
+        gen.fetch_add(1, std::memory_order_release);
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
@@ -981,10 +993,12 @@ namespace vmm
         std::uint64_t obj_offp;
         std::uint64_t anon_idx;
 
+        std::uint64_t gen;
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
+            gen = vmspace->gen.load(std::memory_order_acquire);
 
+            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
             if (ret.empty())
                 return false;
 
@@ -1025,6 +1039,38 @@ namespace vmm
                 pmm::free(paddr_from(pinned), num_alloc_pages);
         };
 
+        const auto copy_old = [&](page *opg, anon::ptr &slot, bool is_file) {
+            paddr = pmm::alloc(num_alloc_pages, false);
+            if (paddr == 0)
+                return false;
+
+            auto pg = page_for(paddr);
+            pg->refcount.store(1, std::memory_order_relaxed);
+            pg->flags.store(
+                page::flag::anonymous | (is_file ? page::flag::dirty : 0),
+                std::memory_order_relaxed
+            );
+
+            const auto old_vaddr = lib::tohh(paddr_from(opg));
+            const auto new_vaddr = lib::tohh(paddr);
+
+            std::memcpy(
+                reinterpret_cast<void *>(new_vaddr),
+                reinterpret_cast<void *>(old_vaddr),
+                npsize
+            );
+
+            if (opg->unref())
+                pmm::free(paddr_from(opg), num_alloc_pages);
+
+            slot = pg->anon_ptr = new anon {
+                .pg = pg,
+                .hook { }
+            };
+
+            return true;
+        };
+
         if (flags & flag::anonymous)
         {
             if (flags & flag::private_)
@@ -1040,31 +1086,8 @@ namespace vmm
                         if (opg->refcount.load(std::memory_order_acquire) != 1)
                         {
                             // cow
-                            paddr = pmm::alloc(num_alloc_pages, false);
-                            if (paddr == 0)
+                            if (!copy_old(opg, slot, false))
                                 return false;
-
-                            auto pg = page_for(paddr);
-                            pg->refcount.store(1, std::memory_order_relaxed);
-                            pg->flags.store(page::flag::anonymous, std::memory_order_relaxed);
-
-                            const auto old_vaddr = lib::tohh(paddr_from(opg));
-                            const auto new_vaddr = lib::tohh(paddr);
-
-                            std::memcpy(
-                                reinterpret_cast<void *>(new_vaddr),
-                                reinterpret_cast<void *>(old_vaddr),
-                                npsize
-                            );
-
-                            if (opg->unref())
-                                pmm::free(paddr_from(opg), num_alloc_pages);
-
-                            slot = pg->anon_ptr = new anon {
-                                .pg = pg,
-                                .hook { }
-                            };
-
                             goto end;
                         }
                     }
@@ -1113,31 +1136,33 @@ namespace vmm
 
                 if (!state.is_present)
                 {
+                    page *opg = nullptr;
                     if (!amap->slots[anon_idx + offp])
                     {
                         lib::bug_on(!obj);
-
-                        page *fetched = nullptr;
-                        const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
-                        if (!ret || !fetched)
+                        const auto ret = obj->read_pages(obj_offp + offp, { &opg, 1 }, 0);
+                        if (!ret || !opg)
                             return false;
-
-                        pinned = fetched;
-                        paddr = paddr_from(fetched);
                     }
                     else
                     {
                         auto opg = amap->slots[anon_idx + offp]->pg;
                         opg->ref();
+                    }
+
+                    if (!state.is_write)
+                    {
                         pinned = opg;
                         paddr = paddr_from(opg);
                     }
-                    if (state.is_write)
-                        goto do_cow;
+                    else
+                    {
+                        if (!copy_old(opg, amap->slots[anon_idx + offp], true))
+                            return false;
+                    }
                 }
                 else // write
                 {
-                    do_cow:
                     page *opg = nullptr;
                     if (amap->slots[anon_idx + offp])
                     {
@@ -1159,33 +1184,8 @@ namespace vmm
                             return false;
                     }
 
-                    paddr = pmm::alloc(num_alloc_pages, false);
-                    if (paddr == 0)
+                    if (!copy_old(opg, amap->slots[anon_idx + offp], true))
                         return false;
-
-                    auto pg = page_for(paddr);
-                    pg->refcount.store(1, std::memory_order_relaxed);
-                    pg->flags.store(
-                        page::flag::anonymous | page::flag::dirty,
-                        std::memory_order_relaxed
-                    );
-
-                    const auto old_vaddr = lib::tohh(paddr_from(opg));
-                    const auto new_vaddr = lib::tohh(paddr);
-
-                    std::memcpy(
-                        reinterpret_cast<void *>(new_vaddr),
-                        reinterpret_cast<void *>(old_vaddr),
-                        npsize
-                    );
-
-                    if (opg->unref())
-                        pmm::free(paddr_from(opg), num_alloc_pages);
-
-                    amap->slots[anon_idx + offp] = pg->anon_ptr = new anon {
-                        .pg = pg,
-                        .hook { }
-                    };
                 }
             }
             else // shared
@@ -1209,8 +1209,11 @@ namespace vmm
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
+            if (vmspace->gen.load(std::memory_order_acquire) != gen)
+                goto fail;
 
+#if ILOBILIX_DEBUG
+            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
             if (ret.empty())
                 goto fail;
 
@@ -1227,6 +1230,7 @@ namespace vmm
                 goto fail;
             if (amap && (entry.amap != amap || (entry.anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
+#endif
         }
 
         // TODO: tlb shootdown if (state.is_present && state.is_write)

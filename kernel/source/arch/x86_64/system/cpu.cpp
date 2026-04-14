@@ -74,9 +74,9 @@ namespace cpu
             asm volatile ("mov cr3, %0" :: "r"(cr3) : "memory");
 
             // disable the MTRRs
-            auto mtrr_def = msr::read(0x2ff);
+            auto mtrr_def = msr::read(0x2FF);
             mtrr_def &= ~(1ul << 11);
-            msr::write(0x2ff, mtrr_def);
+            msr::write(0x2FF, mtrr_def);
 
             // restore variable range MTRRs
             for (std::size_t i = 0; i < var_reg_count * 2; i += 2)
