@@ -8,7 +8,7 @@ import cppstd;
 
 namespace log
 {
-    lib::spinlock<true> _lock;
+    constinit lib::spinlock<true> _lock;
     std::uint64_t get_time();
 
     export namespace unsafe
@@ -117,16 +117,15 @@ export namespace log
     inline void println(std::string_view fmt = "", auto &&...args)
     {
         const std::unique_lock _ { _lock };
-
         detail::print(fmt, args...);
-        detail::print("\n");
+        unsafe::printc('\n');
     }
 
     inline constexpr void println(level lvl, std::string_view fmt = "", auto &&...args)
     {
         const std::unique_lock _ { _lock };
         unsafe::print_nolock(lvl, fmt, args...);
-        detail::print("\n");
+        unsafe::printc('\n');
     }
 
 #if ILOBILIX_DEBUG

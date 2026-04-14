@@ -32,9 +32,9 @@ namespace sched
         lib::map::flat_hash<std::size_t, std::shared_ptr<process>> processes;
         lib::spinlock<false> process_lock;
 
-        std::atomic_size_t next_pid = 0;
         std::size_t alloc_pid(std::shared_ptr<process> proc)
         {
+            static std::atomic_size_t next_pid = 0;
             const std::unique_lock _ { process_lock };
             auto pid = next_pid++;
             processes[pid] = proc;
@@ -233,7 +233,7 @@ namespace sched
 
         if (eeping && thread->sleep_for.has_value())
         {
-            auto clock = time::main_clock();
+            const auto clock = time::main_clock();
             thread->sleep_until = clock->ns() / 1'000'000 + thread->sleep_for.value();
             thread->sleep_for = std::nullopt;
         }
@@ -275,10 +275,10 @@ namespace sched
 
     void schedule(cpu::registers *regs)
     {
-        auto clock = time::main_clock();
+        const auto clock = time::main_clock();
         const auto time = clock->ns();
 
-        auto self = cpu::self();
+        const auto self = cpu::self();
 
         auto current = percpu->running_thread;
         if (current && current->status != status::killed)
