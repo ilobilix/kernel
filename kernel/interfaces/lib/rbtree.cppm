@@ -43,22 +43,12 @@ export namespace lib
     template<typename Type, rbtree_hook<Type> Type::*Member, typename Less, typename Aug = default_augmentor<Type>>
     class rbtree
     {
-        template<typename Type1, rbtree_hook<Type1> Type1::*, typename, typename>
-        friend class rbtree_alloc;
-
         template<
             typename Type1, typename IType,
             IType Type1::*, IType Type1::*,
             rbtree_hook<Type1> Type1::*, interval_hook<IType> Type1::*
         >
         friend class interval_tree;
-
-        template<
-            typename Type1, typename IType1,
-            IType1 Type1::*, IType1 Type1::*,
-            rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-        >
-        friend class interval_tree_alloc;
 
         private:
         Type *_root;
@@ -413,11 +403,12 @@ export namespace lib
                 hook(nh, y)->left = left(nh, z);
                 hook(nh, left(nh, y))->parent = y;
                 hook(nh, y)->colour = hook(nh, z)->colour;
+
+                augment(y);
+                x = y;
             }
 
             auto us = parent(nh, x);
-            if (yoc == colour::black)
-                _remove_fixup(nh, x);
 
             auto c = us;
             while (c != nil())
@@ -426,6 +417,9 @@ export namespace lib
                     break;
                 c = parent(nh, c);
             }
+
+            if (yoc == colour::black)
+                _remove_fixup(nh, x);
 
             if (root() == nil())
                 _head = nil();
@@ -438,16 +432,6 @@ export namespace lib
         {
             template<typename Type1, rbtree_hook<Type1> Type1::*, typename, typename>
             friend class rbtree;
-
-            template<typename Type1, rbtree_hook<Type1> Type1::*, typename, typename>
-            friend class rbtree_alloc;
-
-            template<
-                typename Type1, typename IType1,
-                IType1 Type1::*, IType1 Type1::*,
-                rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-            >
-            friend class interval_tree_alloc;
 
             private:
             rbtree *_tree;
@@ -678,132 +662,7 @@ export namespace lib
             return current != nil();
         }
 
-        constexpr Type *find(auto cmp) const
-        {
-            auto current = root();
-            rbtree_hook<Type> nh;
-            while (current != nil())
-            {
-                auto res = cmp(*current);
-                if (res == 0)
-                    break;
-
-                if (res > 0)
-                    current = left(&nh, current);
-                else
-                    current = right(&nh, current);
-            }
-            return current != nil() ? current : nullptr;
-
-        }
-
         constexpr std::size_t size() const { return _size; }
         constexpr bool empty() const { return _size == 0; }
-    };
-
-    template<typename Type, rbtree_hook<Type> Type::*Member, typename Less, typename Aug = default_augmentor<Type>>
-    class rbtree_alloc
-    {
-        private:
-        rbtree<Type, Member, Less, Aug> _rbtree;
-
-        public:
-        using iterator = typename rbtree<Type, Member, Less, Aug>::iterator;
-        using const_iterator = typename rbtree<Type, Member, Less, Aug>::const_iterator;
-
-        using reverse_iterator = std::reverse_iterator<iterator>;
-        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-        static inline constexpr Type *nil() { return decltype(_rbtree)::nil(); }
-
-        constexpr rbtree_alloc() : _rbtree { } { }
-
-        constexpr rbtree_alloc(const rbtree_alloc &) = delete;
-        constexpr rbtree_alloc(rbtree_alloc &&rhs) : _rbtree { std::move(rhs._rbtree) }
-        { rhs._rbtree = { }; }
-
-        constexpr ~rbtree_alloc() { clear(); }
-
-        constexpr rbtree_alloc &operator=(const rbtree_alloc &) = delete;
-        constexpr rbtree_alloc &operator=(rbtree_alloc &&rhs)
-        {
-            if (this != &rhs)
-            {
-                clear();
-                _rbtree = std::move(rhs._rbtree);
-                rhs._rbtree = { };
-            }
-            return *this;
-        }
-
-        template<typename... Args>
-        constexpr iterator emplace(Args&&... args)
-        {
-            auto obj = new Type(std::forward<Args>(args)...);
-            _rbtree.insert(obj);
-            return iterator { &_rbtree, obj };
-        }
-
-        constexpr void remove(Type *x)
-        {
-            _rbtree.remove(x);
-            delete x;
-        }
-
-        constexpr iterator remove(iterator x)
-        {
-            bug_on(x._tree != &_rbtree);
-            auto next = x;
-            ++next;
-            remove(x.value());
-            return next;
-        }
-
-        constexpr const_iterator remove(const_iterator x)
-        {
-            bug_on(x._tree != &_rbtree);
-            auto next = x;
-            ++next;
-            remove(const_cast<Type *>(x.value()));
-            return next;
-        }
-
-        constexpr void clear()
-        {
-            if (_rbtree.empty())
-                return;
-
-            _rbtree.clear([](Type *x) { delete x; });
-        }
-
-        constexpr Type *root() const { return _rbtree.root(); }
-        constexpr Type *head() const { return _rbtree.root(); }
-
-        constexpr iterator begin() { return _rbtree.begin(); }
-        constexpr iterator end() { return _rbtree.end(); }
-
-        constexpr const_iterator begin() const { return _rbtree.begin(); }
-        constexpr const_iterator end() const { return _rbtree.end(); }
-
-        constexpr const_iterator cbegin() const { return _rbtree.cbegin(); }
-        constexpr const_iterator cend() const { return _rbtree.cend(); }
-
-        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
-        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
-
-        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
-        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
-
-        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
-        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
-
-        constexpr Type *first() const { return _rbtree.first(); }
-        constexpr Type *last() const { return _rbtree.last(); }
-
-        constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
-        constexpr Type *find(auto cmp) const { return _rbtree.find(cmp); }
-
-        constexpr std::size_t size() const { return _rbtree.size(); }
-        constexpr bool empty() const { return _rbtree.empty(); }
     };
 } // export namespace lib

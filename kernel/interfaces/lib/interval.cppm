@@ -23,13 +23,6 @@ export namespace lib
     >
     class interval_tree
     {
-        template<
-            typename Type1, typename IType1,
-            IType1 Type1::*, IType1 Type1::*,
-            rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-        >
-        friend class interval_tree_alloc;
-
         private:
         static constexpr IType lower(const Type *node)
         {
@@ -73,7 +66,7 @@ export namespace lib
                 auto left = rhook(node)->left;
                 auto right = rhook(node)->right;
 
-                if (left != nullptr)
+                if (left != nil())
                 {
                     has_left = true;
 
@@ -96,7 +89,7 @@ export namespace lib
                     });
                 }
 
-                if (right != nullptr)
+                if (right != nil())
                 {
                     const auto right_max = ihook(right)->subtree_max;
                     const auto right_min = ihook(right)->subtree_min;
@@ -145,13 +138,6 @@ export namespace lib
                 rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
             >
             friend class interval_tree;
-
-            template<
-                typename Type1, typename IType1,
-                IType1 Type1::*, IType1 Type1::*,
-                rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-            >
-            friend class interval_tree_alloc;
 
             private:
             interval_tree *_tree;
@@ -400,132 +386,8 @@ export namespace lib
         constexpr Type *last() const { return _rbtree.last(); }
 
         constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
-        constexpr Type *find(auto cmp) const { return _rbtree.find(cmp); }
 
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
-    };
-
-    template<
-        typename Type, typename IType,
-        IType Type::*Lower, IType Type::*Upper,
-        rbtree_hook<Type> Type::*Hook, interval_hook<IType> Type::*IHook
-    >
-    class interval_tree_alloc
-    {
-        private:
-        interval_tree<Type, IType, Lower, Upper, Hook, IHook> _itree;
-
-        public:
-        using iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::iterator;
-        using const_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_iterator;
-
-        using reverse_iterator = std::reverse_iterator<iterator>;
-        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-        using overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::overlapping_iterator;
-        using const_overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_overlapping_iterator;
-
-        static inline constexpr Type *nil() { return decltype(_itree)::nil(); }
-
-        constexpr interval_tree_alloc() : _itree { } { }
-
-        constexpr interval_tree_alloc(const interval_tree_alloc &) = delete;
-        constexpr interval_tree_alloc(interval_tree_alloc &&rhs) : _itree { std::move(rhs._itree) }
-        { rhs._itree = { }; }
-
-        constexpr ~interval_tree_alloc() { clear(); }
-
-        constexpr interval_tree_alloc &operator=(const interval_tree_alloc &) = delete;
-        constexpr interval_tree_alloc &operator=(interval_tree_alloc &&rhs)
-        {
-            if (this != &rhs)
-            {
-                clear();
-                _itree = std::move(rhs._itree);
-                rhs._itree = { };
-            }
-            return *this;
-        }
-
-        template<typename... Args>
-        constexpr iterator emplace(Args&&... args)
-        {
-            auto obj = new Type(std::forward<Args>(args)...);
-            _itree.insert(obj);
-            return iterator { &_itree._rbtree, obj };
-        }
-
-        constexpr void remove(Type *x)
-        {
-            _itree.remove(x);
-            delete x;
-        }
-
-        constexpr iterator remove(iterator x)
-        {
-            bug_on(x._tree != &_itree._rbtree);
-            auto next = x;
-            ++next;
-            remove(x.value());
-            return next;
-        }
-
-        constexpr const_iterator remove(const_iterator x)
-        {
-            bug_on(x._tree != &_itree._rbtree);
-            auto next = x;
-            ++next;
-            remove(const_cast<Type *>(x.value()));
-            return next;
-        }
-
-        constexpr void clear()
-        {
-            if (_itree.empty())
-                return;
-
-            _itree._rbtree.clear([](Type *x) { delete x; });
-        }
-
-        constexpr auto overlapping(IType lb, IType ub)
-        {
-            return _itree.overlapping(lb, ub);
-        }
-
-        constexpr auto overlapping(IType lb, IType ub) const
-        {
-            return _itree.overlapping(lb, ub);
-        }
-
-        constexpr Type *root() const { return _itree.root(); }
-        constexpr Type *head() const { return _itree.head(); }
-
-        constexpr iterator begin() { return _itree.begin(); }
-        constexpr iterator end() { return _itree.end(); }
-
-        constexpr const_iterator begin() const { return _itree.begin(); }
-        constexpr const_iterator end() const { return _itree.end(); }
-
-        constexpr const_iterator cbegin() const { return _itree.cbegin(); }
-        constexpr const_iterator cend() const { return _itree.cend(); }
-
-        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
-        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
-
-        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
-        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
-
-        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
-        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
-
-        constexpr Type *first() const { return _itree.first(); }
-        constexpr Type *last() const { return _itree.last(); }
-
-        constexpr bool contains(Type *x) const { return _itree.contains(x); }
-        constexpr Type *find(auto cmp) const { return _itree.find(cmp); }
-
-        constexpr std::size_t size() const { return _itree.size(); }
-        constexpr bool empty() const { return _itree.empty(); }
     };
 } // export namespace lib

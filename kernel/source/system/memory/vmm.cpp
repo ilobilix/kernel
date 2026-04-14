@@ -669,18 +669,6 @@ namespace vmm
         {
             const auto overlapping = wlocked->overlapping(startp, endp);
 
-            const auto total_pages = std::accumulate(
-                std::ranges::begin(overlapping), std::ranges::end(overlapping), 0uz,
-                [startp, endp](std::size_t acc, const entry &ent) {
-                    const auto overlap_start = std::max(startp, ent.startp);
-                    const auto overlap_end = std::min(endp, ent.endp);
-                    return acc + (overlap_end - overlap_start);
-                }
-            );
-
-            if (total_pages < (endp - startp))
-                return std::unexpected { lib::err::out_of_memory };
-
             for (const auto &ent : overlapping)
             {
                 if (ent.flags & flag::untouchable)
@@ -768,7 +756,7 @@ namespace vmm
         if (address < mmap_min || address + length > vspace_top)
             return std::unexpected { lib::err::addr_out_of_bounds };
 
-        const auto startp = address / psize;
+        auto startp = address / psize;
         const auto endp = (address + length) / psize;
 
         auto wlocked = tree.write_lock();
@@ -798,7 +786,7 @@ namespace vmm
             }
         }
 
-        while (true)
+        while (startp < endp)
         {
             const auto overlapping = wlocked->overlapping(startp, endp);
 
@@ -863,6 +851,8 @@ namespace vmm
             ent->prot = prot;
 
             wlocked->insert(ent);
+
+            startp = overlap_end;
         }
 
         if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot)); !ret)
@@ -883,7 +873,7 @@ namespace vmm
             if (plen > pmax - pmin)
                 return std::unexpected { lib::err::out_of_memory };
 
-            return (pmax - length) * psize;
+            return (pmax - plen) * psize;
         }
 
         const auto root = locked->root();
@@ -895,14 +885,11 @@ namespace vmm
         if (max_gap < plen && high_gap < plen && low_gap < plen)
             return std::unexpected { lib::err::out_of_memory };
 
-        if (high_gap >= plen)
-            return (pmax - plen) * psize;
-
         const auto nil = locked->nil();
         auto node = locked->root();
 
         std::uintptr_t floor = pmin;
-        while (node)
+        while (node != nil)
         {
             const auto left = node->hook.left;
             const auto right = node->hook.right;
@@ -978,6 +965,8 @@ namespace vmm
         const auto psize = default_page_size();
         const auto num_alloc_pages = psize / pmm::page_size;
 
+        const auto aligned = lib::align_down(state.address, psize);
+
         object::ptr obj;
         anon_map::ptr amap;
 
@@ -987,33 +976,29 @@ namespace vmm
         std::uint64_t obj_offp;
         std::uint64_t anon_idx;
 
-        const auto find_cmp = [&](const auto &ent) {
-            if ((ent.startp * psize) <= state.address && state.address < (ent.endp * psize))
-                return 0;
-            return (ent.startp * psize) < state.address ? -1 : 1;
-        };
-
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto entry = rlocked->find(find_cmp);
+            const auto ret = rlocked->overlapping(aligned / psize, (aligned / psize) + 1);
 
-            if (!entry)
+            if (ret.empty())
                 return false;
 
-            prot = entry->prot;
-            flags = entry->flags;
-            startp = entry->startp;
+            auto &entry = ret.front();
 
-            if (entry->obj)
+            prot = entry.prot;
+            flags = entry.flags;
+            startp = entry.startp;
+
+            if (entry.obj)
             {
-                obj = entry->obj;
-                obj_offp = entry->offp;
+                obj = entry.obj;
+                obj_offp = entry.offp;
             }
 
-            if (entry->amap)
+            if (entry.amap)
             {
-                amap = entry->amap;
-                anon_idx = entry->anon_idx;
+                amap = entry.amap;
+                anon_idx = entry.anon_idx;
             }
         }
 
@@ -1026,7 +1011,6 @@ namespace vmm
         if (state.is_exec && !(prot & prot::exec))
             return false;
 
-        const auto aligned = lib::align_down(state.address, psize);
         const auto offp = (aligned / psize) - startp;
         std::uintptr_t paddr = 0;
 
@@ -1126,7 +1110,6 @@ namespace vmm
                 {
                     if (!amap->slots[anon_idx + offp])
                     {
-                        alock.unlock();
                         lib::bug_on(!obj);
 
                         page *fetched = nullptr;
@@ -1144,10 +1127,12 @@ namespace vmm
                         pinned = opg;
                         paddr = paddr_from(opg);
                     }
-                    prot &= ~prot::write;
+                    if (state.is_write)
+                        goto do_cow;
                 }
                 else // write
                 {
+                    do_cow:
                     page *opg = nullptr;
                     if (amap->slots[anon_idx + offp])
                     {
@@ -1219,21 +1204,23 @@ namespace vmm
 
         {
             const auto rlocked = vmspace->tree.read_lock();
-            const auto entry = rlocked->find(find_cmp);
+            const auto ret = rlocked->overlapping(aligned / psize, (aligned / psize) + 1);
 
-            if (!entry)
+            if (ret.empty())
                 goto fail;
 
-            if (state.is_write && !(entry->prot & prot::write))
+            auto &entry = ret.front();
+
+            if (state.is_write && !(entry.prot & prot::write))
                 goto fail;
-            if (state.is_exec && !(entry->prot & prot::exec))
+            if (state.is_exec && !(entry.prot & prot::exec))
                 goto fail;
 
-            const auto new_offp = (aligned / psize) - entry->startp;
+            const auto new_offp = (aligned / psize) - entry.startp;
 
-            if (obj && (entry->obj != obj || (entry->offp + new_offp) != (obj_offp + offp)))
+            if (obj && (entry.obj != obj || (entry.offp + new_offp) != (obj_offp + offp)))
                 goto fail;
-            if (amap && (entry->amap != amap || (entry->anon_idx + new_offp) != (anon_idx + offp)))
+            if (amap && (entry.amap != amap || (entry.anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
         }
 

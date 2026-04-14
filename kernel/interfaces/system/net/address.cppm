@@ -52,9 +52,12 @@ namespace net::addr
             using base<4>::base;
             using base<4>::to_bytes;
 
-            static constexpr v4 broadcast()
+            static constexpr v4 broadcast(v4 mask)
             {
-                return { 0xFF, 0xFF, 0xFF, 0xFF };
+                v4 result;
+                for (std::size_t i = 0; i < 4; i++)
+                    result[i] = mask[i] | ~mask[i];
+                return result;
             }
         };
     } // namespace ip

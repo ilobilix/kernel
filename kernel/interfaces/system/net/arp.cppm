@@ -129,9 +129,7 @@ namespace net::arp
     {
         private:
         // TODO: hashmap
-        std::vector<std::unique_ptr<route>> routes {
-            std::make_unique<route>(addr::ip::v4::broadcast(), addr::mac::broadcast(), true)
-        };
+        std::vector<std::unique_ptr<route>> routes { };
         sender *_sender = nullptr;
 
         void submit_query(addr::ip::v4 dip)

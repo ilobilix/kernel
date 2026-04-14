@@ -50,12 +50,23 @@ namespace bin::elf::exec
 
             const auto ret = file->pread(0, std::move(*hdruspan));
             if (!ret.has_value())
-                lib::panic("elf: could not read header: {}", magic_enum::enum_name(ret.error()));
+            {
+                lib::error(
+                    "elf: could not read header: {}",
+                    magic_enum::enum_name(ret.error())
+                );
+                return std::nullopt;
+            }
             if (*ret != sizeof(ehdr))
-                lib::panic("elf: header size mismatch: {} != {}", *ret, sizeof(ehdr));
+            {
+                lib::error("elf: header size mismatch: {} != {}", *ret, sizeof(ehdr));
+                return std::nullopt;
+            }
 
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
+
+            const auto psize = vmm::default_page_size();
 
             std::shared_ptr<vfs::file> interp { };
 
@@ -74,11 +85,24 @@ namespace bin::elf::exec
                 );
                 lib::bug_on(!phdruspan.has_value());
 
-                const auto ret = file->pread(ehdr.e_phoff + i * ehdr.e_phentsize, std::move(*phdruspan));
+                const auto ret = file->pread(
+                    ehdr.e_phoff + i * ehdr.e_phentsize,
+                    std::move(*phdruspan)
+                );
+
                 if (!ret.has_value())
-                    lib::panic("elf: could not read phdr: {}", magic_enum::enum_name(ret.error()));
+                {
+                    lib::error(
+                        "elf: could not read phdr: {}",
+                        magic_enum::enum_name(ret.error())
+                    );
+                    return std::nullopt;
+                }
                 if (*ret != sizeof(phdr))
-                    lib::panic("elf: phdr size mismatch: {} != {}", *ret, sizeof(phdr));
+                {
+                    lib::error("elf: phdr size mismatch: {} != {}", *ret, sizeof(phdr));
+                    return std::nullopt;
+                }
 
                 switch (phdr.p_type)
                 {
@@ -92,7 +116,6 @@ namespace bin::elf::exec
                         if (phdr.p_flags & PF_X)
                             prot |= vmm::prot::exec;
 
-                        const auto psize = vmm::default_page_size();
                         const auto misalign = phdr.p_vaddr & (psize - 1);
 
                         const auto paloffset = phdr.p_offset - misalign;
@@ -108,21 +131,27 @@ namespace bin::elf::exec
                         const auto ret = file->pread(paloffset, file_uspan.value());
                         if (!ret.has_value())
                         {
-                            lib::panic(
+                            lib::error(
                                 "elf: could not read phdr data: {}",
                                 magic_enum::enum_name(ret.error())
                             );
+                            return std::nullopt;
                         }
 
                         if (*ret != file_uspan->size_bytes())
                         {
-                            lib::panic(
+                            lib::error(
                                 "elf: phdr data size mismatch: {} != {}",
                                 *ret, file_uspan->size_bytes()
                             );
+                            return std::nullopt;
                         }
 
-                        lib::panic_if(obj->write(0, file_uspan.value()) != padded);
+                        if (obj->write(0, file_uspan.value()) != padded)
+                        {
+                            lib::error("elf: could not write data to memobject");
+                            return std::nullopt;
+                        }
 
                         if (phdr.p_memsz > phdr.p_filesz)
                         {
@@ -131,12 +160,15 @@ namespace bin::elf::exec
                             std::memset(zeroes.data(), 0, zeroes.size());
 
                             const auto zeroes_uspan = zeroes.maybe_uspan();
-                            lib::panic_if(!zeroes_uspan.has_value());
-
-                            lib::panic_if(obj->write(padded, zeroes_uspan.value()) != zeroes_len);
+                            lib::bug_on(!zeroes_uspan.has_value());
+                            if (obj->write(padded, *zeroes_uspan) != zeroes_len)
+                            {
+                                lib::error("elf: could not zero out bss");
+                                return std::nullopt;
+                            }
                         }
 
-                        auto flags = vmm::flag::private_ | vmm::flag::untouchable;
+                        auto flags = vmm::flag::private_;// | vmm::flag::untouchable;
                         std::uintptr_t address = 0;
 
                         if (ehdr.e_type != ET_DYN)
@@ -157,11 +189,14 @@ namespace bin::elf::exec
                             prot, prot, flags, obj, 0
                         );
 
-                        lib::panic_if(
-                            !mret.has_value(),
-                            "elf: could not map segment: {} {}",
-                            magic_enum::enum_name(mret.error())
-                        );
+                        if (!mret.has_value())
+                        {
+                            lib::error(
+                                "elf: could not map segment: {}",
+                                magic_enum::enum_name(mret.error())
+                            );
+                            return std::nullopt;
+                        };
 
                         if (!base_addr && is_first)
                         {
@@ -169,7 +204,7 @@ namespace bin::elf::exec
                             addr = base_addr;
                         }
 
-                        max_end = std::max(max_end, base_addr + phdr.p_memsz + misalign);
+                        max_end = std::max(max_end, *mret + phdr.p_memsz + misalign);
                         is_first = false;
                         break;
                     }
@@ -185,16 +220,33 @@ namespace bin::elf::exec
 
                         const auto ret = file->pread(phdr.p_offset, buffer_uspan.value());
                         if (!ret.has_value())
-                            lib::panic("elf: could not read interpreter path: {}", magic_enum::enum_name(ret.error()));
+                        {
+                            lib::error(
+                                "elf: could not read interpreter path: {}",
+                                magic_enum::enum_name(ret.error())
+                            );
+                            return std::nullopt;
+                        }
+
                         if (*ret != phdr.p_filesz - 1)
-                            lib::panic("elf: interpreter path size mismatch: {} != {}", *ret, phdr.p_filesz - 1);
+                        {
+                            lib::error(
+                                "elf: interpreter path size mismatch: {} != {}",
+                                *ret, phdr.p_filesz - 1
+                            );
+                            return std::nullopt;
+                        }
 
                         std::string_view path {
                             reinterpret_cast<const char *>(buffer.data()),
                             phdr.p_filesz - 1
                         };
 
-                        lib::panic_if(lib::path_view { path } .is_absolute() == false);
+                        if (lib::path_view { path } .is_absolute() == false)
+                        {
+                            lib::error("elf: invalid interpreter path '{}'", path);
+                            return std::nullopt;
+                        }
 
                         auto rret = vfs::resolve(file->path, path);
                         if (!rret.has_value())
@@ -226,7 +278,10 @@ namespace bin::elf::exec
                 .at_phnum = ehdr.e_phnum
             };
 
-            return std::make_tuple(aux, interp, lib::align_up(max_end, vmm::default_page_size()));
+            return std::make_tuple(
+                aux, std::move(interp),
+                lib::align_up(max_end, psize)
+            );
         }
 
         [[noreturn]]
