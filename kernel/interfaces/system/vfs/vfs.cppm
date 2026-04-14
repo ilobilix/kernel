@@ -225,7 +225,7 @@ export namespace vfs
             virtual auto link(std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target) -> lib::expect<std::shared_ptr<inode>> = 0;
             virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
-            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
+            virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
@@ -267,16 +267,16 @@ export namespace vfs
             };
 
             private:
-            std::list<node> _child_list { };
+            lib::list<node> _child_list { };
 
             lib::map::flat_hash<
                 std::string_view,
-                std::list<node>::iterator
+                lib::list<node>::iterator
             > _child_map { };
 
             lib::btree::map<
                 std::size_t,
-                std::list<node>::iterator
+                lib::list<node>::iterator
             > _offset_map;
 
             std::size_t _next_cookie = 3;
@@ -312,7 +312,7 @@ export namespace vfs
                 return it->second->dentry;
             }
 
-            std::list<node>::iterator begin_at(std::size_t offset) const
+            lib::list<node>::const_iterator begin_at(std::size_t offset) const
             {
                 const auto it = _offset_map.lower_bound(offset);
                 if (it == _offset_map.end())
@@ -356,7 +356,7 @@ export namespace vfs
 
         lib::locker<children, lib::rwmutex> children;
 
-        std::list<std::weak_ptr<mount>> child_mounts;
+        lib::list<std::weak_ptr<mount>> child_mounts;
     };
 
     struct file : std::enable_shared_from_this<file>

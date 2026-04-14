@@ -15,7 +15,7 @@ namespace fs::devtmpfs
     {
         lib::locked_ptr<tmpfs::fs::instance, lib::mutex> instance;
         std::shared_ptr<vfs::dentry> root;
-        mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
+        mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
 
         auto mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {

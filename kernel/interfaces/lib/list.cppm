@@ -3,107 +3,201 @@
 export module lib:list;
 
 import :bug_on;
-import :types;
 import std;
 
 export namespace lib
 {
-    template<typename Type, typename Hook, Hook Type::*Member>
-    struct locate_member
-    {
-        static constexpr Hook &operator()(Type &x) { return x.*Member; }
-    };
-
     template<typename Type>
-    struct intrusive_list_hook
-    {
-        template<typename, typename>
-        friend class intrusive_list_base;
-
-        private:
-        Type *next;
-        Type *prev;
-
-        public:
-        constexpr intrusive_list_hook() : next { nullptr }, prev { nullptr } { }
-    };
-
-    template<typename Type, typename Locate>
-    class intrusive_list_base
+    class list
     {
         private:
-        Type *_head;
-        Type *_tail;
+        struct node
+        {
+            alignas(alignof(Type)) std::byte data[sizeof(Type)];
+
+            template<typename ...Args>
+            node(Args &&...args)
+            {
+                std::construct_at(reinterpret_cast<Type *>(data), std::forward<Args>(args)...);
+            }
+
+            ~node()
+            {
+                std::destroy_at(std::launder(reinterpret_cast<Type *>(data)));
+            }
+
+            Type *get_data()
+            {
+                return std::launder(reinterpret_cast<Type *>(data));
+            }
+
+            node *next = nullptr;
+            node *prev = nullptr;
+        };
+
+        node *_head;
+        node *_tail;
         std::size_t _size;
 
-        static inline constexpr intrusive_list_hook<Type> &hook(Type *item)
+        template<typename VType>
+        class iterator_base
         {
-            return Locate::operator()(*item);
-        }
+            template<typename>
+            friend class iterator_base;
 
-        static inline constexpr intrusive_list_hook<Type> &hook(void *item)
-        {
-            return hook(static_cast<Type *>(item));
-        }
-
-        class iterator
-        {
-            template<typename, typename>
-            friend class intrusive_list_base;
+            template<typename>
+            friend class list;
 
             private:
-            intrusive_list_base *_lst;
-            Type *_current;
-            constexpr iterator(intrusive_list_base *lst, Type *data) : _lst { lst }, _current { data } { }
+            const list *_lst;
+            node *_current;
+
+            iterator_base(const list *lst, node *data)
+                : _lst { lst }, _current { data } { }
 
             public:
-            constexpr Type &operator*() const { return *_current; }
-            constexpr Type *operator->() const { return _current; }
-            constexpr Type *value() const { return _current; }
+            using iterator_category = std::bidirectional_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = VType;
+            using pointer = VType *;
+            using reference = VType &;
 
-            constexpr iterator &operator++()
+            iterator_base() : _lst { nullptr }, _current { nullptr } { }
+
+            template<typename OVType> requires std::same_as<VType, const OVType>
+            iterator_base(const iterator_base<OVType> &other)
+                : _lst { other._lst }, _current { other._current } { }
+
+            reference operator*() const { return *_current->get_data(); }
+            pointer operator->() const { return _current->get_data(); }
+            pointer value() const { return _current->get_data(); }
+
+            iterator_base &operator++()
             {
-                _current = hook(_current).next;
+                if (_current == nullptr)
+                    return *this;
+                _current = _current->next;
                 return *this;
             }
 
-            constexpr iterator operator++(int)
+            iterator_base operator++(int)
             {
-                auto ret { *this };
+                iterator_base ret { *this };
                 ++(*this);
                 return ret;
             }
 
-            constexpr iterator &operator--()
+            iterator_base &operator--()
             {
-                _current = hook(_current).prev;
+                if (_current == nullptr)
+                    _current = _lst->_tail;
+                else
+                    _current = _current->prev;
                 return *this;
             }
 
-            constexpr iterator operator--(int)
+            iterator_base operator--(int)
             {
-                auto ret { *this };
+                iterator_base ret { *this };
                 --(*this);
                 return ret;
             }
 
-            friend constexpr bool operator==(const iterator &lhs, const iterator &rhs)
+            friend bool operator==(const iterator_base &lhs, const iterator_base &rhs)
             {
                 return lhs._lst == rhs._lst && lhs._current == rhs._current;
             }
 
-            friend constexpr bool operator!=(const iterator &lhs, const iterator &rhs)
+            friend bool operator!=(const iterator_base &lhs, const iterator_base &rhs)
             {
                 return !(lhs == rhs);
             }
         };
 
         public:
-        constexpr intrusive_list_base()
+        using value_type = Type;
+        using size_type = std::size_t;
+        using reference = Type &;
+        using const_reference = const Type &;
+        using pointer = Type *;
+        using const_pointer = const Type *;
+        using iterator = iterator_base<Type>;
+        using const_iterator = iterator_base<const Type>;
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+        private:
+        template<typename ...Args>
+        node *allocate(Args &&...args)
+        {
+            return new node { std::forward<Args>(args)... };
+        }
+
+        void deallocate(node *node) { delete node; }
+
+        template<typename ...Args>
+        node *insert_before(node *before, Args &&...args)
+        {
+            auto *new_node = allocate(std::forward<Args>(args)...);
+            if (before == nullptr)
+            {
+                if (_tail == nullptr)
+                {
+                    bug_on(_head != nullptr);
+                    _head = new_node;
+                    _tail = new_node;
+                }
+                else
+                {
+                    bug_on(_head == nullptr);
+                   _tail->next = new_node;
+                    new_node->prev = _tail;
+                    _tail = new_node;
+                }
+            }
+            else
+            {
+                new_node->next = before;
+                new_node->prev = before->prev;
+                before->prev = new_node;
+                if (new_node->prev != nullptr)
+                    new_node->prev->next = new_node;
+                else
+                    _head = new_node;
+            }
+            _size++;
+            return new_node;
+        }
+
+        void erase_one(node *to_erase)
+        {
+            if (to_erase == nullptr)
+                return;
+
+            if (to_erase->prev == nullptr)
+            {
+                bug_on(_head != to_erase);
+                _head = to_erase->next;
+            }
+            else to_erase->prev->next = to_erase->next;
+
+            if (to_erase->next == nullptr)
+            {
+                bug_on(_tail != to_erase);
+                _tail = to_erase->prev;
+            }
+            else to_erase->next->prev = to_erase->prev;
+
+            deallocate(to_erase);
+            _size--;
+        }
+
+        public:
+        list()
             : _head { nullptr }, _tail { nullptr }, _size { 0 } { }
 
-        constexpr intrusive_list_base(const intrusive_list_base &) = delete;
-        constexpr intrusive_list_base(intrusive_list_base &&rhs)
+        list(const list &) = delete;
+        list(list &&rhs)
             : _head { rhs._head }, _tail { rhs._tail }, _size { rhs._size }
         {
             rhs._head = nullptr;
@@ -111,11 +205,18 @@ export namespace lib
             rhs._size = 0;
         }
 
-        constexpr intrusive_list_base &operator=(const intrusive_list_base &) = delete;
-        constexpr intrusive_list_base &operator=(intrusive_list_base &&rhs)
+        ~list()
+        {
+            clear();
+        }
+
+        list &operator=(const list &) = delete;
+        list &operator=(list &&rhs)
         {
             if (this != &rhs)
             {
+                clear();
+
                 _head = rhs._head;
                 _tail = rhs._tail;
                 _size = rhs._size;
@@ -127,154 +228,135 @@ export namespace lib
             return *this;
         }
 
-        constexpr iterator insert(Type *x)
+        iterator insert(iterator pos, const Type &value)
         {
-            if (_head == nullptr)
+            return iterator { this, insert_before(pos._current, value) };
+        }
+
+        iterator insert(const_iterator pos, const Type &value)
+        {
+            return iterator { this, insert_before(pos._current, value) };
+        }
+
+        iterator insert(iterator pos, Type &&value)
+        {
+            return iterator { this, insert_before(pos._current, std::move(value)) };
+        }
+
+        iterator insert(const_iterator pos, Type &&value)
+        {
+            return iterator { this, insert_before(pos._current, std::move(value)) };
+        }
+
+        iterator push_back(const Type &value)
+        {
+            return insert(end(), value);
+        }
+
+        iterator push_back(Type &&value)
+        {
+            return insert(end(), std::move(value));
+        }
+
+        iterator push_front(const Type &value)
+        {
+            return insert(begin(), value);
+        }
+
+        iterator push_front(Type &&value)
+        {
+            return insert(begin(), std::move(value));
+        }
+
+        template<typename ...Args>
+        reference emplace_back(Args &&...args)
+        {
+            return *insert_before(nullptr, std::forward<Args>(args)...)->get_data();
+        }
+
+        template<typename ...Args>
+        reference emplace_front(Args &&...args)
+        {
+            return *insert_before(_head, std::forward<Args>(args)...)->get_data();
+        }
+
+        void erase(iterator pos)
+        {
+            erase_one(pos._current);
+        }
+
+        void erase(const_iterator pos)
+        {
+            erase_one(pos._current);
+        }
+
+        void pop_front()
+        {
+            bug_on(_head == nullptr);
+            erase_one(_head);
+        }
+
+        void pop_back()
+        {
+            bug_on(_tail == nullptr);
+            erase_one(_tail);
+        }
+
+        void clear()
+        {
+            while (_head != nullptr)
             {
-                _head = x;
-                _tail = x;
-                hook(x).next = nullptr;
-                hook(x).prev = nullptr;
+                auto *to_erase = _head;
+                _head = _head->next;
+                deallocate(to_erase);
             }
-            else
-            {
-                hook(_tail).next = x;
-                hook(x).prev = _tail;
-                hook(x).next = nullptr;
-                _tail = x;
-            }
-            _size++;
-
-            return { this, x };
+            _tail = nullptr;
+            _size = 0;
         }
 
-        constexpr iterator insert_after(iterator pos, Type *x)
+        iterator begin() { return { this, _head }; }
+        iterator end() { return { this, nullptr }; }
+
+        const_iterator begin() const { return { this, _head }; }
+        const_iterator end() const { return { this, nullptr }; }
+
+        const_iterator cbegin() const { return { this, _head }; }
+        const_iterator cend() const { return { this, nullptr }; }
+
+        reverse_iterator rbegin() { return reverse_iterator { end() }; }
+        reverse_iterator rend() { return reverse_iterator { begin() }; }
+
+        const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
+        const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
+
+        const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
+        const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
+
+        reference front()
         {
-            bug_on(pos._lst != this);
-
-            const auto next = hook(pos._current).next;
-            hook(pos._current).next = x;
-            hook(x).prev = pos._current;
-            hook(x).next = next;
-
-            if (next)
-                hook(next).prev = x;
-            else
-                _tail = x;
-
-            _size++;
-            return { this, x };
+            bug_on(_head == nullptr);
+            return *_head->get_data();
         }
 
-        constexpr iterator insert_before(iterator pos, Type *x)
+        const_reference front() const
         {
-            bug_on(pos._lst != this);
-
-            const auto prev = hook(pos._current).prev;
-            hook(pos._current).prev = x;
-            hook(x).next = pos._current;
-            hook(x).prev = prev;
-
-            if (prev)
-                hook(prev).next = x;
-            else
-                _head = x;
-
-            _size++;
-            return { this, x };
+            bug_on(_head == nullptr);
+            return *_head->get_data();
         }
 
-        constexpr iterator push_back(Type *x)
+        reference back()
         {
-            return insert(x);
+            bug_on(_tail == nullptr);
+            return *_tail->get_data();
         }
 
-        constexpr iterator push_front(Type *x)
+        const_reference back() const
         {
-            if (_head == nullptr)
-                return insert(x);
-            return insert_before({ this, _head }, x);
+            bug_on(_tail == nullptr);
+            return *_tail->get_data();
         }
 
-        constexpr void remove(iterator x)
-        {
-            bug_on(x._lst != this);
-
-            const auto prev = hook(x._current).prev;
-            const auto next = hook(x._current).next;
-
-            if (x._current == _head)
-                _head = next;
-            if (x._current == _tail)
-                _tail = prev;
-
-            if (prev)
-                hook(prev).next = next;
-            if (next)
-                hook(next).prev = prev;
-
-            hook(x._current).next = nullptr;
-            hook(x._current).prev = nullptr;
-
-            bug_on(_size == 0);
-            _size--;
-        }
-
-        constexpr Type *pop_front()
-        {
-            auto ret = _head;
-            if (ret != nullptr)
-                remove({ this, ret });
-            return ret;
-        }
-
-        constexpr Type *pop_back()
-        {
-            auto ret = _tail;
-            if (ret != nullptr)
-                remove({ this, ret });
-            return ret;
-        }
-
-        constexpr iterator find(Type *x)
-        {
-            for (auto it = begin(); it != end(); it++)
-            {
-                if (it._current == x)
-                    return it;
-            }
-            return end();
-        }
-
-        constexpr iterator find_if(auto predicate)
-        {
-            for (auto it = begin(); it != end(); it++)
-            {
-                if (predicate(*it))
-                    return it;
-            }
-            return end();
-        }
-
-        constexpr iterator begin() { return { this, _head }; }
-        constexpr iterator end() { return { this, nullptr }; }
-
-        constexpr iterator begin() const { return { this, _head }; }
-        constexpr iterator end() const { return { this, nullptr }; }
-
-        constexpr iterator cbegin() { return { this, _head }; }
-        constexpr iterator cend() { return { this, nullptr }; }
-
-        constexpr Type *front() { return _head; }
-        constexpr Type *back() { return _tail; }
-
-        constexpr std::size_t size() const { return _size; }
-        constexpr bool empty() const { return _size == 0; }
+        size_type size() const { return _size; }
+        bool empty() const { return _size == 0; }
     };
-
-    template<typename Type, intrusive_list_hook<Type> Type::*Member>
-    using intrusive_list = intrusive_list_base<Type, locate_member<Type, intrusive_list_hook<Type>, Member>>;
-
-    template<typename Type, typename Locate>
-    using intrusive_list_locate = intrusive_list_base<Type, Locate>;
 } // export namespace lib

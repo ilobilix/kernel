@@ -11,6 +11,8 @@ export import :errno;
 export import :error;
 export import :hash;
 export import :initgraph;
+export import :interval;
+export import :intrusive;
 export import :io;
 export import :list;
 export import :locker;

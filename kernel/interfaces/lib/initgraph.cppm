@@ -3,7 +3,7 @@
 export module lib:initgraph;
 
 import :log;
-import :list;
+import :intrusive;
 import :bug_on;
 import :panic;
 import std;
