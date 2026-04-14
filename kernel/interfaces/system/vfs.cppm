@@ -360,9 +360,8 @@ export namespace vfs
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;
 
-    bool check_access(uid_t uid, gid_t gid, const stat &stat, int mode);
+    bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const stat &stat, int mode);
 
-    auto stat(std::optional<path> parent, lib::path path) -> expect<stat>;
     bool populate(path parent, std::string_view name = "");
 
     lib::initgraph::stage *root_mounted_stage();
