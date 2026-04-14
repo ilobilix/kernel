@@ -2,6 +2,7 @@
 
 module system.memory.phys;
 
+import system.scheduler;
 import frigg;
 import boot;
 import lib;
@@ -87,22 +88,26 @@ namespace pmm
         mem.used -= count * page_size;
     }
 
-    void reclaim()
+    initgraph::task reclaim_task
     {
-        log::debug("pmm: reclaiming bootloader memory");
+        "pmm-reclaim-memory",
+        initgraph::require { sched::available_stage() },
+        [] {
+            log::debug("pmm: reclaiming bootloader memory");
 
-        const auto memmaps = boot::requests::memmap.response->entries;
-        const std::size_t num = boot::requests::memmap.response->entry_count;
+            const auto memmaps = boot::requests::memmap.response->entries;
+            const std::size_t num = boot::requests::memmap.response->entry_count;
 
-        for (std::size_t i = 0; i < num; i++)
-        {
-            const auto memmap = memmaps[i];
-            if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
-                continue;
+            for (std::size_t i = 0; i < num; i++)
+            {
+                const auto memmap = memmaps[i];
+                if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
+                    continue;
 
-            free(reinterpret_cast<void *>(memmap->base), memmap->length / page_size);
+                free(reinterpret_cast<void *>(memmap->base), memmap->length / page_size);
+            }
         }
-    }
+    };
 
     void init()
     {

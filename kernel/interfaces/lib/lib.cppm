@@ -8,6 +8,7 @@ export import :buffer;
 export import :endian;
 export import :ensure;
 export import :hash;
+export import :initgraph;
 export import :io;
 export import :log;
 export import :map;

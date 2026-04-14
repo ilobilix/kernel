@@ -2,9 +2,11 @@
 
 module system.scheduler;
 
+import drivers.timers;
 import system.cpu.self;
 import system.memory;
 import system.time;
+import system.acpi;
 import magic_enum;
 import boot;
 import arch;
@@ -325,6 +327,26 @@ namespace sched
         load(next, regs);
         arch::reschedule(timeslice);
     }
+
+    initgraph::stage *available_stage()
+    {
+        static initgraph::stage stage { "in-scheduler" };
+        return &stage;
+    }
+
+    initgraph::task scheduler_task
+    {
+        "init-pid0",
+        initgraph::require { ::arch::cpus_stage(), timers::available_stage() },
+        initgraph::entail { available_stage() },
+        [] {
+            auto proc = process::create(
+                nullptr,
+                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
+            );
+            lib::ensure(proc->pid == 0);
+        }
+    };
 
     [[noreturn]] void start()
     {

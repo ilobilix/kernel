@@ -4,6 +4,7 @@ module system.vfs;
 
 import system.scheduler;
 import system.cpu.self;
+import drivers.fs;
 import lib;
 import cppstd;
 
@@ -280,4 +281,24 @@ namespace vfs
         auto node = res->target->me();
         return node->backing->stat;
     }
+
+    initgraph::stage *root_mounted_stage()
+    {
+        static initgraph::stage stage { "vfs.root-mounted" };
+        return &stage;
+    }
+
+    initgraph::task fs_task
+    {
+        "vfs.mount-root",
+        initgraph::require { fs::filesystems_registered_stage() },
+        initgraph::entail { root_mounted_stage() },
+        [] {
+            lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
+
+            auto err = vfs::create(nullptr, "/dev", stat::type::s_ifdir);
+            lib::ensure(err.has_value() || err.error() == vfs::error::already_exists);
+            lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
+        }
+    };
 } // namespace vfs

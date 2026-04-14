@@ -73,17 +73,41 @@ namespace arch
         x86_64::idt::init();
     }
 
-    void init()
+    initgraph::stage *bsp_stage()
     {
-        cpu::init_bsp();
-        x86_64::pic::init();
-        x86_64::apic::io::init();
-
-        timers::init();
-        x86_64::apic::calibrate_timer();
-        cpu::init();
-        x86_64::timers::tsc::finalise();
+        static initgraph::stage stage { "arch.bsp-initialised" };
+        return &stage;
     }
+
+    initgraph::stage *cpus_stage()
+    {
+        static initgraph::stage stage { "arch.cpus-initialised" };
+        return &stage;
+    }
+
+    initgraph::task bsp_task
+    {
+        "arch.init-bsp",
+        initgraph::require { acpi::tables_stage() },
+        initgraph::entail { bsp_stage() },
+        [] {
+            cpu::init_bsp();
+            x86_64::pic::init();
+            x86_64::apic::io::init();
+        }
+    };
+
+    initgraph::task cpus_task
+    {
+        "arch.init-cpus",
+        initgraph::require { bsp_stage(), timers::available_stage() },
+        initgraph::entail { cpus_stage() },
+        [] {
+            x86_64::apic::calibrate_timer();
+            cpu::init();
+            x86_64::timers::tsc::finalise();
+        }
+    };
 
     namespace core
     {

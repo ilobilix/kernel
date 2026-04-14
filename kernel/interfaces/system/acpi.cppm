@@ -5,6 +5,8 @@ module;
 #include <uacpi/acpi.h>
 
 export module system.acpi;
+
+import lib;
 import cppstd;
 
 export namespace acpi
@@ -21,6 +23,7 @@ export namespace acpi
 
     std::uintptr_t get_rsdp();
 
-    void init();
-    void early();
+    initgraph::stage *tables_stage();
+    initgraph::stage *initialised_stage();
+    initgraph::stage *uacpi_stage();
 } // export namespace acpi

@@ -18,7 +18,8 @@ module system.acpi;
 import x86_64.system.ioapic;
 #endif
 
-import drivers.timers.acpipm;
+import drivers.timers;
+import system.pci;
 import arch;
 import boot;
 import lib;
@@ -75,80 +76,97 @@ namespace acpi
         return cached;
     }
 
-    void init()
+    initgraph::stage *tables_stage()
     {
-        delete[] early_table_buffer;
+        static initgraph::stage stage { "acpi-tables-access" };
+        return &stage;
+    }
 
-        uacpi_status ret = UACPI_STATUS_OK;
-        auto check = [ret]
-        {
-            if (ret != UACPI_STATUS_OK) [[unlikely]]
-                lib::panic("could not initialise ACPI: {}", uacpi_status_to_string(ret));
-        };
+    initgraph::stage *initialised_stage()
+    {
+        static initgraph::stage stage { "acpi-initialised" };
+        return &stage;
+    }
 
-        ret = uacpi_initialize(0); check();
-        ret = uacpi_namespace_load(); check();
+    initgraph::stage *uacpi_stage()
+    {
+        static initgraph::stage stage { "uacpi-workers-initialised" };
+        return &stage;
+    }
+
+    initgraph::task full_task
+    {
+        "fully-initialise-acpi",
+        initgraph::require { tables_stage(), timers::available_stage() },
+        initgraph::entail { initialised_stage() },
+        [] {
+            delete[] early_table_buffer;
+
+            uacpi_status ret = UACPI_STATUS_OK;
+            auto check = [ret]
+            {
+                if (ret != UACPI_STATUS_OK) [[unlikely]]
+                    lib::panic("could not initialise ACPI: {}", uacpi_status_to_string(ret));
+            };
+
+            ret = uacpi_initialize(0); check();
+            ret = uacpi_namespace_load(); check();
 
 #if defined(__x86_64__)
-        auto intmodel = x86_64::apic::io::initialised ? UACPI_INTERRUPT_MODEL_IOAPIC : UACPI_INTERRUPT_MODEL_PIC;
-        ret = uacpi_set_interrupt_model(intmodel); check();
+            auto intmodel = x86_64::apic::io::initialised ? UACPI_INTERRUPT_MODEL_IOAPIC : UACPI_INTERRUPT_MODEL_PIC;
+            ret = uacpi_set_interrupt_model(intmodel); check();
 #endif
 
-        // TODO: ec
+            // TODO: ec
 
-        ret = uacpi_namespace_initialize(); check();
-        ret = uacpi_finalize_gpe_initialization(); check();
+            ret = uacpi_namespace_initialize(); check();
+            ret = uacpi_finalize_gpe_initialization(); check();
 
-        ret = uacpi_install_fixed_event_handler(
-            UACPI_FIXED_EVENT_POWER_BUTTON,
-            [](uacpi_handle) -> uacpi_interrupt_ret
-            {
-                uacpi_kernel_schedule_work(UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { shutdown(); }, nullptr);
-                return UACPI_INTERRUPT_HANDLED;
-            }, nullptr
-        );
-        check();
+            ret = uacpi_install_fixed_event_handler(
+                UACPI_FIXED_EVENT_POWER_BUTTON,
+                [](uacpi_handle) -> uacpi_interrupt_ret
+                {
+                    uacpi_kernel_schedule_work(UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { shutdown(); }, nullptr);
+                    return UACPI_INTERRUPT_HANDLED;
+                }, nullptr
+            );
+            check();
 
-        ret = uacpi_find_devices("PNP0C0C",
-            [](void *, uacpi_namespace_node *node, uacpi_u32)
-            {
-                uacpi_install_notify_handler(node,
-                    [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status
-                    {
-                        if (value != 0x80)
+            ret = uacpi_find_devices("PNP0C0C",
+                [](void *, uacpi_namespace_node *node, uacpi_u32)
+                {
+                    uacpi_install_notify_handler(node,
+                        [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status
+                        {
+                            if (value != 0x80)
+                                return UACPI_STATUS_OK;
+
+                            shutdown();
                             return UACPI_STATUS_OK;
+                        }, nullptr
+                    );
+                    return UACPI_ITERATION_DECISION_CONTINUE;
+                }, nullptr
+            );
+            check();
+        }
+    };
 
-                        shutdown();
-                        return UACPI_STATUS_OK;
-                    }, nullptr
-                );
-                return UACPI_ITERATION_DECISION_CONTINUE;
-            }, nullptr
-        );
-        check();
-
-        // if (timers::acpipm::supported())
-        // {
-        //     ret = uacpi_install_fixed_event_handler(
-        //         UACPI_FIXED_EVENT_TIMER_STATUS,
-        //         timers::acpipm::handle_overflow,
-        //         nullptr
-        //     ); check();
-        //     timers::acpipm::finalise();
-        // }
-    }
-
-    void early()
+    initgraph::task early_task
     {
-        log::debug("acpi: setting up early table access");
+        "setup-acpi-table-access",
+        initgraph::entail { tables_stage() },
+        [] {
+            log::info("acpi: setting up early table access");
 
-        early_table_buffer = new std::uint8_t[early_table_buffer_size];
+            early_table_buffer = new std::uint8_t[early_table_buffer_size];
 
-        uacpi_context_set_log_level(UACPI_LOG_INFO);
-        uacpi_setup_early_table_access(early_table_buffer, early_table_buffer_size);
+            uacpi_context_set_log_level(UACPI_LOG_INFO);
+            uacpi_setup_early_table_access(early_table_buffer, early_table_buffer_size);
 
-        uacpi_table_fadt(&fadt);
+            uacpi_table_fadt(&fadt);
 
-        parse_madt();
-    }
+            parse_madt();
+        }
+    };
 } // namespace acpi

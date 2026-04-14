@@ -144,4 +144,6 @@ export namespace sched
     void enqueue(std::shared_ptr<thread> &thread, std::size_t cpu_idx);
 
     [[noreturn]] void start();
+
+    initgraph::stage *available_stage();
 } // export namespace sched

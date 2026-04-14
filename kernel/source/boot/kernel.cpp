@@ -3,36 +3,6 @@
 import ilobilix;
 import cppstd;
 
-namespace uacpi
-{
-    void init_workers();
-} // namespace uacpi
-
-void kthread()
-{
-    log::debug("entered main kernel thread");
-
-    uacpi::init_workers();
-
-    pci::register_rbs();
-    pci::init();
-
-    lib::ensure(vfs::register_fs(fs::tmpfs::init()));
-    lib::ensure(vfs::register_fs(fs::devtmpfs::init()));
-    lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
-
-    auto err = vfs::create(nullptr, "/dev", stat::type::s_ifdir);
-    lib::ensure(err.has_value() || err.error() == vfs::error::already_exists);
-    lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
-
-    initramfs::init();
-    pmm::reclaim();
-
-    bin::elf::mod::load();
-
-    arch::halt(true);
-}
-
 extern "C"
 {
     [[gnu::used]]
@@ -41,6 +11,7 @@ extern "C"
     [[gnu::used]]
     auto kernel_stack_top = kernel_stack + boot::kstack_size;
 
+    [[noreturn]]
     void kmain()
     {
         arch::early_init();
@@ -60,22 +31,7 @@ extern "C"
         frm::init();
         term::init();
 
-        acpi::early();
-        arch::init();
-
-        pci::register_ios();
-        acpi::init();
-
-        auto proc = sched::process::create(
-            nullptr,
-            std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
-        );
-        lib::ensure(proc->pid == 0);
-        auto thread = sched::thread::create(
-            proc, reinterpret_cast<std::uintptr_t>(kthread)
-        );
-        thread->status = sched::status::ready;
-        sched::enqueue(thread, cpu::self()->idx);
+        initgraph::global_init_engine.run();
 
         sched::start();
     }

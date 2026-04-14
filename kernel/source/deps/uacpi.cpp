@@ -4,6 +4,7 @@
 
 import ilobilix;
 import magic_enum;
+import lib;
 import cppstd;
 
 namespace uacpi
@@ -49,22 +50,27 @@ namespace uacpi
         arch::halt(true);
     }
 
-    void init_workers()
+    initgraph::task uacpi_task
     {
-        auto pid0 = sched::proc_for(0);
-        auto notify_thread = sched::thread::create(
-            pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
-        );
-        auto gpe_thread = sched::thread::create(
-            pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
-        );
+        "init-uacpi-workers",
+        initgraph::require { sched::available_stage(), acpi::initialised_stage() },
+        initgraph::entail { acpi::uacpi_stage() },
+        [] {
+            auto pid0 = sched::proc_for(0);
+            auto notify_thread = sched::thread::create(
+                pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
+            );
+            auto gpe_thread = sched::thread::create(
+                pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
+            );
 
-        notify_thread->status = sched::status::ready;
-        gpe_thread->status = sched::status::ready;
+            notify_thread->status = sched::status::ready;
+            gpe_thread->status = sched::status::ready;
 
-        sched::enqueue(notify_thread, sched::allocate_cpu());
-        sched::enqueue(gpe_thread, sched::allocate_cpu());
-    }
+            sched::enqueue(notify_thread, sched::allocate_cpu());
+            sched::enqueue(gpe_thread, sched::allocate_cpu());
+        }
+    };
 } // namespace uacpi
 
 extern "C"
