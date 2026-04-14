@@ -75,10 +75,10 @@ namespace pmm
             base = lib::tohh(base);
             mem.usable += size;
 
-            const auto old = base;
-            base = lib::align_up(base, page_size);
-            size -= base - old;
-            mem.used += base - old;
+            // const auto old = base;
+            // base = lib::align_up(base, page_size);
+            // size -= base - old;
+            // mem.used += base - old;
 
             while (size >= page_size)
             {
@@ -485,7 +485,8 @@ namespace pmm
                 continue;
             }
 
-            if (memmap->base < page_size)
+            // usable and bootloader reclaimable entries are page aligned
+            if (memmap->base == 0)
             {
                 if (memmap->length >= page_size * 2)
                 {

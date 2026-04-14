@@ -145,8 +145,6 @@ export namespace sched
         std::uintptr_t next_stack_top = initial_stck_top;
         std::uintptr_t mmap_anon_base = initial_mmap_anon;
 
-        void prepare_sleep();
-
         process() = default;
         ~process();
 
@@ -162,6 +160,7 @@ export namespace sched
     process *proc_for(std::size_t pid);
     thread *this_thread();
 
+    std::size_t sleep_for(std::size_t ms);
     std::size_t yield();
 
     std::size_t allocate_cpu();

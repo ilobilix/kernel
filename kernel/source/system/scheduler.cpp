@@ -237,6 +237,12 @@ namespace sched
         return percpu->running_thread.get();
     }
 
+    std::size_t sleep_for(std::size_t ms)
+    {
+        this_thread()->prepare_sleep(ms);
+        return yield();
+    }
+
     std::size_t yield()
     {
         auto thread = this_thread();
