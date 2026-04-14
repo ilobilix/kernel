@@ -13,11 +13,11 @@ export namespace timers::acpipm
     bool initialised = false;
 
     bool supported();
-    uacpi_interrupt_ret handle_overflow(uacpi_handle);
+    // uacpi_interrupt_ret handle_overflow(uacpi_handle);
 
-    std::uint64_t time_ns();
+    // std::uint64_t time_ns();
     void calibrate(std::size_t ms);
 
     void init();
-    void finalise();
+    // void finalise();
 } // export namespace timers::acpipm

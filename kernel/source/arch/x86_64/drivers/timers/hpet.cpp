@@ -95,7 +95,7 @@ namespace x86_64::timers::hpet
             current = read();
     }
 
-    time::clock clock { "hpet", 125, time_ns };
+    time::clock clock { "hpet", 25, time_ns };
     void init()
     {
         log::info("hpet: supported: {}", supported());

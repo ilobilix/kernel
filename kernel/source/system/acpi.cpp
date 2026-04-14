@@ -60,6 +60,13 @@ namespace acpi
                 }
             }
         }
+
+        // TODO
+        void shutdown()
+        {
+            uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+            uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
+        }
     } // namespace
 
     std::uintptr_t get_rsdp()
@@ -92,36 +99,34 @@ namespace acpi
         ret = uacpi_namespace_initialize(); check();
         ret = uacpi_finalize_gpe_initialization(); check();
 
-        // ret = uacpi_install_fixed_event_handler(
-        //     UACPI_FIXED_EVENT_POWER_BUTTON,
-        //     [](uacpi_handle) -> uacpi_interrupt_ret
-        //     {
-        //         uacpi_kernel_schedule_work(UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { arch::shutdown(); }, nullptr);
-        //         return UACPI_INTERRUPT_HANDLED;
-        //     }, nullptr
-        // );
-        // check();
+        ret = uacpi_install_fixed_event_handler(
+            UACPI_FIXED_EVENT_POWER_BUTTON,
+            [](uacpi_handle) -> uacpi_interrupt_ret
+            {
+                uacpi_kernel_schedule_work(UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { shutdown(); }, nullptr);
+                return UACPI_INTERRUPT_HANDLED;
+            }, nullptr
+        );
+        check();
 
-        // ret = uacpi_find_devices("PNP0C0C",
-        //     [](void *, uacpi_namespace_node *node)
-        //     {
-        //         uacpi_install_notify_handler(node, [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status
-        //             {
-        //                 // 0x80: S0 Power Button Pressed
-        //                 if (value != 0x80)
-        //                     return UACPI_STATUS_OK;
+        ret = uacpi_find_devices("PNP0C0C",
+            [](void *, uacpi_namespace_node *node, uacpi_u32)
+            {
+                uacpi_install_notify_handler(node,
+                    [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status
+                    {
+                        if (value != 0x80)
+                            return UACPI_STATUS_OK;
 
-        //                 arch::shutdown();
+                        shutdown();
+                        return UACPI_STATUS_OK;
+                    }, nullptr
+                );
+                return UACPI_ITERATION_DECISION_CONTINUE;
+            }, nullptr
+        );
+        check();
 
-        //                 return UACPI_STATUS_OK;
-        //             }, nullptr
-        //         );
-        //         return UACPI_NS_ITERATION_DECISION_CONTINUE;
-        //     }, nullptr
-        // );
-        // check();
-
-        // TODO: causes a page fault
         // if (timers::acpipm::supported())
         // {
         //     ret = uacpi_install_fixed_event_handler(
