@@ -1060,12 +1060,12 @@ namespace vmm::uvm
         std::uintptr_t endp = 0;
 
         auto wlocked = tree.write_lock();
-        if (flags & flag::fixed)
+        if ((flags & flag::fixed) || (flags & flag::fixed_noreplace))
         {
             if (hint % psize)
                 return std::unexpected { lib::err::addr_not_aligned };
 
-            if (hint < mmap_min || hint + length > mmap_max)
+            if (hint < mmap_min || hint + length > vspace_top)
                 return std::unexpected { lib::err::addr_out_of_bounds };
 
             startp = hint / psize;
@@ -1075,6 +1075,9 @@ namespace vmm::uvm
                 std::views::transform([](const entry &val) {
                     return const_cast<entry *>(std::addressof(val));
                 }) | std::ranges::to<std::vector<entry *>>();
+
+            if (!overlapping.empty() && (flags & flag::fixed_noreplace))
+                return std::unexpected { lib::err::already_exists };
 
             for (auto ent : overlapping)
             {
