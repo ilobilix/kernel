@@ -27,8 +27,9 @@ export namespace lib
         semaphore &operator=(const semaphore &) = delete;
         semaphore &operator=(semaphore &&) = delete;
 
-        void wait();
+        bool wait();
         bool wait_for(std::size_t ms);
         void signal(bool drop = false);
+        void signal_all();
     };
 } // export namespace lib

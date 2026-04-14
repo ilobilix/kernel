@@ -152,9 +152,13 @@ export namespace vfs
             return (errno = ENOTTY, -1);
         }
 
-        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<file> self, bool priv) = 0;
+        virtual std::shared_ptr<vmm::object> map(std::shared_ptr<file> self, bool priv)
+        {
+            lib::unused(self, priv);
+            return nullptr;
+        }
 
-        virtual bool sync() = 0;
+        virtual bool sync() { return true; }
 
         virtual ~ops() = default;
     };
@@ -212,7 +216,7 @@ export namespace vfs
         std::shared_ptr<ops> op;
         stat stat;
 
-        inode(std::shared_ptr<ops> op) : op { op } { }
+        inode(std::shared_ptr<ops> op) : op { op }, stat { } { }
 
         virtual ~inode() = default;
     };

@@ -4,7 +4,8 @@ module system.vfs;
 
 import system.scheduler;
 import system.cpu.local;
-import system.dev;
+import system.vfs.dev;
+import system.vfs.pipe;
 import drivers.fs;
 import lib;
 import std;
@@ -293,14 +294,27 @@ namespace vfs
     auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev) -> expect<path>
     {
         std::shared_ptr<vfs::ops> ops { };
-        if (rdev != 0)
+        switch (stat::type(mode))
         {
-            const auto type = stat::type(mode);
-            if (type != stat::type::s_ifchr && type != stat::type::s_ifblk)
+            case stat::type::s_ifchr:
+            case stat::type::s_ifblk:
+                if (rdev == 0)
+                    return std::unexpected(error::invalid_device);
+                ops = dev::get_cdev_ops(rdev);
+                if (!ops)
+                    return std::unexpected(error::invalid_device);
+                break;
+            case stat::type::s_ififo:
+                ops = pipe::get_ops();
+                break;
+            case stat::type::s_ifsock:
+                return std::unexpected(error::todo);
+            case stat::type::s_ifreg:
+            case stat::type::s_ifdir:
+            case stat::type::s_iflnk:
+                break;
+            default:
                 return std::unexpected(error::invalid_type);
-            ops = dev::get_cdev_ops(rdev);
-            if (!ops)
-                return std::unexpected(error::invalid_device);
         }
 
         auto res = resolve(parent, _path);

@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module system.dev;
+module system.vfs.dev;
 
 import drivers.initramfs;
 import system.vfs;
@@ -8,7 +8,7 @@ import magic_enum;
 import lib;
 import std;
 
-namespace dev
+namespace vfs::dev
 {
     namespace
     {
@@ -36,4 +36,4 @@ namespace dev
             return nullptr;
         return it->second;
     }
-} // namespace dev
+} // namespace vfs::dev

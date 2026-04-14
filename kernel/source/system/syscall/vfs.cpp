@@ -5,6 +5,7 @@ module system.syscall.vfs;
 import system.scheduler;
 import system.memory.virt;
 import system.vfs;
+import system.vfs.pipe;
 import magic_enum;
 import lib;
 import std;
@@ -150,16 +151,6 @@ namespace syscall::vfs
         }
     } // namespace
 
-    int open(const char __user *pathname, int flags, mode_t mode)
-    {
-        return openat(at_fdcwd, pathname, flags, mode);
-    }
-
-    int creat(const char __user *pathname, mode_t mode)
-    {
-        return openat(at_fdcwd, pathname, o_creat | o_wronly | o_trunc, mode);
-    }
-
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
         const auto proc = sched::this_thread()->parent;
@@ -240,7 +231,7 @@ namespace syscall::vfs
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return (errno = ENOTDIR, -1);
 
-        auto fdesc = filedesc::create(target, flags, proc->pid);
+        const auto fdesc = filedesc::create(target, flags, proc->pid);
         if (!fdesc)
             return (errno = EMFILE, -1);
         const auto fd = fdt.allocate_fd(fdesc, 0, false);
@@ -264,11 +255,21 @@ namespace syscall::vfs
         return fd;
     }
 
+    int open(const char __user *pathname, int flags, mode_t mode)
+    {
+        return openat(at_fdcwd, pathname, flags, mode);
+    }
+
+    int creat(const char __user *pathname, mode_t mode)
+    {
+        return openat(at_fdcwd, pathname, o_creat | o_wronly | o_trunc, mode);
+    }
+
     int close(int fd)
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
@@ -285,11 +286,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
@@ -313,11 +314,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
@@ -343,11 +344,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
@@ -371,11 +372,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
@@ -405,11 +406,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
@@ -446,11 +447,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
@@ -484,11 +485,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_read(file->flags))
             return (errno = EBADF, -1);
 
@@ -526,11 +527,11 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
+        const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
@@ -568,12 +569,12 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
-        auto &file = fdesc->file;
-        auto &stat = file->path.dentry->inode->stat;
+        const auto &file = fdesc->file;
+        const auto &stat = file->path.dentry->inode->stat;
         const auto type = stat.type();
         if (type == stat::s_ifsock || type == stat::s_ififo)
             return (errno = ESPIPE, -1);
@@ -678,12 +679,9 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
-
-        if (fdesc->file->path.dentry->inode->stat.type() != stat::type::s_ifchr)
-            return (errno = ENOTTY, -1);
 
         return fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
     }
@@ -692,7 +690,7 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        auto fdesc = get_fd(proc, fd);
+        const auto fdesc = get_fd(proc, fd);
         if (fdesc == nullptr)
             return -1;
 
@@ -761,5 +759,90 @@ namespace syscall::vfs
         if (!lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1))
             return (errno = EFAULT, nullptr);
         return lib::remove_user_cast<char>(buf);
+    }
+
+    int pipe2(int __user *pipefd, int flags)
+    {
+        const auto proc = sched::this_thread()->parent;
+        auto &fdt = proc->fdt;
+
+        if (flags & ~(o_closexec | o_direct | o_nonblock))
+            return (errno = EINVAL, -1);
+
+        const auto inode = std::make_shared<vfs::inode>(pipe::get_ops());
+        {
+            inode->stat.st_blksize = 0x1000;
+            inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
+            inode->stat.st_uid = proc->euid;
+            inode->stat.st_gid = proc->egid;
+
+            inode->stat.update_time(
+                stat::time::access |
+                stat::time::modify |
+                stat::time::status
+            );
+        }
+
+        std::array<int, 2> fds;
+
+        const auto rdentry = std::make_shared<vfs::dentry>();
+        rdentry->name = "<[PIPE READ]>";
+        rdentry->inode = inode;
+
+        const auto rfdesc = filedesc::create({
+            .dentry = rdentry,
+            .mnt = nullptr
+        }, flags | o_rdonly, proc->pid);
+
+        if (!rfdesc)
+            return (errno = EMFILE, -1);
+        fds[0] = fdt.allocate_fd(rfdesc, 0, false);
+        if (fds[0] < 0)
+            return (errno = EMFILE, -1);
+
+        if (!rfdesc->file->open(flags | o_rdonly))
+        {
+            fdt.close(fds[0]);
+            return (errno = EIO, -1);
+        }
+
+        const auto wdentry = std::make_shared<vfs::dentry>();
+        wdentry->name = "<[PIPE WRITE]>";
+        wdentry->inode = inode;
+
+        const auto wfdesc = filedesc::create({
+            .dentry = wdentry,
+            .mnt = nullptr
+        }, flags | o_wronly, proc->pid);
+
+        if (!wfdesc)
+            return (errno = EMFILE, -1);
+        fds[1] = fdt.allocate_fd(wfdesc, 0, false);
+        if (fds[1] < 0)
+        {
+            proc->fdt.close(fds[0]);
+            return (errno = EMFILE, -1);
+        }
+
+        wfdesc->file->private_data = rfdesc->file->private_data;
+        if (!wfdesc->file->open(flags | o_wronly))
+        {
+            fdt.close(fds[0]);
+            fdt.close(fds[1]);
+            return (errno = EIO, -1);
+        }
+
+        if (!lib::copy_to_user(pipefd, fds.data(), sizeof(int) * 2))
+        {
+            proc->fdt.close(fds[0]);
+            proc->fdt.close(fds[1]);
+            return (errno = EFAULT, -1);
+        }
+        return 0;
+    }
+
+    int pipe(int __user *pipefd)
+    {
+        return pipe2(pipefd, 0);
     }
 } // namespace syscall::vfs
