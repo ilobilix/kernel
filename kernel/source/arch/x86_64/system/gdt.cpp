@@ -36,13 +36,21 @@ namespace x86_64::gdt
         }
     } // namespace
 
+    cpu_local<entries> gdt_local;
+    cpu_local<tss::ptr> tss_local;
+
+    cpu_local_init(gdt_local);
+    cpu_local_init(tss_local);
+
+    namespace tss
+    {
+        ptr &self() { return tss_local.get(); }
+    } // namespace tss
+
     void init_on(cpu::processor *cpu)
     {
         if (cpu->idx == cpu::bsp_idx)
             log::info("gdt: loading on bsp");
-
-        auto &gdt = cpu->arch.gdt;
-        auto &tss = cpu->arch.tss;
 
         auto allocate_stack = [] {
             const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
@@ -61,16 +69,16 @@ namespace x86_64::gdt
 
             return reinterpret_cast<std::uintptr_t>(stack) + boot::kstack_size;
         };
-        tss.rsp[0] = allocate_stack(); // cpl3 to cpl0
-        tss.ist[0] = allocate_stack(); // page fault
-        tss.ist[1] = allocate_stack(); // scheduler
+        tss_local->rsp[0] = allocate_stack(); // cpl3 to cpl0
+        tss_local->ist[0] = allocate_stack(); // page fault
+        tss_local->ist[1] = allocate_stack(); // scheduler
 
-        tss.iopboffset = sizeof(tss);
+        tss_local->iopboffset = sizeof(tss::ptr);
 
-        const auto base = reinterpret_cast<std::uintptr_t>(&tss);
+        const auto base = reinterpret_cast<std::uintptr_t>(&tss_local.get());
         const std::uint16_t limit = sizeof(tss::ptr) - 1;
 
-        gdt = entries {
+        gdt_local = entries {
             { 0x0000, 0x0000, 0x00, 0b00000000, 0x0, 0b0000, 0x00 }, // null
             { 0x0000, 0x0000, 0x00, 0b10011010, 0x0, 0b0010, 0x00 }, // kernel code
             { 0x0000, 0x0000, 0x00, 0b10010010, 0x0, 0b0010, 0x00 }, // kernel data
@@ -90,7 +98,7 @@ namespace x86_64::gdt
 
         const ptr gdtr {
             sizeof(entries) - 1,
-            reinterpret_cast<std::uintptr_t>(&gdt),
+            reinterpret_cast<std::uintptr_t>(&gdt_local.get()),
         };
 
         load(reinterpret_cast<std::uintptr_t>(&gdtr), segment::data, segment::code, segment::tss);

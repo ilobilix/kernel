@@ -405,7 +405,7 @@ extern "C"
     {
         if (sched::initialised)
         {
-            auto thread = cpu::self()->sched.running_thread;
+            auto thread = sched::percpu->running_thread;
             auto proc = thread->proc.lock();
             return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, proc->pid));
         }

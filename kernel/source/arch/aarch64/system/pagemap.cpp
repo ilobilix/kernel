@@ -47,7 +47,7 @@ namespace vmm
 
     pagemap::pagemap() : _table { new_table() }
     {
-        lib::panic("TODO");
+        lib::panic("TODO: pagemap");
     }
 
     pagemap::~pagemap() { lib::panic("TODO"); }

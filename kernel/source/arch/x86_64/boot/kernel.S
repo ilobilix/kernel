@@ -9,16 +9,16 @@ _start:
     ud2
 .global _start
 
-.extern arch_core_entry
+.extern generic_core_entry
 
 cpu_entry:
     mov rax, [rdi + 24]
+    mov rcx, [rax]
+    mov cr3, rcx
 
+    mov rax, [rax + 8]
     mov rsp, [rax + 8]
 
-    mov rax, [rax + 16]
-    mov cr3, rax
-
-    call arch_core_entry
+    call generic_core_entry
     ud2
 .global cpu_entry

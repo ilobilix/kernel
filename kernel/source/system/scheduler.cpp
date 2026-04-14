@@ -13,6 +13,8 @@ import cppstd;
 
 namespace sched
 {
+    cpu_local_init(percpu);
+
     namespace arch
     {
         void init();
@@ -41,12 +43,11 @@ namespace sched
 
         std::shared_ptr<thread> next_thread(bool idle = false)
         {
-            auto &self = cpu::self()->sched;
-            const std::unique_lock _ { self.lock };
+            const std::unique_lock _ { percpu->lock };
 
-            auto &queue = self.queue;
+            auto &queue = percpu->queue;
             if (queue.empty() || idle)
-                return self.idle_thread;
+                return percpu->idle_thread;
 
             auto thread = queue.front();
             queue.pop_front();
@@ -112,7 +113,7 @@ namespace sched
         return vaddr + boot::kstack_size;
     }
 
-    std::shared_ptr<thread> thread::create(std::shared_ptr<process> parent, std::uintptr_t ip)
+    std::shared_ptr<thread> thread::create(std::shared_ptr<process> &parent, std::uintptr_t ip)
     {
         auto thread = std::make_shared<sched::thread>();
 
@@ -186,7 +187,7 @@ namespace sched
         }
         unmap_stack(vmm::kernel_pagemap, kstack_top, boot::kstack_size);
 
-        // TODO
+        lib::panic("TODO: thread {} deconstructor", tid);
     }
 
     std::shared_ptr<process> process::create(std::shared_ptr<process> parent, std::shared_ptr<vmm::pagemap> pagemap)
@@ -211,12 +212,12 @@ namespace sched
 
     process::~process()
     {
-        // TODO
+        lib::panic("TODO: process {} deconstructor", pid);
     }
 
     std::shared_ptr<thread> this_thread()
     {
-        return cpu::self()->sched.running_thread;
+        return percpu->running_thread;
     }
 
     std::size_t yield()
@@ -245,8 +246,7 @@ namespace sched
 
         for (std::size_t i = 0; i < cpu::cpu_count; i++)
         {
-            auto &sched = cpu::processors[i].sched;
-            auto size = sched.queue.size();
+            auto size = percpu->queue.size();
             if (size < min)
             {
                 min = size;
@@ -261,17 +261,16 @@ namespace sched
         if (thread->status == status::running)
             thread->status = status::ready;
 
-        auto &sched = cpu::processors[cpu_idx].sched;
-        const std::unique_lock _ { sched.lock };
-        sched.queue.push_back(thread);
+        auto &obj = percpu.get(cpu::nth_base(cpu_idx));
+        const std::unique_lock _ { obj.lock };
+        obj.queue.push_back(thread);
     }
 
     void schedule(cpu::registers *regs)
     {
         auto self = cpu::self();
-        auto &sched = self->sched;
 
-        auto current = sched.running_thread;
+        auto current = percpu->running_thread;
 
         auto first = next_thread();
         auto next = first;
@@ -292,14 +291,14 @@ namespace sched
             if (next == first)
             {
                 enqueue(next, self->idx);
-                next = current != sched.idle_thread ? current : sched.idle_thread;
+                next = current != percpu->idle_thread ? current : percpu->idle_thread;
             }
         }
 
         if (current && current->status != status::killed)
         {
             save(current, regs);
-            if (current != sched.idle_thread)
+            if (current != percpu->idle_thread)
             {
                 if (current->status == status::sleeping)
                     current->sleep_lock.unlock();
@@ -307,7 +306,7 @@ namespace sched
             }
         }
 
-        sched.running_thread = next;
+        percpu->running_thread = next;
         next->running_on = reinterpret_cast<decltype(next->running_on)>(self);
 
         arch::reschedule(next->timeslice);
@@ -329,14 +328,13 @@ namespace sched
         auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
         idle_thread->status = status::ready;
 
-        auto self = cpu::self();
-        self->sched.idle_proc = idle_proc;
-        self->sched.idle_thread = idle_thread;
+        percpu->idle_proc = idle_proc;
+        percpu->idle_thread = idle_thread;
 
         arch::init();
         ::arch::int_switch(true);
 
-        if (self->idx == cpu::bsp_idx)
+        if (cpu::self()->idx == cpu::bsp_idx)
         {
             should_start = true;
             initialised = true;

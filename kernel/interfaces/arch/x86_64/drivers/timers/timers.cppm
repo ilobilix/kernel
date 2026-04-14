@@ -25,7 +25,7 @@ export namespace timers::arch
     using calibrator_func = void (*)(std::size_t ms);
     calibrator_func calibrator()
     {
-        if (kvm::supported() && cpu::self()->arch.kvm.pvclock)
+        if (kvm::supported())
             return use_timer<kvm::time_ns>;
         else if (hpet::initialised)
             return hpet::calibrate;

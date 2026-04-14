@@ -342,6 +342,8 @@ namespace bin::elf::mod
 #elif defined(__aarch64__)
 #endif
                     default:
+                        // TODO: remove me when aarch64 relocation is implemented!
+                        lib::unused(loc);
                         log::error("elf: module: unknown relocation 0x{:X}", type);
                         return false;
                 }

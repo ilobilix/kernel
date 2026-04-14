@@ -5,11 +5,10 @@ module;
 #include <cerrno>
 
 export module system.cpu.self;
-
-import system.scheduler;
-import arch.system;
-import lib;
 import cppstd;
+
+extern "C" char __percpu_start[];
+extern "C" char __percpu_end[];
 
 export namespace cpu
 {
@@ -20,18 +19,57 @@ export namespace cpu
             // do not move
             processor *self;
             std::uintptr_t stack_top;
-            std::uintptr_t initial_pmap;
 
             std::size_t idx;
             std::size_t arch_id;
-
-            cpu::arch::processor arch;
-            sched::percpu sched;
 
             errno_t err = no_error;
             std::atomic_bool online = false;
         };
 
         processor *self();
+        std::uintptr_t self_addr();
     } // extern "C++"
+
+    namespace per
+    {
+        template<typename Type, std::size_t Size = sizeof(Type)>
+        class storage
+        {
+            private:
+            alignas(Type) std::byte _storage[Size];
+
+            public:
+            Type &get(std::uintptr_t base = self_addr()) const
+            {
+                const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__percpu_start);
+                const auto offset =  addr - peraddr;
+                return *std::launder(reinterpret_cast<Type *>(reinterpret_cast<std::uintptr_t>(base) + offset));
+            }
+
+            Type *operator->() { return std::addressof(get()); }
+            Type &operator=(const Type &rhs) { return get() = rhs; }
+            auto &operator[](std::size_t idx) { return get()[idx]; }
+
+            template<typename ...Args>
+            void initialise_base(std::uintptr_t base, Args &&...args) const
+            {
+                const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__percpu_start);
+                const auto offset =  addr - peraddr;
+
+                auto ptr = reinterpret_cast<void *>(base + offset);
+                new(ptr) Type { std::forward<Args>(args)... };
+            }
+
+            template<typename ...Args>
+            void initialise(Args &&...args)
+            {
+                initialise_base(self_addr(), args...);
+            }
+        };
+
+        extern "C++" std::uintptr_t init();
+    } // namespace per
 } // export namespace cpu

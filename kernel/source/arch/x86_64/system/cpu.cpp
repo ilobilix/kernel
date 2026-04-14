@@ -8,14 +8,13 @@ namespace cpu::smap
 {
     guard::guard()
     {
-        can_smap = cpu::self()->arch.can_smap;
-        if (can_smap)
+        if (supported)
             disable();
     }
 
     guard::~guard()
     {
-        if (can_smap)
+        if (supported)
             enable();
     }
 } // namespace cpu::smap

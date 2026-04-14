@@ -23,8 +23,6 @@ target("ilobilix.dependencies.base")
         "hosted-libstdcxx", "string", "veque"
     )
 
-    add_defines("USED_IN_MODULES=[[gnu::used]]", { public = true })
-
     if is_arch("x86_64") then
         local flags = {
             "-masm=intel"

@@ -115,7 +115,7 @@ namespace pmm
 
         for (std::size_t i = 0; i < num; i++)
         {
-            const auto memmap = memmaps[i];
+            auto memmap = memmaps[i];
 
             const std::uintptr_t end = memmap->base + memmap->length;
             mem.top = std::max(end, mem.top);
@@ -129,6 +129,16 @@ namespace pmm
                 case boot::memmap::usable:
                     mem.usable += memmap->length;
                     mem.usable_top = std::max(mem.usable_top, end);
+
+                    if (memmap->base == 0)
+                    {
+                        if (memmap->length > page_size)
+                        {
+                            memmap->base += page_size;
+                            memmap->length -= page_size;
+                        }
+                        else memmap->length = 0;
+                    }
                     break;
                 default:
                     continue;
@@ -179,9 +189,6 @@ namespace pmm
             for (std::uintptr_t ii = 0; ii < memmap->length; ii += page_size)
                 bitmap[(memmap->base + ii) / page_size] = available;
         }
-
-        // sometimes a usable memmap entry starts at 0
-        bitmap[0] = used;
 
         log::info("pmm: usable physical memory: {} mib", mem.usable / 1024 / 1024);
     }

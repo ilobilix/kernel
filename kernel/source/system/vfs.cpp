@@ -43,7 +43,7 @@ namespace vfs
     std::shared_ptr<node> node::root(bool from_sched)
     {
         if (!from_sched && sched::initialised)
-            return cpu::self()->sched.running_thread->proc.lock()->root;
+            return sched::percpu->running_thread->proc.lock()->root;
         return vfs::root->reduce().value();
     }
 

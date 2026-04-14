@@ -3,7 +3,6 @@
 export module arch.system;
 
 export import x86_64.system.cpu;
-export import x86_64.system.cpu.self;
 export import x86_64.system.gdt;
 export import x86_64.system.idt;
 export import x86_64.system.ioapic;

@@ -9,8 +9,8 @@ module x86_64.system.lapic;
 
 import drivers.timers;
 import system.memory;
-import system.cpu;
 import system.cpu.self;
+import system.cpu;
 import lib;
 import cppstd;
 
@@ -61,6 +61,15 @@ namespace x86_64::apic
         }
     } // namespace
 
+    struct lapic_local
+    {
+        std::uint64_t n, p;
+        bool calibrated = false;
+    };
+
+    cpu_local<lapic_local> local;
+    cpu_local_init(local);
+
     std::pair<bool, bool> supported()
     {
         std::uint32_t a, b, c, d;
@@ -101,13 +110,12 @@ namespace x86_64::apic
 
     void calibrate_timer()
     {
-        auto self = cpu::self();
-        lib::ensure(!!supported().first && self->arch.lapic.calibrated == false);
+        lib::ensure(!!supported().first && local->calibrated == false);
 
         if (tsc_deadline)
         {
             log::debug("lapic: using tsc deadline");
-            self->arch.lapic.calibrated = true;
+            local->calibrated = true;
             return;
         }
 
@@ -117,7 +125,7 @@ namespace x86_64::apic
         if (cpu::id(0x15, 0, a, b, c, d) && c != 0)
         {
             freq = c;
-            self->arch.lapic.calibrated = true;
+            local->calibrated = true;
         }
         else
         {
@@ -140,13 +148,10 @@ namespace x86_64::apic
                 freq += (0xFFFFFFFF - count) * 100;
             }
             freq /= times;
-            self->arch.lapic.calibrated = true;
+            local->calibrated = true;
         }
         log::debug("lapic: timer frequency: {} hz", freq);
-
-        auto &n = self->arch.lapic.n;
-        auto &p = self->arch.lapic.p;
-        std::tie(p, n) = lib::freq2nspn(freq);
+        std::tie(local->p, local->n) = lib::freq2nspn(freq);
     }
 
     void eoi() { write(0xB0, 0); }
@@ -163,8 +168,7 @@ namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
-        auto self = cpu::self();
-        lib::ensure(self->arch.lapic.calibrated);
+        lib::ensure(local->calibrated);
 
         if (ns == 0)
             ns = 1;
@@ -172,7 +176,7 @@ namespace x86_64::apic
         if (tsc_deadline)
         {
             auto val = timers::tsc::rdtsc();
-            auto ticks = lib::ns2ticks(ns, self->arch.tsc.p, self->arch.tsc.n);
+            auto ticks = lib::ns2ticks(ns, timers::tsc::local->p, timers::tsc::local->n);
             write(reg::lvt, (0b10 << 17) | vector);
             asm volatile ("mfence" ::: "memory");
             cpu::msr::write(reg::deadline, val + ticks);
@@ -181,7 +185,7 @@ namespace x86_64::apic
         {
             write(reg::tic, 0);
             write(reg::lvt, vector);
-            auto ticks = lib::ns2ticks(ns, self->arch.lapic.p, self->arch.lapic.n);
+            auto ticks = lib::ns2ticks(ns, local->p, local->n);
             write(reg::tic, ticks);
         }
     }
