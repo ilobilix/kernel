@@ -36,8 +36,6 @@ sched_context_switch:
     lea  rcx, [rip + .resume]
     mov [rdi + 64], rcx
 
-    cli
-
     mov rsp, [rsi + 0]
     mov rbp, [rsi + 8]
     mov rbx, [rsi + 16]

@@ -60,11 +60,6 @@ namespace sched
             ret.clear(0xFF);
             return ret;
         }
-
-        cpu::processor *get_nth(std::size_t idx)
-        {
-            return reinterpret_cast<cpu::processor *>(cpu::local::nth_base(idx));
-        }
     } // namespace
 
     void init()
@@ -133,82 +128,82 @@ namespace sched
 
     void schedule()
     {
-        thread_t *prev, *next = nullptr;
-        std::uint64_t timeslice;
+        preempt_disable();
+        auto &self = cpu::self().unsafe_get();
+        auto &rq = run_queue.unsafe_get();
+        rq.lock.lock();
+
+        const auto prev = rq.current;
+        thread_t *next = nullptr;
+
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        rq.update_current(now);
+
+        switch (prev->state)
         {
-            preempt_disable();
-            auto &rq = run_queue.unsafe_get();
-            std::unique_lock guard { rq.lock };
-            preempt_enable();
-
-            prev = rq.current;
-
-            const auto timer = chrono::main_timer();
-            const auto now = timer->ns();
-
-            rq.update_current(now);
-
-            switch (prev->state)
-            {
-                case thread_state::running:
-                    prev->state = thread_state::runnable;
-                    if (!prev->in_rq && !prev->is_idle())
-                        rq.enqueue(prev);
-                    break;
-                case thread_state::runnable:
-                    lib::panic("invalid thread state");
-                    std::unreachable();
-                case thread_state::sleeping:
-                case thread_state::blocked:
-                case thread_state::stopped:
-                    if (prev->in_rq)
-                        rq.dequeue(prev);
-                    if (!prev->is_idle())
-                        rq.nr_running--;
-                    break;
-                case thread_state::zombie:
-                case thread_state::dead:
-                    if (prev->in_rq)
-                        rq.dequeue(prev);
-                    rq.current = nullptr;
-                    if (!prev->is_idle())
-                        rq.nr_running--;
-                    break;
-            }
-
-            prev->flags &= ~thread_flags::needs_resched;
-
-            next = rq.pick_next();
-            if (next == nullptr)
-                next = rq.idle;
-            else
-                rq.dequeue(next);
-
-            lib::bug_on(!can_run_on(next, rq.cpu_idx));
-
-            next->state = thread_state::running;
-            next->sched_time = now;
-            next->prev_runtime = next->total_runtime;
-            next->running_on = get_nth(rq.cpu_idx);
-
-            rq.current = next;
-            rq.nr_switches++;
-
-            timeslice = rq.calc_timeslice(rq.current->weight);
-
-            if (next == prev)
-            {
-                arch::arm_timer_ns(timeslice);
-                guard.unlock();
-                return;
-            }
-            else if (next->proc != prev->proc)
-                next->proc->vmspace->pmap->load();
-
-            arch::arm_timer_ns(timeslice);
+            case thread_state::running:
+                prev->state = thread_state::runnable;
+                if (!prev->in_rq && !prev->is_idle())
+                    rq.enqueue(prev);
+                break;
+            case thread_state::runnable:
+                lib::panic("invalid thread state");
+                std::unreachable();
+            case thread_state::sleeping:
+            case thread_state::blocked:
+            case thread_state::stopped:
+                if (prev->in_rq)
+                    rq.dequeue(prev);
+                if (!prev->is_idle())
+                    rq.nr_running--;
+                break;
+            case thread_state::zombie:
+            case thread_state::dead:
+                if (prev->in_rq)
+                    rq.dequeue(prev);
+                rq.current = nullptr;
+                if (!prev->is_idle())
+                    rq.nr_running--;
+                break;
         }
-        // TODO: guard is unlocked here and interruptes enabled
+
+        prev->flags &= ~thread_flags::needs_resched;
+
+        next = rq.pick_next();
+        if (next == nullptr)
+            next = rq.idle;
+        else
+            rq.dequeue(next);
+
+        lib::bug_on(!can_run_on(next, rq.cpu_idx));
+
+        next->state = thread_state::running;
+        next->sched_time = now;
+        next->prev_runtime = next->total_runtime;
+        next->running_on = self.self;
+
+        rq.current = next;
+        rq.nr_switches++;
+
+        const auto timeslice = rq.calc_timeslice(rq.current->weight);
+
+        if (next == prev)
+        {
+            arch::arm_timer_ns(timeslice);
+            rq.lock.unlock();
+            preempt_enable();
+            return;
+        }
+        else if (next->proc != prev->proc)
+            next->proc->vmspace->pmap->load();
+
+        arch::arm_timer_ns(timeslice);
+
+        rq.lock.unlock();
         arch::context_switch(prev, next);
+        preempt_enable();
     }
 
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
@@ -341,18 +336,21 @@ namespace sched
 
         // TODO-SCHED-REWRITE: allocate core
         preempt_disable();
-        auto &rq = run_queue.unsafe_get();
-        const std::unique_lock _ { rq.lock };
-        preempt_enable();
+        {
+            auto &rq = run_queue.unsafe_get();
+            const std::unique_lock _ { rq.lock };
 
-        thread->state = thread_state::runnable;
+            thread->state = thread_state::runnable;
 
-        rq.adjust(thread, false);
-        rq.enqueue(thread);
-        rq.nr_running++;
+            rq.adjust(thread, false);
+            rq.enqueue(thread);
+            rq.nr_running++;
 
-        if (preempt && rq.check_preempt_wakeup(thread))
-            rq.current->flags |= thread_flags::needs_resched;
+            if (preempt && rq.check_preempt_wakeup(thread))
+                rq.current->flags |= thread_flags::needs_resched;
+        }
+        if (preempt_enable())
+            schedule();
 
         return true;
     }
@@ -388,7 +386,8 @@ namespace sched
             auto curr = rq.current;
             lib::bug_on(curr != current_thread());
 
-            curr->vruntime = std::max(curr->vruntime, rq.queue.last()->vruntime);
+            if (!rq.queue.empty())
+                curr->vruntime = std::max(curr->vruntime, rq.queue.last()->vruntime);
             curr->flags |= thread_flags::needs_resched;
         }
         schedule();
