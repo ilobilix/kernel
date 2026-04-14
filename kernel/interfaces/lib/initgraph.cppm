@@ -3,7 +3,7 @@
 export module lib:initgraph;
 
 import :log;
-import :bug_if_not;
+import :bug_on;
 import :panic;
 import frigg;
 import cppstd;
@@ -179,8 +179,7 @@ export namespace initgraph
             while (!_pending.empty())
             {
                 auto current = _pending.pop_front();
-                lib::bug_if_not(current->_wanted == true);
-                lib::bug_if_not(current->_done == false);
+                lib::bug_on(current->_wanted == false || current->_done == true);
 
                 if constexpr (debug)
                     pre_activate(current);
@@ -194,7 +193,7 @@ export namespace initgraph
                 for (auto edge : current->_outlist)
                 {
                     auto successor = edge->_target;
-                    lib::bug_if_not(successor->unsatisfied != 0);
+                    lib::bug_on(successor->unsatisfied == 0);
                     successor->unsatisfied--;
 
                     if (successor->_wanted && !successor->_done && successor->unsatisfied == 0)

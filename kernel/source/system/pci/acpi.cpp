@@ -35,7 +35,7 @@ namespace pci::acpi
 
         std::uintptr_t getaddr(std::uint32_t bus, std::uint32_t dev, std::uint32_t func, std::size_t offset)
         {
-            lib::bug_if_not(_bus_start <= bus && bus <= _bus_end);
+            lib::bug_on(bus < _bus_start || _bus_end < bus);
             const auto paddr = (_base + ((bus - _bus_start) << 20) | (dev << 15) | (func << 12));
 
             if (mappings.contains(paddr))
@@ -62,8 +62,8 @@ namespace pci::acpi
 
         std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) override
         {
-            lib::bug_if_not(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
-            lib::bug_if_not(seg == _seg);
+            lib::bug_on(width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) && width != sizeof(std::uint32_t));
+            lib::bug_on(seg != _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
 
@@ -85,8 +85,8 @@ namespace pci::acpi
 
         void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) override
         {
-            lib::bug_if_not(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
-            lib::bug_if_not(seg == _seg);
+            lib::bug_on(width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) && width != sizeof(std::uint32_t));
+            lib::bug_on(seg != _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
 
@@ -163,14 +163,14 @@ namespace pci::acpi
                 {
                     uacpi_resources *res;
                     ret = uacpi_get_current_resources(route.source, &res);
-                    lib::bug_if_not(ret == UACPI_STATUS_OK);
+                    lib::bug_on(ret != UACPI_STATUS_OK);
 
                     switch (res->entries[0].type)
                     {
                         case UACPI_RESOURCE_TYPE_IRQ:
                         {
                             const auto &irq = res->entries[0].irq;
-                            lib::bug_if_not(irq.num_irqs >= 1);
+                            lib::bug_on(irq.num_irqs < 1);
                             gsi = irq.irqs[0];
                             if (irq.triggering == UACPI_TRIGGERING_EDGE)
                                 triggering = flags::edge;
@@ -181,7 +181,7 @@ namespace pci::acpi
                         case UACPI_RESOURCE_TYPE_EXTENDED_IRQ:
                         {
                             const auto &irq = res->entries[0].extended_irq;
-                            lib::bug_if_not(irq.num_irqs >= 1);
+                            lib::bug_on(irq.num_irqs < 1);
                             gsi = irq.irqs[0];
                             if (irq.triggering == UACPI_TRIGGERING_EDGE)
                                 triggering = flags::edge;

@@ -2,7 +2,7 @@
 
 export module lib:buffer;
 
-import :bug_if_not;
+import :bug_on;
 import :math;
 import cppstd;
 
@@ -49,7 +49,7 @@ export namespace lib
 
         void allocate(std::size_t count)
         {
-            lib::bug_if_not(count > 0);
+            lib::bug_on(count == 0);
 
             if (_ptr != nullptr)
                 _alloc.deallocate(_ptr, _count);
@@ -67,24 +67,21 @@ export namespace lib
         template<typename Self>
         auto at(this Self &&self, std::size_t index)
         {
-            lib::bug_if_not(self._ptr != nullptr);
-            lib::bug_if_not(index < self._count);
+            lib::bug_on(self._ptr == nullptr || index >= self._count);
             return std::forward<Self>(self)._ptr[index];
         }
 
         template<typename Self>
         auto begin(this Self &&self)
         {
-            lib::bug_if_not(self._ptr != nullptr);
-            lib::bug_if_not(self.count > 0);
+            lib::bug_on(self._ptr == nullptr || self.count == 0);
             return std::forward<Self>(self)._ptr;
         }
 
         template<typename Self>
         auto end(this Self &&self)
         {
-            lib::bug_if_not(self._ptr != nullptr);
-            lib::bug_if_not(self.count > 0);
+            lib::bug_on(self._ptr == nullptr || self.count == 0);
             return std::forward<Self>(self)._ptr + (self.count - 1);
         }
 

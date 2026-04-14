@@ -5,7 +5,7 @@ export module lib;
 export import :bitmap;
 export import :btree;
 export import :buffer;
-export import :bug_if_not;
+export import :bug_on;
 export import :endian;
 export import :hash;
 export import :initgraph;

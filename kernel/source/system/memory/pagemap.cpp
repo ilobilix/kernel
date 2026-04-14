@@ -71,8 +71,8 @@ namespace vmm
 
     std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
-        lib::bug_if_not(magic_enum::enum_contains(cache));
+        lib::bug_on(!magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(cache));
 
         psize = fixpsize(psize);
 
@@ -118,8 +118,8 @@ namespace vmm
 
     std::expected<void, error> pagemap::map_alloc(std::uintptr_t vaddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
-        lib::bug_if_not(magic_enum::enum_contains(cache));
+        lib::bug_on(!magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(cache));
 
         struct page { page *next = nullptr; };
         page *current = nullptr;
@@ -169,8 +169,8 @@ namespace vmm
 
     std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
-        lib::bug_if_not(magic_enum::enum_contains(cache));
+        lib::bug_on(!magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(cache));
 
         psize = fixpsize(psize);
         const auto npsize = from_page_size(psize);
@@ -201,7 +201,7 @@ namespace vmm
 
     std::expected<void, error> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, page_size psize)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(psize));
 
         const std::unique_lock _ { _lock };
 
@@ -229,7 +229,7 @@ namespace vmm
 
     std::expected<void, error> pagemap::unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(psize));
 
         psize = fixpsize(psize);
         const auto npsize = from_page_size(psize);
@@ -252,7 +252,7 @@ namespace vmm
 
     std::expected<std::uintptr_t, error> pagemap::translate(std::uintptr_t vaddr, page_size psize)
     {
-        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_on(!magic_enum::enum_contains(psize));
 
         const std::unique_lock _ { _lock };
 

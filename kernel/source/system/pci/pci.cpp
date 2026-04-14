@@ -138,8 +138,8 @@ namespace pci
 
     std::uintptr_t bar::map()
     {
-        lib::bug_if_not(type == type::mem);
-        lib::bug_if_not(phys && size);
+        lib::bug_on(type != type::mem);
+        lib::bug_on(!phys || !size);
 
         if (virt != 0)
             return virt;
@@ -264,22 +264,22 @@ namespace pci
 
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus)
     {
-        lib::bug_if_not(static_cast<bool>(io));
+        lib::bug_on(!static_cast<bool>(io));
         const std::uint32_t idx = (seg << 8 | bus);
-        lib::bug_if_not(!ios.contains(idx));
+        lib::bug_on(ios.contains(idx));
         ios[idx] = io;
     }
 
     std::shared_ptr<configio> getio(std::uint16_t seg, std::uint8_t bus)
     {
         const std::uint32_t idx = (seg << 8 | bus);
-        lib::bug_if_not(ios.contains(idx));
+        lib::bug_on(!ios.contains(idx));
         return ios[idx];
     }
 
     void addrb(std::shared_ptr<bus> rb)
     {
-        lib::bug_if_not(static_cast<bool>(rb));
+        lib::bug_on(!static_cast<bool>(rb));
         rbs.push_back(rb);
     }
 

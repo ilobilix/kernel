@@ -142,9 +142,9 @@ namespace bin::elf::mod
             auto &back = node->inode;
 
             const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
-            lib::bug_if_not(back->read(0, std::span {
+            lib::bug_on(back->read(0, std::span {
                 file.get(), static_cast<std::size_t>(back->stat.st_size)
-            }) == back->stat.st_size);
+            }) != back->stat.st_size);
 
             const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(file.get());
 
@@ -294,9 +294,9 @@ namespace bin::elf::mod
                                 default: break;
                             }
                         }
-                        lib::bug_if_not(
-                            dt_strtab != 0 && dt_symtab != 0 && /* dt_strsz != 0 && */
-                            dt_rela != 0 && dt_relasz != 0 && dt_relaent != 0
+                        lib::bug_on(
+                            dt_strtab == 0 || dt_symtab == 0 || /* dt_strsz == 0 || */
+                            dt_rela == 0 || dt_relasz == 0 || dt_relaent == 0
                         );
                         break;
                     }

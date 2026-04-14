@@ -20,8 +20,8 @@ namespace fs
         initgraph::require { sched::available_stage() },
         initgraph::entail { filesystems_registered_stage() },
         [] {
-            lib::bug_if_not(vfs::register_fs(tmpfs::init()));
-            lib::bug_if_not(vfs::register_fs(devtmpfs::init()));
+            lib::bug_on(!vfs::register_fs(tmpfs::init()));
+            lib::bug_on(!vfs::register_fs(devtmpfs::init()));
         }
     };
 } // namespace fs

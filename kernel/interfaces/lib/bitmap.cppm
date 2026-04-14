@@ -2,7 +2,7 @@
 
 export module lib:bitmap;
 
-import :bug_if_not;
+import :bug_on;
 import :math;
 import cppstd;
 
@@ -59,7 +59,7 @@ export namespace lib
 
         constexpr void initialise(std::uint8_t *data, std::size_t count)
         {
-            lib::bug_if_not(!_initialised);
+            lib::bug_on(!!_initialised);
             _data = data;
             _count = count;
             _initialised = true;
@@ -67,7 +67,7 @@ export namespace lib
 
         constexpr void clear(int ch = 0)
         {
-            lib::bug_if_not(!!_initialised);
+            lib::bug_on(!_initialised);
             std::memset(_data, ch, div_roundup(_count, 8u));
         }
 
@@ -92,19 +92,19 @@ export namespace lib
 
         constexpr bit operator[](std::size_t index)
         {
-            lib::bug_if_not(!!_initialised);
+            lib::bug_on(!_initialised);
             return bit(*this, index);
         }
 
         constexpr bool get(std::size_t index)
         {
-            lib::bug_if_not(!!_initialised);
+            lib::bug_on(!_initialised);
             return _data[index / 8] & (1 << (index % 8));
         }
 
         constexpr bool set(std::size_t index, bool value)
         {
-            lib::bug_if_not(!!_initialised);
+            lib::bug_on(!_initialised);
             const auto ret = get(index);
 
             if (value == true)

@@ -4,7 +4,7 @@ export module lib:rwlock;
 
 import :spinlock;
 import :mutex;
-import :bug_if_not;
+import :bug_on;
 import cppstd;
 
 export namespace lib
@@ -49,7 +49,7 @@ export namespace lib
 
         void read_unlock()
         {
-            bug_if_not(!!is_read_locked());
+            bug_on(!is_read_locked());
 
             readers.lock();
             if (--counter == 0)
@@ -59,7 +59,7 @@ export namespace lib
 
         void write_unlock()
         {
-            bug_if_not(!!is_write_locked());
+            bug_on(!is_write_locked());
             global.unlock();
         }
 
@@ -75,7 +75,7 @@ export namespace lib
 
         bool upgrade()
         {
-            bug_if_not(!!is_read_locked());
+            bug_on(!is_read_locked());
 
             readers.lock();
             bool is_last = (--counter == 0);

@@ -112,6 +112,19 @@ local function multi_insert(list, ...)
     end
 end
 
+local function get_arch()
+    if is_arch("x86_64") then
+        return "x86_64"
+    elseif is_arch("aarch64") then
+        return "aarch64"
+    end
+    raise("get_arch(): unsupported architecture")
+end
+
+local function userspace_dir()
+    return path.join(os.projectdir(), "userspace/" .. get_arch())
+end
+
 local logfile = os.projectdir() .. "/log.txt"
 
 local qemu_args = {
@@ -323,7 +336,7 @@ target("initramfs")
         targetfile = path.join(target:targetdir(), "initramfs.tar")
         target:set("values", "targetfile", targetfile)
 
-        local initramfs_dir = path.join(target:targetdir(), "userspace/initramfs")
+        local initramfs_dir = path.join(userspace_dir(), "initramfs")
         local modules_dir = path.join(initramfs_dir, "usr/lib/modules")
 
         local modules = project.target("modules")
@@ -523,7 +536,7 @@ target("hdd")
             io.writefile(sysroot_updatefile, os.time(os.date("!*t")))
         end
 
-        local sysroot_dir = path.join(target:targetdir(), "userspace/sysroot")
+        local sysroot_dir = path.join(userspace_dir(), "sysroot")
         os.mkdir(sysroot_dir)
 
         local limine_dep = target:deps()["limine"]

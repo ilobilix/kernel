@@ -122,7 +122,9 @@ namespace acpi
             ret = uacpi_namespace_load(); check();
 
 #if defined(__x86_64__)
-            auto intmodel = x86_64::apic::io::is_initialised() ? UACPI_INTERRUPT_MODEL_IOAPIC : UACPI_INTERRUPT_MODEL_PIC;
+            const auto intmodel = x86_64::apic::io::is_initialised()
+                ? UACPI_INTERRUPT_MODEL_IOAPIC
+                : UACPI_INTERRUPT_MODEL_PIC;
             ret = uacpi_set_interrupt_model(intmodel); check();
 #endif
 
@@ -135,7 +137,10 @@ namespace acpi
                 UACPI_FIXED_EVENT_POWER_BUTTON,
                 [](uacpi_handle) -> uacpi_interrupt_ret
                 {
-                    uacpi_kernel_schedule_work(UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { shutdown(); }, nullptr);
+                    uacpi_kernel_schedule_work(
+                        UACPI_WORK_GPE_EXECUTION,
+                        [](uacpi_handle) { shutdown(); }, nullptr
+                    );
                     return UACPI_INTERRUPT_HANDLED;
                 }, nullptr
             );
