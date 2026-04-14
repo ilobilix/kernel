@@ -14,12 +14,14 @@ import std;
 
 namespace timers::acpipm
 {
-    export inline constexpr std::size_t frequency = 3579545;
+    export constexpr std::size_t frequency = 3579545;
     export bool initialised = false;
     export std::atomic_size_t overflows = 0;
 
     namespace
     {
+        constexpr auto pn = lib::freq2nspn(frequency);
+
         acpi_gas timer_block;
         std::size_t mask;
         std::int64_t offset = 0;
@@ -53,9 +55,8 @@ namespace timers::acpipm
 
     export std::uint64_t time_ns()
     {
-        // lib::ensure(!!initialised);
-        auto value = read() + (overflows * mask);
-        return (((value * 1'000'000'000) / frequency) & mask) - offset;
+        lib::ensure(!!initialised);
+        return lib::ticks2ns(read() + (overflows * mask), pn.first, pn.second) - offset;
     }
 
     export void calibrate(std::size_t ms)
@@ -82,15 +83,17 @@ namespace timers::acpipm
         log::info("ACPI PM timer supported: {}", pmtimer);
     }
 
-    time::clock timer { "acpipm", 50, time_ns };
+    time::clock clock { "acpipm", 50, time_ns };
     export void finalise()
     {
         lib::ensure(!!supported());
-        // TODO: SCIs are not being triggered so no point registering it for now
-        time::register_clock(timer);
-        initialised = true;
 
+        initialised = true;
         if (auto clock = time::main_clock(); clock)
             offset = time_ns() - clock->ns();
+
+        // TODO: broken
+        // time::register_clock(clock);
+        initialised = false;
     }
 } // export namespace timers::acpipm

@@ -79,11 +79,7 @@ export namespace boot
             .id = LIMINE_PAGING_MODE_REQUEST,
             .revision = 0,
             .response = nullptr,
-#if LVL5_PAGING
-            .mode = LIMINE_PAGING_MODE_MAX,
-#else
             .mode = LIMINE_PAGING_MODE_DEFAULT,
-#endif
             .max_mode = LIMINE_PAGING_MODE_DEFAULT,
             .min_mode = LIMINE_PAGING_MODE_DEFAULT
         };

@@ -122,7 +122,6 @@ namespace acpi
                 UACPI_FIXED_EVENT_TIMER_STATUS,
                 [](uacpi_handle) -> uacpi_interrupt_ret
                 {
-                    log::debug("YAYAYAYAYAY");
                     timers::acpipm::overflows++;
                     return UACPI_INTERRUPT_HANDLED;
                 }, nullptr

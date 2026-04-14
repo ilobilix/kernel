@@ -54,11 +54,11 @@ export namespace x86_64::idt
 
     inline constexpr std::uint8_t irq(std::uint8_t num) { return num + 0x20; }
 
-    inline constexpr std::size_t num_ints = 256;
-    inline constexpr std::size_t num_preints = 20;
-    inline constexpr std::uint8_t panic_int = irq(16);
+    constexpr std::size_t num_ints = 256;
+    constexpr std::size_t num_preints = 20;
+    constexpr std::uint8_t panic_int = irq(16);
 
-    inline constexpr ptr invalid { 0, 0 };
+    constexpr ptr invalid { 0, 0 };
 
     std::optional<std::reference_wrapper<interrupts::handler>> handler_at(std::size_t cpuidx, std::uint8_t num);
 

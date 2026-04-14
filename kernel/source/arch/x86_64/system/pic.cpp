@@ -73,6 +73,9 @@ namespace x86_64::pic
     {
         log::info("Initialising PIC");
 
+        // auto i1 = lib::io::in<8>(port::master_data);
+        // auto i2 = lib::io::in<8>(port::slave_data);
+
         lib::io::out<8>(port::master_command, cmd::icw1_init | cmd::icw1_icw4);
         lib::io::out<8>(port::slave_command,  cmd::icw1_init | cmd::icw1_icw4);
         lib::io::out<8>(port::master_data, 0x20);
@@ -82,6 +85,11 @@ namespace x86_64::pic
         lib::io::out<8>(port::master_data, cmd::icw4_8086);
         lib::io::out<8>(port::slave_data,  cmd::icw4_8086);
 
+        // lib::io::out<8>(port::master_data, i1);
+        // lib::io::out<8>(port::slave_data, i2);
+
         disable();
+
+        unmask(0x20 + 2);
     }
 } // namespace x86_64::pic

@@ -69,7 +69,7 @@ namespace x86_64::apic
             return true;
         } ();
 
-        return { lapic, !x2apic && cached };
+        return { lapic, x2apic && cached };
     }
 
     void lapic::eoi()

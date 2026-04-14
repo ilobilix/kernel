@@ -57,7 +57,7 @@ namespace x86_64::timers::kvm
         while (pvclock->version % 2)
             arch::pause();
 
-        auto time = tsc::rdtsc() - pvclock->tsc_timestamp;
+        uint128_t time = tsc::rdtsc() - pvclock->tsc_timestamp;
         if (pvclock->tsc_shift >= 0)
             time <<= pvclock->tsc_shift;
         else

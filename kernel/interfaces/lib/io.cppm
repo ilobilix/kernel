@@ -23,10 +23,10 @@ export namespace lib::io
     constexpr bool supported = false;
 
     template<typename Type>
-    inline Type in(auto) { static_assert(false, "io::in not supported on this architecture"); return 0; }
+    inline Type in(auto) { static_assert(false, "io::in is not supported on this architecture"); return 0; }
 
     template<typename>
-    inline void out(auto, auto) { static_assert(false, "io::out not supported on this architecture"); }
+    inline void out(auto, auto) { static_assert(false, "io::out is not supported on this architecture"); }
 } // export namespace lib::io
 #endif
 

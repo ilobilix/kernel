@@ -10,8 +10,7 @@ namespace slab
 {
     namespace
     {
-        // TODO: use 1 here or don't depend on n contiguous pages being available
-        constexpr std::size_t slab_pages = 2;
+        constexpr std::size_t slab_pages = 1;
 
         struct slab;
         using metadata = slab *;
