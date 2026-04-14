@@ -5,7 +5,7 @@ set_version("v0.2")
 
 set_license("EUPL-1.2")
 
-add_rules("plugin.compile_commands.autoupdate", { outputdir = ".vscode" })
+add_rules("plugin.compile_commands.autoupdate", { outputdir = "build" })
 
 set_policy("run.autobuild", true)
 set_policy("package.install_locally", true)
@@ -66,6 +66,11 @@ option("more_panic_msg")
     set_default(true)
     set_showmenu(true)
     set_description("More information when panicking")
+
+option("max_uacpi_points")
+    set_default(false )
+    set_showmenu(true)
+    set_description("Maximise uACPI points")
 
 option("ubsan")
     set_default(false)
@@ -139,7 +144,8 @@ toolchain("ilobilix-clang")
 
     set_toolset("as", "clang")
     set_toolset("cc", "clang")
-    set_toolset("cxx", "clang++", "clang")
+    set_toolset("cxx", "clang++")
+    set_toolset("sh", "clang++", "clang")
 
     set_toolset("ld", "ld.lld", "lld")
 
@@ -149,7 +155,7 @@ toolchain("ilobilix-clang")
     add_defines("ILOBILIX_SYSCALL_LOG=" .. (get_config("syscall_log") and "1" or "0"))
     add_defines("ILOBILIX_EXTRA_PANIC_MSG=" .. (get_config("more_panic_msg") and "1" or "0"))
 
-    add_defines("ILOBILIX_MAX_UACPI_POINTS=0")
+    add_defines("ILOBILIX_MAX_UACPI_POINTS=" .. (get_config("max_uacpi_points") and "1" or "0"))
 
     add_defines("LIMINE_API_REVISION=2")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
@@ -160,6 +166,9 @@ toolchain("ilobilix-clang")
     add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
     -- TODO: performance impact
     add_defines("FMT_OPTIMIZE_SIZE=2", "FMT_BUILTIN_TYPES=0")
+
+    add_defines("cpu_local=[[gnu::section(\".percpu\")]] ::cpu::per::storage")
+    add_defines("cpu_local_init(name, ...)=void (*name ## _init_func__)(std::uintptr_t) = [](std::uintptr_t base) { name.initialise_base(base __VA_OPT__(,) __VA_ARGS__); }; [[gnu::section(\".percpu_init\"), gnu::used]] const auto name ## _init_ptr__ = name ## _init_func__")
 
     on_load(function (toolchain)
         local cx_args = {
@@ -195,18 +204,30 @@ toolchain("ilobilix-clang")
         local ld_args = {
             "-nostdlib",
             "-static",
-            "-znoexecstack"
+            "-znoexecstack",
+            "-zmax-page-size=0x1000"
+        }
+        local sh_args = {
+            "-fuse-ld=lld",
+            "-Wl,-shared"
         }
 
         local target = ""
 
         if is_mode("releasesmall") or is_mode("release") then
-            multi_insert(cx_args,
-                "-flto=full",
-                "-funified-lto"
-            )
-            table.insert(cxx_args, "-fwhole-program-vtables")
-            table.insert(ld_args, "--lto=full")
+            if get_config("max_uacpi_points") then
+                multi_insert(cx_args,
+                    "-flto=full",
+                    "-funified-lto"
+                )
+                table.insert(cxx_args, "-fwhole-program-vtables")
+                table.insert(ld_args, "--lto=full")
+                multi_insert(sh_args,
+                    "-flto=full",
+                    "-funified-lto",
+                    "-Wl,--lto=full"
+                )
+            end
             toolchain:add("defines", "ILOBILIX_DEBUG=0");
         else
             toolchain:add("defines", "ILOBILIX_DEBUG=1");
@@ -233,6 +254,7 @@ toolchain("ilobilix-clang")
         end
 
         table.insert(cx_args, "--target=" .. target)
+        table.insert(sh_args, "--target=" .. target)
 
         table.insert(c_args, get_config("extra_cflags"))
         table.insert(cxx_args, get_config("extra_cxxflags"))
@@ -252,6 +274,7 @@ toolchain("ilobilix-clang")
         toolchain:add("asflags", c_args, { force = true })
 
         toolchain:add("ldflags", ld_args, { force = true })
+        toolchain:add("shflags", sh_args, { force = true })
     end)
 toolchain_end()
 
@@ -306,7 +329,12 @@ target("initramfs")
 
             if extmods ~= nil then
                 for idx, val in ipairs(extmods) do
-                    os.cp(val, modules_dir)
+                    split = val:trim():split(".", { plain = true })
+                    table.remove(split, 1)
+                    table.remove(split, 1)
+                    table.remove(split, 2)
+                    pretty = table.concat(split, ".") .. ".ko"
+                    os.cp(val, path.join(modules_dir, pretty))
                 end
             end
 
@@ -469,7 +497,7 @@ task("qemu")
             bios = false
 
             multi_insert(qemu_args,
-                "-cpu", "max", "-M", "virt", "-device", "ramfb"
+                "-cpu", "cortex-a72", "-M", "virt", "-device", "ramfb"
             )
 
             qemu_exec = find_program("qemu-system-aarch64")

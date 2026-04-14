@@ -5,7 +5,7 @@ module;
 #include <limine.h>
 
 export module drivers.framebuffer;
-import std;
+import cppstd;
 
 export namespace frm
 {

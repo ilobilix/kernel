@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module aarch64.system.cpu;
-import std;
+import cppstd;
 
 // TODO: everything
 
@@ -22,5 +22,5 @@ export namespace cpu
 
     void invlpg(std::uintptr_t) { }
 
-    std::uintptr_t arch_self() { return 0; }
+    extern "C++" std::uintptr_t self_addr() { return 0; }
 } // export namespace cpu

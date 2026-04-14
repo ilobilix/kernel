@@ -10,7 +10,7 @@ module drivers.terminal;
 import drivers.framebuffer;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 namespace term
 {

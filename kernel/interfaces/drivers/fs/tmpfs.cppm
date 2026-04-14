@@ -3,7 +3,7 @@
 export module drivers.fs.tmpfs;
 
 import system.vfs;
-import std;
+import cppstd;
 
 export namespace fs::tmpfs
 {

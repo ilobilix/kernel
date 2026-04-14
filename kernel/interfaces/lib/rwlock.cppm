@@ -3,10 +3,11 @@
 export module lib:rwlock;
 
 import :mutex;
-import std;
+import cppstd;
 
 export namespace lib
 {
+    // TODO: make me smol
     struct rwlock
     {
         private:

@@ -11,9 +11,8 @@ import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
-import system.cpu.self;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::apic::io
 {
@@ -201,21 +200,21 @@ namespace x86_64::apic::io
                     if (src == i)
                     {
                         set_gsi(
-                            static_cast<std::uint32_t>(entry.gsi), src + 0x20, cpu::bsp_aid,
+                            static_cast<std::uint32_t>(entry.gsi), src + 0x20, cpu::bsp_aid(),
                             static_cast<flag>(entry.flags) | flag::masked, delivery::fixed
                         );
-                        if (auto handler = idt::handler_at(cpu::bsp_aid, src + 0x20))
+                        if (auto handler = idt::handler_at(cpu::bsp_aid(), src + 0x20))
                             handler.value().get().reserve();
                         goto end;
                     }
                 }
 
                 set_gsi(
-                    i, i + 0x20, cpu::bsp_aid,
+                    i, i + 0x20, cpu::bsp_aid(),
                     flag::masked, delivery::fixed
                 );
 
-                if (auto handler = idt::handler_at(cpu::bsp_aid, i + 0x20))
+                if (auto handler = idt::handler_at(cpu::bsp_aid(), i + 0x20))
                     handler.value().get().reserve();
                 end:
             }

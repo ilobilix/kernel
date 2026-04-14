@@ -6,9 +6,8 @@ module;
 
 export module boot;
 
-import system.scheduler;
 import lib;
-import std;
+import cppstd;
 
 namespace
 {
@@ -21,8 +20,6 @@ namespace
 
 export namespace boot
 {
-    std::shared_ptr<sched::process> pid0;
-
     // constexpr std::uintptr_t kstack_size = 0x10000; // 64 kib
     constexpr std::uintptr_t kstack_size = 0x4000; // 16 kib
     constexpr std::uintptr_t ustack_size = 0x200000; // 2 mib

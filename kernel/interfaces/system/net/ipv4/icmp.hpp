@@ -2,7 +2,7 @@
 
 export module net:icmpv4;
 
-import std;
+import cppstd;
 import lib;
 
 namespace net::ipv4::icmp

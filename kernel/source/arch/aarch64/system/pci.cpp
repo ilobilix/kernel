@@ -3,18 +3,13 @@
 module system.pci;
 
 import lib;
-import std;
+import cppstd;
 
 namespace pci
 {
     namespace arch
     {
-        void register_ios()
-        {
-        }
-
-        void register_rbs()
-        {
-        }
+        initgraph::stage *ios_discovered_stage();
+        initgraph::stage *rbs_discovered_stage();
     } // namespace arch
 } // namespace pci

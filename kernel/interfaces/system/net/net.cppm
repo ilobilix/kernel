@@ -3,7 +3,7 @@
 // networking code is based on:
 // https://github.com/qookei/tart
 
-export module net;
+export module system.net;
 
 export import :addr;
 export import :arp;

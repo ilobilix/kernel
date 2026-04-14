@@ -5,7 +5,9 @@ module;
 #include <uacpi/types.h>
 
 export module drivers.timers.acpipm;
-import std;
+
+import lib;
+import cppstd;
 
 export namespace timers::acpipm
 {
@@ -13,11 +15,7 @@ export namespace timers::acpipm
     bool initialised = false;
 
     bool supported();
-    uacpi_interrupt_ret handle_overflow(uacpi_handle);
-
-    std::uint64_t time_ns();
     void calibrate(std::size_t ms);
 
-    void init();
-    void finalise();
+    initgraph::stage *available_stage();
 } // export namespace timers::acpipm

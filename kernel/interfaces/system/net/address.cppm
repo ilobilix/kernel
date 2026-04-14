@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:addr;
-import std;
+export module system.net:addr;
+import cppstd;
 
 namespace net::addr
 {

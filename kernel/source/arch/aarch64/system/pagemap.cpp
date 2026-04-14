@@ -4,7 +4,7 @@ module system.memory.virt;
 
 import system.memory.phys;
 import lib;
-import std;
+import cppstd;
 
 import :pagemap;
 
@@ -47,7 +47,7 @@ namespace vmm
 
     pagemap::pagemap() : _table { new_table() }
     {
-        lib::panic("TODO");
+        lib::panic("TODO: pagemap");
     }
 
     pagemap::~pagemap() { lib::panic("TODO"); }

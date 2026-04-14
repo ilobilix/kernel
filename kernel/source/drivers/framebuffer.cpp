@@ -8,7 +8,7 @@ module drivers.framebuffer;
 
 import boot;
 import lib;
-import std;
+import cppstd;
 
 namespace frm
 {

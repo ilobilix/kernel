@@ -2,22 +2,13 @@
 
 module;
 
-#include <cassert>
+#include <arch/x86_64/system/cpu.hpp>
 
 export module x86_64.system.cpu;
-import std;
+import cppstd;
 
 export namespace cpu
 {
-    #define rdreg(reg)                                             \
-    ({                                                             \
-        std::uintptr_t val;                                        \
-        asm volatile ("mov %0, " #reg "" : "=r"(val) :: "memory"); \
-        val;                                                       \
-    })
-
-    #define wrreg(reg, val) asm volatile ("mov " #reg ", %0" :: "r"(val) : "memory")
-
     struct registers
     {
         std::uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
@@ -90,6 +81,23 @@ export namespace cpu
         asm volatile ("invlpg [%0]" :: "r"(addr) : "memory");
     }
 
+    bool has_pcids = false;
+    void invlasid(std::uintptr_t addr, std::size_t asid)
+    {
+        if (!has_pcids)
+            return invlpg(addr);
+
+        struct {
+            std::uint64_t pcid;
+            const void *address;
+        } descriptor { asid, reinterpret_cast<const void *>(addr) };
+
+        std::uint64_t type = 0;
+        asm volatile ("invpcid %0, %1" : : "r"(type), "m"(descriptor) : "memory");
+    }
+
+    bool has_asids() { return has_pcids; }
+
     namespace msr
     {
         std::uint64_t read(std::uint32_t msr)
@@ -112,10 +120,22 @@ export namespace cpu
         inline void enable() { asm volatile ("stac" ::: "cc"); }
         inline void disable() { asm volatile ("clac" ::: "cc"); }
 
+        // if one core supports smap, others do too
+        bool supported = false;
+
         struct guard
         {
-            guard() { disable(); }
-            ~guard() { enable(); }
+            guard()
+            {
+                if (supported)
+                    disable();
+            }
+
+            ~guard()
+            {
+                if (supported)
+                    enable();
+            }
         };
 
         template<typename Func, typename ...Args>
@@ -172,103 +192,15 @@ export namespace cpu
 
     namespace features
     {
-
-        constexpr std::uint64_t rfbm = ~0ull;
-        constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
-        constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
-
-        void xsaveopt(std::byte *region)
+        // other cores probably share the same state
+        struct
         {
-            asm volatile ("xsaveopt [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
+            std::size_t size = 0;
+            void (*save)(std::byte *) = nullptr;
+            void (*restore)(std::byte *) = nullptr;
+        } fpu [[maybe_unused]];
 
-        void xsave(std::byte *region)
-        {
-            asm volatile ("xsave [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
-
-        void xrstor(std::byte *region)
-        {
-            asm volatile ("xrstor [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
-        }
-
-        void fxsave(std::byte *region)
-        {
-            asm volatile ("fxsave [%0]" :: "r"(region) : "memory");
-        }
-
-        void fxrstor(std::byte *region)
-        {
-            asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
-        }
-
-        using fpu_func = void (*)(std::byte *);
-        std::tuple<std::size_t, fpu_func, fpu_func> enable()
-        {
-            // SSE
-            {
-                auto cr0 = rdreg(cr0);
-                cr0 = (cr0 & ~(1 << 2)) | (1 << 1);
-                wrreg(cr0, cr0);
-
-                auto cr4 = rdreg(cr4);
-                cr4 |= (1 << 9) | (1 << 10);
-                wrreg(cr4, cr4);
-            }
-
-            // UMIP SMEP SMAP
-            {
-                static std::uint32_t a, b, c, d;
-                static const auto cached = [] { return cpu::id(0x07, 0, a, b, c, d); } ();
-
-                if (cached)
-                {
-                    auto cr4 = rdreg(cr4);
-                    {
-                        if (c & (1 << 2))
-                            cr4 |= (1 << 11);
-
-                        if (b & (1 << 7))
-                            cr4 |= (1 << 20);
-
-                        if (b & (1 << 20))
-                            cr4 |= (1 << 21);
-                    }
-                    wrreg(cr4, cr4);
-                }
-            }
-
-            // TSC
-            {
-                auto cr4 = rdreg(cr4);
-                cr4 |= (1 << 2);
-                wrreg(cr4, cr4);
-            }
-
-            std::uint32_t a, b, c, d;
-            if (cpu::id(0x01, 0, a, b, c, d) && (c & (1 << 26)))
-            {
-                // xsave
-                wrreg(cr4, rdreg(cr4) | (1 << 18));
-
-                // x87 and SSE
-                std::uint64_t xcr0 = 0b11;
-                // AVX
-                if (c & (1 << 28))
-                    xcr0 |= (1 << 2);
-                // AVX512
-                if (cpu::id(0x07, 0, a, b, c, d) && (b & (1 << 16)))
-                    xcr0 |= (0b111 << 5);
-
-                asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
-
-                assert(cpu::id(0x0D, 0, a, b, c, d));
-
-                bool xopt = cpu::id(0x0D, 1, a, b, c, d) && (a & (1 << 0));
-                return { c, xopt ? xsaveopt : xsave, xrstor };
-            }
-            else return { 512, fxsave, fxrstor };
-        }
+        void enable();
     } // namespace features
 
     namespace gs
@@ -314,5 +246,5 @@ export namespace cpu
         }
     } // namespace gs
 
-    std::uintptr_t arch_self() { return gs::read(); }
+    extern "C++" std::uintptr_t self_addr() { return gs::read(); }
 } // export namespace cpu

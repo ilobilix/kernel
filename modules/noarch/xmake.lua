@@ -2,6 +2,7 @@
 
 -- add modules here
 modules = {
+    "example"
 }
 
 target("modules.noarch")
@@ -17,7 +18,7 @@ target("modules.noarch")
         table.insert(list, module)
     end
 
-    before_build(function (target)
+    before_config(function (target)
         import("core.project.project")
         local parent = project.target("modules")
         for idx, val in ipairs(list) do

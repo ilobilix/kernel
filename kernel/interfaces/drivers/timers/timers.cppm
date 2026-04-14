@@ -5,11 +5,11 @@ export module drivers.timers;
 export import drivers.timers.acpipm;
 export import arch.drivers.timers;
 
-import std;
+import lib;
 
-export namespace timers
+namespace timers
 {
-    auto calibrator()
+    export auto calibrator()
     {
         if (timers::acpipm::supported())
             return timers::acpipm::calibrate;
@@ -17,9 +17,5 @@ export namespace timers
         return timers::arch::calibrator();
     }
 
-    void init()
-    {
-        timers::acpipm::init();
-        timers::arch::init();
-    }
+    export initgraph::stage *available_stage();
 } // export namespace timers

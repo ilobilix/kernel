@@ -2,7 +2,7 @@
 
 import system.memory.slab;
 import lib;
-import std;
+import cppstd;
 
 extern "C"
 {

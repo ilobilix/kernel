@@ -5,7 +5,7 @@ module drivers.initramfs;
 import system.vfs;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 namespace initramfs
 {
@@ -132,13 +132,24 @@ namespace initramfs
         }
     } // namespace ustar
 
-    void init()
+    initgraph::stage *extracted_stage()
     {
-        auto module = boot::find_module("initramfs");
-        if (module == nullptr)
-            lib::panic("could not find initramfs");
-
-        if (!ustar::load(lib::tohh(module->address)))
-            lib::panic("could not load initramfs as ustar archive");
+        static initgraph::stage stage { "initramfs-extracted" };
+        return &stage;
     }
+
+    initgraph::task init_task
+    {
+        "extract-initramfs",
+        initgraph::require { vfs::root_mounted_stage() },
+        initgraph::entail { extracted_stage() },
+        [] {
+            auto module = boot::find_module("initramfs");
+            if (module == nullptr)
+                lib::panic("could not find initramfs");
+
+            if (!ustar::load(lib::tohh(module->address)))
+                lib::panic("could not load initramfs as ustar archive");
+        }
+    };
 } // namespace initramfs

@@ -5,7 +5,7 @@ module drivers.fs.tmpfs;
 import system.memory;
 import system.vfs;
 import lib;
-import std;
+import cppstd;
 
 namespace fs::tmpfs
 {
@@ -57,7 +57,7 @@ namespace fs::tmpfs
 
                 lib::ensure(page * pmm::page_size < back->data.size());
 
-                if (flags & vmm::map::shared)
+                if (flags & vmm::map_flag::shared)
                     return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
 
                 auto copy = pmm::alloc();
@@ -108,7 +108,7 @@ namespace fs::tmpfs
         {
             std::atomic<ino_t> inode = 0;
 
-            auto create(std::shared_ptr<vfs::node> parent, std::string_view name, mode_t mode) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto create(std::shared_ptr<vfs::node> &parent, std::string_view name, mode_t mode) -> vfs::expect<std::shared_ptr<vfs::node>> override
             {
                 auto node = std::make_shared<vfs::node>();
                 node->parent = parent;
@@ -117,7 +117,7 @@ namespace fs::tmpfs
                 return node;
             }
 
-            auto mknod(std::shared_ptr<vfs::node> parent, std::string_view name, mode_t mode, dev_t dev) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto mknod(std::shared_ptr<vfs::node> &parent, std::string_view name, mode_t mode, dev_t dev) -> vfs::expect<std::shared_ptr<vfs::node>> override
             {
                 lib::panic("TODO: some sort of device registry");
                 lib::unused(dev);
@@ -129,25 +129,25 @@ namespace fs::tmpfs
                 return node;
             }
 
-            auto symlink(std::shared_ptr<vfs::node> parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto symlink(std::shared_ptr<vfs::node> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::node>> override
             {
                 lib::unused(parent, name, target);
                 return std::unexpected(vfs::error::todo);
             }
 
-            auto link(std::shared_ptr<vfs::node> parent, std::string_view name, std::shared_ptr<vfs::node> target) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto link(std::shared_ptr<vfs::node> &parent, std::string_view name, std::shared_ptr<vfs::node> target) -> vfs::expect<std::shared_ptr<vfs::node>> override
             {
                 lib::unused(parent, name, target);
                 return std::unexpected(vfs::error::todo);
             }
 
-            auto unlink(std::shared_ptr<vfs::node> node) -> vfs::expect<void> override
+            auto unlink(std::shared_ptr<vfs::node> &node) -> vfs::expect<void> override
             {
                 lib::unused(node);
                 return std::unexpected(vfs::error::todo);
             }
 
-            bool populate(std::shared_ptr<vfs::node> node, std::string_view name = "") override
+            bool populate(std::shared_ptr<vfs::node> &node, std::string_view name = "") override
             {
                 lib::unused(node, name);
                 return false;
@@ -159,7 +159,7 @@ namespace fs::tmpfs
             ~instance() = default;
         };
 
-        std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> mount(std::shared_ptr<vfs::node>) const override
+        auto mount(std::shared_ptr<vfs::node> &) const -> std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> override
         {
             auto instance = std::make_shared<fs::instance>();
             auto root = std::make_shared<vfs::node>();
@@ -182,7 +182,7 @@ namespace fs::tmpfs
             lib::panic("tmpfs: tried to initialise twice");
 
         once_flag = true;
-        return std::unique_ptr<vfs::filesystem> { new fs };
+        return std::unique_ptr<vfs::filesystem> { new fs { } };
     }
 } // namespace fs::tmpfs
 
@@ -192,7 +192,7 @@ namespace fs::devtmpfs
     {
         std::shared_ptr<vfs::node> _root;
 
-        std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> mount(std::shared_ptr<vfs::node>) const override
+        auto mount(std::shared_ptr<vfs::node> &) const -> std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> override
         {
             auto instance = std::make_shared<tmpfs::fs::instance>();
             auto root = std::make_shared<vfs::node>();

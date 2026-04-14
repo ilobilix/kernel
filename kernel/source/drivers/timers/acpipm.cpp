@@ -11,7 +11,7 @@ module drivers.timers.acpipm;
 import system.acpi;
 import system.time;
 import lib;
-import std;
+import cppstd;
 
 namespace timers::acpipm
 {
@@ -20,14 +20,25 @@ namespace timers::acpipm
         acpi_gas timer_block;
         uacpi_mapped_gas *mapped;
         std::size_t mask;
-        std::int64_t offset = 0;
-        std::size_t overflows = 0;
+        // std::int64_t offset = 0;
+        // std::uint64_t overflows = 0;
 
         std::uint64_t read()
         {
-            std::uint64_t value;
-            uacpi_gas_read_mapped(mapped, &value);
-            return value;
+            auto read_internal = [] {
+                std::uint64_t value;
+                uacpi_gas_read_mapped(mapped, &value);
+                return value;
+            };
+
+            std::uint32_t v1 = 0, v2 = 0, v3 = 0;
+            do {
+                v1 = read_internal();
+                v2 = read_internal();
+                v3 = read_internal();
+            } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
+
+            return v2;
         }
     } // namespace
 
@@ -51,21 +62,6 @@ namespace timers::acpipm
         return cached;
     }
 
-
-    uacpi_interrupt_ret handle_overflow(uacpi_handle)
-    {
-        overflows++;
-        return UACPI_INTERRUPT_HANDLED;
-    }
-
-    std::uint64_t time_ns()
-    {
-        static constexpr auto pn = lib::freq2nspn(frequency);
-
-        // lib::ensure(!!initialised);
-        return lib::ticks2ns(read() + (overflows * mask), pn.first, pn.second) - offset;
-    }
-
     void calibrate(std::size_t ms)
     {
         lib::ensure(supported() && (ms * frequency) / 1'000 <= mask);
@@ -83,22 +79,20 @@ namespace timers::acpipm
         }
     }
 
-    void init()
+    initgraph::stage *available_stage()
     {
-        auto pmtimer = supported();
-        log::info("acpipm: timer supported: {}", pmtimer);
+        static initgraph::stage stage { "timers.acpipm-available" };
+        return &stage;
     }
 
-    time::clock clock { "acpipm", 50, time_ns };
-    void finalise()
+    initgraph::task acpipm_task
     {
-        lib::ensure(!!supported());
-
-        initialised = true;
-
-        if (const auto clock = time::main_clock())
-            offset = time_ns() - clock->ns();
-
-        time::register_clock(clock);
-    }
+        "timers.init-acpipm",
+        initgraph::require { acpi::tables_stage() },
+        initgraph::entail { available_stage() },
+        [] {
+            auto pmtimer = supported();
+            log::info("acpipm: timer supported: {}", pmtimer);
+        }
+    };
 } // namespace timers::acpipm

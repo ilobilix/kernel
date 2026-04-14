@@ -7,7 +7,7 @@ import x86_64.system.idt;
 import drivers.timers;
 import system;
 import lib;
-import std;
+import cppstd;
 
 namespace arch
 {
@@ -25,7 +25,7 @@ namespace arch
 
     void halt_others()
     {
-        if (cpu::processors != nullptr)
+        if (cpu::cpu_count() != 0)
             x86_64::apic::ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
     }
 
@@ -67,31 +67,49 @@ namespace arch
         log::println(lvl, " - cr2: 0x{:X}, cr3: 0x{:X}, cr4: 0x{:X}", eregs.cr2, eregs.cr3, eregs.cr4);
     }
 
-    void init()
+    void early_init()
     {
-        cpu::init_bsp();
-        x86_64::pic::init();
-        x86_64::apic::io::init();
-
-        timers::init();
-        x86_64::apic::calibrate_timer();
-        cpu::init();
-        x86_64::timers::tsc::finalise();
+        x86_64::gdt::init();
+        x86_64::idt::init();
     }
+
+    initgraph::task bsp_task
+    {
+        "arch.init-bsp",
+        initgraph::require { acpi::tables_stage() },
+        initgraph::entail { bsp_stage() },
+        [] {
+            cpu::init_bsp();
+            x86_64::pic::init();
+            x86_64::apic::io::init();
+        }
+    };
+
+    initgraph::task cpus_task
+    {
+        "arch.init-cpus",
+        initgraph::require { bsp_stage(), timers::available_stage() },
+        initgraph::entail { cpus_stage() },
+        [] {
+            x86_64::apic::calibrate_timer();
+            cpu::init();
+            x86_64::timers::tsc::finalise();
+        }
+    };
 
     namespace core
     {
-        extern "C" void arch_core_entry(boot::limine_mp_info *cpu)
+        void entry(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
+
+            cpu::gs::write_user(cpu->extra_argument);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::gs::write_user(cpu->extra_argument);
-
-            auto &fpu = ptr->arch.fpu;
-            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+            cpu::features::enable();
 
             x86_64::syscall::init_cpu();
 
@@ -107,14 +125,13 @@ namespace arch
         void bsp(boot::limine_mp_info *cpu)
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
+            cpu::gs::write_user(cpu->extra_argument);
 
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::gs::write_user(cpu->extra_argument);
-
-            auto &fpu = ptr->arch.fpu;
-            std::tie(fpu.size, fpu.save, fpu.restore) = cpu::features::enable();
+            cpu::features::enable();
 
             x86_64::syscall::init_cpu();
 

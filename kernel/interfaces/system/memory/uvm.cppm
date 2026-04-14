@@ -1,15 +1,13 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module system.memory.virt:mmap;
+export module system.memory.virt:uvm;
 
-import system.cpu;
-import system.vfs;
 import :pagemap;
-import std;
+import cppstd;
 
-export namespace vmm
+namespace vmm
 {
-    enum prot
+    export enum class prot
     {
         none = 0x00,
         read = 0x01,
@@ -17,21 +15,18 @@ export namespace vmm
         exec = 0x04
     };
 
-    enum map
+    export enum map_flag
     {
         failed = -1,
         file = 0x00,
         shared = 0x01,
         private_ = 0x02,
         fixed = 0x10,
-        anon = 0x20,
-        anonymous = anon
+        anonymous = 0x20
     };
 
-    // TODO: temporary
-    class vspace
+    export struct vmspace
     {
-        public:
-        std::shared_ptr<vmm::pagemap> pmap;
+        std::shared_ptr<pagemap> pmap;
     };
 } // export namespace vmm

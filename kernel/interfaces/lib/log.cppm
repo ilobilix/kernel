@@ -4,11 +4,11 @@ export module lib:log;
 
 import :spinlock;
 import :math;
-import std;
+import cppstd;
 
 namespace log
 {
-    lib::spinlock<true> _lock;
+    constinit lib::spinlock<true> _lock;
     std::uint64_t get_time();
 
     export namespace unsafe
@@ -92,28 +92,40 @@ export namespace log
         detail::print(fmt, args...);
     }
 
-    inline void println(std::string_view fmt, auto &&...args)
+    namespace unsafe
+    {
+        inline constexpr void print_nolock(level lvl, std::string_view fmt, auto &&...args)
+        {
+            const auto index = std::to_underlying(lvl);
+
+            auto n = get_time();
+            const auto [h, m, s] = lib::time_from(n / 1'000'000'000);
+            n %= 1'000'000'000;
+            n /= 1'000;
+
+            detail::print("[{:02}:{:02}:{:02}.{:06}] [{}{}{}] ", h, m, s, n, colours[index], prefix[index], reset_colour);
+            detail::print(fmt, args...);
+        }
+    } // namespace unsafe
+
+    inline constexpr void print(level lvl, std::string_view fmt, auto &&...args)
     {
         const std::unique_lock _ { _lock };
-
-        detail::print(fmt, args...);
-        detail::print("\n");
+        unsafe::print_nolock(lvl, fmt, args...);
     }
 
-    inline constexpr void println(level lvl, std::string_view fmt, auto &&...args)
+    inline void println(std::string_view fmt = "", auto &&...args)
     {
         const std::unique_lock _ { _lock };
-
-        const auto index = std::to_underlying(lvl);
-
-        auto n = get_time();
-        const auto [h, m, s] = lib::time_from(n / 1'000'000'000);
-        n %= 1'000'000'000;
-        n /= 1'000;
-
-        detail::print("[{:02}:{:02}:{:02}.{:06}] [{}{}{}] ", h, m, s, n, colours[index], prefix[index], reset_colour);
         detail::print(fmt, args...);
-        detail::print("\n");
+        unsafe::printc('\n');
+    }
+
+    inline constexpr void println(level lvl, std::string_view fmt = "", auto &&...args)
+    {
+        const std::unique_lock _ { _lock };
+        unsafe::print_nolock(lvl, fmt, args...);
+        unsafe::printc('\n');
     }
 
 #if ILOBILIX_DEBUG

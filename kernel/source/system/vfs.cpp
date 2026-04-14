@@ -4,8 +4,9 @@ module system.vfs;
 
 import system.scheduler;
 import system.cpu.self;
+import drivers.fs;
 import lib;
-import std;
+import cppstd;
 
 namespace vfs
 {
@@ -27,7 +28,7 @@ namespace vfs
         if (filesystems.contains(fs->name))
             return false;
 
-        log::debug("vfs: registering filesystem '{}'", fs->name);
+        log::info("vfs: registering filesystem '{}'", fs->name);
         filesystems[fs->name] = std::move(fs);
         return true;
     }
@@ -43,7 +44,7 @@ namespace vfs
     std::shared_ptr<node> node::root(bool from_sched)
     {
         if (!from_sched && sched::initialised)
-            return cpu::self()->sched.running_thread->proc.lock()->root;
+            return sched::proc_for(sched::percpu->running_thread->pid)->root;
         return vfs::root->reduce().value();
     }
 
@@ -196,7 +197,7 @@ namespace vfs
         target_node->mountpoint = root;
         instance->mounted_on = target_node;
 
-        log::debug("vfs: mount('{}', '{}', '{}')", source, target, fsname);
+        log::info("vfs: mount('{}', '{}', '{}')", source, target, fsname);
 
         return { };
     }
@@ -280,4 +281,24 @@ namespace vfs
         auto node = res->target->me();
         return node->backing->stat;
     }
+
+    initgraph::stage *root_mounted_stage()
+    {
+        static initgraph::stage stage { "vfs.root-mounted" };
+        return &stage;
+    }
+
+    initgraph::task fs_task
+    {
+        "vfs.mount-root",
+        initgraph::require { fs::filesystems_registered_stage() },
+        initgraph::entail { root_mounted_stage() },
+        [] {
+            lib::ensure(vfs::mount(nullptr, "", "/", "tmpfs"));
+
+            auto err = vfs::create(nullptr, "/dev", stat::type::s_ifdir);
+            lib::ensure(err.has_value() || err.error() == vfs::error::already_exists);
+            lib::ensure(vfs::mount(nullptr, "", "/dev", "devtmpfs"));
+        }
+    };
 } // namespace vfs

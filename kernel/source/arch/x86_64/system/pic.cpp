@@ -5,7 +5,7 @@ module x86_64.system.pic;
 import magic_enum;
 import arch;
 import lib;
-import std;
+import cppstd;
 
 namespace x86_64::pic
 {

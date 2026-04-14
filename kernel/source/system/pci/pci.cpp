@@ -6,7 +6,7 @@ import system.memory;
 import system.acpi;
 import magic_enum;
 import lib;
-import std;
+import cppstd;
 
 namespace pci
 {
@@ -19,6 +19,12 @@ namespace pci
         lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> devs;
 
         void enum_bus(const auto &bus);
+
+#if ILOBILIX_DEBUG
+#  define logger debug
+#else
+#  define logger info
+#endif
         void enum_func(const auto &bus, std::uint8_t dev, std::uint8_t func)
         {
             const auto venid = bus->template read<16>(dev, func, reg::venid);
@@ -30,7 +36,7 @@ namespace pci
             if (header == 0x00) // device
             {
                 // log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
-                log::debug("pci: general device: {:04X}:{:04X}", venid, devid);
+                log::logger("pci: general device: {:04X}:{:04X}", venid, devid);
 
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
@@ -53,7 +59,7 @@ namespace pci
             else if (header == 0x01) // PCI-to-PCI bridge
             {
                 // log::debug("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
-                log::debug("pci: bridge: {:04X}:{:04X}", venid, devid);
+                log::logger("pci: bridge: {:04X}:{:04X}", venid, devid);
                 auto bridge = std::make_shared<pci::bridge>(bus, dev, func);
 
                 const auto secondary_id = bridge->template read<8>(reg::secondary_bus);
@@ -77,6 +83,7 @@ namespace pci
             }
             else lib::panic("pci: unknown header type: {:X}", header);
         }
+#undef logger
 
         void enum_dev(const auto &bus, std::uint8_t dev)
         {
@@ -279,49 +286,95 @@ namespace pci
     const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges() { return brdgs; }
     const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices() { return devs; }
 
-    void init()
-    {
-        log::info("pci: enumerating devices");
-
-        if (ios.empty())
-        {
-            log::error("pci: no config spaces found");
-            return;
-        }
-        if (rbs.empty())
-        {
-            log::error("pci: no root buses found");
-            return;
-        }
-
-        for (const auto &rb : rbs)
-        {
-            log::debug("pci: root bus: {:04X}:{:02X}", rb->seg, rb->id);
-            enum_bus(rb);
-        }
-    }
-
     namespace arch
     {
-        void register_ios();
-        void register_rbs();
+        initgraph::stage *ios_discovered_stage()
+        {
+            static initgraph::stage stage { "pci.arch.ios-discovered" };
+            return &stage;
+        }
+
+        initgraph::stage *rbs_discovered_stage()
+        {
+            static initgraph::stage stage { "pci.arch.rbs-discovered" };
+            return &stage;
+        }
     } // namespace arch
 
     namespace acpi
     {
-        bool register_ios();
-        bool register_rbs();
+        initgraph::stage *ios_discovered_stage();
+        initgraph::stage *rbs_discovered_stage();
     } // namespace acpi
 
-    void register_ios()
+    initgraph::stage *ios_discovered_stage()
     {
-        if (!acpi::register_ios())
-            arch::register_ios();
+        static initgraph::stage stage { "pci.ios-discovered" };
+        return &stage;
     }
 
-    void register_rbs()
+    initgraph::stage *rbs_discovered_stage()
     {
-        if (!acpi::register_rbs())
-            arch::register_rbs();
+        static initgraph::stage stage { "pci.rbs-discovered" };
+        return &stage;
     }
+
+    initgraph::task ios_task
+    {
+        "pci.ios.parent",
+        initgraph::require {
+            acpi::ios_discovered_stage(),
+            arch::ios_discovered_stage()
+        },
+        initgraph::entail { ios_discovered_stage() },
+        [] { }
+    };
+
+    initgraph::task rbs_task
+    {
+        "pci.rbs.parent",
+        initgraph::require {
+            acpi::rbs_discovered_stage(),
+            arch::rbs_discovered_stage()
+        },
+        initgraph::entail { rbs_discovered_stage() },
+        [] { }
+    };
+
+    initgraph::stage *enumerated_stage()
+    {
+        static initgraph::stage stage { "pci-enumerated" };
+        return &stage;
+    }
+
+    initgraph::task pci_task
+    {
+        "pci-enumerate",
+        initgraph::require {
+            ios_discovered_stage(),
+            rbs_discovered_stage()
+        },
+        initgraph::entail { enumerated_stage() },
+        [] {
+            log::info("pci: enumerating devices");
+
+            if (ios.empty())
+            {
+                log::error("pci: no config spaces found");
+                return;
+            }
+            if (rbs.empty())
+            {
+                log::error("pci: no root buses found");
+                return;
+            }
+
+            for (const auto &rb : rbs)
+            {
+                log::debug("pci: root bus: {:04X}:{:02X}", rb->seg, rb->id);
+                enum_bus(rb);
+            }
+        }
+    };
+
 } // namespace pci

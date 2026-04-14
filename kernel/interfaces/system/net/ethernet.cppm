@@ -1,11 +1,11 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:ether;
+export module system.net:ether;
 
 import :addr;
 import :packet;
 import lib;
-import std;
+import cppstd;
 
 namespace utils
 {

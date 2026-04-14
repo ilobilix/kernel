@@ -23,5 +23,4 @@ Make sure you have recent versions of the following programs installed:
 * Fully rebuild the kernel: ``xmake build -r --all -j$(nproc)``
 
 ## Known Bugs
-* #PF when uACPI fixed events are invoked
-* threads sometimes do not execute after yielding
+* threads sometimes do not execute after yielding in debug mode

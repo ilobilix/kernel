@@ -3,7 +3,7 @@
 export module system.vfs;
 
 import lib;
-import std;
+import cppstd;
 
 export namespace vfs
 {
@@ -36,21 +36,21 @@ export namespace vfs
             std::weak_ptr<node> mounted_on;
             std::shared_ptr<filesystem> fs;
 
-            virtual auto create(std::shared_ptr<node> parent, std::string_view name, mode_t mode) -> expect<std::shared_ptr<node>> = 0;
-            virtual auto mknod(std::shared_ptr<node> parent, std::string_view name, mode_t mode, dev_t dev) -> expect<std::shared_ptr<node>> = 0;
+            virtual auto create(std::shared_ptr<node> &parent, std::string_view name, mode_t mode) -> expect<std::shared_ptr<node>> = 0;
+            virtual auto mknod(std::shared_ptr<node> &parent, std::string_view name, mode_t mode, dev_t dev) -> expect<std::shared_ptr<node>> = 0;
 
-            virtual auto symlink(std::shared_ptr<node> parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<node>> = 0;
-            virtual auto link(std::shared_ptr<node> parent, std::string_view name, std::shared_ptr<node> target) -> expect<std::shared_ptr<node>> = 0;
-            virtual auto unlink(std::shared_ptr<node> node) -> expect<void> = 0;
+            virtual auto symlink(std::shared_ptr<node> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<node>> = 0;
+            virtual auto link(std::shared_ptr<node> &parent, std::string_view name, std::shared_ptr<node> target) -> expect<std::shared_ptr<node>> = 0;
+            virtual auto unlink(std::shared_ptr<node> &node) -> expect<void> = 0;
 
-            virtual bool populate(std::shared_ptr<node> node, std::string_view name = "") = 0;
+            virtual bool populate(std::shared_ptr<node> &node, std::string_view name = "") = 0;
             virtual bool sync() = 0;
             virtual bool unmount() = 0;
 
             virtual ~instance() = default;
         };
 
-        virtual std::pair<std::shared_ptr<instance>, std::shared_ptr<node>> mount(std::shared_ptr<node>) const = 0;
+        virtual auto mount(std::shared_ptr<node> &) const -> std::pair<std::shared_ptr<instance>, std::shared_ptr<node>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -71,21 +71,25 @@ export namespace vfs
 
         std::ssize_t read(std::size_t offset, std::span<std::byte> buffer)
         {
+            lib::ensure(op != nullptr);
             return op->read(shared_from_this(), offset, buffer);
         }
 
         std::ssize_t write(std::size_t offset, std::span<std::byte> buffer)
         {
+            lib::ensure(op != nullptr);
             return op->write(shared_from_this(), offset, buffer);
         }
 
         std::uintptr_t mmap(std::uintptr_t page, int flags)
         {
+            lib::ensure(op != nullptr);
             return op->mmap(shared_from_this(), page, flags);
         }
 
         bool munmap(std::uintptr_t page)
         {
+            lib::ensure(op != nullptr);
             return op->munmap(shared_from_this(), page);
         }
 
@@ -182,4 +186,6 @@ export namespace vfs
     auto unlink(std::shared_ptr<node> parent, lib::path path) -> expect<void>;
 
     auto stat(std::shared_ptr<node> parent, lib::path path) -> expect<stat>;
+
+    initgraph::stage *root_mounted_stage();
 } // export namespace vfs

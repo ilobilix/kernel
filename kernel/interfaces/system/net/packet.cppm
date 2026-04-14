@@ -1,9 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
-export module net:packet;
+export module system.net:packet;
 
 import :addr;
-import std;
+import cppstd;
 import lib;
 
 export namespace net

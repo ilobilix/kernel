@@ -15,7 +15,7 @@ module system.pci;
 import system.memory.virt;
 import system.acpi;
 import lib;
-import std;
+import cppstd;
 
 namespace pci::acpi
 {
@@ -239,76 +239,105 @@ namespace pci::acpi
         }
     };
 
-    bool register_ios()
+    initgraph::stage *ios_discovered_stage()
     {
-        uacpi_table table;
-        if (uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &table) != UACPI_STATUS_OK)
-        {
-            log::warn("pci: mcfg table not found");
-            return false;
-        }
+        static initgraph::stage stage { "pci.acpi.ios-discovered" };
+        return &stage;
+    }
 
-        const auto mcfg = static_cast<acpi_mcfg *>(table.ptr);
-        if (mcfg->hdr.length < sizeof(acpi_mcfg) + sizeof(acpi_mcfg_allocation))
-        {
-            log::warn("pci: mcfg table has no entries");
+    initgraph::stage *rbs_discovered_stage()
+    {
+        static initgraph::stage stage { "pci.acpi.rbs-discovered" };
+        return &stage;
+    }
+
+    bool need_arch_ios = true;
+    bool need_arch_rbs = true;
+
+    initgraph::task ios_task
+    {
+        "pci.acpi.discover-ios",
+        initgraph::require { ::acpi::tables_stage() },
+        initgraph::entail { ios_discovered_stage() },
+        [] {
+            uacpi_table table;
+            if (uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &table) != UACPI_STATUS_OK)
+            {
+                log::warn("pci: mcfg table not found");
+                return;
+            }
+
+            const auto mcfg = static_cast<acpi_mcfg *>(table.ptr);
+            if (mcfg->hdr.length < sizeof(acpi_mcfg) + sizeof(acpi_mcfg_allocation))
+            {
+                log::warn("pci: mcfg table has no entries");
+                uacpi_table_unref(&table);
+                return;
+            }
+
+            log::debug("pci: using ecam");
+
+            const std::size_t entries = ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation);
+            for (std::size_t i = 0; i < entries; i++)
+            {
+                auto &entry = mcfg->entries[i];
+                auto io = std::make_shared<ecam>(
+                    static_cast<std::uintptr_t>(entry.address),
+                    static_cast<std::uint16_t>(entry.segment),
+                    static_cast<std::uint8_t>(entry.start_bus),
+                    static_cast<std::uint8_t>(entry.end_bus)
+                );
+
+                for (std::size_t b = entry.start_bus; b <= entry.end_bus; b++)
+                {
+                    addio(io, entry.segment, b);
+                    need_arch_ios = false;
+                }
+            }
+
             uacpi_table_unref(&table);
-            return false;
         }
+    };
 
-        log::debug("pci: using ecam");
+    initgraph::task rbs_task
+    {
+        "pci.acpi.discover-rbs",
+        initgraph::require { ::acpi::initialised_stage() },
+        initgraph::entail { rbs_discovered_stage() },
+        [] {
+            static constexpr const char *root_ids[]
+            {
+                "PNP0A03", // PCI
+                "PNP0A08", // PCIe
+                nullptr,
+            };
 
-        const std::size_t entries = ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation);
-        for (std::size_t i = 0; i < entries; i++)
-        {
-            auto &entry = mcfg->entries[i];
-            auto io = std::make_shared<ecam>(
-                static_cast<std::uintptr_t>(entry.address),
-                static_cast<std::uint16_t>(entry.segment),
-                static_cast<std::uint8_t>(entry.start_bus),
-                static_cast<std::uint8_t>(entry.end_bus)
+            std::size_t num = 0;
+            uacpi_find_devices_at(
+                uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
+                root_ids, [](void *ptr, uacpi_namespace_node *node, std::uint32_t)
+                {
+                    auto &num = *static_cast<std::size_t *>(ptr);
+                    num++;
+
+                    std::uint64_t seg = 0, bus = 0;
+
+                    uacpi_eval_simple_integer(node, "_SEG", &seg);
+                    uacpi_eval_simple_integer(node, "_BBN", &bus);
+
+                    auto rbus = std::make_shared<pci::bus>(seg, bus, getio(seg, bus));
+                    rbus->router = std::make_shared<router>(nullptr, rbus, node);
+                    addrb(rbus);
+
+                    return UACPI_ITERATION_DECISION_CONTINUE;
+                }, &num
             );
 
-            for (std::size_t b = entry.start_bus; b <= entry.end_bus; b++)
-                addio(io, entry.segment, b);
-        }
-
-        uacpi_table_unref(&table);
-        return true;
-    }
-
-    bool register_rbs()
-    {
-        static constexpr const char *root_ids[] =
-        {
-            "PNP0A03", // PCI
-            "PNP0A08", // PCIe
-            nullptr,
-        };
-
-        std::size_t num = 0;
-        uacpi_find_devices_at(
-            uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
-            root_ids, [](void *ptr, uacpi_namespace_node *node, std::uint32_t)
+            if (num)
             {
-                auto &num = *static_cast<std::size_t *>(ptr);
-                num++;
-
-                std::uint64_t seg = 0, bus = 0;
-
-                uacpi_eval_simple_integer(node, "_SEG", &seg);
-                uacpi_eval_simple_integer(node, "_BBN", &bus);
-
-                auto rbus = std::make_shared<pci::bus>(seg, bus, getio(seg, bus));
-                rbus->router = std::make_shared<router>(nullptr, rbus, node);
-                addrb(rbus);
-
-                return UACPI_ITERATION_DECISION_CONTINUE;
-            }, &num
-        );
-
-        if (num)
-            log::debug("pci: found {} root bus{} with acpi", num, num > 1 ? "es" : "");
-        return num;
-    }
+                log::debug("pci: found {} root bus{} with acpi", num, num > 1 ? "es" : "");
+                need_arch_rbs = false;
+            }
+        }
+    };
 } // namespace pci::acpi

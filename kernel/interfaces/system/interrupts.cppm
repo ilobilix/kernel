@@ -3,7 +3,7 @@
 export module system.interrupts;
 
 import system.cpu;
-import std;
+import cppstd;
 
 export namespace interrupts
 {
@@ -44,7 +44,7 @@ export namespace interrupts
         bool reset()
         {
             bool ret = static_cast<bool>(_handler);
-            _handler.clear();
+            _handler = { };
             return ret;
         }
 

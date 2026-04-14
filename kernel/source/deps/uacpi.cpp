@@ -4,7 +4,8 @@
 
 import ilobilix;
 import magic_enum;
-import std;
+import lib;
+import cppstd;
 
 namespace uacpi
 {
@@ -49,21 +50,27 @@ namespace uacpi
         arch::halt(true);
     }
 
-    void init_workers()
+    initgraph::task uacpi_task
     {
-        auto notify_thread = sched::thread::create(
-            boot::pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
-        );
-        auto gpe_thread = sched::thread::create(
-            boot::pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
-        );
+        "init-uacpi-workers",
+        initgraph::require { sched::available_stage(), acpi::initialised_stage() },
+        initgraph::entail { acpi::uacpi_stage() },
+        [] {
+            auto pid0 = sched::proc_for(0);
+            auto notify_thread = sched::thread::create(
+                pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
+            );
+            auto gpe_thread = sched::thread::create(
+                pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
+            );
 
-        notify_thread->status = sched::status::ready;
-        gpe_thread->status = sched::status::ready;
+            notify_thread->status = sched::status::ready;
+            gpe_thread->status = sched::status::ready;
 
-        sched::enqueue(notify_thread, cpu::self()->idx);
-        sched::enqueue(gpe_thread, cpu::self()->idx);
-    }
+            sched::enqueue(notify_thread, sched::allocate_cpu());
+            sched::enqueue(gpe_thread, sched::allocate_cpu());
+        }
+    };
 } // namespace uacpi
 
 extern "C"
@@ -405,9 +412,8 @@ extern "C"
     {
         if (sched::initialised)
         {
-            auto thread = cpu::self()->sched.running_thread;
-            auto proc = thread->proc.lock();
-            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, proc->pid));
+            const auto &thread = sched::percpu->running_thread;
+            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->pid));
         }
 
         return reinterpret_cast<uacpi_thread_id>(1);
@@ -497,7 +503,7 @@ extern "C"
         const auto vector = irq;
 #endif
 
-        auto handler = interrupts::get(cpu::bsp_idx, vector).value();
+        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
         if (handler.get().used()) [[unlikely]]
             lib::panic("requested uACPI interrupt vector {} is already in use", vector);
 
@@ -513,7 +519,7 @@ extern "C"
         const auto vector = reinterpret_cast<std::size_t>(irq_handle);
         interrupts::mask(vector);
 
-        auto handler = interrupts::get(cpu::bsp_idx, vector).value();
+        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
         handler.get().reset();
 
         return UACPI_STATUS_OK;

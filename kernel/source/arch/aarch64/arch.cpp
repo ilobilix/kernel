@@ -3,7 +3,7 @@
 module arch;
 
 import system.cpu;
-import std;
+import cppstd;
 
 namespace arch
 {
@@ -42,6 +42,7 @@ namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs, log::level lvl) { lib::unused(regs, lvl); }
 
+    void early_init() { }
     void init()
     {
         cpu::init();
@@ -49,7 +50,7 @@ namespace arch
 
     namespace core
     {
-        extern "C" void arch_core_entry(boot::limine_mp_info *cpu) { lib::unused(cpu); }
+        void entry(boot::limine_mp_info *cpu) { lib::unused(cpu); }
         void bsp(boot::limine_mp_info *cpu) { lib::unused(cpu); }
     } // namespace core
 } // namespace arch

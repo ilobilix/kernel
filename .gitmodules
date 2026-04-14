@@ -55,9 +55,9 @@
 	path = dependencies/printf/printf
 	url = https://github.com/eyalroz/printf
 	shallow = true
-[submodule "dependencies/smart-ptr/smart-ptr"]
-	path = dependencies/smart-ptr/smart-ptr
-	url = https://github.com/ilobilo/smart-ptr
+[submodule "dependencies/hosted-libstdcxx/hosted-libstdcxx"]
+	path = dependencies/hosted-libstdcxx/hosted-libstdcxx
+	url = https://github.com/ilobilo/hosted-libstdcxx
 	shallow = true
 [submodule "dependencies/string/string"]
 	path = dependencies/string/string

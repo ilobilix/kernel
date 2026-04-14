@@ -5,7 +5,7 @@ export module arch;
 import system.cpu;
 import boot;
 import lib;
-import std;
+import cppstd;
 
 export namespace arch
 {
@@ -28,10 +28,23 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
 
-    void init();
+    initgraph::stage *bsp_stage()
+    {
+        static initgraph::stage stage { "arch.bsp-initialised" };
+        return &stage;
+    }
+
+    initgraph::stage *cpus_stage()
+    {
+        static initgraph::stage stage { "arch.cpus-initialised" };
+        return &stage;
+    }
+
+    void early_init();
 
     namespace core
     {
+        void entry(boot::limine_mp_info *cpu);
         void bsp(boot::limine_mp_info *cpu);
     } // namespace core
 } // export namespace arch

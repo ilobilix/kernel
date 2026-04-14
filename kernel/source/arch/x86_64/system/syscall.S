@@ -19,8 +19,10 @@ syscall_entry:
 
     pushall
 
+    sti
     mov rdi, rsp
     call syscall_handler
+    cli
 
     popall
 
