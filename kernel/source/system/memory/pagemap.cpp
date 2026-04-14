@@ -156,7 +156,7 @@ namespace vmm
     void init()
     {
         log::info("vmm: setting up the kernel pagemap");
-        log::debug("vmm: HHDM offset is: 0x{:X}", boot::get_hhdm_offset());
+        log::debug("vmm: hhdm offset is: 0x{:X}", boot::get_hhdm_offset());
 
         kernel_pagemap.initialize();
 
@@ -192,10 +192,13 @@ namespace vmm
                 const auto vaddr = lib::tohh(base);
                 const auto len = end - base;
 
+                if (len == 0)
+                    continue;
+
                 log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
-                if (!kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache))
-                    lib::panic("could not map virtual memory");
+                if (auto ret = kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache); !ret)
+                    lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
             }
         }
         {
@@ -228,8 +231,8 @@ namespace vmm
 
                     log::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
 
-                    if (!kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache))
-                        lib::panic("could not map virtual memory");
+                    if (auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache); !ret)
+                        lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
                 }
                 phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize);
             }

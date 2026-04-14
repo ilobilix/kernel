@@ -59,6 +59,9 @@ export namespace vmm
     {
         friend class vspace;
 
+        public:
+        struct table;
+
         private:
         static std::uintptr_t pa_mask;
 
@@ -101,7 +104,6 @@ export namespace vmm
             }
         };
 
-        struct table;
         table *_table;
         lib::spinlock<true> _lock;
 

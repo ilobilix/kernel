@@ -64,7 +64,7 @@ namespace x86_64::timers::pit
         lib::io::out<8>(port::channel0, low);
         lib::io::out<8>(port::channel0, high);
 
-        auto [handler, vector] = interrupts::allocate(cpu::bsp_idx, 0x20).value();
+        auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x20).value();
         handler.set([](auto) { tick++; });
         interrupts::unmask(vector);
 

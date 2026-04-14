@@ -55,9 +55,7 @@ namespace vmm
     auto pagemap::new_table() -> table *
     {
         static_assert(sizeof(pagemap::table) == pmm::page_size);
-        auto ptr = pmm::alloc<table *>();
-        std::memset(lib::tohh(ptr), 0, sizeof(table));
-        return ptr;
+        return pmm::alloc<table *>(1, true);
     }
 
     page_size pagemap::fixpsize(page_size psize)
@@ -188,7 +186,7 @@ namespace vmm
     auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>
     {
         static constexpr std::uintptr_t bits = 0b111111111;
-        static constexpr std::size_t levels = 4; // We don't need more than 256 tib of addresses
+        static constexpr std::size_t levels = 4;
         static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
 
         auto pml = lib::tohh(_table);

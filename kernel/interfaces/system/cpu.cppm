@@ -17,9 +17,9 @@ export namespace cpu
     processor *nth(std::size_t n);
     std::uintptr_t nth_base(std::size_t n);
 
-    std::size_t bsp_idx;
-    std::size_t bsp_aid;
-    std::size_t cpu_count = 0;
+    std::size_t bsp_idx();
+    std::size_t bsp_aid();
+    std::size_t cpu_count();
 
     void init_bsp();
     void init();
