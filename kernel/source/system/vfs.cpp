@@ -241,7 +241,7 @@ namespace vfs
         const auto real_parent = res->target;
         const auto name = _path.basename();
 
-        auto ret = real_parent.mnt->fs->create(real_parent.dentry->inode, name, mode);
+        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode);
         if (ret)
         {
             auto dentry = std::make_shared<vfs::dentry>();
@@ -271,7 +271,7 @@ namespace vfs
         const auto real_parent = res->target;
         const auto name = src.basename();
 
-        auto ret = real_parent.mnt->fs->symlink(real_parent.dentry->inode, name, target);
+        auto ret = real_parent.mnt->fs.lock()->symlink(real_parent.dentry->inode, name, target);
         if (ret)
         {
             auto dentry = std::make_shared<vfs::dentry>();
@@ -311,7 +311,7 @@ namespace vfs
 
     bool populate(path parent, std::string_view name)
     {
-        const auto ret = parent.mnt->fs->populate(parent.dentry->inode, name);
+        const auto ret = parent.mnt->fs.lock()->populate(parent.dentry->inode, name);
         if (!ret.has_value())
             return false;
 

@@ -52,8 +52,6 @@ export namespace vfs
 
         struct instance
         {
-            lib::mutex lock;
-
             virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<ops> ops = nullptr) -> expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<inode>> = 0;
@@ -75,7 +73,7 @@ export namespace vfs
 
     struct mount
     {
-        std::shared_ptr<filesystem::instance> fs;
+        lib::locked_ptr<filesystem::instance, lib::mutex> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
     };
