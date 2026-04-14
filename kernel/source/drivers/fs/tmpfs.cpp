@@ -37,70 +37,70 @@ namespace fs::tmpfs
         );
     }
 
-    std::ssize_t ops::read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer)
+    std::ssize_t ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer)
     {
-        auto back = reinterpret_cast<inode *>(self.get());
-        const std::unique_lock _ { back->lock };
+        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
         auto real_size = size;
-        if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
-            real_size = size - ((offset + size) - back->stat.st_size);
+        if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
+            real_size = size - ((offset + size) - inod->stat.st_size);
 
         if (real_size == 0)
             return 0;
 
-        back->memory->read(offset, buffer.subspan(0, real_size));
+        inod->memory->read(offset, buffer.subspan(0, real_size));
         return real_size;
     }
 
-    std::ssize_t ops::write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer)
+    std::ssize_t ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer)
     {
-        auto back = reinterpret_cast<inode *>(self.get());
-        const std::unique_lock _ { back->lock };
+        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
-        back->memory->write(offset, buffer.subspan(0, size));
+        inod->memory->write(offset, buffer.subspan(0, size));
 
-        if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
+        if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
         {
-            back->stat.st_size = offset + size;
-            back->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(back->stat.st_blksize));
+            inod->stat.st_size = offset + size;
+            inod->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(inod->stat.st_blksize));
         }
         return size;
     }
 
-    bool ops::trunc(std::shared_ptr<vfs::inode> self, std::size_t size)
+    bool ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
     {
-        auto back = reinterpret_cast<inode *>(self.get());
-        const std::unique_lock _ { back->lock };
+        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
-        const auto current_size = static_cast<std::size_t>(back->stat.st_size);
+        const auto current_size = static_cast<std::size_t>(inod->stat.st_size);
         if (size == current_size)
             return true;
 
         if (size < current_size)
-            back->memory->clear(size, 0, current_size - size);
+            inod->memory->clear(size, 0, current_size - size);
         else
-            back->memory->clear(current_size, 0, size - current_size);
+            inod->memory->clear(current_size, 0, size - current_size);
 
-        back->stat.st_size = size;
-        back->stat.st_blocks = lib::div_roundup(size, static_cast<std::size_t>(back->stat.st_blksize));
+        inod->stat.st_size = size;
+        inod->stat.st_blocks = lib::div_roundup(size, static_cast<std::size_t>(inod->stat.st_blksize));
         return true;
     }
 
-    std::shared_ptr<vmm::object> ops::map(std::shared_ptr<vfs::inode> self, bool priv)
+    std::shared_ptr<vmm::object> ops::map(std::shared_ptr<vfs::file> file, bool priv)
     {
-        auto back = reinterpret_cast<inode *>(self.get());
-        const std::unique_lock _ { back->lock };
+        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        const std::unique_lock _ { inod->lock };
 
         if (priv)
         {
             auto memory = std::make_shared<vmm::memobject>();
-            back->memory->copy_to(*memory, 0, static_cast<std::size_t>(self->stat.st_size));
+            inod->memory->copy_to(*memory, 0, static_cast<std::size_t>(inod->stat.st_size));
             return memory;
         }
-        return back->memory;
+        return inod->memory;
     }
 
     bool ops::sync() { return true; }

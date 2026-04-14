@@ -6,7 +6,6 @@ import system.scheduler.base;
 import system.memory.virt;
 import system.cpu.self;
 import system.cpu;
-import system.vfs.file;
 import system.vfs;
 import frigg;
 import lib;

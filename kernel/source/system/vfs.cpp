@@ -429,7 +429,6 @@ namespace vfs
             populate(res->target);
             if (!res->target.dentry->children.empty())
                 return std::unexpected(error::dir_not_empty);
-
         }
 
         auto ret = res->target.mnt->fs.lock()->unlink(res->target.dentry->inode);
@@ -475,6 +474,38 @@ namespace vfs
             return true;
         }
         return false;
+    }
+
+    bool fdtable::close(int fd)
+    {
+        return fds.write_lock()->erase(fd);
+    }
+
+    std::shared_ptr<filedesc> fdtable::get(int fd)
+    {
+        const auto rlocked = fds.read_lock();
+        auto it = rlocked->find(fd);
+        if (it == rlocked->end())
+            return nullptr;
+        return it->second;
+    }
+
+    int fdtable::allocate_fd(std::shared_ptr<filedesc> desc, int fd, bool force)
+    {
+        auto wlocked = fds.write_lock();
+        if (wlocked->contains(fd))
+        {
+            if (!force)
+            {
+                fd = next_fd++;
+                while (wlocked->contains(fd))
+                    fd++;
+            }
+            else lib::bug_on(!wlocked->erase(fd));
+        }
+
+        wlocked.value()[fd] = desc;
+        return fd;
     }
 
     lib::initgraph::stage *root_mounted_stage()

@@ -11,8 +11,8 @@ export namespace bin::exec
 {
     struct request
     {
-        vfs::path file;
-        std::optional<vfs::path> interp;
+        std::shared_ptr<vfs::file> file;
+        std::shared_ptr<vfs::file> interp;
 
         std::vector<std::string> argv;
         std::vector<std::string> envp;
@@ -28,7 +28,7 @@ export namespace bin::exec
 
         virtual ~format() = default;
 
-        virtual bool identify(const std::shared_ptr<vfs::dentry> &file) const = 0;
+        virtual bool identify(const std::shared_ptr<vfs::file> &file) const = 0;
         virtual sched::thread *load(const request &req, sched::process *proc) const = 0;
 
         std::string_view name() const { return _name; }
@@ -37,5 +37,5 @@ export namespace bin::exec
     bool register_format(std::shared_ptr<format> fmt);
     std::shared_ptr<format> get_format(std::string_view name);
 
-    std::shared_ptr<format> identify(const std::shared_ptr<vfs::dentry> &file);
+    std::shared_ptr<format> identify(const std::shared_ptr<vfs::file> &file);
 } // export namespace bin::exec

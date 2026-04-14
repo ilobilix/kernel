@@ -12,7 +12,7 @@ namespace bin::script
         public:
         format() : exec::format { "script" } { }
 
-        bool identify(const std::shared_ptr<vfs::dentry> &file) const override
+        bool identify(const std::shared_ptr<vfs::file> &file) const override
         {
             lib::unused(file);
             return false;

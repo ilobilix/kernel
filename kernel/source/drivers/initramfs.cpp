@@ -90,9 +90,14 @@ namespace initramfs
                             break;
                         }
 
-                        auto &inode_ = ret.value().dentry->inode;
-                        const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
-                        if (inode_->write(0, data) != std::ssize_t(size))
+                        const std::span data {
+                            reinterpret_cast<std::byte *>(
+                                reinterpret_cast<std::uintptr_t>(current) + 512
+                            ), size
+                        };
+
+                        auto file = vfs::file::create(ret.value(), 0, 0);
+                        if (file->pwrite(0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
                             if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
@@ -104,7 +109,7 @@ namespace initramfs
                             }
                             break;
                         }
-                        inode = inode_;
+                        inode = ret.value().dentry->inode;
                         break;
                     }
                     case types::hardlink:

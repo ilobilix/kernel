@@ -23,12 +23,12 @@ export namespace fs::tmpfs
             return instance;
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override;
-        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override;
+        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override;
+        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, std::span<std::byte> buffer) override;
 
-        bool trunc(std::shared_ptr<vfs::inode> self, std::size_t size) override;
+        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override;
 
-        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::inode> self, bool priv) override;
+        std::shared_ptr<vmm::object> map(std::shared_ptr<vfs::file> file, bool priv) override;
 
         bool sync() override;
     };

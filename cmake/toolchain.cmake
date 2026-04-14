@@ -62,13 +62,9 @@ if(CMAKE_BUILD_TYPE MATCHES "^(ReleaseDbg|Release)$")
 endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "^(Debug|ReleaseDbg)$")
-    list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_DEBUG=1")
+    list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_DEBUG=1 -g")
 else()
     list(APPEND _C_CXX_ASM_FLAGS "-DILOBILIX_DEBUG=0" "-DNDEBUG=1")
-endif()
-
-if(CMAKE_BUILT_TYPE STREQUAL "Debug")
-    list(APPEND _C_CXX_ASM_FLAGS "-g")
 endif()
 
 set(_ILOBILIX_ENABLE_LTO FALSE)

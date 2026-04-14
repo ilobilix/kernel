@@ -16,4 +16,3 @@ export import system.scheduler;
 export import system.syscall;
 export import system.time;
 export import system.vfs;
-export import system.vfs.file;

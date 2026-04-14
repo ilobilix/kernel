@@ -62,7 +62,7 @@ namespace syscall::memory
             if (!fdesc)
                 return (errno = EBADF, invalid_addr);
 
-            obj = fdesc->file->path.dentry->inode->map(priv);
+            obj = fdesc->file->map(priv);
             if (!obj)
                 return (errno = ENODEV, invalid_addr);
         }
