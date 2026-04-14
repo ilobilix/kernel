@@ -154,7 +154,7 @@ namespace fs::tmpfs
             root->name = "tmpfs root";
             root->inode = std::make_shared<inode>(instance.lock()->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
 
-            auto mount = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
+            auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
             mounts.push_back(mount);
             return mount;
         }
