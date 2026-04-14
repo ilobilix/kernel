@@ -71,7 +71,8 @@ export namespace sched
         bool in_rq = false;
         lib::rbtree_hook<thread_t> hook;
 
-        bool was_in_interrupt = false;
+        std::atomic_bool *was_in_interrupt = nullptr;
+        lib::spinlock_irq *needs_unlock = nullptr;
 
         arch::context *ctx;
         arch::data adata;
