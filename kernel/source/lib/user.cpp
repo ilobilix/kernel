@@ -23,8 +23,7 @@ namespace lib
         const auto space = classify_address(reinterpret_cast<std::uintptr_t>(dest), len);
         if (space != address_space::user)
             return false;
-        impl::copy_to_user(dest, src, len);
-        return true;
+        return impl::copy_to_user(dest, src, len);
     }
 
     bool copy_from_user(void *dest, const void __user *src, std::size_t len)
@@ -32,8 +31,7 @@ namespace lib
         const auto space = classify_address(reinterpret_cast<std::uintptr_t>(src), len);
         if (space != address_space::user)
             return false;
-        impl::copy_from_user(dest, src, len);
-        return true;
+        return impl::copy_from_user(dest, src, len);
     }
 
     bool fill_user(void __user *dest, int value, std::size_t len)
@@ -41,8 +39,7 @@ namespace lib
         const auto space = classify_address(reinterpret_cast<std::uintptr_t>(dest), len);
         if (space != address_space::user)
             return false;
-        impl::fill_user(dest, value, len);
-        return true;
+        return impl::fill_user(dest, value, len);
     }
 
     std::ssize_t strnlen_user(const char __user *str, std::size_t len)
