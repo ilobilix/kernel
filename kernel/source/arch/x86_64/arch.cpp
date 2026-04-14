@@ -53,18 +53,18 @@ namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, log::level lvl)
     {
-        log::println(lvl, "CPU context:");
-        log::println(lvl, " - R15: 0x{:016X}, R14: 0x{:016X}", regs->r15, regs->r14);
-        log::println(lvl, " - R13: 0x{:016X}, R12: 0x{:016X}", regs->r13, regs->r12);
-        log::println(lvl, " - R11: 0x{:016X}, R10: 0x{:016X}", regs->r11, regs->r10);
-        log::println(lvl, " - R9:  0x{:016X}, R8:  0x{:016X}", regs->r9, regs->r8);
-        log::println(lvl, " - RBP: 0x{:016X}, RDI: 0x{:016X}", regs->rbp, regs->rdi);
-        log::println(lvl, " - RSI: 0x{:016X}, RDX: 0x{:016X}", regs->rsi, regs->rdx);
-        log::println(lvl, " - RCX: 0x{:016X}, RBX: 0x{:016X}", regs->rcx, regs->rbx);
-        log::println(lvl, " - RAX: 0x{:016X}, RSP: 0x{:016X}", regs->rax, regs->rsp);
-        log::println(lvl, " - RIP: 0x{0:016X}, ERR: 0x{1:X} : 0b{1:b}", regs->rip, regs->error_code);
-        log::println(lvl, " - RFLAGS: 0x{:X}, CS: 0x{:X}, SS: 0x{:X}", regs->rflags, regs->cs, regs->ss);
-        log::println(lvl, " - CR2: 0x{:X}, CR3: 0x{:X}, CR4: 0x{:X}", eregs.cr2, eregs.cr3, eregs.cr4);
+        log::println(lvl, "cpu context:");
+        log::println(lvl, " - r15: 0x{:016X}, r14: 0x{:016X}", regs->r15, regs->r14);
+        log::println(lvl, " - r13: 0x{:016X}, r12: 0x{:016X}", regs->r13, regs->r12);
+        log::println(lvl, " - r11: 0x{:016X}, r10: 0x{:016X}", regs->r11, regs->r10);
+        log::println(lvl, " - r9:  0x{:016X}, r8:  0x{:016X}", regs->r9, regs->r8);
+        log::println(lvl, " - rbp: 0x{:016X}, rdi: 0x{:016X}", regs->rbp, regs->rdi);
+        log::println(lvl, " - rsi: 0x{:016X}, rdx: 0x{:016X}", regs->rsi, regs->rdx);
+        log::println(lvl, " - rcx: 0x{:016X}, rbx: 0x{:016X}", regs->rcx, regs->rbx);
+        log::println(lvl, " - rax: 0x{:016X}, rsp: 0x{:016X}", regs->rax, regs->rsp);
+        log::println(lvl, " - rip: 0x{0:016X}, err: 0x{1:X} : 0b{1:b}", regs->rip, regs->error_code);
+        log::println(lvl, " - rflags: 0x{:X}, cs: 0x{:X}, ss: 0x{:X}", regs->rflags, regs->cs, regs->ss);
+        log::println(lvl, " - cr2: 0x{:X}, cr3: 0x{:X}, cr4: 0x{:X}", eregs.cr2, eregs.cr3, eregs.cr4);
     }
 
     void init()

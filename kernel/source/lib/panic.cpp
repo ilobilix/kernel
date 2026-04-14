@@ -61,6 +61,8 @@ namespace lib
         log::fatal(fmt, args);
         log::fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
 
+        lib::trace(log::level::fatal, regs->fp(), regs->ip());
+
         if (regs)
             arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
 

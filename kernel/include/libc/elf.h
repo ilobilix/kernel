@@ -66,3 +66,38 @@ typedef struct
 #define PF_X (1 << 0)
 #define PF_W (1 << 1)
 #define PF_R (1 << 2)
+
+typedef struct
+{
+    Elf64_Word sh_name;
+    Elf64_Word sh_type;
+    Elf64_Xword sh_flags;
+    Elf64_Addr sh_addr;
+    Elf64_Off sh_offset;
+    Elf64_Xword sh_size;
+    Elf64_Word sh_link;
+    Elf64_Word sh_info;
+    Elf64_Xword sh_addralign;
+    Elf64_Xword sh_entsize;
+} Elf64_Shdr;
+
+#define SHN_UNDEF 0
+#define SHT_SYMTAB 2
+#define SHT_STRTAB 3
+
+typedef struct
+{
+    Elf64_Word st_name;
+    unsigned char st_info;
+    unsigned char st_other;
+    Elf64_Section st_shndx;
+    Elf64_Addr st_value;
+    Elf64_Xword st_size;
+} Elf64_Sym;
+
+#define ELF32_ST_TYPE(val) ((val) & 0xf)
+#define ELF64_ST_TYPE(val) ELF32_ST_TYPE (val)
+
+#define STT_NOTYPE 0
+#define STT_OBJECT 1
+#define STT_FUNC 2

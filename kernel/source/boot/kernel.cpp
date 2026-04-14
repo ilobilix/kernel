@@ -48,6 +48,8 @@ extern "C"
         boot::check_requests();
 
         memory::init();
+        bin::elf::init_ksyms();
+
         serial::init();
         cxxabi::construct();
 
