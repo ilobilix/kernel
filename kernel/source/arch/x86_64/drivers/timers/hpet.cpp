@@ -16,43 +16,52 @@ import cppstd;
 
 namespace x86_64::timers::hpet
 {
+    namespace regs
+    {
+        constexpr std::size_t cap = 0x00;
+        constexpr std::size_t cfg = 0x10;
+        constexpr std::size_t cnt = 0xF0;
+    } // namespace regs
     namespace
     {
-        volatile struct [[gnu::packed]]
-        {
-            std::uint64_t cap;
-            std::uint64_t rsvd0;
-            std::uint64_t cfg;
-            std::uint64_t rsvd1;
-            std::uint64_t ist;
-            std::uint64_t rsvd2[25];
-            union [[gnu::packed]]
-            {
-                std::uint64_t counter64;
-                std::uint64_t counter32;
-            };
-            std::uint64_t rsvd3;
-            struct [[gnu::packed]]
-            {
-                std::uint64_t cmd;
-                std::uint64_t val;
-                std::uint64_t fsb;
-                std::uint64_t rsvd0;
-            } comparators[];
-        } *regs;
-
         std::uintptr_t paddr;
+        std::uintptr_t vaddr;
         bool is_64bit;
 
         std::int64_t offset = 0;
         std::uint64_t p, n;
 
-        // TODO
-        std::size_t overflows = 0;
-        uint128_t read()
+        std::uint64_t read(std::size_t offset)
         {
-            uint128_t counter = is_64bit ? regs->counter64 : regs->counter32;
-            return counter + static_cast<uint128_t>(overflows) * (is_64bit ? -1ul : -1u);
+            return lib::mmio::in<64>(vaddr + offset);
+        }
+
+        void write(std::size_t offset, std::uint64_t value)
+        {
+            lib::mmio::out<64>(vaddr + offset, value);
+        }
+
+        // TODO: 64 bit overflows? :trl:
+        std::uint64_t read()
+        {
+            constexpr std::uint64_t mask = 0xFFFFFFFFul;
+            static std::atomic<std::uint64_t> last = 0;
+
+            auto value = read(regs::cnt);
+            if (is_64bit)
+                return value;
+
+            auto last_val = last.load(std::memory_order_relaxed);
+            value &= mask;
+            value |= last_val & ~mask;
+
+            if (value < last_val)
+                value += (1ul << 32);
+
+            if (last_val - value > (mask >> 1))
+                last.compare_exchange_strong(last_val, value, std::memory_order_relaxed, std::memory_order_relaxed);
+
+            return value;
         }
     } // namespace
 
@@ -100,7 +109,7 @@ namespace x86_64::timers::hpet
     {
         log::info("hpet: supported: {}", supported());
 
-        const auto vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
+        vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
         log::debug("hpet: mapping to 0x{:X}", vaddr);
 
         const auto psize = vmm::page_size::small;
@@ -109,17 +118,16 @@ namespace x86_64::timers::hpet
         if (!vmm::kernel_pagemap->map(vaddr, paddr, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
             lib::panic("could not map HPET");
 
-        regs = reinterpret_cast<decltype(regs)>(vaddr);
+        const auto cap = read(regs::cap);
+        is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);
 
-        is_64bit = (regs->cap & ACPI_HPET_COUNT_SIZE_CAP);
-
-        frequency = 1'000'000'000'000'000ull / (regs->cap >> 32);
+        frequency = 1'000'000'000'000'000ull / (cap >> 32);
         std::tie(p, n) = lib::freq2nspn(frequency);
 
         log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", frequency);
 
         // enable main counter
-        regs->cfg = 1;
+        write(regs::cfg, 1);
 
         initialised = true;
         if (const auto clock = time::main_clock())

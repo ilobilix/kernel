@@ -7,9 +7,9 @@ export import arch.drivers.timers;
 
 import lib;
 
-namespace timers
+export namespace timers
 {
-    export auto calibrator()
+    auto calibrator()
     {
         if (timers::acpipm::supported())
             return timers::acpipm::calibrate;
@@ -17,5 +17,11 @@ namespace timers
         return timers::arch::calibrator();
     }
 
-    export initgraph::stage *available_stage();
+    initgraph::stage *available_stage();
+    initgraph::stage *should_init_stage();
+
+    namespace arch
+    {
+        initgraph::stage *initialised_stage();
+    } // namespace arch
 } // export namespace timers
