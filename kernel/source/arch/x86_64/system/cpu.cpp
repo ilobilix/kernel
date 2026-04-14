@@ -6,7 +6,7 @@ module;
 
 module system.cpu.arch;
 
-import system.cpu.self;
+import system.cpu.local;
 import lib;
 
 namespace cpu

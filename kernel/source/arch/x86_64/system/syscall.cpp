@@ -6,7 +6,7 @@ import :arch;
 
 import x86_64.system.gdt;
 import system.syscall;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import arch;
 import lib;

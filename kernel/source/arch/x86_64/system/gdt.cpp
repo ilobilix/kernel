@@ -2,7 +2,7 @@
 
 module x86_64.system.gdt;
 
-import system.cpu.self;
+import system.cpu.local;
 import system.memory;
 import magic_enum;
 import boot;

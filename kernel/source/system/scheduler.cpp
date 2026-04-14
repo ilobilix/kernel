@@ -3,7 +3,7 @@
 module system.scheduler;
 
 import drivers.timers;
-import system.cpu.self;
+import system.cpu.local;
 import system.memory;
 import system.chrono;
 import system.acpi;

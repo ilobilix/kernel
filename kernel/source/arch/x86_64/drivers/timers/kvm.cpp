@@ -5,7 +5,7 @@ module x86_64.drivers.timers.kvm;
 import arch.drivers.timers;
 import system.memory.phys;
 import system.memory.virt;
-import system.cpu.self;
+import system.cpu.local;
 import system.chrono;
 import system.cpu;
 import drivers.timers;

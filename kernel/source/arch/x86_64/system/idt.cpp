@@ -13,7 +13,7 @@ import x86_64.system.pic;
 import system.memory.virt;
 import system.interrupts;
 import system.scheduler;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import frigg;
 import arch;

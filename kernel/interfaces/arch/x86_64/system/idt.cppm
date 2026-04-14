@@ -4,12 +4,8 @@ export module x86_64.system.idt;
 
 import x86_64.system.gdt;
 import system.interrupts;
+import system.cpu.local;
 import std;
-
-namespace cpu
-{
-    extern "C++" struct processor;
-} // namespace cpu
 
 export namespace x86_64::idt
 {

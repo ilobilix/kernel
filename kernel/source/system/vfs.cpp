@@ -3,7 +3,7 @@
 module system.vfs;
 
 import system.scheduler;
-import system.cpu.self;
+import system.cpu.local;
 import system.dev;
 import drivers.fs;
 import lib;

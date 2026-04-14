@@ -4,7 +4,7 @@ export module system.scheduler;
 
 import system.scheduler.base;
 import system.memory.virt;
-import system.cpu.self;
+import system.cpu.local;
 import system.cpu;
 import system.vfs;
 import drivers.fs.dev.tty;
