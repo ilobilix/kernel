@@ -23,8 +23,19 @@ namespace slab
             const auto psize = vmm::page_size::small;
             const auto flags = vmm::pflag::rwg;
 
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(vaddr, length, flags, psize); !ret)
-                lib::panic("could not map slab memory: {}", magic_enum::enum_name(ret.error()));
+            for (std::size_t i = 0; i < pages; i++)
+            {
+                const auto paddr = pmm::alloc(1, true);
+                const auto ret = vmm::kernel_pagemap->map(
+                    vaddr + i * pmm::page_size, paddr,
+                    pmm::page_size, flags, psize,
+                    vmm::caching::normal
+                );
+                lib::panic_if(!ret,
+                    "slab: could not map page: {}",
+                    magic_enum::enum_name(ret.error())
+                );
+            }
 
             return vaddr;
         }
@@ -32,9 +43,24 @@ namespace slab
         void unmap(std::uintptr_t addr, std::size_t length)
         {
             // pmm::free(lib::fromhh(addr), lib::div_roundup(length, pmm::page_size));
-            const auto psize = vmm::page_size::small;
-            if (const auto ret = vmm::kernel_pagemap->unmap_dealloc(addr, length, psize); !ret)
-                lib::panic("could not unmap slab memory: {}", magic_enum::enum_name(ret.error()));
+            for (std::size_t offset = 0; offset < length; offset += pmm::page_size)
+            {
+                const auto vaddr = addr + offset;
+                const auto ret = vmm::kernel_pagemap->translate(vaddr, vmm::page_size::small);
+                lib::panic_if(!ret,
+                    "slab: could not translate page: {}",
+                    magic_enum::enum_name(ret.error())
+                );
+
+                const auto paddr = ret.value();
+                const auto uret = vmm::kernel_pagemap->unmap(vaddr, pmm::page_size, vmm::page_size::small);
+                lib::panic_if(!uret,
+                    "slab: could not unmap page: {}",
+                    magic_enum::enum_name(uret.error())
+                );
+
+                pmm::free(paddr, 1);
+            }
         }
     };
 

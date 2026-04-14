@@ -41,10 +41,22 @@ namespace cpu
                 reinterpret_cast<std::uintptr_t>(__start_percpu);
 
             const auto psize = vmm::page_size::small;
+            const auto npsize = vmm::pagemap::from_page_size(psize);
             const auto flags = vmm::pflag::rwg;
 
-            if (const auto ret = vmm::kernel_pagemap->map_alloc(base, size, flags, psize); !ret)
-                lib::panic("could not map percpu data: {}", magic_enum::enum_name(ret.error()));
+            for (std::size_t offset = 0; offset < size; offset += npsize)
+            {
+                const auto paddr = pmm::alloc(1, true);
+                const auto ret = vmm::kernel_pagemap->map(
+                    base + offset, paddr,
+                    npsize, flags, psize,
+                    vmm::caching::normal
+                );
+                lib::panic_if(!ret,
+                    "cpu: could not map percpu area: {}",
+                    magic_enum::enum_name(ret.error())
+                );
+            }
 
             for (auto func = __start_percpu_init; func < __end_percpu_init; func++)
                 (*func)(base);

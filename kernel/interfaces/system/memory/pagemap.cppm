@@ -14,6 +14,8 @@ namespace vmm
 
 export namespace vmm
 {
+    inline constexpr std::size_t levels = 4;
+
     enum class caching
     {
         uncacheable,
@@ -132,6 +134,8 @@ export namespace vmm
                     return value & pa_mask;
                 }
 
+                bool is_large() const;
+
                 accessor &write() { _parent = value; return *this; }
             };
 
@@ -156,9 +160,11 @@ export namespace vmm
         static std::uintptr_t to_arch(pflag flags, caching cache, page_size psize);
         static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>;
 
-        static auto getlvl(entry &entry, bool allocate) -> table *;
+        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize) -> table *;
 
-        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>;
+        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> std::expected<std::reference_wrapper<entry>, error>;
+
+        std::expected<void, error> unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize);
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
@@ -179,14 +185,11 @@ export namespace vmm
             return ret;
         }
 
-        std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
-        std::expected<void, error> map_alloc(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
+        std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
+        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
+        std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize = std::nullopt);
 
-        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
-        std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::small);
-        std::expected<void, error> unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::small);
-
-        std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize = page_size::small);
+        std::expected<std::uintptr_t, error> translate(std::uintptr_t vaddr, page_size psize);
 
         void load() const;
 
