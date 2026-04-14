@@ -208,7 +208,7 @@ namespace vfs
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected(error::not_a_dir);
 
-        auto mnt = fs->get()->mount(source);
+        auto mnt = fs->get()->mount(source ? std::optional { source->dentry } : std::nullopt);
         if (!mnt)
             return std::unexpected(mnt.error());
 

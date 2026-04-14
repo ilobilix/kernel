@@ -67,7 +67,7 @@ export namespace sched
         static std::uintptr_t allocate_ustack(std::shared_ptr<process> &proc);
         static std::uintptr_t allocate_kstack(std::shared_ptr<process> &proc);
 
-        static std::shared_ptr<thread> create(std::shared_ptr<process> &parent, std::uintptr_t ip);
+        static std::shared_ptr<thread> create(std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg = 0);
 
         void prepare_sleep(std::size_t ms = 0);
         bool wake_up(std::size_t reason);
