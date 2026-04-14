@@ -1,30 +1,32 @@
 // Copyright (C) 2024-2026  ilobilo
 
-export module system.sched:wait_queue;
+export module system.sched.wait_queue;
+
+import system.sched.thread_base;
 
 import lib;
 import std;
 
-import :arch;
-import :thread;
-
 export namespace sched
 {
-    void yield();
-
     struct wait_queue_entry_t
     {
-        thread_t *thread;
+        private:
+        static thread_base_t *current_thread();
+
+        public:
+        thread_base_t *thread;
         bool exclusive;
 
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
-        wait_queue_entry_t(bool exclusive = false, thread_t *thread = arch::current_thread())
+        wait_queue_entry_t(bool exclusive = false, thread_base_t *thread = current_thread())
             : thread { thread }, exclusive { exclusive }, hook { } { }
     };
 
     struct wait_queue_t
     {
+        private:
         lib::locker<
             lib::intrusive_list<
                 wait_queue_entry_t,
@@ -32,24 +34,14 @@ export namespace sched
             >, lib::spinlock
         > entries;
 
+        public:
         wait_queue_t() = default;
 
-        void prepare_wait(wait_queue_entry_t *entry, thread_state state);
+        void prepare_wait(wait_queue_entry_t *entry, bool uninterruptible);
         void finish_wait(wait_queue_entry_t *entry);
 
-        inline void wait()
-        {
-            wait_queue_entry_t entry { };
-            prepare_wait(&entry, thread_state::sleeping);
-            yield();
-        }
-
-        inline void wait_unint()
-        {
-            wait_queue_entry_t entry { };
-            prepare_wait(&entry, thread_state::blocked);
-            yield();
-        }
+        bool wait(std::uint64_t ns = 0);
+        void wait_unint(std::uint64_t ns = 0);
 
         void wake_one();
         void wake_all();

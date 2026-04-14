@@ -82,7 +82,7 @@ namespace fs::dev::tty
             if (auto locked = inst->ctrl.lock(); locked->session)
             {
                 lib::bug_on(!locked->group);
-                if (const auto session = static_cast<sched::session_t *>(locked->session))
+                if (const auto session = locked->session)
                 {
                     auto ctty = session->ctty.lock();
                     if (ctty.value() == inst)
@@ -96,9 +96,9 @@ namespace fs::dev::tty
     } // namespace
 
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
-        raw_buffer { }, raw_sem { }, in_buffer { }, in_sem { },
-        out_buffer { }, out_sem { }, stopped { false },
-        worker_thread { }, should_work { false }, hung_sem { } { }
+        raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { },
+        out_buffer { }, out_wq { }, stopped { false },
+        worker_thread { }, should_work { false }, hung_wq { } { }
 
     void default_ldisc::open()
     {
@@ -112,12 +112,9 @@ namespace fs::dev::tty
 
     void default_ldisc::hangup()
     {
-        in_sem.signal_all();
-        out_sem.signal_all();
-        raw_sem.signal_all();
-
-        in_poll_wq.wake_all();
-        out_poll_wq.wake_all();
+        in_wq.wake_all();
+        out_wq.wake_all();
+        raw_wq.wake_all();
     }
 
     default_ldisc::~default_ldisc()
@@ -132,9 +129,9 @@ namespace fs::dev::tty
             lib::debug("tty: stopping worker thread in ({}, {})", inst->drv->major, inst->minor);
 
         should_work.store(false, std::memory_order_relaxed);
-        raw_sem.signal();
+        raw_wq.wake_one();
         if (inst->hung_up.load(std::memory_order_relaxed))
-            hung_sem.signal();
+            hung_wq.wake_one();
         while (!should_work.load(std::memory_order_relaxed)) // ehhhhhh
             sched::yield();
     }
@@ -181,8 +178,7 @@ namespace fs::dev::tty
             if (num_chars == 0)
                 break;
 
-            out_sem.signal_all();
-            out_poll_wq.wake_all();
+            out_wq.wake_all();
 
             auto span = std::span { buffer.data(), num_chars };
             const auto res = inst->transmit(std::move(span));
@@ -268,7 +264,7 @@ namespace fs::dev::tty
                 }
                 // presumably SIGHUP will be sent to everything that has this tty open
                 // and once said ttys are closed, this ldisc will be destructed and worker - killed
-                self->hung_sem.wait();
+                self->hung_wq.wait();
                 continue;
             }
 
@@ -276,12 +272,12 @@ namespace fs::dev::tty
             if (!ret.has_value())
             {
                 self->output_flush();
-                self->raw_sem.wait();
+                self->raw_wq.wait();
                 continue;
             }
             auto chr = static_cast<char>(ret.value());
 
-            termios = self->inst->termios.read_lock().value();
+            termios = self->inst->termios.lock().value();
             if (next_is_verbatim)
             {
                 next_is_verbatim = false;
@@ -435,8 +431,7 @@ namespace fs::dev::tty
                         // }
 
                         in_locked->commit();
-                        self->in_sem.signal_all();
-                        self->in_poll_wq.wake_all();
+                        self->in_wq.wake_all();
                         continue;
                     }
 
@@ -449,8 +444,7 @@ namespace fs::dev::tty
                     if (is_eol)
                     {
                         in_locked->commit();
-                        self->in_sem.signal_all();
-                        self->in_poll_wq.wake_all();
+                        self->in_wq.wake_all();
                     }
                 }
 
@@ -477,8 +471,7 @@ namespace fs::dev::tty
                 if (!in_locked->full())
                 {
                     in_locked->push(chr);
-                    self->in_sem.signal_all();
-                    self->in_poll_wq.wake_all();
+                    self->in_wq.wake_all();
 
                     if (termios.c_lflag & echo)
                     {
@@ -499,7 +492,7 @@ namespace fs::dev::tty
     {
         // drop characters if raw buffer is full
         if (raw_buffer.push(buffer).first)
-            raw_sem.signal(true);
+            raw_wq.wake_all();
     }
 
     lib::expect<std::size_t> default_ldisc::read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
@@ -514,7 +507,7 @@ namespace fs::dev::tty
             return 0;
 
         const bool nonblock = (file->flags & vfs::o_nonblock) != 0;
-        const auto termios = inst->termios.read_lock().value();
+        const auto termios = inst->termios.lock().value();
         const bool is_cooked = (termios.c_lflag & icanon) != 0;
 
         const auto min = termios.vmin;
@@ -579,7 +572,7 @@ namespace fs::dev::tty
                         return 0;
 
                     in_locked.unlock();
-                    in_sem.wait();
+                    in_wq.wait();
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -638,7 +631,7 @@ namespace fs::dev::tty
                         return 0;
 
                     in_locked.unlock();
-                    in_sem.wait();
+                    in_wq.wait();
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -658,7 +651,7 @@ namespace fs::dev::tty
                         return 0;
 
                     in_locked.unlock();
-                    in_sem.wait_for(ms);
+                    in_wq.wait(ms * 1'000'000);
                     in_locked.lock();
                     available = get_available(in_locked);
                     if (available == 0)
@@ -684,7 +677,7 @@ namespace fs::dev::tty
                         return 0;
 
                     in_locked.unlock();
-                    in_sem.wait();
+                    in_wq.wait();
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -704,7 +697,7 @@ namespace fs::dev::tty
                             return progress;
 
                         in_locked.unlock();
-                        bool interrupted = in_sem.wait_for(ms);
+                        bool interrupted = in_wq.wait(ms * 1'000'000);
                         in_locked.lock();
 
                         available = get_available(in_locked);
@@ -732,7 +725,7 @@ namespace fs::dev::tty
         // TODO: termios flags
 
         const bool nonblock = (file->flags & vfs::o_nonblock) != 0;
-        const auto termios = inst->termios.read_lock().value();
+        const auto termios = inst->termios.lock().value();
 
         std::size_t progress = 0;
         while (progress < size)
@@ -763,7 +756,7 @@ namespace fs::dev::tty
                 if (nonblock)
                     return std::unexpected { lib::err::try_again };
 
-                out_sem.wait();
+                out_wq.wait();
                 if (inst->hung_up.load(std::memory_order_relaxed))
                     return std::unexpected { lib::err::io_error };
                 goto again;
@@ -781,23 +774,23 @@ namespace fs::dev::tty
         switch (request)
         {
             case tiocgpgrp:
-                if (!argp.write(static_cast<sched::group_t *>(inst->ctrl.lock()->group)->pgid))
+                if (!argp.write(inst->ctrl.lock()->group->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tiocspgrp:
-                if (!argp.read(static_cast<sched::group_t *>(inst->ctrl.lock()->group)->pgid))
+                if (!argp.read(inst->ctrl.lock()->group->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tiocgwinsz:
-                if (!argp.write(inst->winsize.read_lock().value()))
+                if (!argp.write(inst->winsize.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tiocswinsz:
-                if (!argp.read(inst->winsize.write_lock().value()))
+                if (!argp.read(inst->winsize.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tcgets2:
-                if (!argp.write(inst->termios.read_lock().value()))
+                if (!argp.write(inst->termios.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             case tcsetsw2:
@@ -806,7 +799,7 @@ namespace fs::dev::tty
                 while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
                     sched::yield();
 
-                auto wlocked = inst->termios.write_lock();
+                auto wlocked = inst->termios.lock();
                 const auto old = wlocked.value();
                 if (!argp.read(wlocked.value()))
                     return std::unexpected { lib::err::invalid_address };
@@ -825,8 +818,8 @@ namespace fs::dev::tty
         std::uint16_t mask = 0;
         if (pt != nullptr)
         {
-            pt->queue_wait(&in_poll_wq);
-            pt->queue_wait(&out_poll_wq);
+            pt->queue_wait(&in_wq);
+            pt->queue_wait(&out_wq);
         }
 
         if (inst->hung_up.load(std::memory_order_relaxed))
@@ -835,7 +828,7 @@ namespace fs::dev::tty
             return mask;
         }
 
-        const auto termios = inst->termios.read_lock().value();
+        const auto termios = inst->termios.lock().value();
         const bool is_cooked = (termios.c_lflag & ktermios::lflag::icanon) != 0;
 
         std::size_t available = 0;
@@ -862,7 +855,7 @@ namespace fs::dev::tty
 
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
-        const auto res = ldisc.read_lock()->get()->ioctl(request, argp);
+        const auto res = ldisc.lock()->get()->ioctl(request, argp);
         if (res.has_value() || (res.error() != lib::err::inappropriate_ioctl))
             return res;
 
@@ -872,7 +865,7 @@ namespace fs::dev::tty
 
     lib::expect<std::uint16_t> instance::poll(vfs::poll_table *pt)
     {
-        return ldisc.read_lock()->get()->poll(pt);
+        return ldisc.lock()->get()->poll(pt);
     }
 
     void instance::hangup()
@@ -886,7 +879,7 @@ namespace fs::dev::tty
         // auto ctrl_locked = ctrl.lock();
         // TODO: send sighup to session leader (and sigcont)
 
-        auto ldisc_locked = ldisc.read_lock();
+        auto ldisc_locked = ldisc.lock();
         ldisc_locked.value()->hangup();
     }
 
@@ -932,7 +925,7 @@ namespace fs::dev::tty
                     }
                     inst->ref.store(1, std::memory_order_relaxed);
                     locked->emplace(minor(rdev), inst);
-                    inst->ldisc.read_lock()->get()->open();
+                    inst->ldisc.lock()->get()->open();
                 }
             }
             file->private_data = inst;
@@ -1037,7 +1030,8 @@ namespace fs::dev::tty
                 return std::unexpected { lib::err::invalid_device_or_address };
 
             // it's already open so just increment the ref count
-            ctty.value()->ref.fetch_add(1, std::memory_order_acq_rel);
+            std::static_pointer_cast<instance>(ctty.value())
+                ->ref.fetch_add(1, std::memory_order_acq_rel);
             file->private_data = ctty.value();
 
             if constexpr (debug)

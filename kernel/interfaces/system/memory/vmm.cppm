@@ -4,6 +4,7 @@ export module system.memory.virt;
 export import :pagemap;
 
 import system.memory.phys;
+import system.sched.mutex;
 import lib;
 import std;
 
@@ -52,7 +53,7 @@ export namespace vmm
 
     struct anon_map
     {
-        lib::mutex lock;
+        sched::mutex lock;
         lib::intrusive_ptr_hook hook;
 
         // TODO: some kind of tree
@@ -113,7 +114,7 @@ export namespace vmm
         private:
         lib::locker<
             lib::btree::map<std::size_t, page *>,
-            lib::mutex
+            sched::mutex
         > cache;
 
         protected:
@@ -193,7 +194,7 @@ export namespace vmm
                 &entry::hook,
                 &entry::interval
             >,
-            lib::rwmutex
+            sched::mutex
         > tree;
 
         std::uintptr_t current_brk;
@@ -219,7 +220,7 @@ export namespace vmm
         ~vmspace()
         {
             lib::panic_if(pmap.use_count() != 1);
-            tree.write_lock()->clear([](entry *x) {
+            tree.lock()->clear([](entry *x) {
                 // object and anon free their pages
                 delete x;
             });

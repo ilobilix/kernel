@@ -3,6 +3,7 @@
 module drivers.fs.tmpfs;
 
 import system.memory.virt;
+import system.sched.mutex;
 import system.sched;
 import system.chrono;
 import system.vfs.dev;
@@ -159,9 +160,9 @@ namespace fs::tmpfs
         constexpr std::size_t max_batch = 256;
         lib::list<vfs::dir_entry> result;
 
-        auto rlocked = dir->children.read_lock();
+        const auto locked = dir->children.lock();
         std::size_t progress = 0;
-        for (auto it = rlocked->begin_at(cookie); it != rlocked->end(); it++, progress++)
+        for (auto it = locked->begin_at(cookie); it != locked->end(); it++, progress++)
         {
             if (progress >= max_batch)
                 break;
@@ -178,8 +179,8 @@ namespace fs::tmpfs
     auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
         -> lib::expect<std::optional<vfs::dir_entry>>
     {
-        auto rlocked = dir->children.read_lock();
-        if (auto den = rlocked->lookup(name); den != nullptr)
+        const auto locked = dir->children.lock();
+        if (auto den = locked->lookup(name); den != nullptr)
             return vfs::dir_entry { std::string { name }, den->inode, 0 };
         return std::nullopt;
     }
@@ -208,7 +209,7 @@ namespace fs::tmpfs
     {
         lib::unused(src);
 
-        auto instance = lib::make_locked<fs::instance, lib::mutex>();
+        auto instance = lib::make_locked<fs::instance, sched::mutex>();
         auto locked = instance.lock();
         const auto dev_id = locked->dev_id;
 

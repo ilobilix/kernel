@@ -2,7 +2,9 @@
 
 export module drivers.fs.dev.tty;
 
-import system.sched.thread_base;
+import system.sched.wait_queue;
+import system.sched.mutex;
+import system.sched;
 import system.vfs;
 import lib;
 import std;
@@ -382,21 +384,19 @@ export namespace fs::dev::tty
         };
 
         lib::rbspscd<std::byte, buffer_size> raw_buffer;
-        lib::semaphore raw_sem;
+        sched::wait_queue_t raw_wq;
 
-        lib::locker<in_buffer_t, lib::mutex> in_buffer;
-        lib::semaphore in_sem;
-        lib::wait_queue in_poll_wq;
+        lib::locker<in_buffer_t, sched::mutex> in_buffer;
+        sched::wait_queue_t in_wq;
 
         lib::rbmpscd<char, buffer_size> out_buffer;
-        lib::semaphore out_sem;
-        lib::wait_queue out_poll_wq;
+        sched::wait_queue_t out_wq;
 
         std::atomic_bool stopped;
 
-        sched::thread_base_t *worker_thread;
+        sched::thread_t *worker_thread;
         std::atomic_bool should_work;
-        lib::semaphore hung_sem;
+        sched::wait_queue_t hung_wq;
 
         default_ldisc(instance *inst);
         ~default_ldisc();
@@ -429,18 +429,17 @@ export namespace fs::dev::tty
 
         std::atomic_bool hung_up;
 
-        lib::locker<std::unique_ptr<line_discipline>, lib::rwmutex> ldisc;
+        lib::locker<std::unique_ptr<line_discipline>, sched::mutex> ldisc;
 
-        lib::locker<ktermios, lib::rwmutex> termios;
-        lib::locker<winsize, lib::rwmutex> winsize;
+        lib::locker<ktermios, sched::mutex> termios;
+        lib::locker<winsize, sched::mutex> winsize;
 
         struct ctrl_t
         {
-            // ugly
-            void *group;
-            void *session;
+            sched::group_t *group;
+            sched::session_t *session;
         };
-        lib::locker<ctrl_t, lib::mutex> ctrl;
+        lib::locker<ctrl_t, sched::mutex> ctrl;
 
         std::weak_ptr<instance> link;
 
@@ -449,17 +448,17 @@ export namespace fs::dev::tty
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto rlocked = ldisc.read_lock();
-            if (rlocked.value())
-                return rlocked.value()->read(std::move(file), buffer);
+            const auto locked = ldisc.lock();
+            if (locked.value())
+                return locked.value()->read(std::move(file), buffer);
             return std::unexpected { lib::err::io_error };
         }
 
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto rlocked = ldisc.read_lock();
-            if (rlocked.value())
-                return rlocked.value()->write(std::move(file), buffer);
+            const auto locked = ldisc.lock();
+            if (locked.value())
+                return locked.value()->write(std::move(file), buffer);
             return std::unexpected { lib::err::io_error };
         }
 
@@ -481,10 +480,10 @@ export namespace fs::dev::tty
         // called by hardware
         bool receive(std::span<std::byte> buffer)
         {
-            const auto rlocked = ldisc.read_lock();
-            if (rlocked.value())
+            const auto locked = ldisc.lock();
+            if (locked.value())
             {
-                rlocked.value()->receive(buffer);
+                locked.value()->receive(buffer);
                 return true;
             }
             return false;
@@ -539,7 +538,7 @@ export namespace fs::dev::tty
             lib::map::flat_hash<
                 std::uint32_t,
                 std::shared_ptr<instance>
-            >, lib::mutex
+            >, sched::mutex
         > instances;
 
         lib::intrusive_list_hook<driver> hook;

@@ -10,7 +10,7 @@ namespace std
         [[noreturn]]
         constexpr void err()
         {
-            static_assert(B, "std::mutex is not implemented, use lib::mutex");
+            static_assert(B, "std::mutex is not implemented, use sched::mutex");
         }
 
         constexpr void lock() { err(); }

@@ -2,6 +2,7 @@
 
 module system.vfs.pipe;
 
+import system.sched.wait_queue;
 import system.vfs;
 import lib;
 import std;
@@ -19,8 +20,8 @@ namespace vfs::pipe
         std::atomic_size_t readers = 0;
         std::atomic_size_t writers = 0;
 
-        lib::semaphore read_wait;
-        lib::semaphore write_wait;
+        sched::wait_queue_t read_wait;
+        sched::wait_queue_t write_wait;
     };
 
     struct ops : vfs::ops
@@ -63,12 +64,12 @@ namespace vfs::pipe
             if (is_read(file->flags))
             {
                 pdata->readers--;
-                pdata->write_wait.signal_all();
+                pdata->write_wait.wake_all();
             }
             else if (is_write(file->flags))
             {
                 pdata->writers--;
-                pdata->read_wait.signal_all();
+                pdata->read_wait.wake_all();
             }
 
             file->private_data.reset();
@@ -99,7 +100,7 @@ namespace vfs::pipe
                         reinterpret_cast<std::byte *>(buf.data()),
                         read_bytes
                     });
-                    pdata->write_wait.signal_all();
+                    pdata->write_wait.wake_all();
                     return static_cast<std::ssize_t>(read_bytes);
                 }
 
@@ -161,7 +162,7 @@ namespace vfs::pipe
                         if (success)
                         {
                             chunk_written += to_push;
-                            pdata->read_wait.signal_all();
+                            pdata->read_wait.wake_all();
                             continue;
                         }
                         continue;

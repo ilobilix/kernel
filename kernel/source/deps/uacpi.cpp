@@ -19,9 +19,9 @@ namespace uacpi
         queue_type notify { };
         queue_type gpe { };
 
-        lib::semaphore notify_added { };
-        lib::semaphore gpe_added { };
-        lib::semaphore completed { };
+        sched::wait_queue_t notify_added { };
+        sched::wait_queue_t gpe_added { };
+        sched::wait_queue_t completed { };
 
         bool is_empty()
         {
@@ -30,7 +30,7 @@ namespace uacpi
             return nlocked->empty() && glocked->empty();
         }
 
-        void worker_caller(queue_type &queue, lib::semaphore &added)
+        void worker_caller(queue_type &queue, sched::wait_queue_t &added)
         {
             while (true)
             {
@@ -46,7 +46,7 @@ namespace uacpi
                     }
                 }
                 if (worked)
-                    completed.signal();
+                    completed.wake_one();
             }
         }
     } // namespace
@@ -322,12 +322,12 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_mutex()
     {\
-        return reinterpret_cast<uacpi_handle>(new lib::mutex);
+        return reinterpret_cast<uacpi_handle>(new sched::mutex);
     }
 
     void uacpi_kernel_free_mutex(uacpi_handle handle)
     {
-        delete reinterpret_cast<lib::mutex *>(handle);
+        delete reinterpret_cast<sched::mutex *>(handle);
     }
 
     struct simple_event
@@ -380,7 +380,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
-        auto *mutex = reinterpret_cast<lib::mutex *>(handle);
+        auto *mutex = reinterpret_cast<sched::mutex *>(handle);
         bool locked = false;
 
         if (timeout == 0xFFFF)
@@ -398,7 +398,7 @@ extern "C"
 
     void uacpi_kernel_release_mutex(uacpi_handle handle)
     {
-        auto *mutex = reinterpret_cast<lib::mutex *>(handle);
+        auto *mutex = reinterpret_cast<sched::mutex *>(handle);
         mutex->unlock();
     }
 
@@ -514,11 +514,11 @@ extern "C"
         {
             case UACPI_WORK_GPE_EXECUTION:
                 uacpi::gpe.write_lock()->emplace_back(handler, ctx);
-                uacpi::gpe_added.signal();
+                uacpi::gpe_added.wake_one();
                 break;
             case UACPI_WORK_NOTIFICATION:
                 uacpi::notify.write_lock()->emplace_back(handler, ctx);
-                uacpi::notify_added.signal();
+                uacpi::notify_added.wake_one();
                 break;
             default:
                 return UACPI_STATUS_INVALID_ARGUMENT;

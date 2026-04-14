@@ -10,7 +10,6 @@ export import :nice;
 export import :process;
 export import :thread;
 export import :run_queue;
-export import :wait_queue;
 export import :work_queue;
 
 import :arch;
@@ -47,6 +46,15 @@ export namespace sched
 
     constexpr std::size_t kstack_size = boot::kstack_size;
     constexpr std::size_t ustack_size = boot::ustack_size;
+
+    struct sleep_entry_t
+    {
+        thread_t *thread;
+        std::uint64_t deadline_ns;
+        bool expired;
+
+        lib::rbtree_hook<sleep_entry_t> hook;
+    };
 
     lib::initgraph::stage *pid0_created_stage();
 
@@ -125,10 +133,16 @@ export namespace sched
     // put the current thread to uninterruptible sleep
     void block();
 
+    // puts entry in sleep list
+    void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns);
+
+    // if expired, returns false and removes entry
+    bool cancel_thread_timeout(sleep_entry_t *entry);
+
     // sleep for nanoseconds. return remaining time if interrupted
     std::uint64_t sleep_for_ns(std::uint64_t ns);
 
-    void yield();
+    bool yield();
 
     // exit the current thread
     // if this is the last thread, process becomes a zombie

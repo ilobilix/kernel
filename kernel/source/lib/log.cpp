@@ -8,6 +8,7 @@ module lib;
 
 import drivers.output.terminal;
 import drivers.output.serial;
+import system.sched.wait_queue;
 import system.sched;
 import system.chrono;
 import arch;

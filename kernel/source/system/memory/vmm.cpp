@@ -3,6 +3,7 @@
 module system.memory.virt;
 
 import system.memory.phys;
+import system.sched.wait_queue;
 import system.sched;
 import system.cpu;
 import magic_enum;
@@ -18,7 +19,7 @@ namespace vmm
     namespace
     {
         constexpr std::size_t num_waitqueues = 256;
-        lib::wait_queue waitqueues[num_waitqueues];
+        sched::wait_queue_t waitqueues[num_waitqueues];
 
         std::size_t hash_page(page *pg)
         {
@@ -28,26 +29,21 @@ namespace vmm
 
         void wait_on_busy_page(page *pg)
         {
-            // TODO-SCHED-REWRITE
-            // const auto thread = sched::current_thread();
-            // lib::wait_queue_entry wqe { thread };
+            sched::wait_queue_entry_t wqe { };
 
-            // auto &wq = waitqueues[hash_page(pg)];
-            // while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
-            // {
-            //     thread->prepare_sleep();
-            //     wq.add(&wqe);
+            auto &wq = waitqueues[hash_page(pg)];
+            while (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
+            {
+                wq.prepare_wait(&wqe, false);
 
-            //     if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
-            //     {
-            //         wq.remove(&wqe);
-            //         thread->cancel_sleep();
-            //         break;
-            //     }
+                if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
+                {
+                    wq.finish_wait(&wqe);
+                    break;
+                }
 
-            //     sched::yield();
-            //     wq.remove(&wqe);
-            // }
+                sched::yield();
+            }
         }
 
         std::uintptr_t pfndb_base()
@@ -544,7 +540,7 @@ namespace vmm
         std::uintptr_t startp = 0;
         std::uintptr_t endp = 0;
 
-        auto wlocked = tree.write_lock();
+        auto locked = tree.lock();
 
         if ((flags & flag::fixed) || (flags & flag::fixed_noreplace))
         {
@@ -558,7 +554,7 @@ namespace vmm
             endp = (hint + length) / npsize;
 
             {
-                const auto overlapping = wlocked->overlapping(startp, endp);
+                const auto overlapping = locked->overlapping(startp, endp);
                 if (!overlapping.empty() && (flags & flag::fixed_noreplace))
                     return std::unexpected { lib::err::already_exists };
 
@@ -571,7 +567,7 @@ namespace vmm
 
             while (true)
             {
-                const auto overlapping = wlocked->overlapping(startp, endp);
+                const auto overlapping = locked->overlapping(startp, endp);
 
                 auto it = overlapping.begin();
                 if (it == overlapping.end())
@@ -588,7 +584,7 @@ namespace vmm
                 if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
                     return std::unexpected { ret.error() };
 
-                wlocked->remove(ent);
+                locked->remove(ent);
 
                 if (ent->endp > endp)
                 {
@@ -597,7 +593,7 @@ namespace vmm
                     const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                     const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                    wlocked->insert(new entry {
+                    locked->insert(new entry {
                         .startp = endp,
                         .endp = ent->endp,
                         .obj = ent->obj,
@@ -615,14 +611,14 @@ namespace vmm
                 if (ent->startp < startp)
                 {
                     ent->endp = startp;
-                    wlocked->insert(ent);
+                    locked->insert(ent);
                 }
                 else delete ent;
             }
         }
         else
         {
-            const auto ret = find_free_region_internal(wlocked, length);
+            const auto ret = find_free_region_internal(locked, length);
             if (!ret)
                 return std::unexpected { lib::err::out_of_memory };
 
@@ -630,7 +626,7 @@ namespace vmm
             endp = (*ret + length) / npsize;
         }
 
-        wlocked->insert(new entry {
+        locked->insert(new entry {
             .startp = startp,
             .endp = endp,
             .obj = std::move(target_obj),
@@ -665,10 +661,9 @@ namespace vmm
         const auto startp = address / npsize;
         const auto endp = (address + length) / npsize;
 
-        auto wlocked = tree.write_lock();
-
+        auto locked = tree.lock();
         {
-            const auto overlapping = wlocked->overlapping(startp, endp);
+            const auto overlapping = locked->overlapping(startp, endp);
 
             for (const auto &ent : overlapping)
             {
@@ -679,7 +674,7 @@ namespace vmm
 
         while (true)
         {
-            const auto overlapping = wlocked->overlapping(startp, endp);
+            const auto overlapping = locked->overlapping(startp, endp);
 
             auto it = overlapping.begin();
             if (it == overlapping.end())
@@ -696,7 +691,7 @@ namespace vmm
             if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
                 return std::unexpected { ret.error() };
 
-            wlocked->remove(ent);
+            locked->remove(ent);
 
             if (ent->endp > overlap_end)
             {
@@ -705,7 +700,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                wlocked->insert(new entry {
+                locked->insert(new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -722,7 +717,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                wlocked->insert(new entry {
+                locked->insert(new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -761,10 +756,9 @@ namespace vmm
         auto startp = address / npsize;
         const auto endp = (address + length) / npsize;
 
-        auto wlocked = tree.write_lock();
-
+        auto locked = tree.lock();
         {
-            const auto overlapping = wlocked->overlapping(startp, endp);
+            const auto overlapping = locked->overlapping(startp, endp);
 
             const auto total_pages = std::accumulate(
                 std::ranges::begin(overlapping), std::ranges::end(overlapping), 0uz,
@@ -790,7 +784,7 @@ namespace vmm
 
         while (startp < endp)
         {
-            const auto overlapping = wlocked->overlapping(startp, endp);
+            const auto overlapping = locked->overlapping(startp, endp);
 
             auto it = overlapping.begin();
             if (it == overlapping.end())
@@ -801,7 +795,7 @@ namespace vmm
             const auto overlap_start = std::max(startp, ent->startp);
             const auto overlap_end = std::min(endp, ent->endp);
 
-            wlocked->remove(ent);
+            locked->remove(ent);
 
             if (ent->endp > overlap_end)
             {
@@ -810,7 +804,7 @@ namespace vmm
                 const auto obj_offp = ent->obj ? ent->offp + pages : 0;
                 const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
 
-                wlocked->insert(new entry {
+                locked->insert(new entry {
                     .startp = overlap_end,
                     .endp = ent->endp,
                     .obj = ent->obj,
@@ -827,7 +821,7 @@ namespace vmm
 
             if (ent->startp < overlap_start)
             {
-                wlocked->insert(new entry {
+                locked->insert(new entry {
                     .startp = ent->startp,
                     .endp = overlap_start,
                     .obj = ent->obj,
@@ -852,7 +846,7 @@ namespace vmm
                 ent->anon_idx += pages;
             ent->prot = prot;
 
-            wlocked->insert(ent);
+            locked->insert(ent);
 
             startp = overlap_end;
         }
@@ -933,8 +927,8 @@ namespace vmm
         if (length == 0)
             return std::unexpected { lib::err::invalid_length };
 
-        const auto rlocked = tree.read_lock();
-        return find_free_region_internal(rlocked, length);
+        const auto locked = tree.lock();
+        return find_free_region_internal(locked, length);
     }
 
     lib::expect<std::shared_ptr<vmspace>> vmspace::fork(std::shared_ptr<vmm::pagemap> cpmap)
@@ -946,14 +940,14 @@ namespace vmm
         ret->pmap = cpmap;
         ret->current_brk = current_brk;
 
-        auto wlocked = tree.write_lock();
-        auto cwlocked = ret->tree.write_lock();
+        auto locked = tree.lock();
+        auto clocked = ret->tree.lock();
 
-        for (const auto &ent : *wlocked)
+        for (const auto &ent : *locked)
         {
             if (ent.flags & flag::shared)
             {
-                cwlocked->insert(new entry {
+                clocked->insert(new entry {
                     .startp = ent.startp,
                     .endp = ent.endp,
                     .obj = ent.obj,
@@ -992,7 +986,7 @@ namespace vmm
                 }
             }
 
-            cwlocked->insert(new entry {
+            clocked->insert(new entry {
                 .startp = ent.startp,
                 .endp = ent.endp,
                 .obj = ent.obj,
@@ -1065,8 +1059,8 @@ namespace vmm
         std::uint64_t anon_idx;
 
         {
-            const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
+            const auto locked = vmspace->tree.lock();
+            const auto ret = locked->overlapping(aligned / npsize, (aligned / npsize) + 1);
             if (ret.empty())
                 return false;
 
@@ -1277,8 +1271,8 @@ namespace vmm
         end:
 
         {
-            const auto rlocked = vmspace->tree.read_lock();
-            const auto ret = rlocked->overlapping(aligned / npsize, (aligned / npsize) + 1);
+            const auto locked = vmspace->tree.lock();
+            const auto ret = locked->overlapping(aligned / npsize, (aligned / npsize) + 1);
 
             if (ret.empty())
                 goto fail;

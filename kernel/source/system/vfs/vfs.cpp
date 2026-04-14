@@ -27,7 +27,7 @@ namespace vfs
             lib::map::flat_hash<
                 std::string_view,
                 std::unique_ptr<filesystem>
-            >, lib::mutex
+            >, sched::mutex
         > filesystems;
 
         std::atomic<dev_t> next_dev = 1;
@@ -186,7 +186,7 @@ namespace vfs
     auto filesystem::instance::lookup(std::shared_ptr<dentry> dir, std::string_view name)
         -> lib::expect<std::optional<dir_entry>>
     {
-        if (auto den = dir->children.read_lock()->lookup(name))
+        if (auto den = dir->children.lock()->lookup(name))
             return dir_entry { std::string { name }, den->inode, 0 };
 
         std::size_t cookie = 3;
@@ -199,16 +199,16 @@ namespace vfs
             if (batch->empty())
                 return std::nullopt;
 
-            auto wlocked = dir->children.write_lock();
+            auto locked = dir->children.lock();
             for (auto &entry : *batch)
             {
-                if (!wlocked->lookup(entry.name))
+                if (!locked->lookup(entry.name))
                 {
                     auto dentry = std::make_shared<vfs::dentry>();
                     dentry->parent = dir;
                     dentry->name = entry.name;
                     dentry->inode = entry.inode;
-                    wlocked->insert(dentry);
+                    locked->insert(dentry);
                 }
 
                 if (entry.name == name)
@@ -364,7 +364,7 @@ namespace vfs
                 continue;
             }
 
-            auto dentry = current.dentry->children.read_lock()->lookup(segment);
+            auto dentry = current.dentry->children.lock()->lookup(segment);
             if (dentry == nullptr)
             {
                 auto found = current.mnt->fs.lock()->lookup(current.dentry, segment);
@@ -374,20 +374,20 @@ namespace vfs
                 if (!found->has_value())
                     return std::unexpected { lib::err::not_found };
 
-                dentry = current.dentry->children.read_lock()->lookup(segment);
+                dentry = current.dentry->children.lock()->lookup(segment);
                 if (dentry == nullptr)
                 {
                     const auto &entry = *found;
 
-                    auto wlocked = current.dentry->children.write_lock();
-                    dentry = wlocked->lookup(entry->name);
+                    auto locked = current.dentry->children.lock();
+                    dentry = locked->lookup(entry->name);
                     if (dentry == nullptr)
                     {
                         dentry = std::make_shared<vfs::dentry>();
                         dentry->parent = current.dentry;
                         dentry->name = entry->name;
                         dentry->inode = entry->inode;
-                        wlocked->insert(dentry);
+                        locked->insert(dentry);
                     }
                 }
             }
@@ -536,7 +536,7 @@ namespace vfs
         dentry->name = name;
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.write_lock()->insert(dentry);
+        real_parent.dentry->children.lock()->insert(dentry);
         return path { real_parent.mnt, dentry };
     }
 
@@ -563,7 +563,7 @@ namespace vfs
         dentry->symlinked_to = target.str();
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.write_lock()->insert(dentry);
+        real_parent.dentry->children.lock()->insert(dentry);
         return path { real_parent.mnt, dentry };
     }
 
@@ -615,7 +615,7 @@ namespace vfs
         dentry->name = name;
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.write_lock()->insert(dentry);
+        real_parent.dentry->children.lock()->insert(dentry);
         return path { real_parent.mnt, dentry };
     }
 
@@ -634,7 +634,7 @@ namespace vfs
             if (res->target.dentry == res->target.mnt->root)
                 return std::unexpected { lib::err::target_is_busy };
 
-            if (!res->target.dentry->children.read_lock()->empty())
+            if (!res->target.dentry->children.lock()->empty())
                 return std::unexpected { lib::err::dir_not_empty };
 
             std::size_t cookie = 3;
@@ -649,7 +649,7 @@ namespace vfs
         if (!ret)
             return std::unexpected { ret.error() };
 
-        auto wlocked = real_parent->children.write_lock();
+        auto wlocked = real_parent->children.lock();
         lib::bug_on(!wlocked->erase(name));
         return { };
     }

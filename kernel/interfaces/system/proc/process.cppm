@@ -2,7 +2,6 @@
 
 export module system.sched:process;
 
-import drivers.fs.dev.tty;
 import system.memory.virt;
 import system.vfs;
 import lib;
@@ -107,7 +106,7 @@ export namespace sched
 
         lib::locker<
             std::shared_ptr<
-                fs::dev::tty::instance
+                void
             >, lib::spinlock
         > ctty;
 

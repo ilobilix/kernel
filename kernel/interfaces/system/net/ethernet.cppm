@@ -2,10 +2,12 @@
 
 export module system.net:ether;
 
-import :addr;
-import :packet;
+import system.sched.wait_queue;
 import lib;
 import std;
+
+import :addr;
+import :packet;
 
 namespace utils
 {
@@ -82,7 +84,7 @@ export namespace net::ether
         nic *_nic;
 
         std::deque<lib::membuffer> packets;
-        lib::semaphore event;
+        sched::wait_queue_t event;
 
         void attach_senders() requires (sizeof...(Types) == 0) { }
         void attach_senders() requires (sizeof...(Types) > 0)
@@ -134,7 +136,7 @@ export namespace net::ether
         void receive(lib::membuffer &&buffer) override
         {
             packets.emplace_front(std::move(buffer));
-            event.signal();
+            event.wake_one();
         }
 
         addr::mac mac() override
