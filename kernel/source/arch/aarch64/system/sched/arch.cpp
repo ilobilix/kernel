@@ -8,7 +8,7 @@ namespace sched::arch
 {
     thread_t *current_thread()
     {
-        return reinterpret_cast<thread_t *>(cpu::read_reg<"gs:24">());
+        return reinterpret_cast<thread_t *>(cpu::read_el1_base());
     }
 
     void context_switch(thread_t *prev, thread_t *next);
