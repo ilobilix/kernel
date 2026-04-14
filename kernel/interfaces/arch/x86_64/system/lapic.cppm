@@ -14,6 +14,7 @@ export namespace x86_64::apic
         constexpr std::uintptr_t icr = 0x300;
         constexpr std::uintptr_t icrh = 0x310;
         constexpr std::uintptr_t lvt = 0x320;
+        constexpr std::uintptr_t lint1 = 0x360;
         constexpr std::uintptr_t tdc = 0x3E0;
         constexpr std::uintptr_t tic = 0x380;
         constexpr std::uintptr_t tcc = 0x390;
@@ -59,5 +60,6 @@ export namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector);
 
+    void init_bsp();
     void init_cpu();
 } // export namespace x86_64::apic

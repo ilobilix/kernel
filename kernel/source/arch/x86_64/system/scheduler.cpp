@@ -28,8 +28,11 @@ namespace sched::arch
 
     void init()
     {
-        idt::table()[sched_vector].ist = 2;
-        auto [handler, _] = interrupts::allocate(cpu::self()->idx, sched_vector).value();
+        idt::table()[sched_vector].ist = 3;
+        auto ret = interrupts::allocate(cpu::self()->idx, sched_vector);
+        lib::bug_on(!ret.has_value());
+        auto [handler, vec] = *ret;
+        lib::bug_on(sched_vector != vec);
         handler.set(schedule);
     }
 

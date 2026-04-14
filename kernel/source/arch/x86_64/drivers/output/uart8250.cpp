@@ -191,7 +191,9 @@ namespace x86_64::output::uart8250
                     lib::info("uart8250: port {} is usable", i);
                     if (i < 2 || !usable[i - 2])
                     {
-                        auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x24 - (i % 2)).value();
+                        auto ret = interrupts::allocate(cpu::bsp_idx(), 0x24 - (i % 2));
+                        lib::bug_on(!ret.has_value());
+                        auto [handler, vector] = *ret;
                         handler.set(irq_handler);
                         interrupts::unmask(vector);
                     }

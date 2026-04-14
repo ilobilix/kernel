@@ -31,7 +31,7 @@ namespace arch
     {
         using namespace x86_64;
         if (cpu::count() > 1 && apic::is_initialised())
-            apic::ipi(apic::shorthand::all_noself, apic::delivery::fixed, idt::panic_int);
+            apic::ipi(apic::shorthand::all_noself, apic::delivery::nmi, 0);
     }
 
     void wfi() { asm volatile ("hlt"); }
@@ -91,8 +91,7 @@ namespace arch
         lib::initgraph::require { acpi::tables_stage() },
         lib::initgraph::entail { bsp_initialised_stage() },
         [] {
-            x86_64::apic::init_cpu();
-
+            x86_64::apic::init_bsp();
             cpu::init_bsp();
             x86_64::pic::init();
             x86_64::apic::io::init();
@@ -126,7 +125,6 @@ namespace arch
             x86_64::idt::init_on(ptr);
 
             cpu::features::enable();
-
             x86_64::syscall::init_cpu();
 
             x86_64::timers::kvm::init_cpu();
@@ -135,7 +133,6 @@ namespace arch
             x86_64::apic::init_cpu();
 
             ptr->online = true;
-
             sched::start();
         }
 
@@ -149,6 +146,8 @@ namespace arch
 
             cpu::features::enable();
             x86_64::syscall::init_cpu();
+
+            x86_64::apic::init_cpu();
 
             ptr->online = true;
         }

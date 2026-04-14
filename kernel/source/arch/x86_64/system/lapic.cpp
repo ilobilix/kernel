@@ -8,6 +8,7 @@ module;
 module x86_64.system.lapic;
 
 import drivers.timers;
+import system.interrupts;
 import system.memory;
 import system.cpu.local;
 import system.cpu;
@@ -33,6 +34,23 @@ namespace x86_64::apic
         std::uint32_t to_x2apic(std::uint32_t reg)
         {
             return (reg >> 4) + 0x800;
+        }
+
+        void enable(std::uint64_t val)
+        {
+            if (!x2apic && (val & (1 << 10)))
+            {
+                cpu::msr::write(reg::apic_base, val & ~((1 << 11) | (1 << 10)));
+                val = cpu::msr::read(reg::apic_base);
+            }
+
+            val |= (1 << 11);
+            if (x2apic)
+                val |= (1 << 10);
+            else
+                val &= ~(1 << 10);
+
+            cpu::msr::write(reg::apic_base, val);
         }
     } // namespace
 
@@ -205,47 +223,24 @@ namespace x86_64::apic
         }
     }
 
-    void init_cpu()
+    void init_bsp()
     {
         auto [lapic, _x2apic] = supported();
         if (!lapic)
             lib::panic("CPU does not support lapic");
 
+        x2apic = _x2apic;
+        lib::debug("lapic: x2apic supported: {}", x2apic);
+
         auto val = cpu::msr::read(reg::apic_base);
-        const auto phys_mmio = val & 0xFFFFF000;
+        enable(val);
 
-        if (!initialised)
+        if (!x2apic)
         {
-            x2apic = _x2apic;
-            lib::debug("lapic: x2apic supported: {}", x2apic);
-        }
-        else if (!x2apic && pmmio != phys_mmio)
-        {
-            lib::bug_on(x2apic != _x2apic);
-            val &= ~0xFFFFF000;
-            val |= pmmio;
-        }
-
-        if (!x2apic && (val & (1 << 10)))
-        {
-            cpu::msr::write(reg::apic_base, val & ~((1 << 11) | (1 << 10)));
-            val = cpu::msr::read(reg::apic_base);
-        }
-
-        val |= (1 << 11);
-        if (x2apic)
-            val |= (1 << 10);
-        else
-            val &= ~(1 << 10);
-
-        cpu::msr::write(reg::apic_base, val);
-
-        if (!x2apic && !initialised)
-        {
-            pmmio = phys_mmio;
+            pmmio = val & 0xFFFFF000;
             mmio = vmm::alloc_vspace(1);
 
-            lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", phys_mmio, mmio);
+            lib::debug("lapic: mapping mmio: 0x{:X} -> 0x{:X}", pmmio, mmio);
 
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
@@ -255,13 +250,33 @@ namespace x86_64::apic
             if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
                 lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
         }
+    }
+
+    void init_cpu()
+    {
+        if (cpu::self()->idx != cpu::bsp_idx())
+        {
+            auto val = cpu::msr::read(reg::apic_base);
+            if (!x2apic && pmmio != (val & 0xFFFFF000))
+            {
+                val &= ~0xFFFFF000;
+                val |= pmmio;
+            }
+            enable(val);
+        }
 
         // Enable all external interrupts
         write(reg::tpr, 0x00);
+
+        auto ret = interrupts::allocate(cpu::self()->idx, 0xFF);
+        lib::bug_on(!ret.has_value() || ret->second != 0xFF);
+
         // Enable APIC and set spurious interrupt vector to 0xFF
         write(reg::siv, (1 << 8) | 0xFF);
 
-        // TODO: nmi
+        // nmi
+        write(reg::lint1, (1 << 10));
+        lib::io::out<8>(0x70, lib::io::in<8>(0x70) & 0x7F);
 
         initialised = true;
     }

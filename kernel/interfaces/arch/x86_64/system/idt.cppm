@@ -50,7 +50,6 @@ export namespace x86_64::idt
 
     constexpr std::size_t num_ints = 256;
     constexpr std::size_t num_preints = 20;
-    constexpr std::uint8_t panic_int = irq(16);
 
     constexpr reg invalid { 0, 0 };
 
