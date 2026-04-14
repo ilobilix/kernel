@@ -9,14 +9,6 @@ import std;
 
 export namespace lib
 {
-    struct path_segment
-    {
-        std::string_view segment;
-        cwk_segment_type type;
-        cwk_segment seg;
-        bool is_last;
-    };
-
     class path;
     class path_view
     {
@@ -98,11 +90,6 @@ export namespace lib
 
             return std::string_view { extension, length };
         }
-
-        // auto segments() const
-        // {
-        //     return std::views::lazy_split(_str, "/");
-        // }
 
         auto data() const { return _str.data(); }
         auto size() const { return _str.size(); }
@@ -192,6 +179,27 @@ export namespace lib
             return *this;
         }
 
+        path operator/(const path &rhs) const
+        {
+            path result { *this };
+            result /= rhs;
+            return result;
+        }
+
+        path operator/(const path_view &rhs) const
+        {
+            path result { *this };
+            result /= rhs;
+            return result;
+        }
+
+        path operator/(const auto &rhs) const
+        {
+            path result { *this };
+            result /= rhs;
+            return result;
+        }
+
         path &operator+=(const path &rhs) { _str += rhs._str; return *this; }
         path &operator+=(const path_view &rhs) { _str += rhs._str; return *this; }
         path &operator+=(const auto &rhs) { _str += rhs; return *this; }
@@ -254,9 +262,8 @@ export namespace lib
             return *this;
         }
 
-        auto segments() const { return std::views::lazy_split(_str, "/"); }
-
         auto c_str() const { return _str.c_str(); }
+        auto &str() { return _str; }
 
         auto data() const { return _str.data(); }
         auto size() const { return _str.size(); }

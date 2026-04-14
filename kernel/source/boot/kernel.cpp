@@ -5,7 +5,7 @@ import std;
 
 extern "C"
 {
-    std::uint8_t kernel_stack[boot::kernel_stack_size] { };
+    std::byte kernel_stack[boot::kernel_stack_size] { };
     auto kernel_stack_top = kernel_stack + boot::kernel_stack_size;
 
     void kmain()

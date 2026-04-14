@@ -38,7 +38,7 @@ namespace x86_64::timers::kvm
         static const auto cached = [] -> bool
         {
             bool kvmclock = false;
-            if (const auto base = cpu::kvm_base(); base)
+            if (const auto base = cpu::kvm_base())
             {
                 std::uint32_t a, b, c, d;
                 kvmclock = cpu::id(base + 1, 0, a, b, c, d) && (a & (1 << 3));
@@ -94,7 +94,7 @@ namespace x86_64::timers::kvm
         [[maybe_unused]]
         static const auto cached = []
         {
-            if (const auto clock = time::main_clock(); clock)
+            if (const auto clock = time::main_clock())
                 offset = time_ns() - clock->ns();
 
             time::register_clock(clock);

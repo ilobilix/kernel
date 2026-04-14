@@ -116,7 +116,7 @@ local logfile = os.projectdir() .. "/log.txt"
 
 local qemu_args = {
     "-rtc", "base=localtime", "-serial", "stdio",
-    "-boot", "order=d,menu=on,splash-time=100",
+    "-boot", "order=d,menu=on,splash-time=0",
     -- "-drive", "file=" .. os.projectdir() .. "/misc/nvme.img,format=raw,if=none,id=nvm",
     -- "-device", "nvme,serial=nvme,drive=nvm",
     -- "-nic", "user,model=rtl8139",
