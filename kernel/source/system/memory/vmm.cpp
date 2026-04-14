@@ -135,7 +135,7 @@ namespace vmm
     std::uintptr_t memobject::request_page(std::size_t idx)
     {
         lib::unused(idx);
-        return pmm::alloc<std::uintptr_t>(1, true);
+        return pmm::alloc(1, true);
     }
 
     void memobject::write_back() { }

@@ -71,8 +71,8 @@ namespace cpu::mp
 
         lib::bug_on(smp_trampoline_size > pmm::page_size);
 
-        const auto trampoline_page = pmm::alloc<std::uintptr_t>(1, false, pmm::type::sub1mib);
-        const auto temp_stack_page = pmm::alloc<std::uintptr_t>(1, false, pmm::type::sub1mib);
+        const auto trampoline_page = pmm::alloc(1, false, pmm::type::sub1mib);
+        const auto temp_stack_page = pmm::alloc(1, false, pmm::type::sub1mib);
 
         pagemap_use_lowmem = true;
             vmm::pagemap temp_map { };

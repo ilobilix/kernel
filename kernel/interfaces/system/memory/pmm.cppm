@@ -59,20 +59,8 @@ export namespace pmm
     }
 
     [[nodiscard]]
-    void *alloc(std::size_t count = 1, bool clear = false, type tp = type::normal);
-    void free(void *ptr, std::size_t count = 1);
-
-    template<typename Type = void *>
-    [[nodiscard]]
-    inline Type alloc(std::size_t count = 1, bool clear = false, type tp = type::normal)
-    {
-        return reinterpret_cast<Type>(alloc(count, clear, tp));
-    }
-
-    inline void free(auto ptr, std::size_t count = 1)
-    {
-        return free(reinterpret_cast<void *>(ptr), count);
-    }
+    std::uintptr_t alloc(std::size_t count = 1, bool clear = false, type tp = type::normal);
+    void free(std::uintptr_t addr, std::size_t count = 1);
 
     void reclaim_bootloader_memory();
     void init();
