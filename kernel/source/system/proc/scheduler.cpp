@@ -451,7 +451,7 @@ namespace sched
             }
             return;
         }
-        else if (next->proc != prev->proc)
+        else if (next->proc->vmspace != prev->proc->vmspace)
             next->proc->vmspace->pmap->load();
 
         if (self.in_interrupt.load(std::memory_order_relaxed))
@@ -802,10 +802,8 @@ namespace sched
         proc->lock.lock();
         kill_other_threads();
 
-        preempt_enable();
         while (proc->alive_threads.load(std::memory_order_acquire) > 1)
             yield();
-        preempt_disable();
 
         thread_exit(exit_code);
         std::unreachable();

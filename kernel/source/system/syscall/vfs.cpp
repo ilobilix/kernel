@@ -977,19 +977,32 @@ namespace syscall::vfs
         {
             const std::unique_lock _ { inode->lock };
 
-            const bool is_uid = (owner != static_cast<uid_t>(-1) && owner != inode->stat.st_uid);
-            const bool is_gid = (group != static_cast<uid_t>(-1) && group != inode->stat.st_gid);
+            const bool change_uid = (owner != static_cast<uid_t>(-1));
+            const bool change_gid = (group != static_cast<gid_t>(-1));
 
-            if (is_uid || is_gid)
+            if (change_uid || change_gid)
             {
-                if (!sched::capable(proc->cred, sched::cap_t::chown))
+                const auto &cred = proc->cred;
+
+                const bool uid_noop = !change_uid || (owner == inode->stat.st_uid);
+                const bool gid_noop = !change_gid || (group == inode->stat.st_gid);
+
+                const bool gid_allowed = gid_noop ||
+                    (cred->fsgid == group || cred->supp_gids.contains(group));
+
+                const bool is_owner = (cred->fsuid == inode->stat.st_uid);
+                const bool allow_unpriv = is_owner && uid_noop && gid_allowed;
+
+                if (!allow_unpriv && !sched::capable(cred, sched::cap_t::chown))
                     return (errno = EPERM, -1);
 
-                if (is_uid && inode->xattrs.contains(xattr_caps_name))
+                const auto old_uid = inode->stat.st_uid;
+                const auto old_gid = inode->stat.st_gid;
+                const auto old_mode = inode->stat.st_mode;
+
+                if (change_uid && !uid_noop && inode->xattrs.contains(xattr_caps_name))
                 {
                     lib::bug_on(!target->mnt);
-
-                    inode->xattrs.erase(xattr_caps_name);
 
                     auto fs = target->mnt->fs.lock();
                     if (!fs.get())
@@ -997,14 +1010,31 @@ namespace syscall::vfs
 
                     if (const auto ret = fs->remxattr(inode, xattr_caps_name); !ret)
                         return (errno = lib::map_error(ret.error()), -1);
+
+                    inode->xattrs.erase(xattr_caps_name);
                 }
 
-                inode->stat.st_uid = owner;
-                inode->stat.st_gid = group;
+                if (change_uid)
+                    inode->stat.st_uid = owner;
+                if (change_gid)
+                    inode->stat.st_gid = group;
+
+                if (!sched::capable(cred, sched::cap_t::fsetid))
+                {
+                    inode->stat.st_mode &= ~s_isuid;
+                    if (inode->stat.st_mode & s_ixgrp)
+                        inode->stat.st_mode &= ~s_isgid;
+                }
 
                 inode->stat.update_time(stat::time::status);
                 if (const auto ret = dirty_inode(*target); !ret)
+                {
+                    // TODO: restore xattr
+                    inode->stat.st_uid = old_uid;
+                    inode->stat.st_gid = old_gid;
+                    inode->stat.st_mode = old_mode;
                     return (errno = lib::map_error(ret.error()), -1);
+                }
             }
         }
         return 0;
