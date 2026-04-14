@@ -27,16 +27,9 @@ namespace fs::tmpfs
         stat.st_mode = mode;
         stat.st_nlink = 1;
 
-        if (const auto proc = sched::current_process(); proc->cred)
-        {
-            stat.st_uid = proc->cred->euid;
-            stat.st_gid = proc->cred->egid;
-        }
-        else
-        {
-            stat.st_uid = 0;
-            stat.st_gid = 0;
-        }
+        const auto proc = sched::current_process();
+        stat.st_uid = proc->cred->euid;
+        stat.st_gid = proc->cred->egid;
 
         stat.update_time(
             stat::time::access |

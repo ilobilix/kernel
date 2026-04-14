@@ -642,7 +642,7 @@ namespace lib::log
                     time.data(), time.size(), "[{:02}:{:02}:{:02}.{:06}] ",
                     h, m, s, nanos
                 ).size != len_time);
-                std::strncpy(data.data(), time.data(), len_time);
+                std::memcpy(data.data(), time.data(), len_time);
 
                 const std::string_view view {
                     data.data(), info.len + len_time
