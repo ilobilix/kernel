@@ -63,7 +63,7 @@ namespace acpi
     std::uintptr_t get_rsdp()
     {
         static const auto cached = [] { return boot::requests::rsdp.response->address; } ();
-        return reinterpret_cast<std::uintptr_t>(cached);
+        return cached;
     }
 
     void init()

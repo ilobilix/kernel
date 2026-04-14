@@ -18,13 +18,14 @@ namespace timers::acpipm
     namespace
     {
         acpi_gas timer_block;
+        uacpi_mapped_gas *mapped;
         std::size_t mask;
         std::int64_t offset = 0;
 
         std::uint64_t read()
         {
             std::uint64_t value;
-            uacpi_gas_read(&timer_block, &value);
+            uacpi_gas_read_mapped(mapped, &value);
             return value;
         }
     } // namespace
@@ -40,6 +41,8 @@ namespace timers::acpipm
                 return false;
 
             timer_block = acpi::fadt->x_pm_tmr_blk;
+            uacpi_map_gas(&timer_block, &mapped);
+
             mask = (acpi::fadt->flags & (1 << 8)) ? 0xFFFFFFFF : 0xFFFFFF;
 
             return true;
@@ -88,8 +91,7 @@ namespace timers::acpipm
         if (const auto clock = time::main_clock(); clock)
             offset = time_ns() - clock->ns();
 
-        // TODO: doesn't work properly
-        // time::register_clock(clock);
+        time::register_clock(clock);
         initialised = false;
     }
 } // namespace timers::acpipm

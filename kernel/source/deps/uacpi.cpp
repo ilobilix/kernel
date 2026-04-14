@@ -58,17 +58,50 @@ extern "C"
         delete reinterpret_cast<pci_dev *>(handle);
     }
 
-    uacpi_status uacpi_kernel_pci_read(uacpi_handle device, uacpi_size offset,uacpi_u8 byte_width, uacpi_u64 *value)
+    extern "C++" template<typename Type>
+    uacpi_status uacpi_kernel_pci_read(uacpi_handle device, uacpi_size offset, Type *value)
     {
         auto dev = reinterpret_cast<pci_dev *>(device);
-        *value = dev->io->read(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, byte_width);
+        *value = dev->io->read<Type>(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset);
         return UACPI_STATUS_OK;
     }
-    uacpi_status uacpi_kernel_pci_write(uacpi_handle device, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
+
+    uacpi_status uacpi_kernel_pci_read8(uacpi_handle device, uacpi_size offset, uacpi_u8 *value)
+    {
+        return uacpi_kernel_pci_read<std::uint8_t>(device, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_pci_read16(uacpi_handle device, uacpi_size offset, uacpi_u16 *value)
+    {
+        return uacpi_kernel_pci_read<std::uint16_t>(device, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_pci_read32(uacpi_handle device, uacpi_size offset, uacpi_u32 *value)
+    {
+        return uacpi_kernel_pci_read<std::uint32_t>(device, offset, value);
+    }
+
+    extern "C++" template<typename Type>
+    uacpi_status uacpi_kernel_pci_write(uacpi_handle device, uacpi_size offset, Type value)
     {
         auto dev = reinterpret_cast<pci_dev *>(device);
-        dev->io->write(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, value, byte_width);
+        dev->io->write<Type>(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, value);
         return UACPI_STATUS_OK;
+    }
+
+    uacpi_status uacpi_kernel_pci_write8(uacpi_handle device, uacpi_size offset, uacpi_u8 value)
+    {
+        return uacpi_kernel_pci_write<std::uint8_t>(device, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_pci_write16(uacpi_handle device, uacpi_size offset, uacpi_u16 value)
+    {
+        return uacpi_kernel_pci_write<std::uint16_t>(device, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_pci_write32(uacpi_handle device, uacpi_size offset, uacpi_u32 value)
+    {
+        return uacpi_kernel_pci_write<std::uint32_t>(device, offset, value);
     }
 
     uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size, uacpi_handle *out_handle)
@@ -79,52 +112,58 @@ extern "C"
 
     void uacpi_kernel_io_unmap(uacpi_handle) { }
 
-    uacpi_status uacpi_kernel_io_read(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 *value)
+    extern "C++" template<typename Type>
+    uacpi_status uacpi_kernel_io_read(uacpi_handle handle, uacpi_size offset, Type *value)
     {
         if constexpr (lib::io::supported)
         {
             auto address = reinterpret_cast<std::size_t>(handle) + offset;
-            switch (byte_width)
-            {
-                case sizeof(std::uint8_t):
-                    *value = lib::io::in<8>(address);
-                    break;
-                case sizeof(std::uint16_t):
-                    *value = lib::io::in<16>(address);
-                    break;
-                case sizeof(std::uint32_t):
-                    *value = lib::io::in<32>(address);
-                    break;
-                default:
-                    std::unreachable();
-            }
+            *value = lib::io::in<Type>(address);
             return UACPI_STATUS_OK;
         }
         return UACPI_STATUS_UNIMPLEMENTED;
     }
 
-    uacpi_status uacpi_kernel_io_write(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
+    uacpi_status uacpi_kernel_io_read8(uacpi_handle handle, uacpi_size offset, uacpi_u8 *value)
+    {
+        return uacpi_kernel_io_read<std::uint8_t>(handle, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_io_read16(uacpi_handle handle, uacpi_size offset, uacpi_u16 *value)
+    {
+        return uacpi_kernel_io_read<std::uint16_t>(handle, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_io_read32(uacpi_handle handle, uacpi_size offset, uacpi_u32 *value)
+    {
+        return uacpi_kernel_io_read<std::uint32_t>(handle, offset, value);
+    }
+
+    extern "C++" template<typename Type>
+    uacpi_status uacpi_kernel_io_write(uacpi_handle handle, uacpi_size offset, Type value)
     {
         if constexpr (lib::io::supported)
         {
             auto address = reinterpret_cast<std::size_t>(handle) + offset;
-            switch (byte_width)
-            {
-                case sizeof(std::uint8_t):
-                    lib::io::out<8>(address, value);
-                    break;
-                case sizeof(std::uint16_t):
-                    lib::io::out<16>(address, value);
-                    break;
-                case sizeof(std::uint32_t):
-                    lib::io::out<32>(address, value);
-                    break;
-                default:
-                    std::unreachable();
-            }
+            lib::io::out<Type>(address, value);
             return UACPI_STATUS_OK;
         }
         return UACPI_STATUS_UNIMPLEMENTED;
+    }
+
+    uacpi_status uacpi_kernel_io_write8(uacpi_handle handle, uacpi_size offset, uacpi_u8 value)
+    {
+        return uacpi_kernel_io_write<std::uint8_t>(handle, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_io_write16(uacpi_handle handle, uacpi_size offset, uacpi_u16 value)
+    {
+        return uacpi_kernel_io_write<std::uint16_t>(handle, offset, value);
+    }
+
+    uacpi_status uacpi_kernel_io_write32(uacpi_handle handle, uacpi_size offset, uacpi_u32 value)
+    {
+        return uacpi_kernel_io_write<std::uint32_t>(handle, offset, value);
     }
 
     void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size len)

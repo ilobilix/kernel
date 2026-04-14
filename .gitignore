@@ -1,6 +1,5 @@
 .*
-!.gitignore
-!.github
+!.git*
 !.clang_format
 
 serial.txt

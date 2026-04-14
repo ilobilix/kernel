@@ -115,7 +115,7 @@ namespace std
         constexpr allocator() noexcept = default;
 
         template<typename U>
-        constexpr allocator(const allocator<U> &other) noexcept { }
+        constexpr allocator(const allocator<U> &) noexcept { }
 
         [[nodiscard]] constexpr Type *allocate(std::size_t count)
         {

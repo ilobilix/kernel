@@ -1,55 +1,44 @@
 -- Copyright (C) 2024-2025  ilobilo
 
--- shared between the kernel and modules
-target("ilobilix.dependencies")
+target("ilobilix.headers")
     set_kind("phony")
-    set_toolchains("ilobilix-clang", { public = true })
-
-    add_packages(
-        "compiler-rt-builtins", "demangler",
-        "cwalk", "printf", "uacpi",
-        "freestnd-cxx-hdrs", "freestnd-c-hdrs",
-        "string", "smart_ptr", "veque", "parallel_hashmap",
-        "fmt", "frigg", "frozen", "magic_enum",
-        "flanterm", "limine",
+    add_includedirs(
+        "$(projectdir)/kernel/include",
+        "$(projectdir)/kernel/include/std",
+        "$(projectdir)/kernel/include/std/stubs",
+        "$(projectdir)/kernel/include/libc",
+        "$(projectdir)/kernel/include/kernel",
+        "$(projectdir)/kernel/include/kernel/uacpi",
         { public = true }
     )
+    add_deps("freestnd-cxx-hdrs", "freestnd-c-hdrs")
 
-    add_cxflags(
-        "-mgeneral-regs-only",
-        { force = true, public = true }
+target("ilobilix.dependencies")
+    set_kind("phony")
+
+    add_deps("ilobilix.headers")
+    add_deps(
+        "compiler-rt-builtins", "cwalk",
+        "demangler", "flanterm", "fmt",
+        "frigg", "frozen", "magic_enum",
+        "parallel-hashmap", "printf", "limine",
+        "smart_ptr", "string", "uacpi", "veque"
     )
 
     if is_arch("x86_64") then
         local flags = {
-            "-mno-80387",
-            "-masm=intel",
+            "-masm=intel"
         }
         add_cxflags(flags, { force = true, public = true })
         add_asflags(flags, { force = true, public = true })
     elseif is_arch("aarch64") then
     end
 
--- only for the kernel
-target("ilobilix.kernel.dependencies")
-    set_kind("phony")
-    add_deps("ilobilix.dependencies")
-
-    if is_arch("x86_64") then
-        local flags = {
-            "-mcmodel=kernel"
-        }
-        add_cxflags(flags, { force = true, public = true })
-        add_asflags(flags, { force = true, public = true })
-    elseif is_arch("aarch64") then
-    end
-
--- C++ modules, not loadable kernel modules
 target("ilobilix.modules")
     set_default(false)
     set_kind("static")
 
-    add_deps("ilobilix.kernel.dependencies")
+    add_deps("ilobilix.dependencies")
 
     add_files("interfaces/**.cppm", { public = true })
 
@@ -70,8 +59,8 @@ target("ilobilix.elf")
     add_deps("modules", { inherit = false })
     add_deps("ilobilix.modules")
 
-    add_files("**.cpp")
-    add_files("**.S")
+    add_files("source/**.cpp")
+    add_files("source/**.S")
 
     if not is_arch("x86_64") then
         remove_files("source/arch/x86_64/**.cpp")
@@ -82,7 +71,6 @@ target("ilobilix.elf")
         remove_files("source/arch/aarch64/**.S")
     end
 
-    -- linker flags
     add_ldflags(
         "-zmax-page-size=0x1000",
         { force = true }

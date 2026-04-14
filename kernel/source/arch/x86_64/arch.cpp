@@ -25,7 +25,7 @@ namespace arch
 
     void halt_others()
     {
-        if (auto self = cpu::self(); self)
+        if (cpu::processors != nullptr)
             x86_64::apic::ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
     }
 

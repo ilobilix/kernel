@@ -6,7 +6,7 @@ Hobby OS in modern C++
 ## Dependencies
 
 Make sure you have recent versions of the following programs installed:
-* [xmake](https://xmake.io/#/getting_started?id=installation)
+* [xmake](https://xmake.io/#/getting_started?id=installation) or just use ``./xmake.sh`` instead
 * clang/clang++ (plus clang-scan-deps)
 * llvm/lld
 * xorriso
@@ -14,7 +14,7 @@ Make sure you have recent versions of the following programs installed:
 
 ## Building and Running
 
-* Clone this repository: ``git clone --depth=1 https://github.com/ilobilo/ilobilix``
+* Clone this repository: ``git clone --depth=1 --recursive https://github.com/ilobilo/ilobilix``
 * Interactively configure the kernel: ``xmake f --menu``
   * Change architecture: ``xmake f --arch=<x86_64|aarch64>``
   * Change build mode: ``xmake f --mode=<release|releasesmall|releasedbg|debug>``
