@@ -157,17 +157,22 @@ namespace initramfs
         }
     } // namespace ustar
 
-    initgraph::stage *extracted_stage()
+    lib::initgraph::stage *extracted_stage()
     {
-        static initgraph::stage stage { "initramfs-extracted" };
+        static lib::initgraph::stage stage
+        {
+            "vfs.initramfs.extracted",
+            lib::initgraph::postsched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task init_task
+    lib::initgraph::task init_task
     {
-        "extract-initramfs",
-        initgraph::require { vfs::root_mounted_stage() },
-        initgraph::entail { extracted_stage() },
+        "vfs.initramfs.extract",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { vfs::root_mounted_stage() },
+        lib::initgraph::entail { extracted_stage() },
         [] {
             auto module = boot::find_module("initramfs");
             if (module == nullptr)

@@ -28,7 +28,7 @@ export namespace acpi
 
     std::uintptr_t get_rsdp();
 
-    initgraph::stage *tables_stage();
-    initgraph::stage *initialised_stage();
-    initgraph::stage *uacpi_stage();
+    lib::initgraph::stage *tables_stage();
+    lib::initgraph::stage *initialised_stage();
+    lib::initgraph::stage *workers_stage();
 } // export namespace acpi

@@ -10,7 +10,7 @@ import cppstd;
 
 // this code is yoinked from managarm
 
-export namespace initgraph
+export namespace lib::initgraph
 {
 #if ILOBILIX_DEBUG
     constexpr bool debug = true;
@@ -159,7 +159,7 @@ export namespace initgraph
 
         void on_unreached()
         {
-            lib::panic("initgraph: unreached initialisation nodes");
+            lib::panic("initgraph: unreached initialisation nodes (circular dependencies?)");
         }
 
         public:
@@ -225,7 +225,8 @@ export namespace initgraph
         }
     };
 
-    constinit engine global_init_engine { };
+    constinit engine presched_init_engine { };
+    constinit engine postsched_init_engine { };
 
     inline void realise_node(node *node)
     {
@@ -246,8 +247,8 @@ export namespace initgraph
 
     struct stage final : public node
     {
-        stage(std::string_view name)
-            : node { node_type::stage, &global_init_engine, name } { }
+        stage(std::string_view name, struct engine &eng)
+            : node { node_type::stage, &eng, name } { }
     };
 
     template<std::size_t N>
@@ -318,18 +319,28 @@ export namespace initgraph
         void activate() override { _invocable(); }
 
         public:
-        task(std::string_view name, require<NR> r, entail<NE> e, Func invocable)
-            : node { node_type::task, &global_init_engine, name }, _invocable { std::move(invocable) },
+        task(std::string_view name, struct engine &eng, require<NR> r, entail<NE> e, Func invocable)
+            : node { node_type::task, &eng, name }, _invocable { std::move(invocable) },
               _redges { apply(std::make_index_sequence<NR> { }, r.array, into_edges_to { this }) },
               _eedges { apply(std::make_index_sequence<NE> { }, e.array, into_edges_from { this }) } { }
 
-        task(std::string_view name, Func invocable)
-            : task { name, { }, { }, std::move(invocable) } { }
+        task(std::string_view name, struct engine &eng, Func invocable)
+            : task { name, eng, { }, { }, std::move(invocable) } { }
 
-        task(std::string_view name, require<NR> r, Func invocable)
-            : task { name, r, { }, std::move(invocable) } { }
+        task(std::string_view name, struct engine &eng, require<NR> r, Func invocable)
+            : task { name, eng, r, { }, std::move(invocable) } { }
 
-        task(std::string_view name, entail<NE> e, Func invocable)
-            : task { name, { }, e, std::move(invocable) } { }
+        task(std::string_view name, struct engine &eng, entail<NE> e, Func invocable)
+            : task { name, eng, { }, e, std::move(invocable) } { }
     };
-} // export namespace initgraph
+
+    stage *base_stage()
+    {
+        static stage stage
+        {
+            "base-stage",
+            presched_init_engine
+        };
+        return &stage;
+    }
+} // export namespace lib::initgraph

@@ -9,7 +9,7 @@ namespace pci
 {
     namespace arch
     {
-        initgraph::stage *ios_discovered_stage();
-        initgraph::stage *rbs_discovered_stage();
+        lib::initgraph::stage *ios_discovered_stage();
+        lib::initgraph::stage *rbs_discovered_stage();
     } // namespace arch
 } // namespace pci

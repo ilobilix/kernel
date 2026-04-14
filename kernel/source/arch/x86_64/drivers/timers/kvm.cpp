@@ -2,6 +2,7 @@
 
 module x86_64.drivers.timers.kvm;
 
+import arch.drivers.timers;
 import drivers.timers.acpipm;
 import system.memory.phys;
 import system.memory.virt;
@@ -86,7 +87,8 @@ namespace x86_64::timers::kvm
     }
 
     time::clock clock { "kvm", 100, time_ns };
-    void init()
+
+    void init_cpu()
     {
         if (!supported())
             return;
@@ -118,4 +120,25 @@ namespace x86_64::timers::kvm
             return true;
         } ();
     }
+
+    lib::initgraph::stage *initialised_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.kvm.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task kvmclock_task
+    {
+        "timers.arch.kvm.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] {
+            init_cpu();
+        }
+    };
 } // namespace x86_64::timers::kvm

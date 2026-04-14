@@ -20,9 +20,18 @@ namespace vfs
             root->inode->stat.st_mode = stat::s_ifdir;
             return root;
         } ();
+
         lib::map::flat_hash<std::string_view, std::unique_ptr<filesystem>> filesystems;
         lib::mutex lock;
+
+        std::atomic<dev_t> next_dev = 1;
+        dev_t allocate_dev()
+        {
+            return next_dev.fetch_add(1, std::memory_order_relaxed);
+        }
     } // namespace
+
+    filesystem::instance::instance() : dev_id { allocate_dev() } { }
 
     path get_root(bool absolute)
     {
@@ -230,7 +239,7 @@ namespace vfs
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected(error::not_a_dir);
 
-        auto mnt = fs->get()->mount(source ? std::optional { source->dentry } : std::nullopt);
+        auto mnt = fs->get()->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { });
         if (!mnt)
             return std::unexpected(mnt.error());
 
@@ -428,23 +437,27 @@ namespace vfs
         return false;
     }
 
-    initgraph::stage *root_mounted_stage()
+    lib::initgraph::stage *root_mounted_stage()
     {
-        static initgraph::stage stage { "vfs.root-mounted" };
+        static lib::initgraph::stage stage
+        {
+            "vfs.root-mounted",
+            lib::initgraph::postsched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task fs_task
+    lib::initgraph::task root_task
     {
         "vfs.mount-root",
-        initgraph::require { fs::filesystems_registered_stage() },
-        initgraph::entail { root_mounted_stage() },
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::registered_stage() },
+        lib::initgraph::entail { root_mounted_stage() },
         [] {
             lib::bug_on(!mount("", "/", "tmpfs", 0));
 
-            auto err = create(std::nullopt, "/dev", stat::type::s_ifdir);
-            lib::bug_on(!err.has_value() && err.error() != error::already_exists);
-            lib::bug_on(!mount("", "/dev", "devtmpfs", 0));
+            const auto pid0 = sched::proc_for(0);
+            pid0->root = pid0->cwd = get_root(true);
         }
     };
 } // namespace vfs

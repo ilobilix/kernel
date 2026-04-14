@@ -125,8 +125,8 @@ export namespace sched
         static constexpr std::uintptr_t initial_stck_top = 0x7FF'FFF'FFF'000;
 
         std::size_t pid;
-        // std::size_t pgid;
-        // std::size_t sid;
+        std::size_t pgid;
+        std::size_t sid;
 
         gid_t gid = 0, sgid = 0, egid = 0;
         uid_t uid = 0, suid = 0, euid = 0;
@@ -153,10 +153,34 @@ export namespace sched
         ~process();
     };
 
+    struct group
+    {
+        std::size_t pgid;
+        std::size_t sid;
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t, process *
+            >, lib::rwspinlock
+        > members;
+    };
+
+    struct session
+    {
+        std::size_t sid;
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t,
+                std::shared_ptr<group>
+            >, lib::rwspinlock
+        > members;
+    };
+
     bool is_initialised();
 
-    // references shouldn't be held outside the scheduler
     process *proc_for(std::size_t pid);
+    group *group_for(std::size_t pgid);
+    session *session_for(std::size_t sid);
+
     thread *this_thread();
 
     std::size_t sleep_for(std::size_t ms);
@@ -172,7 +196,7 @@ export namespace sched
     void disable();
     bool is_enabled();
 
-    initgraph::stage *available_stage();
+    lib::initgraph::stage *pid0_initialised_stage();
 
     [[noreturn]] void start();
 } // export namespace sched

@@ -47,4 +47,6 @@ export namespace bin::elf::mod
             entry
         >, lib::rwspinlock
     > modules;
+
+    lib::initgraph::stage *modules_loaded_stage();
 } // export namespace bin::elf::mod

@@ -253,9 +253,11 @@ namespace bin::elf::exec
         }
     };
 
-    initgraph::task elf_exec_task
+    lib::initgraph::task elf_exec_task
     {
-        "exec.register-elf",
+        "bin.exec.elf.register",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { lib::initgraph::base_stage() },
         [] { bin::exec::register_format(std::make_shared<format>()); }
     };
 } // namespace bin::elf::exec

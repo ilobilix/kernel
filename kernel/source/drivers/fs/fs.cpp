@@ -2,26 +2,28 @@
 
 module drivers.fs;
 
-import system.scheduler;
-import system.vfs;
+import drivers.fs.devtmpfs;
+import drivers.fs.tmpfs;
 import lib;
 
 namespace fs
 {
-    initgraph::stage *filesystems_registered_stage()
+    lib::initgraph::stage *registered_stage()
     {
-        static initgraph::stage stage { "builtin-filesystems-registered" };
+        static lib::initgraph::stage stage
+        {
+            "vfs.fs.registered",
+            lib::initgraph::postsched_init_engine
+        };
         return &stage;
     }
 
-    initgraph::task fs_task
+    lib::initgraph::task fs_task
     {
-        "register-builtin-filesystems",
-        initgraph::require { },
-        initgraph::entail { filesystems_registered_stage() },
-        [] {
-            lib::bug_on(!vfs::register_fs(tmpfs::init()));
-            lib::bug_on(!vfs::register_fs(devtmpfs::init()));
-        }
+        "vfs.fs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { tmpfs::registered_stage(), devtmpfs::registered_stage() },
+        lib::initgraph::entail { registered_stage() },
+        [] { }
     };
 } // namespace fs

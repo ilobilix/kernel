@@ -7,40 +7,22 @@ import lib;
 
 namespace timers
 {
-    initgraph::stage *should_init_stage()
+    lib::initgraph::stage *initialised_stage()
     {
-        static initgraph::stage stage { "can-init-timers" };
-        return &stage;
-    }
-
-    initgraph::stage *available_stage()
-    {
-        static initgraph::stage stage { "timers-available" };
-        return &stage;
-    }
-
-    initgraph::task can_timers_task
-    {
-        "set-can-init-timers",
-        initgraph::require { acpipm::available_stage(), ::arch::bsp_stage() },
-        initgraph::entail { should_init_stage() },
-        [] { }
-    };
-
-    initgraph::task timers_task
-    {
-        "timers-initialised",
-        initgraph::require { arch::initialised_stage() },
-        initgraph::entail { available_stage() },
-        [] { }
-    };
-
-    namespace arch
-    {
-        initgraph::stage *initialised_stage()
+        static lib::initgraph::stage stage
         {
-            static initgraph::stage stage { "arch.timers-initialised" };
-            return &stage;
-        }
-    } // namespace arch
+            "timers.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task timers_task
+    {
+        "timers.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { timers::arch::initialised_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] { }
+    };
 } // namespace timers

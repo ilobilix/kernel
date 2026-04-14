@@ -66,6 +66,9 @@ export namespace vfs
 
         struct instance
         {
+            std::atomic<ino_t> next_inode = 1;
+            dev_t dev_id;
+
             virtual auto create(std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<ops> ops = nullptr) -> expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(std::shared_ptr<inode> &parent, std::string_view name, lib::path target) -> expect<std::shared_ptr<inode>> = 0;
@@ -77,9 +80,11 @@ export namespace vfs
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
             virtual ~instance() = default;
+
+            instance();
         };
 
-        virtual auto mount(std::optional<std::shared_ptr<dentry>> src) const -> expect<std::shared_ptr<mount>> = 0;
+        virtual auto mount(std::shared_ptr<dentry> src) const -> expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -119,11 +124,8 @@ export namespace vfs
         }
 
         lib::mutex lock;
-
-        stat stat;
-
         std::shared_ptr<ops> op;
-        std::shared_ptr<vmm::object> memory;
+        stat stat;
 
         inode(std::shared_ptr<ops> op) : op { op } { }
 
@@ -173,5 +175,5 @@ export namespace vfs
     auto stat(std::optional<path> parent, lib::path path) -> expect<stat>;
     bool populate(path parent, std::string_view name = "");
 
-    initgraph::stage *root_mounted_stage();
+    lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

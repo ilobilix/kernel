@@ -1,6 +1,8 @@
 // Copyright (C) 2024-2025  ilobilo
 
 export module x86_64.drivers.timers.kvm;
+
+import lib;
 import cppstd;
 
 export namespace x86_64::timers::kvm
@@ -10,5 +12,7 @@ export namespace x86_64::timers::kvm
     std::uint64_t time_ns();
     std::uint64_t tsc_freq();
 
-    void init();
+    void init_cpu();
+
+    lib::initgraph::stage *initialised_stage();
 } // export namespace x86_64::timers::kvm

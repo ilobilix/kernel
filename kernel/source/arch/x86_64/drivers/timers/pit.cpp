@@ -2,6 +2,7 @@
 
 module x86_64.drivers.timers.pit;
 
+import arch.drivers.timers;
 import system.interrupts;
 import system.time;
 import system.cpu;
@@ -55,27 +56,44 @@ namespace x86_64::timers::pit
         return (((tick * 1'000) / frequency) * 1'000'000ul) - offset;
     }
 
-    time::clock clock { "pit", 0, time_ns };
-    void init()
+    lib::initgraph::stage *initialised_stage()
     {
-        const std::uint16_t divisor = 1193180 / frequency;
-        const std::uint8_t low = divisor & 0xFF;
-        const std::uint8_t high = (divisor >> 8) & 0xFF;
-
-        log::info("pit: setting up with frequency {} hz", frequency);
-
-        lib::io::out<8>(port::command, cmd::mode2 | cmd::accesslh);
-        lib::io::out<8>(port::channel0, low);
-        lib::io::out<8>(port::channel0, high);
-
-        auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x20).value();
-        handler.set([](auto) { tick++; });
-        interrupts::unmask(vector);
-
-        if (const auto clock = time::main_clock())
-            offset = time_ns() - clock->ns();
-
-        time::register_clock(clock);
-        initialised = true;
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.pit.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
     }
+
+    time::clock clock { "pit", 0, time_ns };
+
+    lib::initgraph::task pit_task
+    {
+        "timers.arch.pit.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::arch::can_initialise_stage() },
+        lib::initgraph::entail { initialised_stage() },
+        [] {
+            const std::uint16_t divisor = 1193180 / frequency;
+            const std::uint8_t low = divisor & 0xFF;
+            const std::uint8_t high = (divisor >> 8) & 0xFF;
+
+            log::info("pit: setting up with frequency {} hz", frequency);
+
+            lib::io::out<8>(port::command, cmd::mode2 | cmd::accesslh);
+            lib::io::out<8>(port::channel0, low);
+            lib::io::out<8>(port::channel0, high);
+
+            auto [handler, vector] = interrupts::allocate(cpu::bsp_idx(), 0x20).value();
+            handler.set([](auto) { tick++; });
+            interrupts::unmask(vector);
+
+            if (const auto clock = time::main_clock())
+                offset = time_ns() - clock->ns();
+
+            time::register_clock(clock);
+            initialised = true;
+        }
+    };
 } // namespace x86_64::timers::pit

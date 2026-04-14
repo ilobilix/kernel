@@ -3,6 +3,7 @@
 module arch.drivers.timers;
 
 import drivers.timers;
+import arch;
 import lib;
 
 namespace timers::arch
@@ -30,16 +31,47 @@ namespace timers::arch
         return nullptr;
     }
 
-    initgraph::task timers_task
+    lib::initgraph::stage *can_initialise_stage()
     {
-        "arch.initialise-timers",
-        initgraph::require { should_init_stage() },
-        initgraph::entail { initialised_stage() },
-        [] {
-            pit::init();
-            hpet::init();
-            kvm::init();
-            tsc::init();
-        }
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.can-initialise",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::stage *initialised_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "timers.arch.initialised",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task can_timers_task
+    {
+        "timers.arch.set-can-initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::arch::bsp_stage(), timers::acpipm::initialised_stage() },
+        lib::initgraph::entail { can_initialise_stage() },
+        [] { }
+    };
+
+    lib::initgraph::task timers_task
+    {
+        "timers.arch.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require {
+            // rtc::initialised_stage(),
+            pit::initialised_stage(),
+            hpet::initialised_stage(),
+            kvm::initialised_stage(),
+            tsc::initialised_stage()
+        },
+        lib::initgraph::entail { initialised_stage() },
+        [] { }
     };
 } // expo namespace timers::arch
