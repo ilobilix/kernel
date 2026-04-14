@@ -109,6 +109,11 @@ export namespace sched
         return (set & cap) == cap;
     }
 
+    inline constexpr bool has_secbit(secbit_t bits, secbit_t flag)
+    {
+        return (bits & flag) == flag;
+    }
+
     // supplementary gids
     struct groups_t
     {

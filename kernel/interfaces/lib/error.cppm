@@ -33,7 +33,6 @@ export namespace lib
         invalid_filesystem = ENODEV,
         no_such_device = ENODEV,
         invalid_device_or_address = ENXIO,
-        invalid_mount = EINVAL,
         invalid_path = EINVAL,
         invalid_symlink = EINVAL,
         invalid_flags = EINVAL,

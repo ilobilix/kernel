@@ -16,19 +16,19 @@ namespace sched
         {
             if (old_euid == 0 && cred->euid != 0)
             {
-                if ((cred->securebits & secbit_t::no_setuid_fixup) == secbit_t::none)
+                if (has_secbit(cred->securebits, secbit_t::no_setuid_fixup))
                     cred->effective = cap_t::none;
             }
 
             if (old_euid != 0 && cred->euid == 0)
             {
-                if ((cred->securebits & secbit_t::no_setuid_fixup) == secbit_t::none)
+                if (has_secbit(cred->securebits, secbit_t::no_setuid_fixup))
                     cred->effective = cred->permitted;
             }
 
             if (cred->ruid != 0 && cred->euid != 0 && cred->suid != 0)
             {
-                if ((cred->securebits & secbit_t::keep_caps) != secbit_t::none)
+                if (has_secbit(cred->securebits, secbit_t::keep_caps))
                 {
                     cred->permitted = cap_t::none;
                     cred->effective = cap_t::none;
@@ -409,7 +409,7 @@ namespace sched
         auto process = current_process();
         const auto &old_cred = process->cred;
 
-        if ((old_cred->securebits & secbit_t::no_cap_ambient_raise) != secbit_t::none)
+        if (has_secbit(old_cred->securebits, secbit_t::no_cap_ambient_raise))
             return std::unexpected { lib::err::not_permitted };
 
         if (!has_cap(old_cred->permitted, cap) ||
@@ -456,12 +456,12 @@ namespace sched
             !check_locked(secbit_t::exec_deny_interactive, secbit_t::exec_deny_interactive_locked))
             return std::unexpected { lib::err::not_permitted };
 
-        if ((securebits & secbit_t::exec_restrict_file) != secbit_t::none &&
-            (securebits & secbit_t::exec_restrict_file_locked) == secbit_t::none)
+        if (has_secbit(securebits, secbit_t::exec_restrict_file) &&
+            !has_secbit(securebits, secbit_t::exec_restrict_file_locked))
             return std::unexpected { lib::err::invalid_flags };
 
-        if ((securebits & secbit_t::exec_deny_interactive) != secbit_t::none &&
-            (securebits & secbit_t::exec_deny_interactive_locked) == secbit_t::none)
+        if (has_secbit(securebits, secbit_t::exec_deny_interactive) &&
+            !has_secbit(securebits, secbit_t::exec_deny_interactive_locked))
             return std::unexpected { lib::err::invalid_flags };
 
         auto new_cred = old_cred->clone();
@@ -470,29 +470,29 @@ namespace sched
         return { };
     }
 
-    std::shared_ptr<cred_t> apply_exec_caps(
-        const std::shared_ptr<cred_t> &old_cred,
-        const stat &stat, std::optional<vfs::file_caps> fcaps
+    void apply_exec_caps(
+        process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps
     )
     {
-        auto ret = old_cred->clone();
+        const auto &old_cred = process->cred;
+        auto new_cred = old_cred->clone();
 
         if ((stat.st_mode & s_isuid) != 0)
         {
-            ret->euid = stat.st_uid;
-            ret->fsuid = stat.st_uid;
+            new_cred->euid = stat.st_uid;
+            new_cred->fsuid = stat.st_uid;
         }
         if ((stat.st_mode & s_isgid) != 0)
         {
-            ret->egid = stat.st_gid;
-            ret->fsgid = stat.st_gid;
+            new_cred->egid = stat.st_gid;
+            new_cred->fsgid = stat.st_gid;
         }
 
-        ret->suid = ret->euid;
-        ret->sgid = ret->egid;
+        new_cred->suid = new_cred->euid;
+        new_cred->sgid = new_cred->egid;
 
         const bool suid_root = (stat.st_mode & s_isuid) != 0 && stat.st_uid == 0;
-        const bool noroot = (old_cred->securebits & secbit_t::noroot) != secbit_t::none;
+        const bool noroot = has_secbit(old_cred->securebits, secbit_t::noroot);
 
         vfs::file_caps caps;
         bool has_fcaps = false;
@@ -512,13 +512,13 @@ namespace sched
         }
 
         if (has_fcaps || suid_root)
-            ret->ambient = cap_t::none;
+            new_cred->ambient = cap_t::none;
 
-        ret->permitted = (old_cred->inheritable & caps.inheritable) |
-            (old_cred->bounding & caps.permitted) | ret->ambient;
-        ret->effective = caps.effective ? ret->permitted : ret->ambient;
-        ret->securebits &= ~secbit_t::keep_caps;
+        new_cred->permitted = (old_cred->inheritable & caps.inheritable) |
+            (old_cred->bounding & caps.permitted) | new_cred->ambient;
+        new_cred->effective = caps.effective ? new_cred->permitted : new_cred->ambient;
+        new_cred->securebits &= ~secbit_t::keep_caps;
 
-        return ret;
+        set_creds(process, std::move(new_cred));
     }
 } // namespace sched

@@ -8,6 +8,8 @@ import std;
 
 export namespace vfs
 {
+    constexpr std::string_view xattr_caps_name { "security.capability" };
+
     constexpr std::uint32_t cap_revision_mask = 0xFF000000;
     constexpr std::uint32_t cap_flags_mask = ~cap_revision_mask;
     constexpr std::uint32_t cap_flags_effective = 0x000001;
