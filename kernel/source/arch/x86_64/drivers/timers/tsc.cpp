@@ -95,8 +95,11 @@ namespace x86_64::timers::tsc
 
         if (is_calibrated)
         {
+            auto &ref = offset.get();
             if (const auto clock = time::main_clock())
-                offset = time_ns() - clock->ns();
+                ref += time_ns() - clock->ns();
+            else
+                ref = time_ns();
         }
     }
 

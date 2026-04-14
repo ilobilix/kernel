@@ -19,10 +19,10 @@ namespace sched
 {
     constexpr std::size_t timeslice = 6;
 
-    using prio_t = lib::ranged<std::int8_t, -20, 19>;
-    constexpr prio_t default_prio = 0;
+    using nice_t = lib::ranged<std::int8_t, -20, 19>;
+    constexpr nice_t default_prio = 0;
 
-    inline constexpr std::size_t prio_to_weight(prio_t prio)
+    inline constexpr std::size_t prio_to_weight(nice_t prio)
     {
         static constexpr std::size_t table[40]
         {
@@ -40,7 +40,7 @@ namespace sched
 
     struct friends
     {
-        static void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
+        static void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority);
         static void create_pid0();
         static void start();
     };
@@ -80,7 +80,7 @@ export namespace sched
 
         cpu::registers regs;
 
-        prio_t priority;
+        nice_t priority;
 
         std::uint64_t vruntime;
         std::uint64_t schedule_time;
@@ -111,7 +111,7 @@ export namespace sched
         ~thread();
 
         private:
-        static std::shared_ptr<thread> create(const std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg);
+        static std::shared_ptr<thread> create(const std::shared_ptr<process> &parent, std::uintptr_t ip);
 
         friend struct friends;
     };
@@ -166,8 +166,8 @@ export namespace sched
 
     std::size_t allocate_cpu();
 
-    void spawn(std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
-    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg = 0);
+    void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);
+    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority = default_prio);
 
     void enable();
     void disable();

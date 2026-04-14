@@ -59,7 +59,7 @@ namespace sched
         void init();
         void reschedule(std::size_t ms);
 
-        void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip, std::uintptr_t arg);
+        void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip);
         void deinitialise(process *proc, thread *thread);
 
         void save(const std::shared_ptr<thread> &thread);
@@ -186,7 +186,7 @@ namespace sched
         lib::panic("TODO: thread {} deconstructor", tid);
     }
 
-    std::shared_ptr<thread> thread::create(const std::shared_ptr<process> &parent, std::uintptr_t ip, std::uintptr_t arg)
+    std::shared_ptr<thread> thread::create(const std::shared_ptr<process> &parent, std::uintptr_t ip)
     {
         auto thread = std::make_shared<sched::thread>();
 
@@ -199,7 +199,7 @@ namespace sched
 
         auto stack = thread::allocate_kstack(parent);
         thread->kstack_top = thread->ustack_top = stack;
-        arch::finalise(parent, thread, ip, arg);
+        arch::finalise(parent, thread, ip);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;
@@ -297,21 +297,22 @@ namespace sched
         obj.queue.write_lock()->insert(thread);
     }
 
-    void friends::spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    void friends::spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
     {
-        const auto thread = thread::create(processes.read_lock()->at(pid), ip, arg);
+        const auto thread = thread::create(processes.read_lock()->at(pid), ip);
+        thread->priority = priority;
         thread->status = status::ready;
         enqueue(thread, cpu);
     }
 
-    void spawn(std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority)
     {
-        spawn_on(allocate_cpu(), pid, ip, arg);
+        spawn_on(allocate_cpu(), pid, ip, priority);
     }
 
-    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, std::uintptr_t arg)
+    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
     {
-        friends::spawn_on(cpu, pid, ip, arg);
+        friends::spawn_on(cpu, pid, ip, priority);
     }
 
     void reaper()
@@ -513,7 +514,7 @@ namespace sched
         idle_proc->vmspace = idle_vmspace;
         idle_proc->pid = static_cast<std::size_t>(-1);
 
-        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), 0);
+        const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle));
         idle_thread->status = status::ready;
 
         percpu->idle_proc = idle_proc;
@@ -525,7 +526,7 @@ namespace sched
         if (self->idx == cpu::bsp_idx())
         {
             for (std::size_t idx = 0; idx < cpu::cpu_count(); idx++)
-                spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper));
+                sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
 
             initialised = true;
             should_start = true;
