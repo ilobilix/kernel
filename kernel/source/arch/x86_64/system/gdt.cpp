@@ -54,8 +54,8 @@ namespace x86_64::gdt
         if (cpu->idx == cpu::bsp_idx())
             lib::info("gdt: loading on bsp");
 
-        tss_local->ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size); // page fault
-        tss_local->ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size); // scheduler
+        tss_local->ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size; // page fault
+        tss_local->ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size; // scheduler
 
         tss_local->iopboffset = sizeof(tss::reg);
 

@@ -831,7 +831,11 @@ namespace sched
                 auto qlocked = pcpu.queue.lock();
                 if (!qlocked->empty())
                     reaper->vruntime = qlocked->first()->vruntime;
-                qlocked->insert(reaper);
+
+                if (next == nullptr)
+                    next = reaper;
+                else
+                    qlocked->insert(reaper);
             }
         }
 
