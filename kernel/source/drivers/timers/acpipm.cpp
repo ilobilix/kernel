@@ -21,6 +21,7 @@ namespace timers::acpipm
         uacpi_mapped_gas *mapped;
         std::size_t mask;
         std::int64_t offset = 0;
+        std::size_t overflows = 0;
 
         std::uint64_t read()
         {
@@ -48,6 +49,13 @@ namespace timers::acpipm
             return true;
         } ();
         return cached;
+    }
+
+
+    uacpi_interrupt_ret handle_overflow(uacpi_handle)
+    {
+        overflows++;
+        return UACPI_INTERRUPT_HANDLED;
     }
 
     std::uint64_t time_ns()

@@ -9,6 +9,7 @@ module;
 #include <uacpi/utilities.h>
 #include <uacpi/event.h>
 #include <uacpi/notify.h>
+#include <uacpi/sleep.h>
 
 module system.acpi;
 
@@ -18,6 +19,7 @@ import x86_64.system.ioapic;
 #endif
 
 import drivers.timers.acpipm;
+import arch;
 import boot;
 import lib;
 import std;
@@ -124,11 +126,8 @@ namespace acpi
         // {
         //     ret = uacpi_install_fixed_event_handler(
         //         UACPI_FIXED_EVENT_TIMER_STATUS,
-        //         [](uacpi_handle) -> uacpi_interrupt_ret
-        //         {
-        //             timers::acpipm::overflows++;
-        //             return UACPI_INTERRUPT_HANDLED;
-        //         }, nullptr
+        //         timers::acpipm::handle_overflow,
+        //         nullptr
         //     ); check();
         //     timers::acpipm::finalise();
         // }

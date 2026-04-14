@@ -92,8 +92,13 @@ namespace x86_64::idt
                 lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
             else
                 lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            std::unreachable();
         }
-        else lib::panic(regs, "unknown interrupt {}", vector);
+        else
+        {
+            lib::panic(regs, "unknown interrupt {}", vector);
+            std::unreachable();
+        }
     }
 
     void init_on(cpu::processor *cpu)

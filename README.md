@@ -21,3 +21,8 @@ Make sure you have recent versions of the following programs installed:
 * Build and run the kernel: ``xmake run``
 * Default run target is ``uefi``. Other possible values are: ``bios``, ``bios-debug`` and ``uefi-debug``. For example: ``xmake run bios-debug``
 * Fully rebuild the kernel: ``xmake build -r --all -j$(nproc)``
+
+## Known Bugs
+* #PF when uACPI fixed events are invoked
+* triple fault on pagemap load in release mode
+* threads sometimes do not execute after yielding in debug mode

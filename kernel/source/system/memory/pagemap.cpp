@@ -52,7 +52,7 @@ namespace vmm
             const auto ret = getpte(vaddr + i, psize, true);
             if (!ret.has_value())
             {
-                // umap
+                // unmap
                 for (std::size_t ii = 0; ii < i; ii += npsize)
                 {
                     const auto ret1 = getpte(vaddr + ii, psize, true);
@@ -130,7 +130,7 @@ namespace vmm
 
         log::debug("vmm: mapping:");
         {
-            log::debug("vmm: memory map entries");
+            log::debug("vmm: - memory map entries");
 
             const auto memmaps = boot::requests::memmap.response->entries;
             const std::size_t num = boot::requests::memmap.response->entry_count;
@@ -157,7 +157,7 @@ namespace vmm
                 const auto vaddr = lib::tohh(base);
                 const auto len = end - base;
 
-                log::debug("vmm: - type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
+                log::debug("vmm: -  type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
                 if (!kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache))
                     lib::panic("could not map virtual memory");
@@ -171,7 +171,7 @@ namespace vmm
             const auto kernel_file = boot::requests::kernel_file.response->executable_file;
             const auto kernel_addr = boot::requests::kernel_address.response;
 
-            log::debug("vmm: kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);
+            log::debug("vmm: - kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);
 
             if (!kernel_pagemap->map(kernel_addr->virtual_base, kernel_addr->physical_base, kernel_file->size, flags, psize, cache))
                 lib::panic("could not map virtual memory");
