@@ -274,11 +274,10 @@ namespace syscall::vfs
 
         if (fdesc->file->ref.fetch_sub(1) == 1)
         {
+            lib::bug_on(!proc->fdt.close(fd));
             if (!fdesc->file->close())
                 return (errno = EIO, -1);
         }
-
-        lib::bug_on(!proc->fdt.close(fd));
         return 0;
     }
 

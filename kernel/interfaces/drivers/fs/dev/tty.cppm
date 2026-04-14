@@ -50,6 +50,16 @@ export namespace fs::dev::tty
         virtual void close() { }
     };
 
+    struct default_ldisc : line_discipline
+    {
+        default_ldisc(instance *inst) : line_discipline { inst } { }
+
+        std::ssize_t read(lib::maybe_uspan<std::byte> buffer) override;
+        std::ssize_t write(lib::maybe_uspan<std::byte> buffer) override;
+
+        void receive(std::span<std::byte> buffer) override;
+    };
+
     struct driver;
     struct instance
     {
@@ -58,7 +68,7 @@ export namespace fs::dev::tty
 
         std::atomic<std::uint32_t> ref;
 
-        lib::locker<std::shared_ptr<line_discipline>, lib::rwmutex> ldisc;
+        lib::locker<std::unique_ptr<line_discipline>, lib::rwmutex> ldisc;
 
         lib::locker<termios, lib::rwmutex> termios;
         lib::locker<winsize, lib::rwmutex> winsize;
@@ -74,13 +84,13 @@ export namespace fs::dev::tty
 
         frg::default_list_hook<instance> hook;
 
-        instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc);
+        instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc);
 
         virtual ~instance() = default;
 
         virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer)
         {
-            auto rlocked = ldisc.read_lock();
+            const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->read(buffer);
             return -1;
@@ -88,7 +98,7 @@ export namespace fs::dev::tty
 
         virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer)
         {
-            auto rlocked = ldisc.read_lock();
+            const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 return rlocked.value()->write(buffer);
             return -1;
@@ -99,7 +109,7 @@ export namespace fs::dev::tty
         // called by hardware
         void receive(std::span<std::byte> buffer)
         {
-            auto rlocked = ldisc.read_lock();
+            const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
                 rlocked.value()->receive(buffer);
         }
@@ -123,7 +133,7 @@ export namespace fs::dev::tty
             lib::map::flat_hash<
                 std::uint32_t,
                 std::shared_ptr<instance>
-            >, lib::rwmutex
+            >, lib::mutex
         > instances;
 
         frg::default_list_hook<driver> hook;
