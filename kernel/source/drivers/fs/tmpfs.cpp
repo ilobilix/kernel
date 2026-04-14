@@ -22,7 +22,7 @@ namespace fs::tmpfs
             std::ssize_t read(std::shared_ptr<vfs::backing> self, std::size_t offset, std::span<std::byte> buffer) override
             {
                 auto back = reinterpret_cast<backing *>(self.get());
-                std::unique_lock _ { back->lock };
+                const std::unique_lock _ { back->lock };
 
                 auto size = buffer.size_bytes();
                 auto real_size = size;
@@ -36,7 +36,7 @@ namespace fs::tmpfs
             std::ssize_t write(std::shared_ptr<vfs::backing> self, std::size_t offset, std::span<std::byte> buffer) override
             {
                 auto back = reinterpret_cast<backing *>(self.get());
-                std::unique_lock _ { back->lock };
+                const std::unique_lock _ { back->lock };
 
                 auto size = buffer.size_bytes();
                 back->data.resize(std::max(back->data.size(), offset + size));
@@ -53,7 +53,7 @@ namespace fs::tmpfs
             std::uintptr_t mmap(std::shared_ptr<vfs::backing> self, std::uintptr_t page, int flags) override
             {
                 auto back = reinterpret_cast<backing *>(self.get());
-                std::unique_lock _ { back->lock };
+                const std::unique_lock _ { back->lock };
 
                 lib::ensure(page * pmm::page_size < back->data.size());
 

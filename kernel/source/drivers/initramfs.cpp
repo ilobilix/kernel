@@ -79,7 +79,7 @@ namespace initramfs
                             log::error("ustar: could not create a regular file '{}'", name);
 
                         node = ret.value();
-                        std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
+                        const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
                         if (node->backing->op->write(node->backing, 0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
