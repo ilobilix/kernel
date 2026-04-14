@@ -58,11 +58,11 @@ namespace uacpi
         lib::initgraph::require { sched::pid0_created_stage() },
         lib::initgraph::entail { acpi::workers_stage() },
         [] {
-            sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
+            sched::spawn(reinterpret_cast<std::uintptr_t>(+[] {
                 worker_caller(notify, notify_added);
                 arch::halt(true);
             }));
-            sched::spawn(0, reinterpret_cast<std::uintptr_t>(+[] {
+            sched::spawn(reinterpret_cast<std::uintptr_t>(+[] {
                 worker_caller(gpe, gpe_added);
                 arch::halt(true);
             }));

@@ -92,7 +92,7 @@ extern "C"
 
         lib::initgraph::presched_init_engine.run();
 
-        sched::spawn(0, reinterpret_cast<std::uintptr_t>(kthread), 0, -19);
+        sched::spawn(reinterpret_cast<std::uintptr_t>(kthread), 0, -19);
         sched::start();
     }
 } // extern "C"

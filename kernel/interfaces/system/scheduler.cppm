@@ -190,6 +190,7 @@ export namespace sched
     };
 
     bool is_initialised();
+    process *get_pid0();
 
     process *proc_for(pid_t pid);
 
@@ -210,7 +211,7 @@ export namespace sched
     std::size_t allocate_cpu();
     void enqueue(thread *thread, std::size_t cpu_idx);
 
-    thread *spawn(pid_t pid, std::uintptr_t ip, std::uintptr_t arg = 0, nice_t priority = default_prio);
+    thread *spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t priority = default_prio);
 
     void enable();
     void disable();

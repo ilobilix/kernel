@@ -107,7 +107,7 @@ namespace fs::dev::tty
     {
         should_work.store(true, std::memory_order_relaxed);
         worker_thread = sched::spawn(
-            0, reinterpret_cast<std::uintptr_t>(worker),
+            reinterpret_cast<std::uintptr_t>(worker),
             reinterpret_cast<std::uintptr_t>(this), -10
         );
         lib::bug_on(!worker_thread);

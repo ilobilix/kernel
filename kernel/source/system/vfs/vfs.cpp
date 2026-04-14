@@ -645,7 +645,7 @@ namespace vfs
         [] {
             lib::bug_on(!mount("", "/", "tmpfs", 0));
 
-            const auto pid0 = sched::proc_for(0);
+            const auto pid0 = sched::get_pid0();
             pid0->root = pid0->cwd = get_root(true);
         }
     };
