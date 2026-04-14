@@ -1,0 +1,32 @@
+name: build the kernel
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    strategy:
+      matrix:
+        ilobilix_arch: [x86_64, aarch64]
+
+    steps:
+      - name: Update and install dependencies
+        run: |
+          pacman --noconfirm -Syu
+          pacman --needed --noconfirm -S base-devel clang lld llvm cmake ninja xorriso
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: 'true'
+
+      - name: Setup build directory
+        run: cmake -S . -B build -DILOBILIX_ARCH=${{ matrix.ilobilix_arch }} -DILOBILIX_SYSCALL_LOG=ON -DILOBILIX_UBSAN=ON -DILOBILIX_LIMINE_MP=OFF
+
+      - name: Build the kernel
+        run: cmake --build build

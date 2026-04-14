@@ -184,7 +184,7 @@ namespace cpu::mp
                 bool ret = true;
                 for (std::size_t i = 1; i < count(); i++)
                 {
-                    if (nth(i)->online == false)
+                    if (local::nth(i)->online == false)
                         ret = false;
                     else if (bmap.get(i - 1) == false)
                         bmap.set(i - 1, true);
