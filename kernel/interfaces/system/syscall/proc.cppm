@@ -42,5 +42,11 @@ export namespace syscall::proc
 
     int prlimit(pid_t pid, int resource, const struct rlimit __user *new_limit, struct rlimit __user *old_limit);
 
+    long clone(unsigned long flags, void __user *stack, int __user *parent_tid, int __user *child_tid, unsigned long tls);
+    long clone3(struct clone_args __user *cl_args, std::size_t size);
+
+    pid_t fork();
+    pid_t vfork();
+
     [[noreturn]] void exit_group(int status);
 } // export namespace syscall::proc

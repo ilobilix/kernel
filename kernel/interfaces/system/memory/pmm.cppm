@@ -51,7 +51,9 @@ export namespace pmm
     memory info();
 
     page *page_for(std::uintptr_t addr);
-    inline page *page_for(auto ptr)
+
+    template<typename Type> requires (std::is_pointer_v<Type>)
+    inline page *page_for(Type ptr)
     {
         return page_for(reinterpret_cast<std::uintptr_t>(ptr));
     }
