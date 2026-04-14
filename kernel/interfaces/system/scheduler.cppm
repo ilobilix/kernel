@@ -90,8 +90,8 @@ export namespace sched
 
         std::shared_ptr<vmm::vmspace> vmspace;
 
-        std::shared_ptr<vfs::node> root;
-        std::shared_ptr<vfs::node> cwd;
+        std::shared_ptr<vfs::dentry> root;
+        std::shared_ptr<vfs::dentry> cwd;
         mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
         // TODO: fd table
 

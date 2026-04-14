@@ -146,15 +146,13 @@ namespace fs::tmpfs
             ~instance() = default;
         };
 
-        auto mount(std::shared_ptr<vfs::node> &) const -> std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> override
+        auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
             auto instance = std::make_shared<fs::instance>();
-            auto root = std::make_shared<vfs::node>();
-            root->name = "tmpfs root. this shouldn't be visible anywhere";
-
+            auto root = std::make_shared<vfs::dentry>();
+            root->name = "tmpfs root";
             root->inode = std::make_shared<inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
-
-            return { instance, root };
+            return std::make_shared<struct vfs::mount>(instance, root);
         }
 
         fs() : vfs::filesystem { "tmpfs" } { }
@@ -176,24 +174,18 @@ namespace fs::devtmpfs
     struct fs : vfs::filesystem
     {
         std::shared_ptr<tmpfs::fs::instance> instance;
-        std::shared_ptr<vfs::node> _root;
+        std::shared_ptr<vfs::dentry> root;
 
-        auto mount(std::shared_ptr<vfs::node> &) const -> std::pair<std::shared_ptr<vfs::filesystem::instance>, std::shared_ptr<vfs::node>> override
+        auto mount(std::optional<vfs::path> &) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
         {
-            auto root = std::make_shared<vfs::node>();
-
-            root->name = "devtmpfs instance root. this shouldn't be visible anywhere";
-            root->inode = std::make_shared<tmpfs::inode>(0, static_cast<mode_t>(stat::type::s_ifdir), tmpfs::ops::singleton());
-            root->children_redirect = _root;
-
-            return { instance, root };
+            return std::make_shared<struct vfs::mount>(instance, root);
         }
 
         fs() : vfs::filesystem { "devtmpfs" }, instance { std::make_shared<tmpfs::fs::instance>() }
         {
-            _root = std::make_shared<vfs::node>();
-            _root->name = "devtmpfs main root. this shouldn't be visible anywhere";
-            instance->inode_num++;
+            root = std::make_shared<vfs::dentry>();
+            root->name = "devtmpfs root. this shouldn't be visible anywhere";
+            root->inode = std::make_shared<tmpfs::inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), tmpfs::ops::singleton());
         }
     };
 
