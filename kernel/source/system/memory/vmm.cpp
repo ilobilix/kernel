@@ -1081,9 +1081,6 @@ namespace vmm::uvm
                 {
                     if (ent.flags & flag::untouchable)
                         return std::unexpected { lib::err::not_permitted };
-
-                    if ((ent.max_prot & prot) != prot)
-                        return std::unexpected { lib::err::permission_denied };
                 }
             }
 
@@ -1310,6 +1307,9 @@ namespace vmm::uvm
             {
                 if (ent.flags & flag::untouchable)
                     return std::unexpected { lib::err::not_permitted };
+
+                if ((ent.max_prot & prot) != prot)
+                    return std::unexpected { lib::err::permission_denied };
             }
         }
 
