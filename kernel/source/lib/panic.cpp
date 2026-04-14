@@ -38,6 +38,12 @@ namespace lib
     void vpanic(std::string_view fmt, std::format_args args, cpu::registers *regs, std::source_location location)
     {
         arch::halt_others();
+
+        static std::atomic_bool panicking = false;
+        if (panicking)
+            goto exit;
+        panicking = true;
+
         log::unsafe::unlock();
 
         log::println("");
@@ -58,6 +64,7 @@ namespace lib
         if (regs)
             arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
 
+        exit:
         arch::halt(false);
         std::unreachable();
     }

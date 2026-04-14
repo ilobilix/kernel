@@ -6,6 +6,7 @@ module;
 
 export module system.cpu.self;
 
+import system.scheduler;
 import arch.system;
 import lib;
 import std;
@@ -24,6 +25,7 @@ export namespace cpu
             std::uintptr_t stack_top;
 
             cpu::arch::processor arch;
+            sched::percpu sched;
 
             errno_t err = no_error;
             std::atomic_bool online = false;

@@ -134,6 +134,8 @@ export namespace vmm
         void load() const;
 
         pagemap();
+        pagemap(pagemap *ref) : _table { ref->_table } { }
+
         ~pagemap();
     };
 

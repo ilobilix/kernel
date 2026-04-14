@@ -16,7 +16,7 @@ export namespace arch
     void wfi();
     void pause();
 
-    void int_toggle(bool on);
+    void int_switch(bool on);
     bool int_status();
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);

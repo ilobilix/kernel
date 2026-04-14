@@ -162,6 +162,9 @@ namespace x86_64::apic
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
+        if (ns == 0)
+            ns = 1;
+
         auto self = cpu::self();
         if (tsc_deadline)
         {
@@ -176,8 +179,6 @@ namespace x86_64::apic
             write(reg::tic, 0);
             write(reg::lvt, vector);
             auto ticks = lib::ns2ticks(ns, self->arch.lapic.p, self->arch.lapic.n);
-            if (ticks == 0)
-                ticks = 1;
             write(reg::tic, ticks);
         }
     }
