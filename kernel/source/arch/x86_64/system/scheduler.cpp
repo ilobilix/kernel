@@ -36,7 +36,7 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, sched_vector);
     }
 
-    void finalise(const std::shared_ptr<process> &proc, const std::shared_ptr<thread> &thread, std::uintptr_t ip)
+    void finalise(process *proc, thread *thread, std::uintptr_t ip)
     {
         auto &regs = thread->regs;
         regs.rflags = 0x202;
@@ -86,7 +86,7 @@ namespace sched::arch
             lib::panic("could not unmap thread fpu storage: {}", magic_enum::enum_name(ret.error()));
     }
 
-    void save(const std::shared_ptr<thread> &thread)
+    void save(thread *thread)
     {
         if (thread->is_user)
         {
@@ -96,13 +96,13 @@ namespace sched::arch
         }
     }
 
-    void load(const std::shared_ptr<thread> &thread)
+    void load(thread *thread)
     {
         auto &tss = x86_64::gdt::tss::self();
         // tss.ist[0] = thread->pfstack_top;
         tss.rsp[0] = thread->kstack_top;
 
-        cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread.get()));
+        cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread));
 
         if (thread->is_user)
         {
