@@ -64,6 +64,8 @@ namespace cpu::mp
     extern "C" std::size_t smp_trampoline_size;
     extern "C" std::uintptr_t trampoline_pages;
 
+    extern "C" bool pagemap_use_lowmem;
+
     void boot_cores(processor *(*request)(std::size_t))
     {
         if (num_cores() <= 1)
@@ -72,24 +74,30 @@ namespace cpu::mp
         lib::bug_on(smp_trampoline_size > pmm::page_size);
         lib::bug_on(trampoline_pages == 0);
 
-        const auto map = []<typename ...Args>(std::string_view str, Args &&...args)
+        pagemap_use_lowmem = true;
+            vmm::pagemap temp_map { };
+        pagemap_use_lowmem = false;
+
+        const auto map = [&temp_map]<typename ...Args>(std::string_view str, Args &&...args)
         {
             auto inner = [&](auto &obj) {
-                if (const auto ret = obj->map(std::forward<Args>(args)...); !ret)
+                if (const auto ret = obj.map(std::forward<Args>(args)...); !ret)
                     lib::panic("could not map {}: {}", str, magic_enum::enum_name(ret.error()));
             };
-            inner(vmm::limine_pagemap);
-            inner(vmm::kernel_pagemap);
+            pagemap_use_lowmem = true;
+                inner(temp_map);
+            pagemap_use_lowmem = false;
+            inner(*vmm::kernel_pagemap);
         };
 
-        const auto unmap = []<typename ...Args>(std::string_view str, Args &&...args)
+        const auto unmap = [&temp_map]<typename ...Args>(std::string_view str, Args &&...args)
         {
             auto inner = [&](auto &obj) {
-                if (const auto ret = obj->unmap(std::forward<Args>(args)...); !ret)
+                if (const auto ret = obj.unmap(std::forward<Args>(args)...); !ret)
                     lib::panic("could not unmap {}: {}", str, magic_enum::enum_name(ret.error()));
             };
-            inner(vmm::limine_pagemap);
-            inner(vmm::kernel_pagemap);
+            inner(temp_map);
+            inner(*vmm::kernel_pagemap);
         };
 
         log::debug("cpu: trampoline address 0x{:X}", trampoline_pages);
@@ -103,7 +111,7 @@ namespace cpu::mp
         const bool x2apic = x86_64::apic::supported().second;
         mtrr::save();
 
-        auto start_ap = [&request, temp_stack](std::size_t lapic_id)
+        auto start_ap = [&request, &temp_map, temp_stack](std::size_t lapic_id)
         {
             if (lapic_id == bsp_aid())
                 return;
@@ -125,8 +133,7 @@ namespace cpu::mp
             volatile auto info = reinterpret_cast<trampoline_info *>(trampoline_pages + smp_trampoline_size - sizeof(trampoline_info));
             *info = trampoline_info {
                 .booted_flag = 0,
-                // TODO: instead of reusing the limine pagemap, create a minimal one that's stored in the first 4 gib
-                .early_pagemap = reinterpret_cast<std::uint64_t>(vmm::limine_pagemap->get_arch_table()),
+                .early_pagemap = reinterpret_cast<std::uint64_t>(temp_map.get_arch_table()),
                 .pagemap = reinterpret_cast<std::uint64_t>(vmm::kernel_pagemap->get_arch_table()),
                 .bsp_apic_addr = msr::read(0x1B),
                 .mtrr_restore = reinterpret_cast<std::uint64_t>(mtrr::restore),

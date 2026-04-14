@@ -37,7 +37,7 @@ namespace sched
             lib::btree::multiset<
                 std::shared_ptr<thread>,
                 by_vruntime
-            >, lib::rwspinlock_preempt
+            >, lib::spinlock_preempt
         > queue;
         std::shared_ptr<thread> running_thread;
 
@@ -45,7 +45,7 @@ namespace sched
             lib::btree::multiset<
                 std::shared_ptr<thread>,
                 by_timeout
-            >, lib::rwspinlock_preempt
+            >, lib::spinlock_preempt
         > sleep_queue;
 
         std::shared_ptr<process> idle_proc;
@@ -285,7 +285,7 @@ namespace sched
         for (std::size_t i = 0; i < cpu::cpu_count(); i++)
         {
             auto &obj = percpu.get(cpu::nth_base(i));
-            const auto size = obj.queue.read_lock()->size();
+            const auto size = obj.queue.lock()->size();
             if (size < min)
             {
                 min = size;
@@ -308,13 +308,13 @@ namespace sched
                 );
                 std::unreachable();
             case status::sleeping:
-                obj.sleep_queue.write_lock()->insert(thread);
+                obj.sleep_queue.lock()->insert(thread);
                 break;
             [[likely]] case status::running:
                 thread->status = status::ready;
                 [[fallthrough]];
             case status::ready:
-                obj.queue.write_lock()->insert(thread);
+                obj.queue.lock()->insert(thread);
                 break;
             default:
                 std::unreachable();
@@ -370,7 +370,7 @@ namespace sched
     {
         while (true)
         {
-            if (percpu->sleep_queue.read_lock()->empty())
+            if (percpu->sleep_queue.lock()->empty())
                 yield();
 
             const auto clock = time::main_clock();
@@ -378,8 +378,8 @@ namespace sched
 
             bool found_dead = false;
 
-            auto locked = percpu->sleep_queue.write_lock();
-            for (auto it = locked->begin(); it != locked->end(); )
+            auto slocked = percpu->sleep_queue.lock();
+            for (auto it = slocked->begin(); it != slocked->end(); )
             {
                 auto &thread = *it;
                 if (!thread->sleep_until.has_value())
@@ -387,7 +387,7 @@ namespace sched
                     switch (thread->status)
                     {
                         case status::ready:
-                            percpu->queue.write_lock()->insert(thread);
+                            percpu->queue.lock()->insert(thread);
                             break;
                         case status::killed:
                             percpu->dead_threads.lock()->push_back(thread);
@@ -413,13 +413,13 @@ namespace sched
                     {
                         // do not starve out other threads
                         // if the woken one has been sleeping for too long
-                        auto wlocked = percpu->queue.write_lock();
-                        thread->vruntime = (*wlocked->begin())->vruntime;
-                        wlocked->insert(thread);
+                        auto qlocked = percpu->queue.lock();
+                        thread->vruntime = (*qlocked->begin())->vruntime;
+                        qlocked->insert(thread);
                     }
                 }
 
-                it = locked->erase(it);
+                it = slocked->erase(it);
                 continue;
 
                 next: it++;
@@ -450,7 +450,7 @@ namespace sched
 
         std::shared_ptr<thread> next;
         {
-            auto locked = percpu->queue.write_lock();
+            auto locked = percpu->queue.lock();
             for (auto it = locked->begin(); it != locked->end(); )
             {
                 auto &thread = *it;
