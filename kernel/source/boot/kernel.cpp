@@ -26,8 +26,6 @@ extern "C"
         serial::init();
         cxxabi::construct();
 
-        bin::elf::sym::load_kernel();
-
         frm::init();
         term::init();
 

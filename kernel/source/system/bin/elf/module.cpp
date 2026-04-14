@@ -324,13 +324,13 @@ namespace bin::elf::mod
                             if (name.empty())
                                 break;
 
-                            auto symbol = sym::klookup(name);
-                            if (symbol == sym::empty)
+                            auto symaddr = sym::klookup(name);
+                            if (symaddr == -1ul)
                             {
                                 log::error("elf: module: symbol '{}' not found", name);
                                 return false;
                             }
-                            resolved = symbol.address;
+                            resolved = symaddr;
                         }
                         else resolved = loaded_at + sym->st_value;
 
