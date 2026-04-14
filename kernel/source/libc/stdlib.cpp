@@ -1,6 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-import system.memory.slab;
 import lib;
 import cppstd;
 
@@ -8,23 +7,22 @@ extern "C"
 {
     void *malloc(std::size_t size)
     {
-        return slab::alloc(size);
+        return lib::alloc(size);
     }
 
     void *calloc(std::size_t num, std::size_t size)
     {
-        auto ptr = slab::alloc(num * size);
-        return std::memset(ptr, 0, num * size);
+        return lib::allocz(num * size);
     }
 
     void *realloc(void *oldptr, std::size_t size)
     {
-        return slab::realloc(oldptr, size);
+        return lib::realloc(oldptr, size);
     }
 
     void free(void *ptr)
     {
-        slab::free(ptr);
+        lib::free(ptr);
     }
 
     int atoi(const char *str)

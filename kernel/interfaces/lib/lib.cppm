@@ -16,6 +16,7 @@ export import :locker;
 export import :log;
 export import :map;
 export import :math;
+export import :memory;
 export import :misc;
 export import :mmio;
 export import :mod;

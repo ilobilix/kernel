@@ -1,6 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 import cppstd;
+import lib;
 
 // phd memcpy from managarm
 
@@ -262,7 +263,7 @@ extern "C"
     {
         const std::size_t len = strlen(str) + 1;
 
-        void *newstr = std::malloc(len);
+        void *newstr = lib::alloc(len);
         if (newstr == nullptr)
             return nullptr;
 

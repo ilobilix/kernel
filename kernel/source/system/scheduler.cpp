@@ -275,7 +275,7 @@ namespace sched
 
     thread::~thread()
     {
-        std::free(kstack_top - boot::kstack_size);
+        lib::free(kstack_top - boot::kstack_size);
 
         if (is_user)
         {
@@ -304,7 +304,7 @@ namespace sched
         thread->priority = default_prio;
         thread->vruntime = 0;
 
-        const auto stack = std::malloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        const auto stack = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
         thread->kstack_top = stack;
 
         if (is_user)

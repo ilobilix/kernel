@@ -7,6 +7,7 @@ import cppstd;
 
 export namespace lib
 {
+    // from mlibc
     template<typename Ret>
     constexpr Ret str2int(const char *nptr, char **endptr, int _base)
     {
