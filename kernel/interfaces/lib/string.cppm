@@ -29,6 +29,16 @@ export namespace lib
         {
             return N <= 1;
         }
+
+        consteval auto data() const
+        {
+            return value;
+        }
+
+        consteval std::size_t size() const
+        {
+            return N - 1;
+        }
     };
 
     // from mlibc

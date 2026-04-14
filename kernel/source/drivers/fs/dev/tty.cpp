@@ -18,22 +18,14 @@ namespace fs::dev::tty
 {
     namespace
     {
-        frg::intrusive_list<
-            driver,
-            frg::locate_member<
-                driver,
-                frg::default_list_hook<driver>,
-                &driver::hook
-            >
-        > drivers;
+        lib::intrusive_list<driver, &driver::hook> drivers;
 
         driver *get_driver(dev_t major)
         {
-            for (const auto &drv : drivers)
-            {
-                if (drv->major == major)
-                    return drv;
-            }
+            if (const auto it = drivers.find_if([major](const auto &drv) {
+                return drv.major == major;
+            }); it != drivers.end())
+                return it.value();
             return nullptr;
         }
 

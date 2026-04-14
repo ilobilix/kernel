@@ -17,16 +17,11 @@ export namespace frg
 {
     using ::frg::pairing_heap;
     using ::frg::pairing_heap_hook;
-    using ::frg::rbtree;
-    using ::frg::rbtree_hook;
-    using ::frg::intrusive_list;
     using ::frg::locate_member;
     using ::frg::small_vector;
     using ::frg::manual_box;
     using ::frg::slab_pool;
     using ::frg::slab_allocator;
-
-    using ::frg::default_list_hook;
 
     template<typename Type>
     struct allocator : std::allocator<Type>

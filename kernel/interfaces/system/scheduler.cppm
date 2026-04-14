@@ -2,13 +2,12 @@
 
 export module system.scheduler;
 
+import drivers.fs.dev.tty;
 import system.scheduler.base;
 import system.memory.virt;
-import system.cpu.local;
 import system.cpu;
+import system.cpu.local;
 import system.vfs;
-import drivers.fs.dev.tty;
-import frigg;
 import lib;
 import std;
 
@@ -97,7 +96,8 @@ export namespace sched
         errnos err = no_error;
 
         lib::rbtree_hook rbtree_hook;
-        frg::default_list_hook<thread> list_hook;
+        lib::intrusive_list_hook<thread> list_hook;
+        lib::intrusive_list_hook<thread_base> semaphore_list_hook;
 
         void update_ustack(std::uintptr_t addr);
 
