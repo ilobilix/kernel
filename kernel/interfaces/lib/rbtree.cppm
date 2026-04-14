@@ -543,6 +543,9 @@ export namespace lib
         using iterator = iterator_base<Type>;
         using const_iterator = iterator_base<const Type>;
 
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
         constexpr rbtree() : _root { nil() }, _head { nil() }, _size { 0 } { }
 
         constexpr rbtree(const rbtree &) = delete;
@@ -610,6 +613,15 @@ export namespace lib
         constexpr const_iterator cbegin() const { return { this, head() }; }
         constexpr const_iterator cend() const { return { this, nil() }; }
 
+        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
+        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
+
         constexpr Type *first()
         {
             if (head() == nil())
@@ -667,6 +679,9 @@ export namespace lib
         public:
         using iterator = typename rbtree<Type, Member, Less, Aug>::iterator;
         using const_iterator = typename rbtree<Type, Member, Less, Aug>::const_iterator;
+
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
         constexpr rbtree_alloc() : _rbtree { } { }
 
@@ -736,6 +751,15 @@ export namespace lib
 
         constexpr const_iterator cbegin() const { return _rbtree.cbegin(); }
         constexpr const_iterator cend() const { return _rbtree.cend(); }
+
+        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
+        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
 
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
@@ -979,6 +1003,9 @@ export namespace lib
         using iterator = typename rbtree<Type, Hook, less, augmentor>::iterator;
         using const_iterator = typename rbtree<Type, Hook, less, augmentor>::const_iterator;
 
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
         using overlapping_iterator = overlapping_iterator_base<Type>;
         using const_overlapping_iterator = overlapping_iterator_base<const Type>;
 
@@ -1056,6 +1083,15 @@ export namespace lib
         constexpr const_iterator cbegin() const { return _rbtree.cbegin(); }
         constexpr const_iterator cend() const { return _rbtree.cend(); }
 
+        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
+        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
+
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
     };
@@ -1084,6 +1120,9 @@ export namespace lib
         public:
         using iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::iterator;
         using const_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_iterator;
+
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
         using overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::overlapping_iterator;
         using const_overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_overlapping_iterator;
@@ -1166,6 +1205,15 @@ export namespace lib
 
         constexpr const_iterator cbegin() const { return _itree.cbegin(); }
         constexpr const_iterator cend() const { return _itree.cend(); }
+
+        constexpr reverse_iterator rbegin() { return reverse_iterator { end() }; }
+        constexpr reverse_iterator rend() { return reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
+        constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
 
         constexpr std::size_t size() const { return _itree.size(); }
         constexpr bool empty() const { return _itree.empty(); }

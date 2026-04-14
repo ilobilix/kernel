@@ -766,14 +766,40 @@ namespace fs::dev::tty
 
     lib::expect<int> default_ldisc::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
-        // TODO
-        lib::unused(request, argp);
+        switch (request)
+        {
+            case tiocgpgrp:
+                if (!argp.write(inst->ctrl.lock()->pgid))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tiocspgrp:
+                if (!argp.read(inst->ctrl.lock()->pgid))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tiocgwinsz:
+                if (!argp.write(inst->winsize.read_lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tiocswinsz:
+                if (!argp.read(inst->winsize.write_lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tcgets2:
+                if (!argp.write(inst->termios.read_lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tcsetsw2:
+                // TODO: allow the output buffer to drain
+                if (!argp.read(inst->termios.write_lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+        }
         return std::unexpected { lib::err::inappropriate_ioctl };
     }
 
     instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
-          termios { drv->init_termios }, winsize { }, ctrl { }
+          termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { }
     { lib::bug_on(drv == nullptr); }
 
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)

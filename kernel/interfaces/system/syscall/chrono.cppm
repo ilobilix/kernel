@@ -9,4 +9,6 @@ export namespace syscall::chrono
 
     int gettimeofday(timeval __user *tv, struct timezone __user *tz);
     int settimeofday(const timeval __user *tv, const struct timezone __user *tz);
+
+    time_t time(time_t __user *tloc);
 } // export namespace syscall::chrono
