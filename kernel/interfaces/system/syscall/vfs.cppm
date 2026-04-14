@@ -46,4 +46,6 @@ export namespace syscall::vfs
 
     int pipe2(int __user *pipefd, int flags);
     int pipe(int __user *pipefd);
+
+    int socket(int domain, int type, int protocol);
 } // export namespace syscall::vfs

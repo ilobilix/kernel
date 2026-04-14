@@ -20,7 +20,7 @@ namespace bin::elf::exec
     {
         private:
         static inline constexpr std::uintptr_t default_base = 0x400000;
-        static inline constexpr std::uintptr_t defautl_interp_base = 0x40000000;
+        static inline constexpr std::uintptr_t default_interp_base = 0x40000000;
 
         struct auxval
         {
@@ -189,7 +189,7 @@ namespace bin::elf::exec
             std::uintptr_t entry = auxv.at_entry;
             if (interp)
             {
-                interp_base = defautl_interp_base;
+                interp_base = default_interp_base;
                 ret = load_file(interp, proc->vmspace, interp_base);
                 if (!ret.has_value())
                     return nullptr;

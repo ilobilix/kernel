@@ -19,7 +19,7 @@ extern "C"
 
         sched::thread *thread = nullptr;
         {
-            lib::path_view path { "/usr/bin/bash" };
+            lib::path_view path { "/usr/sbin/init" };
             // lib::info("loading {}", path);
 
             auto ret = vfs::resolve(std::nullopt, path);
@@ -38,8 +38,8 @@ extern "C"
             auto pmap = std::make_shared<vmm::pagemap>();
             auto proc = sched::process::create(nullptr, pmap);
 
-            proc->ruid = proc->euid = proc->suid = 1000;
-            proc->rgid = proc->egid = proc->sgid = 1000;
+            // proc->ruid = proc->euid = proc->suid = 1000;
+            // proc->rgid = proc->egid = proc->sgid = 1000;
 
             lib::path_view tty_path { "/dev/tty0" };
             ret = vfs::resolve(std::nullopt, tty_path);
@@ -61,10 +61,10 @@ extern "C"
                 .interp = { },
                 .argv = { path.basename().data() },
                 .envp = {
-                    "TERM=linux",
-                    "USER=ilobilix",
-                    "HOME=/home/ilobilix",
-                    "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
+                    // "TERM=linux",
+                    // "USER=ilobilix",
+                    // "HOME=/home/ilobilix",
+                    // "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
                 }
             }, proc);
 

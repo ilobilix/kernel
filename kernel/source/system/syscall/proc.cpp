@@ -143,6 +143,25 @@ namespace syscall::proc
         return (errno = no_error, 0);
     }
 
+    pid_t setsid()
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (proc->pid == proc->pgid)
+            return (errno = EPERM, -1);
+
+        const auto grp = sched::create_group(proc->pid);
+        const auto sess = sched::create_session(proc->pid);
+
+        if (!sched::change_session(grp, sess))
+            return (errno = ENOSYS, -1);
+
+        if (!sched::change_group(proc, grp))
+            return (errno = ENOSYS, -1);
+
+        return proc->sid;
+    }
+
     int getgroups(int size, gid_t __user *list)
     {
         if (size < 0)
@@ -185,6 +204,14 @@ namespace syscall::proc
         auto thread = sched::this_thread();
         thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(tidptr);
         return thread->tid;
+    }
+
+    mode_t umask(mode_t mask)
+    {
+        const auto proc = sched::this_thread()->parent;
+        const auto ret = proc->umask;
+        proc->umask = mask & 0777;
+        return ret;
     }
 
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact)

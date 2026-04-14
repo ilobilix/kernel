@@ -51,7 +51,7 @@ namespace pci::acpi
             const auto vaddr = lib::fromhh(vmm::alloc_vspace(size));
 
             const auto flags = vmm::pflag::rw;
-            const auto psize = vmm::pagemap::max_page_size(size);
+            const auto psize = vmm::page_size::small;
             const auto caching = vmm::caching::mmio;
 
             if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, size, flags, psize, caching); !ret)

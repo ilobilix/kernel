@@ -23,10 +23,14 @@ export namespace syscall::proc
     pid_t getpgid(pid_t pid);
     int setpgid(pid_t pid, pid_t pgid);
 
+    pid_t setsid();
+
     int getgroups(int size, gid_t __user *list);
     int setgroups(std::size_t size, const gid_t __user *list);
 
     int set_tid_address(int __user *tidptr);
+
+    mode_t umask(mode_t mask);
 
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact);
     int sigprocmask(int how, const struct sigset_t __user *set, struct sigset_t __user *oldset, std::size_t sigsetsize);
