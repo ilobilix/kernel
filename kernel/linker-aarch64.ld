@@ -1,13 +1,14 @@
 OUTPUT_FORMAT(elf64-aarch64)
 OUTPUT_ARCH(elf64-littleaarch64:aarch64)
+
 ENTRY(_start)
 
 PHDRS
 {
-    requests PT_LOAD;
-    text     PT_LOAD;
-    rodata   PT_LOAD;
-    data     PT_LOAD;
+    limine_requests PT_LOAD;
+    text            PT_LOAD;
+    rodata          PT_LOAD;
+    data            PT_LOAD;
 }
 
 SECTIONS
@@ -16,11 +17,11 @@ SECTIONS
 
     _skernel = .;
 
-    .requests : {
-        KEEP(*(.requests_start_marker))
-        KEEP(*(.requests))
-        KEEP(*(.requests_end_marker))
-    } :requests
+    .limine_requests : {
+        KEEP(*(.limine_requests_start))
+        KEEP(*(.limine_requests))
+        KEEP(*(.limine_requests_end))
+    } :limine_requests
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
@@ -44,10 +45,10 @@ SECTIONS
     } :rodata
 
     .init_array : {
-        PROVIDE_HIDDEN(__start_init_array = .);
+        __start_init_array = .;
         KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
         KEEP(*(.init_array .ctors))
-        PROVIDE_HIDDEN(__end_init_array = .);
+        __end_init_array = .;
     } :rodata
 
     .percpu_init : {
