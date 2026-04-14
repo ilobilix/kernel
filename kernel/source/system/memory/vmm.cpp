@@ -1120,12 +1120,13 @@ namespace vmm
             if (flags & flag::private_)
             {
                 lib::bug_on(!amap);
-                std::unique_lock _ { amap->lock };
+                std::unique_lock alock { amap->lock };
 
                 if (!state.is_present)
                 {
                     if (!amap->slots[anon_idx + offp])
                     {
+                        alock.unlock();
                         lib::bug_on(!obj);
 
                         page *fetched = nullptr;
@@ -1158,6 +1159,7 @@ namespace vmm
                             paddr = paddr_from(opg);
                             goto end;
                         }
+                        opg->ref();
                     }
                     else
                     {
@@ -1167,7 +1169,7 @@ namespace vmm
                             return false;
                     }
 
-                    paddr = pmm::alloc(num_alloc_pages, true);
+                    paddr = pmm::alloc(num_alloc_pages, false);
                     if (paddr == 0)
                         return false;
 

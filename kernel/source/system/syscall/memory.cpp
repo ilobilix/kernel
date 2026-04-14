@@ -73,8 +73,7 @@ namespace syscall::memory
 
         const auto ret = vmspace->map(
             reinterpret_cast<std::uintptr_t>(addr), length,
-            prot, max_prot, flags,
-            obj, static_cast<off_t>(offset)
+            prot, max_prot, flags, obj, offset
         );
 
         if (!ret.has_value())
@@ -88,7 +87,10 @@ namespace syscall::memory
         const auto proc = sched::this_thread()->parent;
         const auto &vmspace = proc->vmspace;
 
-        const auto res = vmspace->unmap(reinterpret_cast<std::uintptr_t>(addr), length);
+        const auto res = vmspace->unmap(
+            reinterpret_cast<std::uintptr_t>(addr),
+            length
+        );
         return res ? 0 : (errno = lib::map_error(res.error()), -1);
     }
 

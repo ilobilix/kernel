@@ -8,7 +8,10 @@ namespace std
     struct mutex_err
     {
         [[noreturn]]
-        constexpr void err() { static_assert(B, "std::mutex is not implemented, use lib::mutex"); }
+        constexpr void err()
+        {
+            static_assert(B, "std::mutex is not implemented, use lib::mutex");
+        }
 
         constexpr void lock() { err(); }
         constexpr bool try_lock() { err(); return false; }
@@ -35,13 +38,19 @@ namespace std
         public:
         using mutex_type = Type;
 
-        unique_lock() : _mutex { nullptr }, _locked { false } { }
-        unique_lock(unique_lock &&other) noexcept : _mutex { nullptr }, _locked { false } { this->swap(other); }
+        unique_lock()
+            : _mutex { nullptr }, _locked { false } { }
+        unique_lock(unique_lock &&other)
+            : _mutex { nullptr }, _locked { false } { this->swap(other); }
 
-        explicit unique_lock(mutex_type &m) : _mutex { addressof(m) }, _locked { true } { m.lock(); }
-        unique_lock(mutex_type &m, defer_lock_t) noexcept : _mutex { addressof(m) }, _locked { false } { }
-        unique_lock(mutex_type &m, try_to_lock_t) : _mutex { addressof(m) }, _locked { true } { m.try_lock(); }
-        unique_lock(mutex_type &m, adopt_lock_t) : _mutex { addressof(m) }, _locked { true } { }
+        explicit unique_lock(mutex_type &m)
+            : _mutex { addressof(m) }, _locked { true } { m.lock(); }
+        unique_lock(mutex_type &m, defer_lock_t)
+            : _mutex { addressof(m) }, _locked { false } { }
+        unique_lock(mutex_type &m, try_to_lock_t)
+            : _mutex { addressof(m) }, _locked { true } { m.try_lock(); }
+        unique_lock(mutex_type &m, adopt_lock_t)
+            : _mutex { addressof(m) }, _locked { true } { }
 
         ~unique_lock()
         {
@@ -130,7 +139,7 @@ namespace std
         while (true)
         {
             {
-                unique_lock<L0> u0(l0);
+                unique_lock<L0> u0 { l0 };
                 if (l1.try_lock())
                 {
                     u0.release();
@@ -138,7 +147,7 @@ namespace std
                 }
             }
             {
-                unique_lock<L1> u1(l1);
+                unique_lock<L1> u1 { l1 };
                 if (l0.try_lock())
                 {
                     u1.release();
