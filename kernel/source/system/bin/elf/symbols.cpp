@@ -15,20 +15,22 @@ namespace bin::elf::sym
 {
     namespace kallsyms
     {
-        extern "C" const std::int32_t kallsyms_offsets[];
-        extern "C" const std::uint8_t kallsyms_names[];
+        extern "C"
+        {
+            extern const std::int32_t kallsyms_offsets[];
+            extern const std::uint8_t kallsyms_names[];
 
-        extern "C" const std::uint32_t kallsyms_num_syms;
-        extern "C" const std::uint64_t kallsyms_relative_base;
+            extern const std::uint32_t kallsyms_num_syms;
+            extern const std::uint64_t kallsyms_relative_base;
 
-        extern "C" const char kallsyms_token_table[];
-        extern "C" const std::uint16_t kallsyms_token_index[];
+            extern const char kallsyms_token_table[];
+            extern const std::uint16_t kallsyms_token_index[];
 
-        extern "C" const std::uint32_t kallsyms_markers[];
-        extern "C" const std::uint8_t kallsyms_seqs_of_names[];
+            extern const std::uint32_t kallsyms_markers[];
+            extern const std::uint8_t kallsyms_seqs_of_names[];
 
-        extern "C" char _skernel[];
-        extern "C" char _ekernel[];
+            extern char _skernel[], _ekernel[];
+        } // extern "C"
 
         namespace
         {

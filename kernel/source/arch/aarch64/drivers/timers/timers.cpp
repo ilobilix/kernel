@@ -23,13 +23,14 @@ namespace timers::arch
         return use_timer<generic::time_ns>;
     }
 
-    initgraph::task timers_task
+    lib::initgraph::task timers_task
     {
-        "arch.initialise-timers",
-        initgraph::require { should_init_stage() },
-        initgraph::entail { initialised_stage() },
-        [] {
-            generic::init();
-        }
+        "timers.arch.initialise",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require {
+            generic::initialised_stage(),
+        },
+        lib::initgraph::entail { initialised_stage() },
+        [] { }
     };
 } // expo namespace timers::arch

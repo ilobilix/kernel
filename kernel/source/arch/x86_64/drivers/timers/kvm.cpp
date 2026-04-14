@@ -3,12 +3,12 @@
 module x86_64.drivers.timers.kvm;
 
 import arch.drivers.timers;
-import drivers.timers.acpipm;
 import system.memory.phys;
 import system.memory.virt;
 import system.cpu.self;
 import system.time;
 import system.cpu;
+import drivers.timers;
 import magic_enum;
 import arch;
 import lib;
