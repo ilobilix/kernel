@@ -43,7 +43,7 @@ namespace x86_64::pic
     void mask(std::uint8_t vector)
     {
         lib::bug_on(vector < 0x20);
-        log::debug("pic: masking vector 0x{:X}", vector);
+        lib::debug("pic: masking vector 0x{:X}", vector);
 
         auto port = port::master_data;
         auto irq = vector - 0x20;
@@ -58,7 +58,7 @@ namespace x86_64::pic
     void unmask(std::uint8_t vector)
     {
         lib::bug_on(vector < 0x20);
-        log::debug("pic: unmasking vector 0x{:X}", vector);
+        lib::debug("pic: unmasking vector 0x{:X}", vector);
 
         auto port = port::master_data;
         auto irq = vector - 0x20;
@@ -72,14 +72,14 @@ namespace x86_64::pic
 
     void disable()
     {
-        log::debug("pic: masking all irqs");
+        lib::debug("pic: masking all irqs");
         lib::io::out<8>(port::master_data, 0xFF);
         lib::io::out<8>(port::slave_data,  0xFF);
     }
 
     void init()
     {
-        log::info("pic: remapping");
+        lib::info("pic: remapping");
         arch::int_switch(false);
 
         // auto i1 = lib::io::in<8>(port::master_data);

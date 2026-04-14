@@ -85,7 +85,7 @@ namespace output::term
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
 
-        log::info("initialised the graphical terminal");
+        lib::info("initialised the graphical terminal");
 #endif
     }
 

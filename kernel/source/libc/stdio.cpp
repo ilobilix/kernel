@@ -17,14 +17,14 @@ extern "C"
     // called from do_report_error
     int fputc(char chr, std::FILE *)
     {
-        log::unsafe::printc(chr);
+        lib::log::unsafe::printc(chr);
         return 1;
     }
 
     // called from report_error
     int fputs(const char *str, std::FILE *)
     {
-        log::unsafe::prints(str);
+        lib::log::unsafe::prints(str);
         return std::strlen(str);
     }
 
@@ -44,13 +44,13 @@ extern "C"
         va_arg(arg, const char *); va_arg(arg, int);
         auto message = va_arg(arg, const char *);
 
-        log::unsafe::lock();
+        lib::log::unsafe::lock();
         {
-            log::unsafe::printc('\n');
-            log::unsafe::prints(message);
-            log::unsafe::printc('\n');
+            lib::log::unsafe::printc('\n');
+            lib::log::unsafe::prints(message);
+            lib::log::unsafe::printc('\n');
         }
-        log::unsafe::unlock();
+        lib::log::unsafe::unlock();
 
         va_end(arg);
 #endif
@@ -60,13 +60,13 @@ extern "C"
     // called from do_report_error and fmt::print
     std::size_t fwrite(const void *ptr, std::size_t size, std::size_t nmemb, std::FILE *)
     {
-        log::unsafe::lock();
+        lib::log::unsafe::lock();
 
         const auto uptr = static_cast<const std::uint8_t *>(ptr);
         for (std::size_t i = 0; i < size * nmemb; i += size)
-            log::unsafe::prints({ reinterpret_cast<const char *>(uptr + i), size });
+            lib::log::unsafe::prints({ reinterpret_cast<const char *>(uptr + i), size });
 
-        log::unsafe::unlock();
+        lib::log::unsafe::unlock();
 
         return nmemb;
     }

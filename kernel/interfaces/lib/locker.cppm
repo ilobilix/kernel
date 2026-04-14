@@ -5,7 +5,7 @@ export module lib:locker;
 import :bug_on;
 import std;
 
-namespace detail
+namespace lib::detail
 {
     template<typename Type>
     concept is_lock = requires(Type l)
@@ -161,9 +161,9 @@ namespace detail
         {
             const auto &lock = get_lock();
             if constexpr (is_rwlock<Lock>)
-                lib::bug_on(lock.is_read_locked() || lock.is_write_locked());
+                bug_on(lock.is_read_locked() || lock.is_write_locked());
             else
-                lib::bug_on(lock.is_locked());
+                bug_on(lock.is_locked());
 
             _data.reset();
             _ptr = nullptr;
@@ -173,17 +173,17 @@ namespace detail
 
         Type *get_data() const
         {
-            lib::bug_on(_data == nullptr);
+            bug_on(_data == nullptr);
             return _ptr;
         }
 
         Lock &get_lock() const
         {
-            lib::bug_on(_data == nullptr);
+            bug_on(_data == nullptr);
             return static_cast<buffer *>(_data.get())->_lock;
         }
     };
-} // namespace detail
+} // namespace lib::detail
 
 export namespace lib
 {

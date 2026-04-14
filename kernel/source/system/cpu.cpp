@@ -4,7 +4,7 @@ module system.cpu;
 
 import system.cpu.self;
 import system.memory;
-import system.time;
+import system.chrono;
 import magic_enum;
 import boot;
 import arch;
@@ -72,9 +72,9 @@ namespace cpu
             const std::size_t idx = next++;
 
             if (idx == 0)
-                log::info("cpu: initialising bsp");
+                lib::info("cpu: initialising bsp");
             else
-                log::info("cpu: bringing up ap {}", idx);
+                lib::info("cpu: bringing up ap {}", idx);
 
             const auto base = map();
             me.initialise_base(bases[idx] = base);
@@ -154,7 +154,7 @@ namespace cpu
 
     void init()
     {
-        log::info("cpu: number of available processors: {}", count());
+        lib::info("cpu: number of available processors: {}", count());
 #if ILOBILIX_LIMINE_MP
         for (std::size_t i = 0; i < count(); i++)
         {
@@ -179,7 +179,7 @@ namespace cpu
             {
                 if (cpu->online)
                     goto next;
-                time::stall_ns(300'000);
+                chrono::stall_ns(300'000);
             }
             lib::panic("could not boot up a core");
             next:

@@ -17,7 +17,7 @@ namespace output::frm
         const auto frms = boot::requests::framebuffer.response->framebuffers;
         const auto num = boot::requests::framebuffer.response->framebuffer_count;
 
-        log::info("available framebuffers: {}", num);
+        lib::info("available framebuffers: {}", num);
 
         for (std::size_t i = 0; i < num; i++)
         {

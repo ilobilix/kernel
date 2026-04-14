@@ -54,7 +54,7 @@ namespace initramfs
 
         bool load(void *ptr)
         {
-            log::info("ustar: extracting initramfs");
+            lib::info("ustar: extracting initramfs");
 
             auto current = static_cast<header *>(ptr);
             while (magic == std::string_view { current->magic, 6 })
@@ -83,7 +83,7 @@ namespace initramfs
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifreg);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a regular file '{}': {}",
                                 name, magic_enum::enum_name(ret.error())
                             );
@@ -99,10 +99,10 @@ namespace initramfs
                         auto file = vfs::file::create(ret.value(), 0, 0, 0);
                         if (file->pwrite(0, data) != std::ssize_t(size))
                         {
-                            log::error("ustar: could not write to a regular file '{}'", name);
+                            lib::error("ustar: could not write to a regular file '{}'", name);
                             if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
                             {
-                                log::error(
+                                lib::error(
                                     "ustar: could not unlink incomplete regular file '{}': {}",
                                     name, magic_enum::enum_name(ret.error())
                                 );
@@ -117,7 +117,7 @@ namespace initramfs
                         auto ret = vfs::link(std::nullopt, name, std::nullopt, linkname);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a hardlink '{}' -> '{}': {}",
                                 name, linkname, magic_enum::enum_name(ret.error())
                             );
@@ -131,7 +131,7 @@ namespace initramfs
                         auto ret = vfs::symlink(std::nullopt, name, linkname);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a symlink '{}' -> '{}': {}",
                                 name, linkname, magic_enum::enum_name(ret.error())
                             );
@@ -145,7 +145,7 @@ namespace initramfs
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifchr, dev);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a character device file '{}': {}",
                                 name, magic_enum::enum_name(ret.error())
                             );
@@ -159,7 +159,7 @@ namespace initramfs
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifblk, dev);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a block device file '{}': {}",
                                 name, magic_enum::enum_name(ret.error())
                             );
@@ -173,7 +173,7 @@ namespace initramfs
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifdir);
                         if (!ret)
                         {
-                            log::error(
+                            lib::error(
                                 "ustar: could not create a directory '{}': {}",
                                 name, magic_enum::enum_name(ret.error())
                             );

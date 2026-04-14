@@ -508,7 +508,7 @@ namespace vmm
                 {
                     if (const auto ret = vmspace->pmap->translate(page * psize, page_size::small); ret.has_value() && ret.value() == pg)
                     {
-                        log::error("vmm: huh? address 0x{:X} is already mapped to 0x{:X}", page * psize, pg);
+                        lib::error("vmm: huh? address 0x{:X} is already mapped to 0x{:X}", page * psize, pg);
                         pflags = pflag::rwxu;
                         // return false;
                     }

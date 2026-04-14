@@ -4,6 +4,7 @@ export module system;
 
 export import arch.system;
 export import system.acpi;
+export import system.chrono;
 export import system.bin;
 export import system.cpu;
 export import system.cpu.self;
@@ -14,5 +15,4 @@ export import system.net;
 export import system.pci;
 export import system.scheduler;
 export import system.syscall;
-export import system.time;
 export import system.vfs;

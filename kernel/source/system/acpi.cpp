@@ -74,7 +74,7 @@ namespace acpi
         // TODO
         void shutdown()
         {
-            log::info("acpi: trying to enter s5...");
+            lib::info("acpi: trying to enter s5...");
 
             uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
             uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
@@ -188,7 +188,7 @@ namespace acpi
         lib::initgraph::require { lib::initgraph::base_stage() },
         lib::initgraph::entail { tables_stage() },
         [] {
-            log::info("acpi: setting up early table access");
+            lib::info("acpi: setting up early table access");
 
             early_table_buffer = new std::uint8_t[early_table_buffer_size];
 

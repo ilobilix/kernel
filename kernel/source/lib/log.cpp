@@ -10,41 +10,41 @@ module lib;
 import drivers.output.terminal;
 #endif
 import drivers.output.serial;
-import system.time;
+import system.chrono;
 import std;
 
-namespace log::unsafe
+namespace lib::log
 {
-    void prints(std::string_view str)
+    namespace unsafe
     {
-        for (auto chr : str)
+        void prints(std::string_view str)
+        {
+            for (auto chr : str)
+                output::serial::printc(chr);
+#if !ILOBILIX_MAX_UACPI_POINTS
+            if (auto ctx = output::term::main())
+                output::term::write(ctx, str);
+#endif
+        }
+
+        void printc(char chr)
+        {
             output::serial::printc(chr);
 #if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto ctx = output::term::main())
-            output::term::write(ctx, str);
+            if (auto ctx = output::term::main())
+                output::term::write(ctx, chr);
 #endif
-    }
+        }
 
-    void printc(char chr)
-    {
-        output::serial::printc(chr);
-#if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto ctx = output::term::main())
-            output::term::write(ctx, chr);
-#endif
-    }
+        extern "C" void putchar_(char chr) { printc(chr); }
+    } // namespace unsafe
 
-    extern "C" void putchar_(char chr) { printc(chr); }
-} // namespace log::unsafe
-
-namespace log
-{
     std::uint64_t get_time()
     {
-        const auto clock = time::main_clock();
+        const auto clock = chrono::main_clock();
         if (!clock)
             return 0;
 
         return clock->ns();
     }
-} // namespace log
+} // namespace lib::log

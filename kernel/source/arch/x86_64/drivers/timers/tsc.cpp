@@ -6,7 +6,7 @@ import x86_64.drivers.timers.kvm;
 import drivers.timers;
 import system.cpu.self;
 import system.cpu;
-import system.time;
+import system.chrono;
 
 import lib;
 import std;
@@ -29,7 +29,7 @@ namespace x86_64::timers::tsc
         {
             cpu::id_res res;
             const auto invariant = cpu::id(0x80000007, 0, res) && (res.d & (1 << 8));
-            log::info("tsc: is invariant: {}", invariant);
+            lib::info("tsc: is invariant: {}", invariant);
             return invariant;
         } ();
         return cached;
@@ -87,17 +87,17 @@ namespace x86_64::timers::tsc
 
             if (val != 0)
             {
-                log::debug("tsc: frequency: {} hz", val);
+                lib::debug("tsc: frequency: {} hz", val);
                 freq = val;
                 is_calibrated = true;
             }
-            else log::debug("tsc: not calibrated");
+            else lib::debug("tsc: not calibrated");
         }
 
         if (is_calibrated)
         {
             auto &ref = offset.get();
-            if (const auto clock = time::main_clock())
+            if (const auto clock = chrono::main_clock())
                 ref += time_ns() - clock->ns();
             else
                 ref = time_ns();
@@ -125,10 +125,10 @@ namespace x86_64::timers::tsc
         }
     };
 
-    time::clock clock { "tsc", 75, time_ns };
+    chrono::clock clock { "tsc", 75, time_ns };
     void finalise()
     {
         if (is_calibrated)
-            time::register_clock(clock);
+            chrono::register_clock(clock);
     }
 } // namespace x86_64::timers::tsc

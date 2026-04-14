@@ -9,7 +9,7 @@ module x86_64.drivers.timers.hpet;
 
 import system.scheduler;
 import system.memory;
-import system.time;
+import system.chrono;
 import drivers.timers;
 import magic_enum;
 import boot;
@@ -137,7 +137,7 @@ namespace x86_64::timers::hpet
         return &stage;
     }
 
-    time::clock clock { "hpet", 50, time_ns };
+    chrono::clock clock { "hpet", 50, time_ns };
 
     lib::initgraph::task hpet_task
     {
@@ -146,10 +146,10 @@ namespace x86_64::timers::hpet
         lib::initgraph::require { ::timers::arch::can_initialise_stage() },
         lib::initgraph::entail { initialised_stage() },
         [] {
-            log::info("hpet: supported: {}", supported());
+            lib::info("hpet: supported: {}", supported());
 
             vaddr = vmm::alloc_vspace(1);
-            log::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
+            lib::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
 
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
@@ -164,18 +164,18 @@ namespace x86_64::timers::hpet
 
             freq = 1'000'000'000'000'000ull / (cap >> 32);
 
-            log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
+            lib::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
 
             // enable main counter
             write(regs::cfg, 1);
 
             initialised = true;
-            if (const auto clock = time::main_clock())
+            if (const auto clock = chrono::main_clock())
                 offset = time_ns() - clock->ns();
             else
                 offset = time_ns();
 
-            time::register_clock(clock);
+            chrono::register_clock(clock);
         }
     };
 

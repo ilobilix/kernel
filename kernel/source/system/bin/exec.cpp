@@ -22,7 +22,7 @@ namespace bin::exec
     {
         auto [_, inserted] = formats.write_lock()->emplace(fmt->name(), fmt);
         if (inserted)
-            log::info("exec: registered format '{}'", fmt->name());
+            lib::info("exec: registered format '{}'", fmt->name());
         return inserted;
     }
 

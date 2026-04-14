@@ -7,5 +7,5 @@ import std;
 
 export namespace lib
 {
-    void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip);
+    void trace(log_level prefix, std::uintptr_t fp, std::uintptr_t ip);
 } // export namespace lib

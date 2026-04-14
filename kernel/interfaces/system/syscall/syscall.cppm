@@ -2,8 +2,8 @@
 
 export module system.syscall;
 
+export import system.syscall.chrono;
 export import system.syscall.memory;
 export import system.syscall.misc;
 export import system.syscall.proc;
-export import system.syscall.time;
 export import system.syscall.vfs;

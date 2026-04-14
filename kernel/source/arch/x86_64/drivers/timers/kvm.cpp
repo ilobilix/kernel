@@ -6,7 +6,7 @@ import arch.drivers.timers;
 import system.memory.phys;
 import system.memory.virt;
 import system.cpu.self;
-import system.time;
+import system.chrono;
 import system.cpu;
 import drivers.timers;
 import magic_enum;
@@ -50,7 +50,7 @@ namespace x86_64::timers::kvm
                 cpu::id_res res;
                 kvmclock = cpu::id(base + 1, 0, res) && (res.a & (1 << 3));
             }
-            log::info("kvmclock: supported: {}", kvmclock);
+            lib::info("kvmclock: supported: {}", kvmclock);
             return kvmclock;
         } ();
         return cached;
@@ -86,7 +86,7 @@ namespace x86_64::timers::kvm
         return freq;
     }
 
-    time::clock clock { "kvm", 100, time_ns };
+    chrono::clock clock { "kvm", 100, time_ns };
 
     void init_cpu()
     {
@@ -111,12 +111,12 @@ namespace x86_64::timers::kvm
         [[maybe_unused]]
         static const auto cached = []
         {
-            if (const auto clock = time::main_clock())
+            if (const auto clock = chrono::main_clock())
                 offset = time_ns() - clock->ns();
             else
                 offset = time_ns();
 
-            time::register_clock(clock);
+            chrono::register_clock(clock);
             return true;
         } ();
     }

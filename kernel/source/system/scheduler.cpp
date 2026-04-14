@@ -5,7 +5,7 @@ module system.scheduler;
 import drivers.timers;
 import system.cpu.self;
 import system.memory;
-import system.time;
+import system.chrono;
 import system.acpi;
 import magic_enum;
 import frigg;
@@ -285,7 +285,7 @@ namespace sched
 
         arch::deinitialise(parent, this);
 
-        // log::error("TODO: thread {} deconstructor on cpu {}", tid, cpu::self()->idx);
+        // lib::error("TODO: thread {} deconstructor on cpu {}", tid, cpu::self()->idx);
     }
 
     thread *thread::create(process *parent, std::uintptr_t ip, bool is_user)
@@ -449,7 +449,7 @@ namespace sched
         {
             if (thread->sleep_for.has_value())
             {
-                const auto clock = time::main_clock();
+                const auto clock = chrono::main_clock();
                 thread->sleep_until = clock->ns() + thread->sleep_for.value();
                 thread->sleep_for = std::nullopt;
             }
@@ -579,7 +579,7 @@ namespace sched
                 yield();
             }
 
-            const auto clock = time::main_clock();
+            const auto clock = chrono::main_clock();
             const auto time = clock->ns();
 
             disable();
@@ -644,7 +644,7 @@ namespace sched
         }
         pcpu.in_scheduler.store(true, std::memory_order_release);
 
-        const auto clock = time::main_clock();
+        const auto clock = chrono::main_clock();
         const auto time = clock->ns();
 
         const auto self = cpu::self();
