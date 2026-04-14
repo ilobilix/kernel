@@ -12,11 +12,6 @@ import frigg;
 import lib;
 import std;
 
-namespace cpu
-{
-    extern "C++" struct processor;
-} // namespace cpu
-
 namespace sched
 {
     constexpr std::size_t timeslice = 6;

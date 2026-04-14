@@ -4,7 +4,7 @@ module;
 
 #include <arch/x86_64/system/cpu.hpp>
 
-export module x86_64.system.cpu;
+export module system.cpu.arch:impl;
 import std;
 
 export namespace cpu
@@ -253,5 +253,5 @@ export namespace cpu
         }
     } // namespace gs
 
-    extern "C++" std::uintptr_t self_addr() { return gs::read(); }
+    std::uintptr_t self_addr() { return gs::read(); }
 } // export namespace cpu
