@@ -19,6 +19,7 @@ import x86_64.system.ioapic;
 #endif
 
 import drivers.timers;
+import drivers.output;
 import system.pci;
 import arch;
 import boot;
@@ -113,7 +114,7 @@ namespace acpi
             ret = uacpi_namespace_load(); check();
 
 #if defined(__x86_64__)
-            auto intmodel = x86_64::apic::io::initialised ? UACPI_INTERRUPT_MODEL_IOAPIC : UACPI_INTERRUPT_MODEL_PIC;
+            auto intmodel = x86_64::apic::io::is_initialised() ? UACPI_INTERRUPT_MODEL_IOAPIC : UACPI_INTERRUPT_MODEL_PIC;
             ret = uacpi_set_interrupt_model(intmodel); check();
 #endif
 
@@ -155,6 +156,7 @@ namespace acpi
     initgraph::task early_task
     {
         "setup-acpi-table-access",
+        initgraph::require { output::available_stage() },
         initgraph::entail { tables_stage() },
         [] {
             log::info("acpi: setting up early table access");

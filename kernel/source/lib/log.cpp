@@ -7,9 +7,9 @@ module;
 module lib;
 
 #if !ILOBILIX_MAX_UACPI_POINTS
-import drivers.terminal;
+import drivers.output.terminal;
 #endif
-import drivers.serial;
+import drivers.output.serial;
 import system.time;
 import cppstd;
 
@@ -18,19 +18,19 @@ namespace log::unsafe
     void prints(std::string_view str)
     {
         for (auto chr : str)
-            serial::printc(chr);
+            output::serial::printc(chr);
 #if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto ctx = term::main())
-            term::write(ctx, str);
+        if (auto ctx = output::term::main())
+            output::term::write(ctx, str);
 #endif
     }
 
     void printc(char chr)
     {
-        serial::printc(chr);
+        output::serial::printc(chr);
 #if !ILOBILIX_MAX_UACPI_POINTS
-        if (auto ctx = term::main())
-            term::write(ctx, chr);
+        if (auto ctx = output::term::main())
+            output::term::write(ctx, chr);
 #endif
     }
 

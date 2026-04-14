@@ -1,14 +1,15 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module drivers.serial;
+module aarch64.drivers.output.pl011;
 
+import drivers.output.serial;
 import system.memory;
 import magic_enum;
 import arch;
 import lib;
 import cppstd;
 
-namespace serial
+namespace aarch64::output::pl011
 {
     namespace
     {
@@ -16,7 +17,7 @@ namespace serial
         std::uintptr_t addr = -1;
     } // namespace
 
-    void printc(char c)
+    void printc(char chr)
     {
         if (addr == static_cast<std::uintptr_t>(-1)) [[unlikely]]
             return;
@@ -24,13 +25,11 @@ namespace serial
         while (lib::mmio::in<16>(addr + 0x18) & (1 << 5))
             arch::pause();
 
-        lib::mmio::out<8>(addr, c);
+        lib::mmio::out<8>(addr, chr);
     }
 
-    void early_init() { }
-
     void init()
-    {
+    {\
         if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, pmm::page_size, vmm::flag::rw, vmm::page_size::small, vmm::caching::mmio); !ret)
             lib::panic("could not map uart: {}", magic_enum::enum_name(ret.error()));
 
@@ -42,5 +41,7 @@ namespace serial
 
         // Enable UART, TX and RX
         lib::mmio::out<16>(addr + 0x30, (1 << 0) | (1 << 8) | (1 << 9));
+
+        ::output::serial::register_printer(printc);
     }
-} // namespace serial
+} // namespace aarch64::output::pl011

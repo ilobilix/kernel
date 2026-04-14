@@ -6,7 +6,8 @@ import cppstd;
 export namespace x86_64::timers::pit
 {
     constexpr std::size_t frequency = 1'000;
-    bool initialised = false;
+
+    bool is_initialised();
 
     std::uint64_t time_ns();
     void init();

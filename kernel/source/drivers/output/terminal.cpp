@@ -5,14 +5,14 @@ module;
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 
-module drivers.terminal;
+module drivers.output.terminal;
 
-import drivers.framebuffer;
+import drivers.output.framebuffer;
 import boot;
 import lib;
 import cppstd;
 
-namespace term
+namespace output::term
 {
 #if !ILOBILIX_MAX_UACPI_POINTS
     namespace
@@ -28,7 +28,7 @@ namespace term
         };
 
         std::int8_t font[] {
-            #embed "../../embed/font.bin"
+            #embed "../../../embed/font.bin"
         };
 
         constinit void *early_addr = nullptr;
@@ -119,4 +119,4 @@ namespace term
         }
 #endif
     }
-} // namespace term
+} // namespace output::term

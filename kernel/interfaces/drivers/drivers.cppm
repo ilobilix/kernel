@@ -3,9 +3,7 @@
 export module drivers;
 
 export import arch.drivers;
-export import drivers.framebuffer;
 export import drivers.fs;
 export import drivers.initramfs;
-export import drivers.serial;
-export import drivers.terminal;
+export import drivers.output;
 export import drivers.timers;

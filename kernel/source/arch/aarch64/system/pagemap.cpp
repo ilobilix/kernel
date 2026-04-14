@@ -55,7 +55,10 @@ namespace vmm
     const std::uintptr_t pagemap::valid_table_flags = arch::valid | arch::table;
     const std::uintptr_t pagemap::new_table_flags = arch::valid | arch::table;
 
-    pagemap::table *ttbr1;
+    struct arch_table { pagemap::table *ttbr1; };
+    arch_table accessor;
+
+    // pagemap::table *ttbr1;
 
     auto pagemap::new_table() -> table *
     {
@@ -134,7 +137,7 @@ namespace vmm
 
     auto pagemap::get_arch_table(std::uintptr_t addr) const -> table *
     {
-        return (vaddr & (1ul << 63)) ? ttbr1 : _table;
+        return (addr & (1ul << 63)) ? accessor.ttbr1 : _table;
     }
 
     std::size_t pagemap::from_page_size(page_size psize)
@@ -193,7 +196,7 @@ namespace vmm
             mair_el1 |= (0x00 << (2 * 8)); // nGnRnE
             msr(mair_el1, mair_el1);
 
-            asm volatile("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(ttbr1)) : "memory");
+            asm volatile("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(accessor.ttbr1)) : "memory");
             n++;
         }
         asm volatile("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
@@ -204,7 +207,7 @@ namespace vmm
         if (!kernel_pagemap.valid())
         {
             // assume currently initialising the kernel_pagemap
-            ttbr1 = new_table();
+            accessor.ttbr1 = new_table();
 
             std::uint64_t tcr_el1 = mrs(tcr_el1);
             const auto tg1 = (tcr_el1 >> 30) & 0b11;

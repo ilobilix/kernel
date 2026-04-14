@@ -365,7 +365,7 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        if (sched::initialised)
+        if (sched::is_initialised())
         {
             sched::this_thread()->prepare_sleep(msec);
             sched::yield();
@@ -413,7 +413,7 @@ extern "C"
 
     uacpi_thread_id uacpi_kernel_get_thread_id()
     {
-        if (sched::initialised)
+        if (sched::is_initialised())
         {
             const auto &thread = sched::percpu->running_thread;
             return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->pid));

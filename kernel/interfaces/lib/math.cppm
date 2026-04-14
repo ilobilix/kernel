@@ -117,22 +117,52 @@ export namespace lib
         return np2 == val ? np2 : np2 >> 1;
     }
 
-    inline constexpr std::pair<std::uint64_t, std::uint64_t> freq2nspn(std::uint64_t freq)
+    class freqfrac
     {
-        std::uint64_t p = lib::log2<std::uint64_t>(freq);
-        std::uint64_t n = (1'000'000'000ull << p) / freq;
-        return { p, n };
-    }
+        private:
+        int p;
+        std::uint64_t n, freq;
 
-    inline constexpr std::uint64_t ticks2ns(uint128_t ticks, std::uint64_t p, std::uint64_t n)
-    {
-        return (ticks * n) >> p;
-    }
+        constexpr freqfrac(int p, std::uint64_t n, std::uint64_t freq)
+            : p { p }, n { n }, freq { freq } { }
 
-    inline constexpr std::uint64_t ns2ticks(std::uint64_t ns, std::uint64_t p, std::uint64_t n)
-    {
-        return (ns << p) / n;
-    }
+        public:
+        constexpr freqfrac() : p { 0 }, n { 0 } { }
+        constexpr freqfrac(std::uint64_t freq) { *this = init(freq); }
+
+        constexpr freqfrac(const freqfrac &) = default;
+        constexpr freqfrac(freqfrac &&) = default;
+
+        static constexpr freqfrac init(std::uint64_t freq)
+        {
+            int p = lib::log2<std::uint64_t>(freq);
+            std::uint64_t n = (1'000'000'000ull << p) / freq;
+            return { p, n, freq };
+        }
+
+        constexpr freqfrac &operator=(const freqfrac &) = default;
+        constexpr freqfrac &operator=(freqfrac &&) = default;
+
+        constexpr freqfrac &operator=(std::uint64_t freq)
+        {
+            return *this = init(freq);
+        }
+
+        constexpr std::uint64_t nanos(uint128_t ticks)
+        {
+            auto res = (ticks * n) >> p;
+            if (res >> 64)
+                return std::numeric_limits<std::uint64_t>::max();
+            return res;
+        }
+
+        constexpr std::uint64_t ticks(std::uint64_t nanos)
+        {
+            return (nanos << p) / n;
+        }
+
+        constexpr std::uint64_t frequency() { return freq; }
+    };
 
     inline constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)
     {

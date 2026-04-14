@@ -22,14 +22,17 @@ namespace x86_64::timers::hpet
         constexpr std::size_t cfg = 0x10;
         constexpr std::size_t cnt = 0xF0;
     } // namespace regs
+
     namespace
     {
+        bool initialised = false;
+
         std::uintptr_t paddr;
         std::uintptr_t vaddr;
         bool is_64bit;
 
         std::int64_t offset = 0;
-        std::uint64_t p, n;
+        lib::freqfrac freq;
 
         std::uint64_t read(std::size_t offset)
         {
@@ -87,15 +90,17 @@ namespace x86_64::timers::hpet
         return cached;
     }
 
+    bool is_initialised() { return initialised; }
+
     std::uint64_t time_ns()
     {
         lib::ensure(!!initialised);
-        return lib::ticks2ns(read(), p, n) - offset;
+        return freq.nanos(read()) - offset;
     }
 
     void calibrate(std::size_t ms)
     {
-        const auto ticks = (ms * frequency) / 1'000;
+        const auto ticks = (ms * freq.frequency()) / 1'000;
 
         const auto start = read();
         auto current = start;
@@ -121,10 +126,9 @@ namespace x86_64::timers::hpet
         const auto cap = read(regs::cap);
         is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);
 
-        frequency = 1'000'000'000'000'000ull / (cap >> 32);
-        std::tie(p, n) = lib::freq2nspn(frequency);
+        freq = 1'000'000'000'000'000ull / (cap >> 32);
 
-        log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", frequency);
+        log::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
 
         // enable main counter
         write(regs::cfg, 1);

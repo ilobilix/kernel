@@ -44,7 +44,10 @@ namespace x86_64::timers::pit
         using magic_enum::bitwise_operators::operator|;
 
         std::size_t tick = 0;
+        bool initialised = false;
     } // namespace
+
+    bool is_initialised() { return initialised; }
 
     std::uint64_t time_ns()
     {

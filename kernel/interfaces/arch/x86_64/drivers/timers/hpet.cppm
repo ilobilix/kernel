@@ -5,10 +5,8 @@ import cppstd;
 
 export namespace x86_64::timers::hpet
 {
-    bool initialised = false;
-    std::size_t frequency;
-
     bool supported();
+    bool is_initialised();
 
     std::uint64_t time_ns();
     void calibrate(std::size_t ms);
