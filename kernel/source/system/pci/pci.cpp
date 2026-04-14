@@ -288,8 +288,17 @@ namespace pci
 
     namespace arch
     {
-        initgraph::stage *ios_discovered_stage();
-        initgraph::stage *rbs_discovered_stage();
+        initgraph::stage *ios_discovered_stage()
+        {
+            static initgraph::stage stage { "pci.arch.ios-discovered" };
+            return &stage;
+        }
+
+        initgraph::stage *rbs_discovered_stage()
+        {
+            static initgraph::stage stage { "pci.arch.rbs-discovered" };
+            return &stage;
+        }
     } // namespace arch
 
     namespace acpi

@@ -73,18 +73,6 @@ namespace arch
         x86_64::idt::init();
     }
 
-    initgraph::stage *bsp_stage()
-    {
-        static initgraph::stage stage { "arch.bsp-initialised" };
-        return &stage;
-    }
-
-    initgraph::stage *cpus_stage()
-    {
-        static initgraph::stage stage { "arch.cpus-initialised" };
-        return &stage;
-    }
-
     initgraph::task bsp_task
     {
         "arch.init-bsp",
