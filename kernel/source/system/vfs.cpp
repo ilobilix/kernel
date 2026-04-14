@@ -277,6 +277,7 @@ namespace vfs
             auto dentry = std::make_shared<vfs::dentry>();
             dentry->parent = real_parent.dentry;
             dentry->name = name;
+            dentry->symlinked_to = target.str();
             dentry->inode = ret.value();
 
             const std::unique_lock _ { real_parent.dentry->lock };

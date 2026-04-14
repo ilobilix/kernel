@@ -1,0 +1,6085 @@
+diff --git a/abis/ilobilix b/abis/ilobilix
+new file mode 120000
+index 00000000..9c52cb36
+--- /dev/null
++++ b/abis/ilobilix
+@@ -0,0 +1 @@
++linux
+\ No newline at end of file
+diff --git a/meson.build b/meson.build
+index 0388c607..dedcd767 100644
+--- a/meson.build
++++ b/meson.build
+@@ -222,6 +222,11 @@ if host_machine.system() == 'linux'
+ 	internal_conf.set10('MLIBC_MAP_DSO_SEGMENTS', true)
+ 	internal_conf.set10('MLIBC_MMAP_ALLOCATE_DSO', true)
+ 	subdir('sysdeps/linux')
++elif host_machine.system() == 'ilobilix'
++	provides_bits_syscall_h = true
++	rtld_include_dirs += include_directories('sysdeps/ilobilix/include')
++	libc_include_dirs += include_directories('sysdeps/ilobilix/include')
++	subdir('sysdeps/ilobilix')
+ elif host_machine.system() == 'aero'
+ 	rtld_include_dirs += include_directories('sysdeps/aero/include')
+ 	libc_include_dirs += include_directories('sysdeps/aero/include')
+diff --git a/sysdeps/ilobilix/generic/cxx-syscall.hpp b/sysdeps/ilobilix/generic/cxx-syscall.hpp
+new file mode 100644
+index 00000000..afc76481
+--- /dev/null
++++ b/sysdeps/ilobilix/generic/cxx-syscall.hpp
+@@ -0,0 +1,118 @@
++#pragma once
++
++#include <errno.h>
++#include <mlibc/tcb.hpp>
++#include <mlibc/thread.hpp>
++#include <mlibc-config.h>
++#include <utility>
++
++#include <sys/syscall.h>
++#include <bits/syscall.h>
++
++using sc_word_t = __sc_word_t;
++
++extern "C" {
++	extern sc_word_t __mlibc_do_asm_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2,
++			sc_word_t arg3, sc_word_t arg4, sc_word_t arg5, sc_word_t arg6);
++
++	extern void __mlibc_do_cancel();
++}
++
++namespace mlibc {
++	// C++ wrappers for the extern "C" functions.
++	inline sc_word_t do_nargs_syscall(int sc) {
++		return __do_syscall0(sc);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1) {
++		return __do_syscall1(sc, arg1);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1, sc_word_t arg2) {
++		return __do_syscall2(sc, arg1, arg2);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3) {
++		return __do_syscall3(sc, arg1, arg2, arg3);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4) {
++		return __do_syscall4(sc, arg1, arg2, arg3, arg4);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4, sc_word_t arg5) {
++		return __do_syscall5(sc, arg1, arg2, arg3, arg4, arg5);
++	}
++	inline sc_word_t do_nargs_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4, sc_word_t arg5, sc_word_t arg6) {
++		return __do_syscall6(sc, arg1, arg2, arg3, arg4, arg5, arg6);
++	}
++
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, 0, 0, 0, 0, 0);
++	}
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, arg2, 0, 0, 0, 0);
++	}
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2,
++			sc_word_t arg3) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, arg2, arg3, 0, 0, 0);
++	}
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, arg2, arg3, arg4, 0, 0);
++	}
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4, sc_word_t arg5) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, arg2, arg3, arg4, arg5, 0);
++	}
++	inline sc_word_t do_nargs_cp_syscall(int sc, sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++			sc_word_t arg4, sc_word_t arg5, sc_word_t arg6) {
++		return __mlibc_do_asm_cp_syscall(sc, arg1, arg2, arg3, arg4, arg5, arg6);
++	}
++
++	// Type-safe syscall result type.
++	enum class sc_result_t : sc_word_t { };
++
++	// Cast to the argument type of the extern "C" functions.
++	inline sc_word_t sc_cast(long x) { return x; }
++	inline sc_word_t sc_cast(const void *x) { return reinterpret_cast<sc_word_t>(x); }
++
++	template<typename... T>
++	sc_result_t do_syscall(int sc, T... args) {
++		return static_cast<sc_result_t>(do_nargs_syscall(sc, sc_cast(args)...));
++	}
++
++	inline int sc_error(sc_result_t ret) {
++		auto v = static_cast<sc_word_t>(ret);
++		if(static_cast<unsigned long>(v) > -4096UL)
++			return -v;
++		return 0;
++	}
++
++	template<typename... T>
++	sc_result_t do_cp_syscall(int sc, T... args) {
++#if __MLIBC_POSIX_OPTION && !MLIBC_BUILDING_RTLD
++		auto result = static_cast<sc_result_t>(do_nargs_cp_syscall(sc, sc_cast(args)...));
++		if (int e = sc_error(result); e) {
++			auto tcb = reinterpret_cast<Tcb*>(get_current_tcb());
++			if (tcb_cancelled(tcb->cancelBits) && e == EINTR) {
++				__mlibc_do_cancel();
++				__builtin_unreachable();
++			}
++		}
++		return result;
++#else
++		return do_syscall(sc, std::forward<T>(args)...);
++#endif // __MLIBC_POSIX_OPTION || !MLIBC_BUILDING_RTLD
++	}
++	// Cast from the syscall result type.
++	template<typename T>
++	T sc_int_result(sc_result_t ret) {
++		auto v = static_cast<sc_word_t>(ret);
++		return v;
++	}
++
++	template<typename T>
++	T *sc_ptr_result(sc_result_t ret) {
++		auto v = static_cast<sc_word_t>(ret);
++		return reinterpret_cast<T *>(v);
++	}
++}
+diff --git a/sysdeps/ilobilix/generic/entry.cpp b/sysdeps/ilobilix/generic/entry.cpp
+new file mode 100644
+index 00000000..7e54e4e1
+--- /dev/null
++++ b/sysdeps/ilobilix/generic/entry.cpp
+@@ -0,0 +1,18 @@
++#include <stdint.h>
++#include <stdlib.h>
++#include <bits/ensure.h>
++#include <mlibc/elf/startup.h>
++#include <sys/auxv.h>
++
++extern "C" void __dlapi_enter(uintptr_t *);
++
++extern char **environ;
++
++size_t __hwcap;
++
++extern "C" void __mlibc_entry(uintptr_t *entry_stack, int (*main_fn)(int argc, char *argv[], char *env[])) {
++	__dlapi_enter(entry_stack);
++	__hwcap = getauxval(AT_HWCAP);
++	auto result = main_fn(mlibc::entry_stack.argc, mlibc::entry_stack.argv, environ);
++	exit(result);
++}
+diff --git a/sysdeps/ilobilix/generic/sysdeps.cpp b/sysdeps/ilobilix/generic/sysdeps.cpp
+new file mode 100644
+index 00000000..af3b220d
+--- /dev/null
++++ b/sysdeps/ilobilix/generic/sysdeps.cpp
+@@ -0,0 +1,2531 @@
++#include <asm/ioctls.h>
++#include <ctype.h>
++#include <errno.h>
++#include <limits.h>
++
++#include <type_traits>
++
++#include <mlibc-config.h>
++#include <bits/ensure.h>
++#include <abi-bits/fcntl.h>
++#include <abi-bits/socklen_t.h>
++#if __MLIBC_LINUX_OPTION
++#  include <abi-bits/statx.h>
++#endif
++#include <mlibc/allocator.hpp>
++#include <mlibc/debug.hpp>
++#include <mlibc/all-sysdeps.hpp>
++#include <mlibc/thread-entry.hpp>
++#include <limits.h>
++#include <sys/syscall.h>
++#include "cxx-syscall.hpp"
++
++#if (__MLIBC_POSIX_OPTION || __MLIBC_LINUX_OPTION) && !defined(MLIBC_BUILDING_RTLD)
++
++#include "generic-helpers/netlink.hpp"
++
++#endif
++
++#define STUB_ONLY { __ensure(!"STUB_ONLY function was called"); __builtin_unreachable(); }
++#define UNUSED(x) (void)(x);
++
++#ifndef MLIBC_BUILDING_RTLD
++extern "C" long __do_syscall_ret(unsigned long ret) {
++	if(ret > -4096UL) {
++		errno = -ret;
++		return -1;
++	}
++	return ret;
++}
++#endif
++
++namespace mlibc {
++
++void sys_libc_log(const char *message) {
++	size_t n = 0;
++	while(message[n])
++		n++;
++	do_syscall(SYS_write, 2, message, n);
++	char lf = '\n';
++	do_syscall(SYS_write, 2, &lf, 1);
++}
++
++void sys_libc_panic() {
++	__builtin_trap();
++}
++
++#if defined(__i386__)
++
++struct user_desc {
++	unsigned int entry_number;
++	unsigned long base_addr;
++	unsigned int limit;
++	unsigned int seg_32bit: 1;
++	unsigned int contents: 2;
++	unsigned int read_exec_only: 1;
++	unsigned int limit_in_pages: 1;
++	unsigned int seg_not_present: 1;
++	unsigned int useable: 1;
++};
++
++#endif
++
++#if defined(__m68k__)
++extern "C" void *__m68k_read_tp() {
++	auto ret = do_syscall(__NR_get_thread_area, 0);
++	return (void *)ret;
++}
++#elif defined(__riscv)
++int sys_riscv_hwprobe(struct riscv_hwprobe *pairs, size_t pair_count, size_t cpusetsize, cpu_set_t *cpus, unsigned int flags) {
++	auto ret = do_syscall(SYS_riscv_hwprobe, pairs, pair_count, cpusetsize, cpus, flags);
++	if(int e = sc_error(ret); e)
++		return -e;
++	return sc_int_result<int>(ret);
++}
++#endif
++
++int sys_tcb_set(void *pointer) {
++#if defined(__x86_64__)
++	auto ret = do_syscall(SYS_arch_prctl, 0x1002 /* ARCH_SET_FS */, pointer);
++	if(int e = sc_error(ret); e)
++		return e;
++#elif defined(__i386__)
++	struct user_desc desc = {
++		.entry_number = static_cast<unsigned int>(-1),
++		.base_addr = uintptr_t(pointer),
++		.limit = 0xfffff,
++		.seg_32bit = 1,
++		.contents = 0,
++		.read_exec_only = 0,
++		.limit_in_pages = 1,
++		.seg_not_present = 0,
++		.useable = 1,
++	};
++	auto ret = do_syscall(SYS_set_thread_area, &desc);
++	__ensure(!sc_error(ret));
++	asm volatile ("movw %w0, %%gs" : : "q"(desc.entry_number * 8 + 3) :);
++#elif defined(__riscv)
++	uintptr_t thread_data = reinterpret_cast<uintptr_t>(pointer) + sizeof(Tcb);
++	asm volatile ("mv tp, %0" :: "r"(thread_data));
++#elif defined (__aarch64__)
++	uintptr_t thread_data = reinterpret_cast<uintptr_t>(pointer) + sizeof(Tcb) - 0x10;
++	asm volatile ("msr tpidr_el0, %0" :: "r"(thread_data));
++#elif defined (__m68k__)
++	auto ret = do_syscall(__NR_set_thread_area, (uintptr_t)pointer + 0x7000 + sizeof(Tcb));
++	if(int e = sc_error(ret); e)
++		return e;
++#elif defined(__loongarch64)
++	uintptr_t thread_data = reinterpret_cast<uintptr_t>(pointer) + sizeof(Tcb);
++	asm volatile ("move $tp, %0" :: "r"(thread_data));
++#else
++#error "Missing architecture specific code."
++#endif
++	return 0;
++}
++
++int sys_anon_allocate(size_t size, void **pointer) {
++	return sys_vm_map(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
++			-1, 0, pointer);
++}
++int sys_anon_free(void *pointer, size_t size) {
++	return sys_vm_unmap(pointer, size);
++}
++
++int sys_fadvise(int fd, off_t offset, off_t length, int advice) {
++	auto ret = do_syscall(SYS_fadvise64, fd, offset, length, advice);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_open(const char *path, int flags, mode_t mode, int *fd) {
++	auto ret = do_cp_syscall(SYS_openat, AT_FDCWD, path, flags, mode);
++	if(int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_openat(int dirfd, const char *path, int flags, mode_t mode, int *fd) {
++	auto ret = do_syscall(SYS_openat, dirfd, path, flags, mode);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_close(int fd) {
++	auto ret = do_cp_syscall(SYS_close, fd);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_dup2(int fd, int flags, int newfd) {
++	auto ret = do_cp_syscall(SYS_dup3, fd, newfd, flags);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_read(int fd, void *buffer, size_t size, ssize_t *bytes_read) {
++	auto ret = do_cp_syscall(SYS_read, fd, buffer, size);
++	if(int e = sc_error(ret); e)
++		return e;
++	*bytes_read = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_readv(int fd, const struct iovec *iovs, int iovc, ssize_t *bytes_read) {
++	auto ret = do_cp_syscall(SYS_readv, fd, iovs, iovc);
++	if(int e = sc_error(ret); e)
++		return e;
++	*bytes_read = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_write(int fd, const void *buffer, size_t size, ssize_t *bytes_written) {
++	auto ret = do_cp_syscall(SYS_write, fd, buffer, size);
++	if(int e = sc_error(ret); e)
++		return e;
++	if(bytes_written)
++		*bytes_written = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_writev(int fd, const struct iovec *iovs, int iovc, ssize_t *bytes_written) {
++	auto ret = do_cp_syscall(SYS_writev, fd, iovs, iovc);
++	if(int e = sc_error(ret); e)
++		return e;
++	if(bytes_written)
++		*bytes_written = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_seek(int fd, off_t offset, int whence, off_t *new_offset) {
++	auto ret = do_syscall(SYS_lseek, fd, offset, whence);
++	if(int e = sc_error(ret); e)
++		return e;
++	*new_offset = sc_int_result<off_t>(ret);
++	return 0;
++}
++
++int sys_chmod(const char *pathname, mode_t mode) {
++	auto ret = do_cp_syscall(SYS_fchmodat, AT_FDCWD, pathname, mode);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fchmod(int fd, mode_t mode) {
++	auto ret = do_cp_syscall(SYS_fchmod, fd, mode);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fchmodat(int fd, const char *pathname, mode_t mode, int flags) {
++	auto ret = do_cp_syscall(SYS_fchmodat, fd, pathname, mode, flags);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags) {
++	auto ret = do_cp_syscall(SYS_fchownat, dirfd, pathname, owner, group, flags);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags) {
++	auto ret = do_cp_syscall(SYS_utimensat, dirfd, pathname, times, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_vm_map(void *hint, size_t size, int prot, int flags,
++		int fd, off_t offset, void **window) {
++	if(offset % 4096)
++		return EINVAL;
++	if(size >= PTRDIFF_MAX)
++		return ENOMEM;
++#if defined(SYS_mmap2)
++	auto ret = do_syscall(SYS_mmap2, hint, size, prot, flags, fd, offset/4096);
++#else
++	auto ret = do_syscall(SYS_mmap, hint, size, prot, flags, fd, offset);
++#endif
++	// TODO: musl fixes up EPERM errors from the kernel.
++	if(int e = sc_error(ret); e)
++		return e;
++	*window = sc_ptr_result<void>(ret);
++	return 0;
++}
++
++int sys_vm_unmap(void *pointer, size_t size) {
++	auto ret = do_syscall(SYS_munmap, pointer, size);
++	if(int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_vm_protect(void *pointer, size_t size, int prot) {
++	auto ret = do_syscall(SYS_mprotect, pointer, size, prot);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++// All remaining functions are disabled in ldso.
++#ifndef MLIBC_BUILDING_RTLD
++
++int sys_clock_get(int clock, time_t *secs, long *nanos) {
++	struct timespec tp = {};
++	auto ret = do_syscall(SYS_clock_gettime, clock, &tp);
++	if (int e = sc_error(ret); e)
++		return e;
++	*secs = tp.tv_sec;
++	*nanos = tp.tv_nsec;
++	return 0;
++}
++
++int sys_clock_getres(int clock, time_t *secs, long *nanos) {
++	struct timespec tp = {};
++	auto ret = do_syscall(SYS_clock_getres, clock, &tp);
++	if (int e = sc_error(ret); e)
++		return e;
++	*secs = tp.tv_sec;
++	*nanos = tp.tv_nsec;
++	return 0;
++}
++
++int sys_stat(fsfd_target fsfdt, int fd, const char *path, int flags, struct stat *statbuf) {
++	if (fsfdt == fsfd_target::path)
++		fd = AT_FDCWD;
++	else if (fsfdt == fsfd_target::fd)
++		flags |= AT_EMPTY_PATH;
++	else
++		__ensure(fsfdt == fsfd_target::fd_path);
++
++#if defined(SYS_newfstatat)
++	auto ret = do_cp_syscall(SYS_newfstatat, fd, path, statbuf, flags);
++#else
++	auto ret = do_cp_syscall(SYS_fstatat64, fd, path, statbuf, flags);
++#endif
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	return 0;
++}
++
++#if __MLIBC_LINUX_OPTION
++static_assert(sizeof(struct statx) == 0x100); // Linux kernel requires it to be precisely 256 bytes.
++
++int sys_statx(int dirfd, const char *path, int flags, unsigned int mask, struct statx *statxbuf) {
++	auto ret = do_cp_syscall(SYS_statx, dirfd, path, flags, mask, statxbuf);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++#endif
++
++int sys_statfs(const char *path, struct statfs *buf) {
++	auto ret = do_cp_syscall(SYS_statfs, path, buf);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fstatfs(int fd, struct statfs *buf) {
++	auto ret = do_cp_syscall(SYS_fstatfs, fd, buf);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++extern "C" void __mlibc_signal_restore(void);
++extern "C" void __mlibc_signal_restore_rt(void);
++
++int sys_sigaction(int signum, const struct sigaction *act,
++		struct sigaction *oldact) {
++	struct ksigaction {
++		void (*handler)(int);
++		unsigned long flags;
++		void (*restorer)(void);
++		uint32_t mask[2];
++	};
++
++	struct ksigaction kernel_act, kernel_oldact;
++	if (act) {
++		kernel_act.handler = act->sa_handler;
++		kernel_act.flags = act->sa_flags | SA_RESTORER;
++		kernel_act.restorer = (act->sa_flags & SA_SIGINFO) ? __mlibc_signal_restore_rt : __mlibc_signal_restore;
++		memcpy(&kernel_act.mask, &act->sa_mask, sizeof(kernel_act.mask));
++	}
++
++	static_assert(sizeof(kernel_act.mask) == 8);
++
++	auto ret = do_syscall(SYS_rt_sigaction, signum, act ?
++		&kernel_act : nullptr, oldact ?
++		&kernel_oldact : nullptr, sizeof(kernel_act.mask));
++	if (int e = sc_error(ret); e)
++		return e;
++
++	if (oldact) {
++		oldact->sa_handler = kernel_oldact.handler;
++		oldact->sa_flags = kernel_oldact.flags;
++		oldact->sa_restorer = kernel_oldact.restorer;
++		memcpy(&oldact->sa_mask, &kernel_oldact.mask, sizeof(kernel_oldact.mask));
++	}
++	return 0;
++}
++
++int sys_socket(int domain, int type, int protocol, int *fd) {
++        auto ret = do_syscall(SYS_socket, domain, type, protocol);
++        if (int e = sc_error(ret); e)
++                return e;
++        *fd = sc_int_result<int>(ret);
++        return 0;
++}
++
++int sys_msg_send(int sockfd, const struct msghdr *msg, int flags, ssize_t *length) {
++        auto ret = do_cp_syscall(SYS_sendmsg, sockfd, msg, flags);
++        if (int e = sc_error(ret); e)
++                return e;
++        *length = sc_int_result<ssize_t>(ret);
++        return 0;
++}
++
++ssize_t sys_sendto(int fd, const void *buffer, size_t size, int flags, const struct sockaddr *sock_addr, socklen_t addr_length, ssize_t *length) {
++	auto ret = do_cp_syscall(SYS_sendto, fd, buffer, size, flags, sock_addr, addr_length);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	*length = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++ssize_t sys_recvfrom(int fd, void *buffer, size_t size, int flags, struct sockaddr *sock_addr, socklen_t *addr_length, ssize_t *length) {
++	auto ret = do_cp_syscall(SYS_recvfrom, fd, buffer, size, flags, sock_addr, addr_length);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	*length = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_msg_recv(int sockfd, struct msghdr *msg, int flags, ssize_t *length) {
++        auto ret = do_cp_syscall(SYS_recvmsg, sockfd, msg, flags);
++        if (int e = sc_error(ret); e)
++                return e;
++        *length = sc_int_result<ssize_t>(ret);
++        return 0;
++}
++
++int sys_fcntl(int fd, int cmd, va_list args, int *result) {
++        auto arg = va_arg(args, unsigned long);
++        // TODO: the api for linux differs for each command so fcntl()s might fail with -EINVAL
++        // we should implement all the different fcntl()s
++	// TODO(geert): only some fcntl()s can fail with -EINTR, making do_cp_syscall useless
++	// on most fcntls(). Another reason to handle different fcntl()s seperately.
++        auto ret = do_cp_syscall(SYS_fcntl, fd, cmd, arg);
++        if (int e = sc_error(ret); e)
++                return e;
++        *result = sc_int_result<int>(ret);
++        return 0;
++}
++
++int sys_getcwd(char *buf, size_t size) {
++	auto ret = do_syscall(SYS_getcwd, buf, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_unlinkat(int dfd, const char *path, int flags) {
++	auto ret = do_syscall(SYS_unlinkat, dfd, path, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sleep(time_t *secs, long *nanos) {
++	struct timespec req = {
++		.tv_sec = *secs,
++		.tv_nsec = *nanos
++	};
++	struct timespec rem = {};
++
++	auto ret = do_cp_syscall(SYS_nanosleep, &req, &rem);
++        if (int e = sc_error(ret); e)
++                return e;
++
++	*secs = rem.tv_sec;
++	*nanos = rem.tv_nsec;
++	return 0;
++}
++
++int sys_isatty(int fd) {
++	unsigned short winsizeHack[4];
++	auto ret = do_syscall(SYS_ioctl, fd, 0x5413 /* TIOCGWINSZ */, &winsizeHack);
++	if (int e = sc_error(ret); e)
++		return e;
++	auto res = sc_int_result<unsigned long>(ret);
++	if(!res) return 0;
++	return 1;
++}
++
++#if __MLIBC_POSIX_OPTION
++
++#include <net/if.h>
++#include <sys/ioctl.h>
++#include <sys/ipc.h>
++#include <sys/user.h>
++#include <sys/utsname.h>
++#include <sys/stat.h>
++#include <sys/sysinfo.h>
++#include <unistd.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <sched.h>
++#include <fcntl.h>
++#include <pthread.h>
++
++int sys_ioctl(int fd, unsigned long request, void *arg, int *result) {
++	auto ret = do_syscall(SYS_ioctl, fd, request, arg);
++	if (int e = sc_error(ret); e)
++		return e;
++	if (result)
++		*result = sc_int_result<unsigned long>(ret);
++	return 0;
++}
++
++int sys_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
++        auto ret = do_cp_syscall(SYS_connect, sockfd, addr, addrlen);
++        if (int e = sc_error(ret); e)
++                return e;
++        return 0;
++}
++
++int sys_pselect(int nfds, fd_set *readfds, fd_set *writefds,
++		fd_set *exceptfds, const struct timespec *timeout, const sigset_t *sigmask, int *num_events) {
++	// The Linux kernel sometimes modifies the timeout argument.
++	struct timespec local_timeout;
++	if(timeout)
++		local_timeout = *timeout;
++
++	// The Linux kernel really wants 7 arguments, even tho this is not supported
++	// To fix that issue, they use a struct as the last argument.
++	// See the man page of pselect and the glibc source code
++	struct {
++		const sigset_t *sigmask;
++		size_t ss_len;
++	} data;
++	data.sigmask = sigmask;
++	data.ss_len = NSIG / 8;
++
++	auto ret = do_cp_syscall(SYS_pselect6, nfds, readfds, writefds,
++			exceptfds, timeout ? &local_timeout : nullptr, &data);
++	if (int e = sc_error(ret); e)
++		return e;
++	*num_events = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_pipe(int *fds, int flags) {
++        if(flags) {
++                auto ret = do_syscall(SYS_pipe2, fds, flags);
++                if (int e = sc_error(ret); e)
++                        return e;
++                return 0;
++        } else {
++				auto ret = do_syscall(SYS_pipe2, fds, 0);
++                if (int e = sc_error(ret); e)
++                        return e;
++                return 0;
++        }
++}
++
++int sys_fork(pid_t *child) {
++	auto ret = do_syscall(SYS_clone, SIGCHLD, 0);
++	if (int e = sc_error(ret); e)
++			return e;
++	*child = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_waitpid(pid_t pid, int *status, int flags, struct rusage *ru, pid_t *ret_pid) {
++	auto ret = do_syscall(SYS_wait4, pid, status, flags, ru);
++	if (int e = sc_error(ret); e)
++			return e;
++	*ret_pid = sc_int_result<pid_t>(ret);
++	return 0;
++}
++
++int sys_execve(const char *path, char *const argv[], char *const envp[]) {
++        auto ret = do_syscall(SYS_execve, path, argv, envp);
++        if (int e = sc_error(ret); e)
++                return e;
++        return 0;
++}
++
++int sys_sigprocmask(int how, const sigset_t *set, sigset_t *old) {
++        auto ret = do_syscall(SYS_rt_sigprocmask, how, set, old, NSIG / 8);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++int sys_setresuid(uid_t ruid, uid_t euid, uid_t suid) {
++	auto ret = do_syscall(SYS_setresuid, ruid, euid, suid);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++int sys_setresgid(gid_t rgid, gid_t egid, gid_t sgid) {
++	auto ret = do_syscall(SYS_setresgid, rgid, egid, sgid);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++int sys_getresuid(uid_t *ruid, uid_t *euid, uid_t *suid) {
++	auto ret = do_syscall(SYS_getresuid, ruid, euid, suid);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++int sys_getresgid(gid_t *rgid, gid_t *egid, gid_t *sgid) {
++	auto ret = do_syscall(SYS_getresgid, rgid, egid, sgid);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++int sys_setreuid(uid_t ruid, uid_t euid) {
++	auto ret = do_syscall(SYS_setreuid, ruid, euid);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_setregid(gid_t rgid, gid_t egid) {
++	auto ret = do_syscall(SYS_setregid, rgid, egid);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sysinfo(struct sysinfo *info) {
++	auto ret = do_syscall(SYS_sysinfo, info);
++        if (int e = sc_error(ret); e)
++                return e;
++	return 0;
++}
++
++void sys_yield() {
++	do_syscall(SYS_sched_yield);
++}
++
++int sys_clone(void *tcb, pid_t *pid_out, void *stack) {
++	unsigned long flags = CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND
++		| CLONE_THREAD | CLONE_SYSVSEM | CLONE_SETTLS
++		| CLONE_PARENT_SETTID;
++
++#if defined(__riscv) || defined(__loongarch64)
++	// TP should point to the address immediately after the TCB.
++	// TODO: We should change the sysdep so that we don't need to do this.
++	auto tls = reinterpret_cast<char *>(tcb) + sizeof(Tcb);
++	tcb = reinterpret_cast<void *>(tls);
++#elif defined(__aarch64__)
++	// TP should point to the address 16 bytes before the end of the TCB.
++	// TODO: We should change the sysdep so that we don't need to do this.
++	auto tp = reinterpret_cast<char *>(tcb) + sizeof(Tcb) - 0x10;
++	tcb = reinterpret_cast<void *>(tp);
++#elif defined(__i386__)
++	/* get the entry number, as we don't request a new one here */
++	uint32_t gs;
++	asm volatile("movw %%gs, %w0" : "=q"(gs));
++
++	auto user_desc = reinterpret_cast<struct user_desc *>(getAllocator().allocate(sizeof(struct user_desc)));
++
++	user_desc->entry_number = (gs & 0xffff) >> 3;
++	user_desc->base_addr = uintptr_t(tcb);
++	user_desc->limit = 0xfffff;
++	user_desc->seg_32bit = 1;
++	user_desc->contents = 0;
++	user_desc->read_exec_only = 0;
++	user_desc->limit_in_pages = 1;
++	user_desc->seg_not_present = 0;
++	user_desc->useable = 1;
++
++	tcb = reinterpret_cast<void *>(user_desc);
++#endif
++
++	auto ret = __mlibc_spawn_thread(flags, stack, pid_out, nullptr, tcb);
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++extern "C" const char __mlibc_syscall_begin[1];
++extern "C" const char __mlibc_syscall_end[1];
++
++#if defined(__riscv)
++// Disable UBSan here to work around qemu-user misaligning ucontext_t.
++// https://github.com/qemu/qemu/blob/2bf40d0841b942e7ba12953d515e62a436f0af84/linux-user/riscv/signal.c#L68-L69
++[[gnu::no_sanitize("undefined")]]
++#endif
++int sys_before_cancellable_syscall(ucontext_t *uct) {
++#if defined(__x86_64__)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.gregs[REG_RIP]);
++#elif defined(__i386__)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.gregs[REG_EIP]);
++#elif defined(__riscv)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.gregs[REG_PC]);
++#elif defined(__aarch64__)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.pc);
++#elif defined(__m68k__)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.gregs[R_PC]);
++#elif defined(__loongarch64)
++	auto pc = reinterpret_cast<void*>(uct->uc_mcontext.pc);
++#else
++#error "Missing architecture specific code."
++#endif
++	if (pc < __mlibc_syscall_begin || pc > __mlibc_syscall_end)
++		return 0;
++	return 1;
++}
++
++int sys_tgkill(int tgid, int tid, int sig) {
++	auto ret = do_syscall(SYS_tgkill, tgid, tid, sig);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_tcgetattr(int fd, struct termios *attr) {
++	auto ret = do_syscall(SYS_ioctl, fd, TCGETS, attr);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_tcsetattr(int fd, int optional_action, const struct termios *attr) {
++	int req;
++
++	switch (optional_action) {
++		case TCSANOW: req = TCSETS; break;
++		case TCSADRAIN: req = TCSETSW; break;
++		case TCSAFLUSH: req = TCSETSF; break;
++		default: return EINVAL;
++	}
++
++	auto ret = do_syscall(SYS_ioctl, fd, req, attr);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_tcflush(int fd, int queue) {
++	auto ret = do_syscall(SYS_ioctl, fd, TCFLSH, queue);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_tcdrain(int fd) {
++	auto ret = do_syscall(SYS_ioctl, fd, TCSBRK, 1);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_tcflow(int fd, int action) {
++	auto ret = do_syscall(SYS_ioctl, fd, TCXONC, action);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_access(const char *path, int mode) {
++	auto ret = do_syscall(SYS_faccessat, AT_FDCWD, path, mode, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_faccessat(int dirfd, const char *pathname, int mode, int flags) {
++	auto ret = do_syscall(SYS_faccessat, dirfd, pathname, mode, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_accept(int fd, int *newfd, struct sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
++	auto ret = do_syscall(SYS_accept4, fd, addr_ptr, addr_length, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*newfd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_bind(int fd, const struct sockaddr *addr_ptr, socklen_t addr_length) {
++	auto ret = do_syscall(SYS_bind, fd, addr_ptr, addr_length, 0, 0, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_setsockopt(int fd, int layer, int number, const void *buffer, socklen_t size) {
++	auto ret = do_syscall(SYS_setsockopt, fd, layer, number, buffer, size, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sockname(int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length,
++		socklen_t *actual_length) {
++	auto ret = do_syscall(SYS_getsockname, fd, addr_ptr, &max_addr_length);
++	if (int e = sc_error(ret); e)
++		return e;
++	*actual_length = max_addr_length;
++	return 0;
++}
++
++int sys_peername(int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length,
++		socklen_t *actual_length) {
++	auto ret = do_syscall(SYS_getpeername, fd, addr_ptr, &max_addr_length);
++	if (int e = sc_error(ret); e)
++		return e;
++	*actual_length = max_addr_length;
++	return 0;
++}
++
++int sys_listen(int fd, int backlog) {
++	auto ret = do_syscall(SYS_listen, fd, backlog, 0, 0, 0, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_shutdown(int sockfd, int how) {
++	auto ret = do_syscall(SYS_shutdown, sockfd, how);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_getpriority(int which, id_t who, int *value) {
++	auto ret = do_syscall(SYS_getpriority, which, who);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++	*value = 20 - sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_setpriority(int which, id_t who, int prio) {
++	auto ret = do_syscall(SYS_setpriority, which, who, prio);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++// the first argument of the get/set priority calls is a PRIO_PROCESS constant.
++// the actual macro is not used at the moment because of a wrong #define
++// FIXME once the abi fix PR is merged
++int sys_nice(int increment, int *new_nice) {
++	int current;
++	if (int e = sys_getpriority(0, 0, &current); e)
++		return e;
++
++	if (increment == 0) {
++		*new_nice = current;
++		return 0;
++	}
++
++	// the system call silently clamps the value to the nice range
++	if (int e = sys_setpriority(0, 0, current + increment); e)
++		return e;
++
++	if (int e = sys_getpriority(0, 0, &current); e)
++		return e;
++
++	// NOTE: according to man 2 getpriority, the internal priority values in linux are
++	// in the range 40..1. So we have to convert it.
++	*new_nice = 20 - current;
++	return 0;
++}
++
++int sys_setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value) {
++	auto ret = do_syscall(SYS_setitimer, which, new_value, old_value);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++/* Linux' uapi does some weird union stuff in place of `sigev_tid`, which we conveniently ignore */
++struct linux_uapi_sigevent {
++	union sigval sigev_value;
++	int sigev_signo;
++	int sigev_notify;
++	int sigev_tid;
++};
++
++namespace {
++
++bool timerThreadInit = false;
++
++struct PosixTimerContext {
++	int setupSem = 0;
++	int workerSem = 0;
++	sigevent *sigev;
++};
++
++void timer_handle(int, siginfo_t *, void *) {
++}
++
++void *timer_setup(void *arg) {
++	auto ctx = reinterpret_cast<PosixTimerContext *>(arg);
++
++	sigset_t set;
++	sigaddset(&set, SIGTIMER);
++
++	// wait for parent setup to be complete
++	while(__atomic_load_n(&ctx->setupSem, __ATOMIC_RELAXED) == 0);
++	pthread_testcancel();
++
++	// copy out the function and argument, as the lifetime of the context ends with
++	// incrementing workerSem
++	auto notify = ctx->sigev->sigev_notify_function;
++	union sigval val = ctx->sigev->sigev_value;
++
++	// notify the parent that the context can be dropped
++	__atomic_store_n(&ctx->workerSem, 1, __ATOMIC_RELEASE);
++
++	siginfo_t si;
++	int signo;
++
++	while(true) {
++		while(sys_sigtimedwait(&set, &si, nullptr, &signo));
++		if(si.si_code == SI_TIMER && signo == SIGTIMER)
++			notify(val);
++		pthread_testcancel();
++	}
++
++	return nullptr;
++}
++
++} // namespace
++
++int sys_timer_create(clockid_t clk, struct sigevent *__restrict evp, timer_t *__restrict res) {
++	struct linux_uapi_sigevent ksev;
++	struct linux_uapi_sigevent *ksevp = nullptr;
++	int timer_id;
++
++	switch(evp ? evp->sigev_notify : SIGEV_SIGNAL) {
++		case SIGEV_NONE:
++		case SIGEV_SIGNAL:
++		case SIGEV_THREAD_ID: {
++			if(evp) {
++				ksev.sigev_value = evp->sigev_value;
++				ksev.sigev_signo = evp->sigev_signo;
++				ksev.sigev_notify = evp->sigev_notify;
++				ksev.sigev_tid = (evp && evp->sigev_notify == SIGEV_THREAD_ID) ? evp->sigev_notify_thread_id : 0;
++				ksevp = &ksev;
++			}
++
++			auto ret = do_syscall(SYS_timer_create, clk, ksevp, &timer_id);
++			if (int e = sc_error(ret); e) {
++				return e;
++			}
++			*res = (void *) (intptr_t) timer_id;
++			break;
++		}
++		case SIGEV_THREAD: {
++			if(!timerThreadInit) {
++				struct sigaction sa{};
++				sa.sa_flags = SA_SIGINFO | SA_RESTART;
++				sa.sa_sigaction = timer_handle;
++				sys_sigaction(SIGTIMER, &sa, nullptr);
++				timerThreadInit = true;
++			}
++
++			pthread_attr_t attr;
++			if(evp->sigev_notify_attributes)
++				attr = *evp->sigev_notify_attributes;
++			else
++				pthread_attr_init(&attr);
++
++			int ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
++			if(ret)
++				return ret;
++
++			PosixTimerContext context{};
++			context.sigev = evp;
++
++			// mask for all signals except the libc-reserved RT signal range
++			sigset_t mask = {
++				#if ULONG_MAX == 0xFFFF'FFFF
++					0x7FFF'FFFF, 0xFFFF'FFFC
++				#else
++					0xFFFF'FFFC'7FFF'FFFF
++				#endif
++			};
++			// but also mask SIGTIMER
++			sigaddset(&mask, SIGTIMER);
++			sigset_t original_set;
++			do_syscall(SYS_rt_sigprocmask, SIG_BLOCK, &mask, &original_set, _NSIG / 8);
++
++			pthread_t pthread;
++			ret = pthread_create(&pthread, &attr, timer_setup, &context);
++
++			// restore previous signal mask
++			do_syscall(SYS_rt_sigprocmask, SIG_SETMASK, &original_set, 0, _NSIG / 8);
++
++			if(ret)
++				return ret;
++
++			auto tid = reinterpret_cast<Tcb*>(pthread)->tid;
++
++			linux_uapi_sigevent sigev{
++				.sigev_value = { .sival_ptr = nullptr },
++				.sigev_signo = SIGTIMER,
++				.sigev_notify = SIGEV_THREAD_ID,
++				.sigev_tid = tid,
++			};
++			ksevp = &sigev;
++
++			auto syscallret = do_syscall(SYS_timer_create, clk, ksevp, &timer_id);
++			if (int e = sc_error(syscallret); e) {
++				pthread_cancel(pthread);
++				__atomic_store_n(&context.setupSem, 1, __ATOMIC_RELEASE);
++				return e;
++			}
++
++			// notify worker that setup is complete
++			__atomic_store_n(&context.setupSem, 1, __ATOMIC_RELEASE);
++			// await worker setup to let the context go out of scope
++			while(__atomic_load_n(&context.workerSem, __ATOMIC_RELAXED) == 0);
++
++			*res = (void *) (intptr_t) timer_id;
++			break;
++		}
++		default:
++			return EINVAL;
++	}
++
++	return 0;
++}
++
++int sys_timer_settime(timer_t t, int flags, const struct itimerspec *__restrict val, struct itimerspec *__restrict old) {
++	auto ret = do_syscall(SYS_timer_settime, t, flags, val, old);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_timer_gettime(timer_t t, struct itimerspec *val) {
++	auto ret = do_syscall(SYS_timer_gettime, t, val);
++	if (int e = sc_error(ret); e)
++		return e;
++
++	return 0;
++}
++
++int sys_timer_delete(timer_t t) {
++	__ensure((intptr_t) t >= 0);
++	auto ret = do_syscall(SYS_timer_delete, t);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_ptrace(long req, pid_t pid, void *addr, void *data, long *out) {
++	auto ret = do_syscall(SYS_ptrace, req, pid, addr, data);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<long>(ret);
++	return 0;
++}
++
++int sys_open_dir(const char *path, int *fd) {
++	return sys_open(path, O_DIRECTORY, 0, fd);
++}
++
++int sys_read_entries(int handle, void *buffer, size_t max_size, size_t *bytes_read) {
++	auto ret = do_syscall(SYS_getdents64, handle, buffer, max_size);
++	if(int e = sc_error(ret); e)
++		return e;
++	*bytes_read = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_capget(cap_user_header_t hdrp, cap_user_data_t datap) {
++	auto ret = do_syscall(SYS_capget, hdrp, datap);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_capset(cap_user_header_t hdrp, const cap_user_data_t datap) {
++	auto ret = do_syscall(SYS_capset, hdrp, datap);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_prctl(int op, va_list ap, int *out) {
++	unsigned long x[4];
++	for(int i = 0; i < 4; i++)
++		x[i] = va_arg(ap, unsigned long);
++
++	auto ret = do_syscall(SYS_prctl, op, x[0], x[1], x[2], x[3]);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_uname(struct utsname *buf) {
++	auto ret = do_syscall(SYS_uname, buf);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_gethostname(char *buf, size_t bufsize) {
++	struct utsname uname_buf;
++	if (auto e = sys_uname(&uname_buf); e)
++		return e;
++
++	auto node_len = strlen(uname_buf.nodename);
++	if (node_len >= bufsize)
++		return ENAMETOOLONG;
++
++	memcpy(buf, uname_buf.nodename, node_len);
++	buf[node_len] = '\0';
++	return 0;
++}
++
++int sys_pread(int fd, void *buf, size_t n, off_t off, ssize_t *bytes_read) {
++	auto ret = do_syscall(SYS_pread64, fd, buf, n, off);
++	if (int e = sc_error(ret); e)
++		return e;
++	*bytes_read = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_pwrite(int fd, const void *buf, size_t n, off_t off, ssize_t *bytes_written) {
++	auto ret = do_syscall(SYS_pwrite64, fd, buf, n, off);
++	if (int e = sc_error(ret); e)
++		return e;
++	*bytes_written = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_poll(struct pollfd *fds, nfds_t count, int timeout, int *num_events) {
++	struct timespec tm;
++	tm.tv_sec = timeout / 1000;
++	tm.tv_nsec = timeout % 1000 * 1000000;
++	auto ret = do_syscall(SYS_ppoll, fds, count, timeout >= 0 ? &tm : nullptr, 0, NSIG / 8);
++	if (int e = sc_error(ret); e)
++		return e;
++	*num_events = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_getrusage(int scope, struct rusage *usage) {
++	auto ret = do_syscall(SYS_getrusage, scope, usage);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_madvise(void *addr, size_t length, int advice) {
++	auto ret = do_syscall(SYS_madvise, addr, length, advice);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_posix_madvise(void *addr, size_t length, int advice) {
++	if(advice == POSIX_MADV_DONTNEED) {
++		// POSIX_MADV_DONTNEED is a no-op in both glibc and musl.
++		return 0;
++	}
++	switch(advice) {
++	case POSIX_MADV_NORMAL:
++		advice = MADV_NORMAL;
++		break;
++	case POSIX_MADV_RANDOM:
++		advice = MADV_RANDOM;
++		break;
++	case POSIX_MADV_SEQUENTIAL:
++		advice = MADV_SEQUENTIAL;
++		break;
++	case POSIX_MADV_WILLNEED:
++		advice = MADV_WILLNEED;
++		break;
++	default:
++		return EINVAL;
++	}
++	return sys_madvise(addr, length, advice);
++}
++
++int sys_msync(void *addr, size_t length, int flags) {
++	auto ret = do_syscall(SYS_msync, addr, length, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_swapon(const char *path, int flags) {
++	auto ret = do_syscall(SYS_swapon, path, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_swapoff(const char *path) {
++	auto ret = do_syscall(SYS_swapoff, path);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask) {
++	auto ret = do_syscall(SYS_sched_getaffinity, pid, cpusetsize, mask);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_mount(const char *source, const char *target,
++	const char *fstype, unsigned long flags, const void *data) {
++	auto ret = do_syscall(SYS_mount, source, target, fstype, flags, data);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_umount2(const char *target, int flags) {
++	auto ret = do_syscall(SYS_umount2, target, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sethostname(const char *buffer, size_t bufsize) {
++	auto ret = do_syscall(SYS_sethostname, buffer, bufsize);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_epoll_create(int flags, int *fd) {
++	auto ret = do_syscall(SYS_epoll_create1, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_epoll_ctl(int epfd, int mode, int fd, struct epoll_event *ev) {
++	auto ret = do_syscall(SYS_epoll_ctl, epfd, mode, fd, ev);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_epoll_pwait(int epfd, struct epoll_event *ev, int n, int timeout, const sigset_t *sigmask, int *raised) {
++	auto ret = do_syscall(SYS_epoll_pwait, epfd, ev, n, timeout, sigmask, NSIG / 8);
++	if (int e = sc_error(ret); e)
++		return e;
++	*raised = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_eventfd_create(unsigned int initval, int flags, int *fd) {
++	auto ret = do_syscall(SYS_eventfd2, initval, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_signalfd_create(const sigset_t *masks, int flags, int *fd) {
++	auto ret = do_syscall(SYS_signalfd4, *fd, masks, NSIG / 8, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_timerfd_create(int clockid, int flags, int *fd) {
++	auto ret = do_syscall(SYS_timerfd_create, clockid, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_timerfd_settime(int fd, int flags, const struct itimerspec *value, struct itimerspec *oldvalue) {
++	auto ret = do_syscall(SYS_timerfd_settime, fd, flags, value, oldvalue);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_timerfd_gettime(int fd, struct itimerspec *its) {
++	auto ret = do_syscall(SYS_timerfd_gettime, fd, its);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_inotify_create(int flags, int *fd) {
++	auto ret = do_syscall(SYS_inotify_init1, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_init_module(void *module, unsigned long length, const char *args) {
++	auto ret = do_syscall(SYS_init_module, module, length, args);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_delete_module(const char *name, unsigned flags) {
++	auto ret = do_syscall(SYS_delete_module, name, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_klogctl(int type, char *bufp, int len, int *out) {
++	auto ret = do_syscall(SYS_syslog, type, bufp, len);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_getcpu(int *cpu) {
++	auto ret = do_syscall(SYS_getcpu, cpu, NULL, NULL);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_socketpair(int domain, int type_and_flags, int proto, int *fds) {
++	auto ret = do_syscall(SYS_socketpair, domain, type_and_flags, proto, fds, 0, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getsockopt(int fd, int layer, int number, void *__restrict buffer, socklen_t *__restrict size) {
++	auto ret = do_syscall(SYS_getsockopt, fd, layer, number, buffer, size, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_inotify_add_watch(int ifd, const char *path, uint32_t mask, int *wd) {
++	auto ret = do_syscall(SYS_inotify_add_watch, ifd, path, mask);
++	if (int e = sc_error(ret); e)
++		return e;
++	*wd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_inotify_rm_watch(int ifd, int wd) {
++	auto ret = do_syscall(SYS_inotify_rm_watch, ifd, wd);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_ttyname(int fd, char *buf, size_t size) {
++	if (!isatty(fd))
++		return errno;
++
++	char *procname;
++	if(int e = asprintf(&procname, "/proc/self/fd/%i", fd); e)
++		return ENOMEM;
++	__ensure(procname);
++
++	ssize_t l = readlink(procname, buf, size);
++	free(procname);
++
++	if (l < 0)
++		return errno;
++	else if ((size_t)l >= size)
++		return ERANGE;
++
++	buf[l] = '\0';
++	struct stat st1;
++	struct stat st2;
++
++	if (stat(buf, &st1) || fstat(fd, &st2))
++		return errno;
++	if (st1.st_dev != st2.st_dev || st1.st_ino != st2.st_ino)
++		return ENODEV;
++
++	return 0;
++}
++
++int sys_pause() {
++#ifdef SYS_pause
++	auto ret = do_syscall(SYS_pause);
++#else
++	auto ret = do_syscall(SYS_ppoll, 0, 0, 0, 0);
++#endif
++	if (int e = sc_error(ret); e)
++		return e;
++	return EINTR;
++}
++
++int sys_mlockall(int flags) {
++	auto ret = do_syscall(SYS_mlockall, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_get_min_priority(int policy, int *out) {
++	auto ret = do_syscall(SYS_sched_get_priority_min, policy);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<int>(ret);
++
++	return 0;
++}
++
++int sys_getschedparam(void *tcb, int *policy, struct sched_param *param) {
++	auto t = reinterpret_cast<Tcb *>(tcb);
++
++	if(!t->tid) {
++		return ESRCH;
++	}
++
++	auto ret_param = do_syscall(SYS_sched_getparam, t->tid, param);
++	if (int e = sc_error(ret_param); e)
++		return e;
++
++	auto ret_sched = do_syscall(SYS_sched_getscheduler, t->tid, param);
++	if (int e = sc_error(ret_sched); e)
++		return e;
++	*policy = sc_int_result<int>(ret_sched);
++
++	return 0;
++}
++
++int sys_setschedparam(void *tcb, int policy, const struct sched_param *param) {
++	auto t = reinterpret_cast<Tcb *>(tcb);
++
++	if(!t->tid) {
++		return ESRCH;
++	}
++
++	auto ret = do_syscall(SYS_sched_setscheduler, t->tid, policy, param);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getparam(pid_t pid, struct sched_param *param) {
++	auto ret = do_syscall(SYS_sched_getparam, pid, param);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_setparam(pid_t pid, const struct sched_param *param) {
++	auto ret = do_syscall(SYS_sched_setparam, pid, param);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_if_indextoname(unsigned int index, char *name) {
++	int fd = 0;
++	int r = sys_socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, AF_UNSPEC, &fd);
++
++	if(r)
++		return r;
++
++	struct ifreq ifr;
++	ifr.ifr_ifindex = index;
++
++	int ret = sys_ioctl(fd, SIOCGIFNAME, &ifr, nullptr);
++	close(fd);
++
++	if(ret) {
++		if(ret == ENODEV)
++			return ENXIO;
++		return ret;
++	}
++
++	strncpy(name, ifr.ifr_name, IF_NAMESIZE);
++
++	return 0;
++}
++
++int sys_if_nametoindex(const char *name, unsigned int *ret) {
++	int fd = 0;
++	int r = sys_socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, AF_UNSPEC, &fd);
++
++	if(r)
++		return r;
++
++	struct ifreq ifr;
++	strncpy(ifr.ifr_name, name, sizeof ifr.ifr_name);
++
++	r = sys_ioctl(fd, SIOCGIFINDEX, &ifr, nullptr);
++	close(fd);
++
++	if(r) {
++		return r;
++	}
++
++	*ret = ifr.ifr_ifindex;
++
++	return 0;
++}
++
++int sys_ptsname(int fd, char *buffer, size_t length) {
++	int index;
++	if(int e = sys_ioctl(fd, TIOCGPTN, &index, nullptr); e)
++		return e;
++	if((size_t)snprintf(buffer, length, "/dev/pts/%d", index) >= length) {
++		return ERANGE;
++	}
++	return 0;
++}
++
++int sys_unlockpt(int fd) {
++	int unlock = 0;
++
++	if(int e = sys_ioctl(fd, TIOCSPTLCK, &unlock, nullptr); e)
++		return e;
++
++	return 0;
++}
++
++int sys_thread_setname(void *tcb, const char *name) {
++	if(strlen(name) > 15) {
++		return ERANGE;
++	}
++
++	auto t = reinterpret_cast<Tcb *>(tcb);
++	char *path;
++	int cs = 0;
++
++	if(asprintf(&path, "/proc/self/task/%d/comm", t->tid) < 0) {
++		return ENOMEM;
++	}
++
++	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cs);
++
++	int fd;
++	if(int e = sys_open(path, O_WRONLY, 0, &fd); e) {
++		return e;
++	}
++
++	if(int e = sys_write(fd, name, strlen(name) + 1, nullptr)) {
++		return e;
++	}
++
++	sys_close(fd);
++
++	pthread_setcancelstate(cs, nullptr);
++
++	return 0;
++}
++
++int sys_thread_getname(void *tcb, char *name, size_t size) {
++	auto t = reinterpret_cast<Tcb *>(tcb);
++	char *path;
++	int cs = 0;
++	ssize_t real_size = 0;
++
++	if(asprintf(&path, "/proc/self/task/%d/comm", t->tid) < 0) {
++		return ENOMEM;
++	}
++
++	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cs);
++
++	int fd;
++	if(int e = sys_open(path, O_RDONLY | O_CLOEXEC, 0, &fd); e) {
++		return e;
++	}
++
++	if(int e = sys_read(fd, name, size, &real_size)) {
++		return e;
++	}
++
++	name[real_size - 1] = 0;
++	sys_close(fd);
++
++	pthread_setcancelstate(cs, nullptr);
++
++	if(static_cast<ssize_t>(size) <= real_size) {
++		return ERANGE;
++	}
++
++	return 0;
++}
++
++int sys_mlock(const void *addr, size_t length) {
++	auto ret = do_syscall(SYS_mlock, addr, length);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_munlock(const void *addr, size_t length) {
++	auto ret = do_syscall(SYS_munlock, addr, length);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_munlockall(void) {
++	auto ret = do_syscall(SYS_munlockall);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_mincore(void *addr, size_t length, unsigned char *vec) {
++	auto ret = do_syscall(SYS_mincore, addr, length, vec);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_memfd_create(const char *name, int flags, int *fd) {
++	auto ret = do_syscall(SYS_memfd_create, name, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*fd = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_fallocate(int fd, off_t offset, size_t size) {
++	auto ret = do_syscall(SYS_fallocate, fd, 0, offset, size);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_flock(int fd, int options) {
++	auto ret = do_syscall(SYS_flock, fd, options);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_seteuid(uid_t euid) {
++	return sys_setresuid(-1, euid, -1);
++}
++
++int sys_vm_remap(void *pointer, size_t size, size_t new_size, void **window) {
++	auto ret = do_syscall(SYS_mremap, pointer, size, new_size, MREMAP_MAYMOVE);
++	// TODO: musl fixes up EPERM errors from the kernel.
++	if(int e = sc_error(ret); e)
++		return e;
++	*window = sc_ptr_result<void>(ret);
++	return 0;
++}
++
++int sys_link(const char *old_path, const char *new_path) {
++#ifdef SYS_link
++	auto ret = do_syscall(SYS_link, old_path, new_path);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++#else
++	return sys_linkat(AT_FDCWD, old_path, AT_FDCWD, new_path, 0);
++#endif
++}
++
++int sys_linkat(int olddirfd, const char *old_path, int newdirfd, const char *new_path, int flags) {
++	auto ret = do_syscall(SYS_linkat, olddirfd, old_path, newdirfd, new_path, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++// Inspired by musl (src/stat/statvfs.c:28 fixup function)
++static void statfs_to_statvfs(struct statfs *from, struct statvfs *to) {
++	*to = {
++		.f_bsize = from->f_bsize,
++		.f_frsize = from->f_frsize ? from->f_frsize : from->f_bsize,
++		.f_blocks = from->f_blocks,
++		.f_bfree = from->f_bfree,
++		.f_bavail = from->f_bavail,
++		.f_files = from->f_files,
++		.f_ffree = from->f_ffree,
++		.f_favail = from->f_ffree,
++		.f_fsid = (unsigned long) from->f_fsid.__val[0],
++#if __INTPTR_WIDTH__ == 32
++		.__f_unused = 0,
++#endif
++		.f_flag = from->f_flags,
++		.f_namemax = from->f_namelen,
++		.f_spare = { 0 },
++	};
++}
++
++int sys_statvfs(const char *path, struct statvfs *out) {
++	struct statfs buf;
++	if(auto ret = sys_statfs(path, &buf); ret != 0) {
++		return ret;
++	}
++	statfs_to_statvfs(&buf, out);
++	return 0;
++}
++
++int sys_fstatvfs(int fd, struct statvfs *out) {
++	struct statfs buf;
++	if(auto ret = sys_fstatfs(fd, &buf); ret != 0) {
++		return ret;
++	}
++	statfs_to_statvfs(&buf, out);
++	return 0;
++}
++
++int sys_sysconf(int num, long *ret) {
++	switch(num) {
++		case _SC_OPEN_MAX: {
++			struct rlimit ru;
++			if(int e = sys_getrlimit(RLIMIT_NOFILE, &ru); e) {
++				return e;
++			}
++			*ret = (ru.rlim_cur == RLIM_INFINITY) ? -1 : ru.rlim_cur;
++			break;
++		}
++		case _SC_NPROCESSORS_ONLN: {
++			cpu_set_t set;
++			CPU_ZERO(&set);
++			if(int e = sys_getaffinity(0, sizeof(set), &set); e) {
++				return e;
++			}
++			*ret = CPU_COUNT(&set);
++			break;
++		}
++		case _SC_PHYS_PAGES: {
++			struct sysinfo info;
++			if(int e = sys_sysinfo(&info); e) {
++				return e;
++			}
++			unsigned unit = (info.mem_unit) ? info.mem_unit : 1;
++			*ret = std::min(long((info.totalram * unit) / PAGE_SIZE), LONG_MAX);
++			break;
++		}
++		case _SC_CHILD_MAX: {
++			struct rlimit ru;
++			if(int e = sys_getrlimit(RLIMIT_NPROC, &ru); e) {
++				return e;
++			}
++			*ret = (ru.rlim_cur == RLIM_INFINITY) ? -1 : ru.rlim_cur;
++			break;
++		}
++		case _SC_LINE_MAX: {
++			*ret = -1;
++			break;
++		}
++		default: {
++			return EINVAL;
++		}
++	}
++
++	return 0;
++}
++
++int sys_semget(key_t key, int n, int fl, int *id) {
++	auto ret = do_syscall(SYS_semget, key, n, fl);
++	if(int e = sc_error(ret); e)
++		return e;
++	*id = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_semctl(int semid, int semnum, int cmd, void *semun, int *out) {
++	auto ret = do_syscall(SYS_semctl, semid, semnum, cmd | IPC_64, semun);
++	if(int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_waitid(idtype_t idtype, id_t id, siginfo_t *info, int options) {
++	auto ret = do_syscall(SYS_waitid, idtype, id, info, options, 0);
++	if(int e = sc_error(ret); e)
++		return e;
++	return sc_int_result<int>(ret);
++}
++
++int sys_clock_set(int clock, time_t secs, long nanos) {
++	struct timespec tp{};
++	tp.tv_sec = secs;
++	tp.tv_nsec = nanos;
++	auto ret = do_syscall(SYS_clock_settime, clock, &tp);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++#endif // __MLIBC_POSIX_OPTION
++
++#if __MLIBC_LINUX_OPTION
++
++#include <linux/reboot.h>
++
++int sys_reboot(int cmd) {
++	auto ret = do_syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, cmd, nullptr);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getifaddrs(struct ifaddrs **out) {
++	*out = nullptr;
++
++	NetlinkHelper nl;
++	bool link_ret = nl.send_request(RTM_GETLINK) && nl.recv(&getifaddrs_callback, out);
++	__ensure(link_ret);
++	bool addr_ret = nl.send_request(RTM_GETADDR) && nl.recv(&getifaddrs_callback, out);
++	__ensure(addr_ret);
++
++	return 0;
++}
++
++int sys_pidfd_open(pid_t pid, unsigned int flags, int *outfd) {
++	auto ret = do_syscall(SYS_pidfd_open, pid, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*outfd = sc_int_result<int>(ret);
++	return 0;
++}
++
++namespace {
++
++char *pidfdGetPidLine = nullptr;
++size_t pidfdGetPidLineSize = 0;
++
++} // namespace
++
++int sys_pidfd_getpid(int fd, pid_t *outpid) {
++	char *path = nullptr;
++	asprintf(&path, "/proc/self/fdinfo/%d", fd);
++
++	FILE *fdinfo = fopen(path, "r");
++	if (!fdinfo)
++		return errno;
++
++	while (getline(&pidfdGetPidLine, &pidfdGetPidLineSize, fdinfo) != -1) {
++		pid_t pid;
++		int ret = sscanf(pidfdGetPidLine, "Pid: %d\n", &pid);
++
++		if(ret != 1)
++			continue;
++
++		if (pid == 0)
++			return EREMOTE;
++		else if (pid == -1)
++			return ESRCH;
++
++		*outpid = pid;
++		return 0;
++	}
++
++	free(path);
++	return EBADF;
++}
++
++int sys_pidfd_send_signal(int pidfd, int sig, siginfo_t *info, unsigned int flags) {
++	auto ret = do_syscall(SYS_pidfd_send_signal, pidfd, sig, info, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_process_vm_readv(pid_t pid,
++		const struct iovec *local_iov, unsigned long liovcnt,
++		const struct iovec *remote_iov, unsigned long riovcnt,
++		unsigned long flags, ssize_t *out) {
++	auto ret = do_syscall(SYS_process_vm_readv, pid, local_iov, liovcnt,
++			remote_iov, riovcnt, flags);
++	if(int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_process_vm_writev(pid_t pid,
++		const struct iovec *local_iov, unsigned long liovcnt,
++		const struct iovec *remote_iov, unsigned long riovcnt,
++		unsigned long flags, ssize_t *out) {
++	auto ret = do_syscall(SYS_process_vm_writev, pid, local_iov, liovcnt,
++			remote_iov, riovcnt, flags);
++	if(int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_ppoll(struct pollfd *fds, nfds_t count, const struct timespec *ts, const sigset_t *mask, int *num_events) {
++	auto ret = do_syscall(SYS_ppoll, fds, count, ts, mask, NSIG / 8);
++	if (int e = sc_error(ret); e)
++		return e;
++	*num_events = sc_int_result<int>(ret);
++	return 0;
++}
++
++#endif // __MLIBC_LINUX_OPTION
++
++int sys_times(struct tms *tms, clock_t *out) {
++	auto ret = do_syscall(SYS_times, tms);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<long>(ret);
++	return 0;
++}
++
++pid_t sys_getpid() {
++	auto ret = do_syscall(SYS_getpid);
++	// getpid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++pid_t sys_gettid() {
++	auto ret = do_syscall(SYS_gettid);
++	// gettid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++uid_t sys_getuid() {
++	auto ret = do_syscall(SYS_getuid);
++	// getuid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++uid_t sys_geteuid() {
++	auto ret = do_syscall(SYS_geteuid);
++	// geteuid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++gid_t sys_getgid() {
++	auto ret = do_syscall(SYS_getgid);
++	// getgid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++gid_t sys_getegid() {
++	auto ret = do_syscall(SYS_getegid);
++	// getegid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++int sys_kill(int pid, int sig) {
++	auto ret = do_syscall(SYS_kill, pid, sig);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++void sys_thread_exit() {
++	do_syscall(SYS_exit, 0);
++	__builtin_trap();
++}
++
++void sys_exit(int status) {
++	do_syscall(SYS_exit_group, status);
++	__builtin_trap();
++}
++
++#endif // MLIBC_BUILDING_RTLD
++
++#define FUTEX_WAIT 0
++#define FUTEX_WAKE 1
++
++int sys_futex_tid() {
++	auto ret = do_syscall(SYS_gettid);
++	// gettid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++int sys_futex_wait(int *pointer, int expected, const struct timespec *time) {
++	auto ret = do_cp_syscall(SYS_futex, pointer, FUTEX_WAIT, expected, time);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_futex_wake(int *pointer) {
++	auto ret = do_syscall(SYS_futex, pointer, FUTEX_WAKE, INT_MAX);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sigsuspend(const sigset_t *set) {
++	auto ret = do_syscall(SYS_rt_sigsuspend, set, NSIG / 8);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_sigaltstack(const stack_t *ss, stack_t *oss) {
++	auto ret = do_syscall(SYS_sigaltstack, ss, oss);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_mkdir(const char *path, mode_t mode) {
++	auto ret = do_syscall(SYS_mkdirat, AT_FDCWD, path, mode);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++
++int sys_mkdirat(int dirfd, const char *path, mode_t mode) {
++	auto ret = do_syscall(SYS_mkdirat, dirfd, path, mode);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_mknodat(int dirfd, const char *path, int mode, int dev) {
++	auto ret = do_syscall(SYS_mknodat, dirfd, path, mode, dev);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_mkfifoat(int dirfd, const char *path, mode_t mode) {
++	return sys_mknodat(dirfd, path, mode | S_IFIFO, 0);
++}
++
++int sys_symlink(const char *target_path, const char *link_path) {
++	auto ret = do_syscall(SYS_symlinkat, target_path, AT_FDCWD, link_path);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_symlinkat(const char *target_path, int dirfd, const char *link_path) {
++	auto ret = do_syscall(SYS_symlinkat, target_path, dirfd, link_path);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_umask(mode_t mode, mode_t *old) {
++	auto ret = do_syscall(SYS_umask, mode);
++	if (int e = sc_error(ret); e)
++		return e;
++	*old = sc_int_result<mode_t>(ret);
++	return 0;
++}
++
++int sys_chdir(const char *path) {
++	auto ret = do_syscall(SYS_chdir, path);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fchdir(int fd) {
++	auto ret = do_syscall(SYS_fchdir, fd);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_rename(const char *old_path, const char *new_path) {
++	return sys_renameat(AT_FDCWD, old_path, AT_FDCWD, new_path);
++}
++
++int sys_renameat(int old_dirfd, const char *old_path, int new_dirfd, const char *new_path) {
++#ifdef SYS_renameat2
++	auto ret = do_syscall(SYS_renameat2, old_dirfd, old_path, new_dirfd, new_path, 0);
++#else
++	auto ret = do_syscall(SYS_renameat, old_dirfd, old_path, new_dirfd, new_path);
++#endif /* defined(SYS_renameat2) */
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_rmdir(const char *path) {
++	auto ret = do_syscall(SYS_unlinkat, AT_FDCWD, path, AT_REMOVEDIR);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_ftruncate(int fd, size_t size) {
++	auto ret = do_syscall(SYS_ftruncate, fd, size);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_readlink(const char *path, void *buf, size_t bufsiz, ssize_t *len) {
++	auto ret = do_syscall(SYS_readlinkat, AT_FDCWD, path, buf, bufsiz);
++	if (int e = sc_error(ret); e)
++		return e;
++	*len = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++#if __MLIBC_BSD_OPTION
++// getloadavg() adapted from musl
++int sys_getloadavg(double *samples) {
++	struct sysinfo si;
++	if (int e = sys_sysinfo(&si); e)
++		return e;
++	for (int i = 0; i < 3; i++)
++		samples[i] = 1.0 / (1 << SI_LOAD_SHIFT) * si.loads[i];
++	return 0;
++}
++#endif /* __MLIBC_BSD_OPTION */
++
++int sys_getrlimit(int resource, struct rlimit *limit) {
++	auto ret = do_syscall(SYS_prlimit64, 0, resource, 0, limit);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_setrlimit(int resource, const struct rlimit *limit) {
++	auto ret = do_syscall(SYS_prlimit64, 0, resource, limit, 0);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++pid_t sys_getppid() {
++	auto ret = do_syscall(SYS_getppid);
++	// getppid() always succeeds.
++	return sc_int_result<pid_t>(ret);
++}
++
++int sys_setpgid(pid_t pid, pid_t pgid) {
++	auto ret = do_syscall(SYS_setpgid, pid, pgid);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getsid(pid_t pid, pid_t *sid) {
++	auto ret = do_syscall(SYS_getsid, pid);
++	if (int e = sc_error(ret); e)
++		return e;
++	*sid = sc_int_result<pid_t>(ret);
++	return 0;
++}
++
++int sys_setsid(pid_t *sid) {
++	auto ret = do_syscall(SYS_setsid);
++	if (int e = sc_error(ret); e)
++		return e;
++	*sid = sc_int_result<pid_t>(ret);
++	return 0;
++}
++
++int sys_setuid(uid_t uid) {
++	auto ret = do_syscall(SYS_setuid, uid);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_setgid(gid_t gid) {
++	auto ret = do_syscall(SYS_setgid, gid);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getpgid(pid_t pid, pid_t *out) {
++	auto ret = do_syscall(SYS_getpgid, pid);
++	if (int e = sc_error(ret); e)
++		return e;
++	*out = sc_int_result<pid_t>(ret);
++	return 0;
++}
++
++int sys_getgroups(size_t size, gid_t *list, int *retval) {
++	auto ret = do_syscall(SYS_getgroups, size, list);
++	if (int e = sc_error(ret); e)
++		return e;
++	*retval = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_dup(int fd, int flags, int *newfd) {
++	__ensure(!flags);
++	auto ret = do_cp_syscall(SYS_dup, fd);
++	if (int e = sc_error(ret); e)
++		return e;
++	*newfd = sc_int_result<int>(ret);
++	return 0;
++}
++
++void sys_sync() {
++	do_syscall(SYS_sync);
++}
++
++int sys_fsync(int fd) {
++	auto ret = do_syscall(SYS_fsync, fd);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_fdatasync(int fd) {
++	auto ret = do_syscall(SYS_fdatasync, fd);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_getrandom(void *buffer, size_t length, int flags, ssize_t *bytes_written) {
++	auto ret = do_syscall(SYS_getrandom, buffer, length, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	*bytes_written = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_getentropy(void *buffer, size_t length) {
++	ssize_t written;
++	return sys_getrandom(buffer, length, 0, &written);
++}
++
++int sys_setxattr(const char *path, const char *name, const void *val,
++		size_t size, int flags) {
++	auto ret = do_syscall(SYS_setxattr, path, name, val, size, flags);
++	return sc_error(ret);
++}
++
++int sys_lsetxattr(const char *path, const char *name, const void *val,
++		size_t size, int flags) {
++	auto ret = do_syscall(SYS_lsetxattr, path, name, val, size, flags);
++	return sc_error(ret);
++}
++
++int sys_fsetxattr(int fd, const char *name, const void *val,
++		size_t size, int flags) {
++	auto ret = do_syscall(SYS_fsetxattr, fd, name, val, size, flags);
++	return sc_error(ret);
++}
++
++int sys_getxattr(const char *path, const char *name, void *val, size_t size,
++		ssize_t *nread) {
++	auto ret = do_syscall(SYS_getxattr, path, name, val, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_lgetxattr(const char *path, const char *name, void *val, size_t size,
++		ssize_t *nread) {
++	auto ret = do_syscall(SYS_lgetxattr, path, name, val, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_fgetxattr(int fd, const char *name, void *val, size_t size,
++		ssize_t *nread) {
++	auto ret = do_syscall(SYS_fgetxattr, fd, name, val, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_removexattr(const char *path, const char *name) {
++	auto ret = do_syscall(SYS_removexattr, path, name);
++	return sc_error(ret);
++}
++
++int sys_lremovexattr(const char *path, const char *name) {
++	auto ret = do_syscall(SYS_lremovexattr, path, name);
++	return sc_error(ret);
++}
++
++int sys_fremovexattr(int fd, const char *name) {
++	auto ret = do_syscall(SYS_fremovexattr, fd, name);
++	return sc_error(ret);
++}
++
++int sys_listxattr(const char *path, char *list, size_t size, ssize_t *nread) {
++	auto ret = do_syscall(SYS_listxattr, path, list, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_llistxattr(const char *path, char *list, size_t size, ssize_t *nread) {
++	auto ret = do_syscall(SYS_llistxattr, path, list, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_flistxattr(int fd, char *list, size_t size, ssize_t *nread) {
++	auto ret = do_syscall(SYS_flistxattr, fd, list, size);
++	if (int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*nread = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_sigtimedwait(const sigset_t *__restrict set, siginfo_t *__restrict info, const struct timespec *__restrict timeout, int *out_signal) {
++	auto ret = do_syscall(SYS_rt_sigtimedwait, set, info, timeout, NSIG / 8);
++
++	if (int e = sc_error(ret); e)
++		return e;
++
++	*out_signal = sc_int_result<int>(ret);
++
++	return 0;
++}
++
++int sys_sendfile(int outfd, int infd, off_t *offset, size_t count, ssize_t *out) {
++	auto ret = do_syscall(SYS_sendfile, outfd, infd, offset, count);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	*out = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_syncfs(int fd) {
++	auto ret = do_syscall(SYS_syncfs, fd);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_name_to_handle_at(int dirfd, const char *pathname, struct file_handle *handle, int *mount_id, int flags) {
++	auto ret = do_syscall(SYS_name_to_handle_at, dirfd, pathname, handle, mount_id, flags);
++	if (int e = sc_error(ret); e)
++		return e;
++	return sc_int_result<int>(ret);
++}
++
++int sys_splice(int in_fd, off_t *in_off, int out_fd, off_t *out_off, size_t size, unsigned int flags, ssize_t *out) {
++	auto ret = do_syscall(SYS_copy_file_range, in_fd, in_off, out_fd, out_off, size, flags);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	*out = sc_int_result<ssize_t>(ret);
++	return 0;
++}
++
++int sys_unshare(int flags) {
++	auto ret = do_syscall(SYS_unshare, flags);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_setns(int fd, int nstype) {
++	auto ret = do_syscall(SYS_setns, fd, nstype);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++int sys_setgroups(size_t size, const gid_t *list) {
++	auto ret = do_syscall(SYS_setgroups, size, list);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++	return 0;
++}
++
++#if __MLIBC_BSD_OPTION
++int sys_brk(void **out) {
++	auto ret = do_syscall(SYS_brk, 0);
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*out = (void *) sc_int_result<uintptr_t>(ret);
++	return 0;
++}
++#endif // __MLIBC_BSD_OPTION
++
++#if __MLIBC_GLIBC_OPTION
++
++int sys_personality(unsigned long persona, int *out) {
++	auto ret = do_syscall(SYS_personality, persona);
++
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++
++	*out = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_ioperm(unsigned long int from, unsigned long int num, int turn_on) {
++#if defined(SYS_ioperm)
++	auto ret = do_syscall(SYS_ioperm, from, num, turn_on);
++
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++
++	return 0;
++#else
++	(void) from;
++	(void) num;
++	(void) turn_on;
++	return ENOSYS;
++#endif
++}
++
++int sys_iopl(int level) {
++#if defined(SYS_iopl)
++	auto ret = do_syscall(SYS_iopl, level);
++
++	if(int e = sc_error(ret); e) {
++		return e;
++	}
++
++	return 0;
++#else
++	(void) level;
++	return ENOSYS;
++#endif
++}
++
++#endif // __MLIBC_GLIBC_OPTION
++
++#if __MLIBC_POSIX_OPTION
++
++int sys_shmat(void **seg_start, int shmid, const void *shmaddr, int shmflg) {
++	auto ret = do_syscall(SYS_shmat, shmid, shmaddr, shmflg);
++	if (int e = sc_error(ret); e)
++		return e;
++	*seg_start = sc_ptr_result<void>(ret);
++	return 0;
++}
++
++int sys_shmctl(int *idx, int shmid, int cmd, struct shmid_ds *buf) {
++	auto ret = do_syscall(SYS_shmctl, shmid, cmd, buf);
++	if (int e = sc_error(ret); e)
++		return e;
++	*idx = sc_int_result<int>(ret);
++	return 0;
++}
++
++int sys_shmdt(const void *shmaddr) {
++	auto ret = do_syscall(SYS_shmdt, shmaddr);
++	if (int e = sc_error(ret); e)
++		return e;
++	return 0;
++}
++
++int sys_shmget(int *shm_id, key_t key, size_t size, int shmflg) {
++	auto ret = do_syscall(SYS_shmget, key, size, shmflg);
++	if (int e = sc_error(ret); e)
++		return e;
++	*shm_id = sc_int_result<int>(ret);
++	return 0;
++}
++
++#if !defined(MLIBC_BUILDING_RTLD)
++int sys_inet_configured(bool *ipv4, bool *ipv6) {
++	struct context {
++		bool *ipv4;
++		bool *ipv6;
++	} context = {
++		.ipv4 = ipv4,
++		.ipv6 = ipv6
++	};
++
++	NetlinkHelper nl;
++	if (!nl.send_request(RTM_GETADDR)) {
++		*ipv4 = false;
++		*ipv6 = false;
++		return 0;
++	}
++
++	auto ret = nl.recv([](void *data, const nlmsghdr *hdr) {
++		if (hdr->nlmsg_type == RTM_NEWADDR || hdr->nlmsg_len >= sizeof(struct ifaddrmsg)) {
++			const struct ifaddrmsg *ifaddr = reinterpret_cast<const struct ifaddrmsg *>(NLMSG_DATA(hdr));
++			struct context *ctx = reinterpret_cast<struct context *>(data);
++
++			char name[IF_NAMESIZE];
++			auto interfaceNameResult = sys_if_indextoname(ifaddr->ifa_index, name);
++
++			if (interfaceNameResult || !strncmp(name, "lo", IF_NAMESIZE))
++				return;
++
++			if (ifaddr->ifa_family == AF_INET)
++				*ctx->ipv4 = true;
++			else if (ifaddr->ifa_family == AF_INET6)
++				*ctx->ipv6 = true;
++		}
++	}, &context);
++
++	if (!ret) {
++		*ipv4 = false;
++		*ipv6 = false;
++		return 0;
++	}
++
++	return 0;
++}
++#endif // !defined(MLIBC_BUILDING_RTLD)
++
++#endif // __MLIBC_POSIX_OPTION
++
++} // namespace mlibc
+diff --git a/sysdeps/ilobilix/generic/thread.cpp b/sysdeps/ilobilix/generic/thread.cpp
+new file mode 100644
+index 00000000..e413e4ff
+--- /dev/null
++++ b/sysdeps/ilobilix/generic/thread.cpp
+@@ -0,0 +1,60 @@
++#include <mlibc/thread-entry.hpp>
++#include <mlibc/all-sysdeps.hpp>
++#include <mlibc/thread.hpp>
++#include <bits/ensure.h>
++#include <sys/mman.h>
++#include <stdint.h>
++#include <stddef.h>
++#include <errno.h>
++
++extern "C" void __mlibc_enter_thread(void *entry, void *user_arg) {
++	// The linux kernel already sets the TCB in sys_clone().
++	auto tcb = mlibc::get_current_tcb();
++
++	// Wait until our parent sets up the TID.
++	while(!__atomic_load_n(&tcb->tid, __ATOMIC_RELAXED))
++		mlibc::sys_futex_wait(&tcb->tid, 0, nullptr);
++
++	tcb->invokeThreadFunc(entry, user_arg);
++
++	__atomic_store_n(&tcb->didExit, 1, __ATOMIC_RELEASE);
++	mlibc::sys_futex_wake(&tcb->didExit);
++
++	mlibc::sys_thread_exit();
++}
++
++namespace mlibc {
++
++static constexpr size_t default_stacksize = 0x200000;
++
++int sys_prepare_stack(void **stack, void *entry, void *user_arg, void *tcb, size_t *stack_size, size_t *guard_size, void **stack_base) {
++	(void)tcb;
++	if (!*stack_size)
++		*stack_size = default_stacksize;
++
++	uintptr_t map;
++	if (*stack) {
++		map = reinterpret_cast<uintptr_t>(*stack);
++		*guard_size = 0;
++	} else {
++		map = reinterpret_cast<uintptr_t>(
++				mmap(nullptr, *stack_size + *guard_size,
++					PROT_NONE,
++					MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
++				);
++		if (reinterpret_cast<void*>(map) == MAP_FAILED)
++			return EAGAIN;
++		int ret = mprotect(reinterpret_cast<void*>(map + *guard_size), *stack_size,
++				PROT_READ | PROT_WRITE);
++		if(ret)
++			return EAGAIN;
++	}
++
++	*stack_base = reinterpret_cast<void*>(map);
++	auto sp = reinterpret_cast<uintptr_t*>(map + *guard_size + *stack_size);
++	*--sp = reinterpret_cast<uintptr_t>(user_arg);
++	*--sp = reinterpret_cast<uintptr_t>(entry);
++	*stack = reinterpret_cast<void*>(sp);
++	return 0;
++}
++} // namespace mlibc
+diff --git a/sysdeps/ilobilix/include-internal/linux/unistd.h b/sysdeps/ilobilix/include-internal/linux/unistd.h
+new file mode 100644
+index 00000000..6a8020e5
+--- /dev/null
++++ b/sysdeps/ilobilix/include-internal/linux/unistd.h
+@@ -0,0 +1,2 @@
++/* stub header not present in practice, redirects to our internal syscallnos */
++#include <syscallnos.h>
+diff --git a/sysdeps/ilobilix/include/abi-bits/access.h b/sysdeps/ilobilix/include/abi-bits/access.h
+new file mode 120000
+index 00000000..cb839316
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/access.h
+@@ -0,0 +1 @@
++../../../../abis/linux/access.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/auxv.h b/sysdeps/ilobilix/include/abi-bits/auxv.h
+new file mode 120000
+index 00000000..c43f8786
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/auxv.h
+@@ -0,0 +1 @@
++../../../../abis/linux/auxv.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/blkcnt_t.h b/sysdeps/ilobilix/include/abi-bits/blkcnt_t.h
+new file mode 120000
+index 00000000..0b0ec270
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/blkcnt_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/blkcnt_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/blksize_t.h b/sysdeps/ilobilix/include/abi-bits/blksize_t.h
+new file mode 120000
+index 00000000..7dc8d7cf
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/blksize_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/blksize_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/clockid_t.h b/sysdeps/ilobilix/include/abi-bits/clockid_t.h
+new file mode 120000
+index 00000000..6a42da56
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/clockid_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/clockid_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/dev_t.h b/sysdeps/ilobilix/include/abi-bits/dev_t.h
+new file mode 120000
+index 00000000..bca881e9
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/dev_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/dev_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/epoll.h b/sysdeps/ilobilix/include/abi-bits/epoll.h
+new file mode 120000
+index 00000000..eb4b76dc
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/epoll.h
+@@ -0,0 +1 @@
++../../../../abis/linux/epoll.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/errno.h b/sysdeps/ilobilix/include/abi-bits/errno.h
+new file mode 120000
+index 00000000..6e507def
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/errno.h
+@@ -0,0 +1 @@
++../../../../abis/linux/errno.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/fcntl.h b/sysdeps/ilobilix/include/abi-bits/fcntl.h
+new file mode 120000
+index 00000000..463e2c95
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/fcntl.h
+@@ -0,0 +1 @@
++../../../../abis/linux/fcntl.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/fd_set.h b/sysdeps/ilobilix/include/abi-bits/fd_set.h
+new file mode 120000
+index 00000000..b43142c4
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/fd_set.h
+@@ -0,0 +1 @@
++../../../../abis/linux/fd_set.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/fsblkcnt_t.h b/sysdeps/ilobilix/include/abi-bits/fsblkcnt_t.h
+new file mode 120000
+index 00000000..898dfb2f
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/fsblkcnt_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/fsblkcnt_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/fsfilcnt_t.h b/sysdeps/ilobilix/include/abi-bits/fsfilcnt_t.h
+new file mode 120000
+index 00000000..791755c9
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/fsfilcnt_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/fsfilcnt_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/gid_t.h b/sysdeps/ilobilix/include/abi-bits/gid_t.h
+new file mode 120000
+index 00000000..abce6d69
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/gid_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/gid_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/in.h b/sysdeps/ilobilix/include/abi-bits/in.h
+new file mode 120000
+index 00000000..418d1d5c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/in.h
+@@ -0,0 +1 @@
++../../../../abis/linux/in.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/ino_t.h b/sysdeps/ilobilix/include/abi-bits/ino_t.h
+new file mode 120000
+index 00000000..4c20aca2
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/ino_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/ino_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/inotify.h b/sysdeps/ilobilix/include/abi-bits/inotify.h
+new file mode 120000
+index 00000000..b5cb2823
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/inotify.h
+@@ -0,0 +1 @@
++../../../../abis/linux/inotify.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/ioctls.h b/sysdeps/ilobilix/include/abi-bits/ioctls.h
+new file mode 120000
+index 00000000..595106b6
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/ioctls.h
+@@ -0,0 +1 @@
++../../../../abis/linux/ioctls.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/ipc.h b/sysdeps/ilobilix/include/abi-bits/ipc.h
+new file mode 120000
+index 00000000..2c7ffc4c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/ipc.h
+@@ -0,0 +1 @@
++../../../../abis/linux/ipc.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/limits.h b/sysdeps/ilobilix/include/abi-bits/limits.h
+new file mode 120000
+index 00000000..6c88db2e
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/limits.h
+@@ -0,0 +1 @@
++../../../../abis/linux/limits.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/mode_t.h b/sysdeps/ilobilix/include/abi-bits/mode_t.h
+new file mode 120000
+index 00000000..5d78fdfc
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/mode_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/mode_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/mqueue.h b/sysdeps/ilobilix/include/abi-bits/mqueue.h
+new file mode 120000
+index 00000000..fa87b078
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/mqueue.h
+@@ -0,0 +1 @@
++../../../../abis/linux/mqueue.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/msg.h b/sysdeps/ilobilix/include/abi-bits/msg.h
+new file mode 120000
+index 00000000..f402b493
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/msg.h
+@@ -0,0 +1 @@
++../../../../abis/linux/msg.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/nlink_t.h b/sysdeps/ilobilix/include/abi-bits/nlink_t.h
+new file mode 120000
+index 00000000..bb3b625c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/nlink_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/nlink_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/packet.h b/sysdeps/ilobilix/include/abi-bits/packet.h
+new file mode 120000
+index 00000000..998ef1ab
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/packet.h
+@@ -0,0 +1 @@
++../../../../abis/linux/packet.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/pid_t.h b/sysdeps/ilobilix/include/abi-bits/pid_t.h
+new file mode 120000
+index 00000000..baa90f6a
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/pid_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/pid_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/poll.h b/sysdeps/ilobilix/include/abi-bits/poll.h
+new file mode 120000
+index 00000000..8ea6a0a3
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/poll.h
+@@ -0,0 +1 @@
++../../../../abis/linux/poll.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/ptrace.h b/sysdeps/ilobilix/include/abi-bits/ptrace.h
+new file mode 120000
+index 00000000..b2517b2c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/ptrace.h
+@@ -0,0 +1 @@
++../../../../abis/linux/ptrace.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/random.h b/sysdeps/ilobilix/include/abi-bits/random.h
+new file mode 120000
+index 00000000..83fc3d96
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/random.h
+@@ -0,0 +1 @@
++../../../../abis/linux/random.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/reboot.h b/sysdeps/ilobilix/include/abi-bits/reboot.h
+new file mode 120000
+index 00000000..77013a41
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/reboot.h
+@@ -0,0 +1 @@
++../../../../abis/linux/reboot.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/resource.h b/sysdeps/ilobilix/include/abi-bits/resource.h
+new file mode 120000
+index 00000000..88d74025
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/resource.h
+@@ -0,0 +1 @@
++../../../../abis/linux/resource.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/riscv-hwprobe.h b/sysdeps/ilobilix/include/abi-bits/riscv-hwprobe.h
+new file mode 120000
+index 00000000..e6513250
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/riscv-hwprobe.h
+@@ -0,0 +1 @@
++../../../../abis/linux/riscv-hwprobe.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/rlim_t.h b/sysdeps/ilobilix/include/abi-bits/rlim_t.h
+new file mode 120000
+index 00000000..e92eb5fb
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/rlim_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/rlim_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/route.h b/sysdeps/ilobilix/include/abi-bits/route.h
+new file mode 120000
+index 00000000..313ead67
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/route.h
+@@ -0,0 +1 @@
++../../../../abis/linux/route.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/seek-whence.h b/sysdeps/ilobilix/include/abi-bits/seek-whence.h
+new file mode 120000
+index 00000000..df7bccf0
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/seek-whence.h
+@@ -0,0 +1 @@
++../../../../abis/linux/seek-whence.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/sem.h b/sysdeps/ilobilix/include/abi-bits/sem.h
+new file mode 120000
+index 00000000..699d7afa
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/sem.h
+@@ -0,0 +1 @@
++../../../../abis/linux/sem.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/shm.h b/sysdeps/ilobilix/include/abi-bits/shm.h
+new file mode 120000
+index 00000000..067d8c4f
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/shm.h
+@@ -0,0 +1 @@
++../../../../abis/linux/shm.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/sigevent.h b/sysdeps/ilobilix/include/abi-bits/sigevent.h
+new file mode 120000
+index 00000000..83d069b5
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/sigevent.h
+@@ -0,0 +1 @@
++../../../../abis/linux/sigevent.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/signal.h b/sysdeps/ilobilix/include/abi-bits/signal.h
+new file mode 120000
+index 00000000..4dcb0b7c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/signal.h
+@@ -0,0 +1 @@
++../../../../abis/linux/signal.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/sigval.h b/sysdeps/ilobilix/include/abi-bits/sigval.h
+new file mode 120000
+index 00000000..ccd43a55
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/sigval.h
+@@ -0,0 +1 @@
++../../../../abis/linux/sigval.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/socket.h b/sysdeps/ilobilix/include/abi-bits/socket.h
+new file mode 120000
+index 00000000..f1dc016e
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/socket.h
+@@ -0,0 +1 @@
++../../../../abis/linux/socket.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/socklen_t.h b/sysdeps/ilobilix/include/abi-bits/socklen_t.h
+new file mode 120000
+index 00000000..41f3b11f
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/socklen_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/socklen_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/stat.h b/sysdeps/ilobilix/include/abi-bits/stat.h
+new file mode 120000
+index 00000000..1f63b41f
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/stat.h
+@@ -0,0 +1 @@
++../../../../abis/linux/stat.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/statfs.h b/sysdeps/ilobilix/include/abi-bits/statfs.h
+new file mode 120000
+index 00000000..e3d202f5
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/statfs.h
+@@ -0,0 +1 @@
++../../../../abis/linux/statfs.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/statvfs.h b/sysdeps/ilobilix/include/abi-bits/statvfs.h
+new file mode 120000
+index 00000000..1fc80c2a
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/statvfs.h
+@@ -0,0 +1 @@
++../../../../abis/linux/statvfs.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/statx.h b/sysdeps/ilobilix/include/abi-bits/statx.h
+new file mode 120000
+index 00000000..8702a1d0
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/statx.h
+@@ -0,0 +1 @@
++../../../../abis/linux/statx.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/suseconds_t.h b/sysdeps/ilobilix/include/abi-bits/suseconds_t.h
+new file mode 120000
+index 00000000..9ed65977
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/suseconds_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/suseconds_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/termios.h b/sysdeps/ilobilix/include/abi-bits/termios.h
+new file mode 120000
+index 00000000..ee8f0b09
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/termios.h
+@@ -0,0 +1 @@
++../../../../abis/linux/termios.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/time.h b/sysdeps/ilobilix/include/abi-bits/time.h
+new file mode 120000
+index 00000000..2a026257
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/time.h
+@@ -0,0 +1 @@
++../../../../abis/linux/time.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/uid_t.h b/sysdeps/ilobilix/include/abi-bits/uid_t.h
+new file mode 120000
+index 00000000..b3067778
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/uid_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/uid_t.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/utmp-defines.h b/sysdeps/ilobilix/include/abi-bits/utmp-defines.h
+new file mode 120000
+index 00000000..86176435
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/utmp-defines.h
+@@ -0,0 +1 @@
++../../../../abis/linux/utmp-defines.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/utmpx.h b/sysdeps/ilobilix/include/abi-bits/utmpx.h
+new file mode 120000
+index 00000000..c6a26774
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/utmpx.h
+@@ -0,0 +1 @@
++../../../../abis/linux/utmpx.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/utsname.h b/sysdeps/ilobilix/include/abi-bits/utsname.h
+new file mode 120000
+index 00000000..b2857547
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/utsname.h
+@@ -0,0 +1 @@
++../../../../abis/linux/utsname.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/vm-flags.h b/sysdeps/ilobilix/include/abi-bits/vm-flags.h
+new file mode 120000
+index 00000000..bbe258cf
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/vm-flags.h
+@@ -0,0 +1 @@
++../../../../abis/linux/vm-flags.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/vt.h b/sysdeps/ilobilix/include/abi-bits/vt.h
+new file mode 120000
+index 00000000..5798a4ac
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/vt.h
+@@ -0,0 +1 @@
++../../../../abis/linux/vt.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/wait.h b/sysdeps/ilobilix/include/abi-bits/wait.h
+new file mode 120000
+index 00000000..feb2840c
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/wait.h
+@@ -0,0 +1 @@
++../../../../abis/linux/wait.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/abi-bits/xattr.h b/sysdeps/ilobilix/include/abi-bits/xattr.h
+new file mode 120000
+index 00000000..66412d70
+--- /dev/null
++++ b/sysdeps/ilobilix/include/abi-bits/xattr.h
+@@ -0,0 +1 @@
++../../../../abis/linux/xattr.h
+\ No newline at end of file
+diff --git a/sysdeps/ilobilix/include/bits/syscall.h b/sysdeps/ilobilix/include/bits/syscall.h
+new file mode 100644
+index 00000000..680bb8c2
+--- /dev/null
++++ b/sysdeps/ilobilix/include/bits/syscall.h
+@@ -0,0 +1,100 @@
++#ifndef _MLIBC_SYSCALL_H
++#define _MLIBC_SYSCALL_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++typedef long __sc_word_t;
++
++/* These functions are implemented in arch-syscall.cpp. */
++__sc_word_t __do_syscall0(long);
++__sc_word_t __do_syscall1(long, __sc_word_t);
++__sc_word_t __do_syscall2(long, __sc_word_t, __sc_word_t);
++__sc_word_t __do_syscall3(long, __sc_word_t, __sc_word_t, __sc_word_t);
++__sc_word_t __do_syscall4(long, __sc_word_t, __sc_word_t, __sc_word_t, __sc_word_t);
++__sc_word_t __do_syscall5(long, __sc_word_t, __sc_word_t, __sc_word_t, __sc_word_t,
++		__sc_word_t);
++__sc_word_t __do_syscall6(long, __sc_word_t, __sc_word_t, __sc_word_t, __sc_word_t,
++		__sc_word_t, __sc_word_t);
++__sc_word_t __do_syscall7(long, __sc_word_t, __sc_word_t, __sc_word_t, __sc_word_t,
++		__sc_word_t, __sc_word_t, __sc_word_t);
++long __do_syscall_ret(unsigned long);
++
++#ifdef __cplusplus
++extern "C++" {
++
++/* Defining a syscall as a macro is more problematic in C++, since there's a high chance of
++ * a name collision e.g foo.syscall() or foo::syscall.
++ */
++inline long syscall(long n) {
++	return __do_syscall_ret(__do_syscall0(n));
++}
++template<typename Arg0>
++long syscall(long n, Arg0 a0) {
++	return __do_syscall_ret(__do_syscall1(n, (long)a0));
++}
++template<typename Arg0, typename Arg1>
++long syscall(long n, Arg0 a0, Arg1 a1) {
++	return __do_syscall_ret(__do_syscall2(n, (long)a0, (long)a1));
++}
++template<typename Arg0, typename Arg1, typename Arg2>
++long syscall(long n, Arg0 a0, Arg1 a1, Arg2 a2) {
++	return __do_syscall_ret(__do_syscall3(n, (long)a0, (long)a1, (long)a2));
++}
++template<typename Arg0, typename Arg1, typename Arg2, typename Arg3>
++long syscall(long n, Arg0 a0, Arg1 a1, Arg2 a2, Arg3 a3) {
++	return __do_syscall_ret(__do_syscall4(n, (long)a0, (long)a1, (long)a2, (long)a3));
++}
++template<typename Arg0, typename Arg1, typename Arg2, typename Arg3, typename Arg4>
++long syscall(long n, Arg0 a0, Arg1 a1, Arg2 a2, Arg3 a3, Arg4 a4) {
++	return __do_syscall_ret(__do_syscall5(n, (long)a0, (long)a1, (long)a2, (long)a3, (long)a4));
++}
++template<typename Arg0, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5>
++long syscall(long n, Arg0 a0, Arg1 a1, Arg2 a2, Arg3 a3, Arg4 a4, Arg5 a5) {
++	return __do_syscall_ret(__do_syscall6(n, (long)a0, (long)a1, (long)a2, (long)a3, (long)a4, (long)a5));
++}
++template<typename Arg0, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5, typename Arg6>
++long syscall(long n, Arg0 a0, Arg1 a1, Arg2 a2, Arg3 a3, Arg4 a4, Arg5 a5, Arg6 a6) {
++	return __do_syscall_ret(__do_syscall7(n, (long)a0, (long)a1, (long)a2, (long)a3, (long)a4, (long)a5, (long)a6));
++}
++
++} /* extern C++ */
++#else
++
++/*
++ * Variadic macros are not supported in C89.
++ * glibc implements syscall() as a variadic function, which we've ruled out.
++ * musl uses them without checking the C standard in use. So suppressing
++ * the check here seems reasonable.
++ */
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wvariadic-macros"
++
++/* These syscall macros were copied from musl. */
++#define __scc(x) ((__sc_word_t)(x))
++#define __syscall0(n) __do_syscall0(n)
++#define __syscall1(n,a) __do_syscall1(n,__scc(a))
++#define __syscall2(n,a,b) __do_syscall2(n,__scc(a),__scc(b))
++#define __syscall3(n,a,b,c) __do_syscall3(n,__scc(a),__scc(b),__scc(c))
++#define __syscall4(n,a,b,c,d) __do_syscall4(n,__scc(a),__scc(b),__scc(c),__scc(d))
++#define __syscall5(n,a,b,c,d,e) __do_syscall5(n,__scc(a),__scc(b),__scc(c),__scc(d),__scc(e))
++#define __syscall6(n,a,b,c,d,e,f) __do_syscall6(n,__scc(a),__scc(b),__scc(c),__scc(d),__scc(e),__scc(f))
++#define __syscall7(n,a,b,c,d,e,f,g) __do_syscall7(n,__scc(a),__scc(b),__scc(c),__scc(d),__scc(e),__scc(f),__scc(g))
++#define __SYSCALL_NARGS_X(a,b,c,d,e,f,g,h,n,...) n
++#define __SYSCALL_NARGS(...) __SYSCALL_NARGS_X(__VA_ARGS__,7,6,5,4,3,2,1,0,)
++#define __SYSCALL_CONCAT_X(a,b) a##b
++#define __SYSCALL_CONCAT(a,b) __SYSCALL_CONCAT_X(a,b)
++#define __SYSCALL_DISP(b,...) __SYSCALL_CONCAT(b,__SYSCALL_NARGS(__VA_ARGS__))(__VA_ARGS__)
++#define __syscall(...) __SYSCALL_DISP(__syscall,__VA_ARGS__)
++#define syscall(...) __do_syscall_ret(__syscall(__VA_ARGS__))
++
++#pragma GCC diagnostic pop
++
++#endif
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* _MLIBC_SYSCALL_H */
+diff --git a/sysdeps/ilobilix/include/bits/syscall_aliases.h b/sysdeps/ilobilix/include/bits/syscall_aliases.h
+new file mode 100644
+index 00000000..236a0e24
+--- /dev/null
++++ b/sysdeps/ilobilix/include/bits/syscall_aliases.h
+@@ -0,0 +1,1856 @@
++#ifndef __MLIBC_SYSCALL_ALIAS_BIT
++#define __MLIBC_SYSCALL_ALIAS_BIT
++/* This file is autogenerated. Don't bother. */
++/* Generator script: sysdeps/linux/update-syscall-list.py. */
++#ifdef	__NR__llseek
++#	define SYS__llseek __NR__llseek
++#endif
++#ifdef	__NR__newselect
++#	define SYS__newselect __NR__newselect
++#endif
++#ifdef	__NR__sysctl
++#	define SYS__sysctl __NR__sysctl
++#endif
++#ifdef	__NR_accept
++#	define SYS_accept __NR_accept
++#endif
++#ifdef	__NR_accept4
++#	define SYS_accept4 __NR_accept4
++#endif
++#ifdef	__NR_access
++#	define SYS_access __NR_access
++#endif
++#ifdef	__NR_acct
++#	define SYS_acct __NR_acct
++#endif
++#ifdef	__NR_add_key
++#	define SYS_add_key __NR_add_key
++#endif
++#ifdef	__NR_adjtimex
++#	define SYS_adjtimex __NR_adjtimex
++#endif
++#ifdef	__NR_alarm
++#	define SYS_alarm __NR_alarm
++#endif
++#ifdef	__NR_arc_gettls
++#	define SYS_arc_gettls __NR_arc_gettls
++#endif
++#ifdef	__NR_arc_settls
++#	define SYS_arc_settls __NR_arc_settls
++#endif
++#ifdef	__NR_arc_usr_cmpxchg
++#	define SYS_arc_usr_cmpxchg __NR_arc_usr_cmpxchg
++#endif
++#ifdef	__NR_arch_prctl
++#	define SYS_arch_prctl __NR_arch_prctl
++#endif
++#ifdef	__NR_arm_fadvise64_64
++#	define SYS_arm_fadvise64_64 __NR_arm_fadvise64_64
++#endif
++#ifdef	__NR_atomic_barrier
++#	define SYS_atomic_barrier __NR_atomic_barrier
++#endif
++#ifdef	__NR_atomic_cmpxchg_32
++#	define SYS_atomic_cmpxchg_32 __NR_atomic_cmpxchg_32
++#endif
++#ifdef	__NR_bdflush
++#	define SYS_bdflush __NR_bdflush
++#endif
++#ifdef	__NR_bind
++#	define SYS_bind __NR_bind
++#endif
++#ifdef	__NR_bpf
++#	define SYS_bpf __NR_bpf
++#endif
++#ifdef	__NR_brk
++#	define SYS_brk __NR_brk
++#endif
++#ifdef	__NR_cachectl
++#	define SYS_cachectl __NR_cachectl
++#endif
++#ifdef	__NR_cacheflush
++#	define SYS_cacheflush __NR_cacheflush
++#endif
++#ifdef	__NR_cachestat
++#	define SYS_cachestat __NR_cachestat
++#endif
++#ifdef	__NR_capget
++#	define SYS_capget __NR_capget
++#endif
++#ifdef	__NR_capset
++#	define SYS_capset __NR_capset
++#endif
++#ifdef	__NR_chdir
++#	define SYS_chdir __NR_chdir
++#endif
++#ifdef	__NR_chmod
++#	define SYS_chmod __NR_chmod
++#endif
++#ifdef	__NR_chown
++#	define SYS_chown __NR_chown
++#endif
++#ifdef	__NR_chown32
++#	define SYS_chown32 __NR_chown32
++#endif
++#ifdef	__NR_chroot
++#	define SYS_chroot __NR_chroot
++#endif
++#ifdef	__NR_clock_adjtime
++#	define SYS_clock_adjtime __NR_clock_adjtime
++#endif
++#ifdef	__NR_clock_adjtime64
++#	define SYS_clock_adjtime64 __NR_clock_adjtime64
++#endif
++#ifdef	__NR_clock_getres
++#	define SYS_clock_getres __NR_clock_getres
++#endif
++#ifdef	__NR_clock_getres_time64
++#	define SYS_clock_getres_time64 __NR_clock_getres_time64
++#endif
++#ifdef	__NR_clock_gettime
++#	define SYS_clock_gettime __NR_clock_gettime
++#endif
++#ifdef	__NR_clock_gettime64
++#	define SYS_clock_gettime64 __NR_clock_gettime64
++#endif
++#ifdef	__NR_clock_nanosleep
++#	define SYS_clock_nanosleep __NR_clock_nanosleep
++#endif
++#ifdef	__NR_clock_nanosleep_time64
++#	define SYS_clock_nanosleep_time64 __NR_clock_nanosleep_time64
++#endif
++#ifdef	__NR_clock_settime
++#	define SYS_clock_settime __NR_clock_settime
++#endif
++#ifdef	__NR_clock_settime64
++#	define SYS_clock_settime64 __NR_clock_settime64
++#endif
++#ifdef	__NR_clone
++#	define SYS_clone __NR_clone
++#endif
++#ifdef	__NR_clone3
++#	define SYS_clone3 __NR_clone3
++#endif
++#ifdef	__NR_close
++#	define SYS_close __NR_close
++#endif
++#ifdef	__NR_close_range
++#	define SYS_close_range __NR_close_range
++#endif
++#ifdef	__NR_connect
++#	define SYS_connect __NR_connect
++#endif
++#ifdef	__NR_copy_file_range
++#	define SYS_copy_file_range __NR_copy_file_range
++#endif
++#ifdef	__NR_creat
++#	define SYS_creat __NR_creat
++#endif
++#ifdef	__NR_create_module
++#	define SYS_create_module __NR_create_module
++#endif
++#ifdef	__NR_delete_module
++#	define SYS_delete_module __NR_delete_module
++#endif
++#ifdef	__NR_dipc
++#	define SYS_dipc __NR_dipc
++#endif
++#ifdef	__NR_dup
++#	define SYS_dup __NR_dup
++#endif
++#ifdef	__NR_dup2
++#	define SYS_dup2 __NR_dup2
++#endif
++#ifdef	__NR_dup3
++#	define SYS_dup3 __NR_dup3
++#endif
++#ifdef	__NR_epoll_create
++#	define SYS_epoll_create __NR_epoll_create
++#endif
++#ifdef	__NR_epoll_create1
++#	define SYS_epoll_create1 __NR_epoll_create1
++#endif
++#ifdef	__NR_epoll_ctl
++#	define SYS_epoll_ctl __NR_epoll_ctl
++#endif
++#ifdef	__NR_epoll_ctl_old
++#	define SYS_epoll_ctl_old __NR_epoll_ctl_old
++#endif
++#ifdef	__NR_epoll_pwait
++#	define SYS_epoll_pwait __NR_epoll_pwait
++#endif
++#ifdef	__NR_epoll_pwait2
++#	define SYS_epoll_pwait2 __NR_epoll_pwait2
++#endif
++#ifdef	__NR_epoll_wait
++#	define SYS_epoll_wait __NR_epoll_wait
++#endif
++#ifdef	__NR_epoll_wait_old
++#	define SYS_epoll_wait_old __NR_epoll_wait_old
++#endif
++#ifdef	__NR_eventfd
++#	define SYS_eventfd __NR_eventfd
++#endif
++#ifdef	__NR_eventfd2
++#	define SYS_eventfd2 __NR_eventfd2
++#endif
++#ifdef	__NR_exec_with_loader
++#	define SYS_exec_with_loader __NR_exec_with_loader
++#endif
++#ifdef	__NR_execv
++#	define SYS_execv __NR_execv
++#endif
++#ifdef	__NR_execve
++#	define SYS_execve __NR_execve
++#endif
++#ifdef	__NR_execveat
++#	define SYS_execveat __NR_execveat
++#endif
++#ifdef	__NR_exit
++#	define SYS_exit __NR_exit
++#endif
++#ifdef	__NR_exit_group
++#	define SYS_exit_group __NR_exit_group
++#endif
++#ifdef	__NR_faccessat
++#	define SYS_faccessat __NR_faccessat
++#endif
++#ifdef	__NR_faccessat2
++#	define SYS_faccessat2 __NR_faccessat2
++#endif
++#ifdef	__NR_fadvise64
++#	define SYS_fadvise64 __NR_fadvise64
++#endif
++#ifdef	__NR_fadvise64_64
++#	define SYS_fadvise64_64 __NR_fadvise64_64
++#endif
++#ifdef	__NR_fallocate
++#	define SYS_fallocate __NR_fallocate
++#endif
++#ifdef	__NR_fanotify_init
++#	define SYS_fanotify_init __NR_fanotify_init
++#endif
++#ifdef	__NR_fanotify_mark
++#	define SYS_fanotify_mark __NR_fanotify_mark
++#endif
++#ifdef	__NR_fchdir
++#	define SYS_fchdir __NR_fchdir
++#endif
++#ifdef	__NR_fchmod
++#	define SYS_fchmod __NR_fchmod
++#endif
++#ifdef	__NR_fchmodat
++#	define SYS_fchmodat __NR_fchmodat
++#endif
++#ifdef	__NR_fchmodat2
++#	define SYS_fchmodat2 __NR_fchmodat2
++#endif
++#ifdef	__NR_fchown
++#	define SYS_fchown __NR_fchown
++#endif
++#ifdef	__NR_fchown32
++#	define SYS_fchown32 __NR_fchown32
++#endif
++#ifdef	__NR_fchownat
++#	define SYS_fchownat __NR_fchownat
++#endif
++#ifdef	__NR_fcntl
++#	define SYS_fcntl __NR_fcntl
++#endif
++#ifdef	__NR_fcntl64
++#	define SYS_fcntl64 __NR_fcntl64
++#endif
++#ifdef	__NR_fdatasync
++#	define SYS_fdatasync __NR_fdatasync
++#endif
++#ifdef	__NR_fgetxattr
++#	define SYS_fgetxattr __NR_fgetxattr
++#endif
++#ifdef	__NR_finit_module
++#	define SYS_finit_module __NR_finit_module
++#endif
++#ifdef	__NR_flistxattr
++#	define SYS_flistxattr __NR_flistxattr
++#endif
++#ifdef	__NR_flock
++#	define SYS_flock __NR_flock
++#endif
++#ifdef	__NR_fork
++#	define SYS_fork __NR_fork
++#endif
++#ifdef	__NR_fremovexattr
++#	define SYS_fremovexattr __NR_fremovexattr
++#endif
++#ifdef	__NR_fsconfig
++#	define SYS_fsconfig __NR_fsconfig
++#endif
++#ifdef	__NR_fsetxattr
++#	define SYS_fsetxattr __NR_fsetxattr
++#endif
++#ifdef	__NR_fsmount
++#	define SYS_fsmount __NR_fsmount
++#endif
++#ifdef	__NR_fsopen
++#	define SYS_fsopen __NR_fsopen
++#endif
++#ifdef	__NR_fspick
++#	define SYS_fspick __NR_fspick
++#endif
++#ifdef	__NR_fstat
++#	define SYS_fstat __NR_fstat
++#endif
++#ifdef	__NR_fstat64
++#	define SYS_fstat64 __NR_fstat64
++#endif
++#ifdef	__NR_fstatat64
++#	define SYS_fstatat64 __NR_fstatat64
++#endif
++#ifdef	__NR_fstatfs
++#	define SYS_fstatfs __NR_fstatfs
++#endif
++#ifdef	__NR_fstatfs64
++#	define SYS_fstatfs64 __NR_fstatfs64
++#endif
++#ifdef	__NR_fsync
++#	define SYS_fsync __NR_fsync
++#endif
++#ifdef	__NR_ftruncate
++#	define SYS_ftruncate __NR_ftruncate
++#endif
++#ifdef	__NR_ftruncate64
++#	define SYS_ftruncate64 __NR_ftruncate64
++#endif
++#ifdef	__NR_futex
++#	define SYS_futex __NR_futex
++#endif
++#ifdef	__NR_futex_requeue
++#	define SYS_futex_requeue __NR_futex_requeue
++#endif
++#ifdef	__NR_futex_time64
++#	define SYS_futex_time64 __NR_futex_time64
++#endif
++#ifdef	__NR_futex_wait
++#	define SYS_futex_wait __NR_futex_wait
++#endif
++#ifdef	__NR_futex_waitv
++#	define SYS_futex_waitv __NR_futex_waitv
++#endif
++#ifdef	__NR_futex_wake
++#	define SYS_futex_wake __NR_futex_wake
++#endif
++#ifdef	__NR_futimesat
++#	define SYS_futimesat __NR_futimesat
++#endif
++#ifdef	__NR_get_kernel_syms
++#	define SYS_get_kernel_syms __NR_get_kernel_syms
++#endif
++#ifdef	__NR_get_mempolicy
++#	define SYS_get_mempolicy __NR_get_mempolicy
++#endif
++#ifdef	__NR_get_robust_list
++#	define SYS_get_robust_list __NR_get_robust_list
++#endif
++#ifdef	__NR_get_thread_area
++#	define SYS_get_thread_area __NR_get_thread_area
++#endif
++#ifdef	__NR_getcpu
++#	define SYS_getcpu __NR_getcpu
++#endif
++#ifdef	__NR_getcwd
++#	define SYS_getcwd __NR_getcwd
++#endif
++#ifdef	__NR_getdents
++#	define SYS_getdents __NR_getdents
++#endif
++#ifdef	__NR_getdents64
++#	define SYS_getdents64 __NR_getdents64
++#endif
++#ifdef	__NR_getdomainname
++#	define SYS_getdomainname __NR_getdomainname
++#endif
++#ifdef	__NR_getdtablesize
++#	define SYS_getdtablesize __NR_getdtablesize
++#endif
++#ifdef	__NR_getegid
++#	define SYS_getegid __NR_getegid
++#endif
++#ifdef	__NR_getegid32
++#	define SYS_getegid32 __NR_getegid32
++#endif
++#ifdef	__NR_geteuid
++#	define SYS_geteuid __NR_geteuid
++#endif
++#ifdef	__NR_geteuid32
++#	define SYS_geteuid32 __NR_geteuid32
++#endif
++#ifdef	__NR_getgid
++#	define SYS_getgid __NR_getgid
++#endif
++#ifdef	__NR_getgid32
++#	define SYS_getgid32 __NR_getgid32
++#endif
++#ifdef	__NR_getgroups
++#	define SYS_getgroups __NR_getgroups
++#endif
++#ifdef	__NR_getgroups32
++#	define SYS_getgroups32 __NR_getgroups32
++#endif
++#ifdef	__NR_gethostname
++#	define SYS_gethostname __NR_gethostname
++#endif
++#ifdef	__NR_getitimer
++#	define SYS_getitimer __NR_getitimer
++#endif
++#ifdef	__NR_getpagesize
++#	define SYS_getpagesize __NR_getpagesize
++#endif
++#ifdef	__NR_getpeername
++#	define SYS_getpeername __NR_getpeername
++#endif
++#ifdef	__NR_getpgid
++#	define SYS_getpgid __NR_getpgid
++#endif
++#ifdef	__NR_getpgrp
++#	define SYS_getpgrp __NR_getpgrp
++#endif
++#ifdef	__NR_getpid
++#	define SYS_getpid __NR_getpid
++#endif
++#ifdef	__NR_getpmsg
++#	define SYS_getpmsg __NR_getpmsg
++#endif
++#ifdef	__NR_getppid
++#	define SYS_getppid __NR_getppid
++#endif
++#ifdef	__NR_getpriority
++#	define SYS_getpriority __NR_getpriority
++#endif
++#ifdef	__NR_getrandom
++#	define SYS_getrandom __NR_getrandom
++#endif
++#ifdef	__NR_getresgid
++#	define SYS_getresgid __NR_getresgid
++#endif
++#ifdef	__NR_getresgid32
++#	define SYS_getresgid32 __NR_getresgid32
++#endif
++#ifdef	__NR_getresuid
++#	define SYS_getresuid __NR_getresuid
++#endif
++#ifdef	__NR_getresuid32
++#	define SYS_getresuid32 __NR_getresuid32
++#endif
++#ifdef	__NR_getrlimit
++#	define SYS_getrlimit __NR_getrlimit
++#endif
++#ifdef	__NR_getrusage
++#	define SYS_getrusage __NR_getrusage
++#endif
++#ifdef	__NR_getsid
++#	define SYS_getsid __NR_getsid
++#endif
++#ifdef	__NR_getsockname
++#	define SYS_getsockname __NR_getsockname
++#endif
++#ifdef	__NR_getsockopt
++#	define SYS_getsockopt __NR_getsockopt
++#endif
++#ifdef	__NR_gettid
++#	define SYS_gettid __NR_gettid
++#endif
++#ifdef	__NR_gettimeofday
++#	define SYS_gettimeofday __NR_gettimeofday
++#endif
++#ifdef	__NR_getuid
++#	define SYS_getuid __NR_getuid
++#endif
++#ifdef	__NR_getuid32
++#	define SYS_getuid32 __NR_getuid32
++#endif
++#ifdef	__NR_getxattr
++#	define SYS_getxattr __NR_getxattr
++#endif
++#ifdef	__NR_getxattrat
++#	define SYS_getxattrat __NR_getxattrat
++#endif
++#ifdef	__NR_getxgid
++#	define SYS_getxgid __NR_getxgid
++#endif
++#ifdef	__NR_getxpid
++#	define SYS_getxpid __NR_getxpid
++#endif
++#ifdef	__NR_getxuid
++#	define SYS_getxuid __NR_getxuid
++#endif
++#ifdef	__NR_idle
++#	define SYS_idle __NR_idle
++#endif
++#ifdef	__NR_init_module
++#	define SYS_init_module __NR_init_module
++#endif
++#ifdef	__NR_inotify_add_watch
++#	define SYS_inotify_add_watch __NR_inotify_add_watch
++#endif
++#ifdef	__NR_inotify_init
++#	define SYS_inotify_init __NR_inotify_init
++#endif
++#ifdef	__NR_inotify_init1
++#	define SYS_inotify_init1 __NR_inotify_init1
++#endif
++#ifdef	__NR_inotify_rm_watch
++#	define SYS_inotify_rm_watch __NR_inotify_rm_watch
++#endif
++#ifdef	__NR_io_cancel
++#	define SYS_io_cancel __NR_io_cancel
++#endif
++#ifdef	__NR_io_destroy
++#	define SYS_io_destroy __NR_io_destroy
++#endif
++#ifdef	__NR_io_getevents
++#	define SYS_io_getevents __NR_io_getevents
++#endif
++#ifdef	__NR_io_pgetevents
++#	define SYS_io_pgetevents __NR_io_pgetevents
++#endif
++#ifdef	__NR_io_pgetevents_time64
++#	define SYS_io_pgetevents_time64 __NR_io_pgetevents_time64
++#endif
++#ifdef	__NR_io_setup
++#	define SYS_io_setup __NR_io_setup
++#endif
++#ifdef	__NR_io_submit
++#	define SYS_io_submit __NR_io_submit
++#endif
++#ifdef	__NR_io_uring_enter
++#	define SYS_io_uring_enter __NR_io_uring_enter
++#endif
++#ifdef	__NR_io_uring_register
++#	define SYS_io_uring_register __NR_io_uring_register
++#endif
++#ifdef	__NR_io_uring_setup
++#	define SYS_io_uring_setup __NR_io_uring_setup
++#endif
++#ifdef	__NR_ioctl
++#	define SYS_ioctl __NR_ioctl
++#endif
++#ifdef	__NR_ioperm
++#	define SYS_ioperm __NR_ioperm
++#endif
++#ifdef	__NR_iopl
++#	define SYS_iopl __NR_iopl
++#endif
++#ifdef	__NR_ioprio_get
++#	define SYS_ioprio_get __NR_ioprio_get
++#endif
++#ifdef	__NR_ioprio_set
++#	define SYS_ioprio_set __NR_ioprio_set
++#endif
++#ifdef	__NR_ipc
++#	define SYS_ipc __NR_ipc
++#endif
++#ifdef	__NR_kcmp
++#	define SYS_kcmp __NR_kcmp
++#endif
++#ifdef	__NR_kern_features
++#	define SYS_kern_features __NR_kern_features
++#endif
++#ifdef	__NR_kexec_file_load
++#	define SYS_kexec_file_load __NR_kexec_file_load
++#endif
++#ifdef	__NR_kexec_load
++#	define SYS_kexec_load __NR_kexec_load
++#endif
++#ifdef	__NR_keyctl
++#	define SYS_keyctl __NR_keyctl
++#endif
++#ifdef	__NR_kill
++#	define SYS_kill __NR_kill
++#endif
++#ifdef	__NR_landlock_add_rule
++#	define SYS_landlock_add_rule __NR_landlock_add_rule
++#endif
++#ifdef	__NR_landlock_create_ruleset
++#	define SYS_landlock_create_ruleset __NR_landlock_create_ruleset
++#endif
++#ifdef	__NR_landlock_restrict_self
++#	define SYS_landlock_restrict_self __NR_landlock_restrict_self
++#endif
++#ifdef	__NR_lchown
++#	define SYS_lchown __NR_lchown
++#endif
++#ifdef	__NR_lchown32
++#	define SYS_lchown32 __NR_lchown32
++#endif
++#ifdef	__NR_lgetxattr
++#	define SYS_lgetxattr __NR_lgetxattr
++#endif
++#ifdef	__NR_link
++#	define SYS_link __NR_link
++#endif
++#ifdef	__NR_linkat
++#	define SYS_linkat __NR_linkat
++#endif
++#ifdef	__NR_listen
++#	define SYS_listen __NR_listen
++#endif
++#ifdef	__NR_listmount
++#	define SYS_listmount __NR_listmount
++#endif
++#ifdef	__NR_listxattr
++#	define SYS_listxattr __NR_listxattr
++#endif
++#ifdef	__NR_listxattrat
++#	define SYS_listxattrat __NR_listxattrat
++#endif
++#ifdef	__NR_llistxattr
++#	define SYS_llistxattr __NR_llistxattr
++#endif
++#ifdef	__NR_llseek
++#	define SYS_llseek __NR_llseek
++#endif
++#ifdef	__NR_lookup_dcookie
++#	define SYS_lookup_dcookie __NR_lookup_dcookie
++#endif
++#ifdef	__NR_lremovexattr
++#	define SYS_lremovexattr __NR_lremovexattr
++#endif
++#ifdef	__NR_lseek
++#	define SYS_lseek __NR_lseek
++#endif
++#ifdef	__NR_lsetxattr
++#	define SYS_lsetxattr __NR_lsetxattr
++#endif
++#ifdef	__NR_lsm_get_self_attr
++#	define SYS_lsm_get_self_attr __NR_lsm_get_self_attr
++#endif
++#ifdef	__NR_lsm_list_modules
++#	define SYS_lsm_list_modules __NR_lsm_list_modules
++#endif
++#ifdef	__NR_lsm_set_self_attr
++#	define SYS_lsm_set_self_attr __NR_lsm_set_self_attr
++#endif
++#ifdef	__NR_lstat
++#	define SYS_lstat __NR_lstat
++#endif
++#ifdef	__NR_lstat64
++#	define SYS_lstat64 __NR_lstat64
++#endif
++#ifdef	__NR_madvise
++#	define SYS_madvise __NR_madvise
++#endif
++#ifdef	__NR_map_shadow_stack
++#	define SYS_map_shadow_stack __NR_map_shadow_stack
++#endif
++#ifdef	__NR_mbind
++#	define SYS_mbind __NR_mbind
++#endif
++#ifdef	__NR_membarrier
++#	define SYS_membarrier __NR_membarrier
++#endif
++#ifdef	__NR_memfd_create
++#	define SYS_memfd_create __NR_memfd_create
++#endif
++#ifdef	__NR_memfd_secret
++#	define SYS_memfd_secret __NR_memfd_secret
++#endif
++#ifdef	__NR_memory_ordering
++#	define SYS_memory_ordering __NR_memory_ordering
++#endif
++#ifdef	__NR_migrate_pages
++#	define SYS_migrate_pages __NR_migrate_pages
++#endif
++#ifdef	__NR_mincore
++#	define SYS_mincore __NR_mincore
++#endif
++#ifdef	__NR_mkdir
++#	define SYS_mkdir __NR_mkdir
++#endif
++#ifdef	__NR_mkdirat
++#	define SYS_mkdirat __NR_mkdirat
++#endif
++#ifdef	__NR_mknod
++#	define SYS_mknod __NR_mknod
++#endif
++#ifdef	__NR_mknodat
++#	define SYS_mknodat __NR_mknodat
++#endif
++#ifdef	__NR_mlock
++#	define SYS_mlock __NR_mlock
++#endif
++#ifdef	__NR_mlock2
++#	define SYS_mlock2 __NR_mlock2
++#endif
++#ifdef	__NR_mlockall
++#	define SYS_mlockall __NR_mlockall
++#endif
++#ifdef	__NR_mmap
++#	define SYS_mmap __NR_mmap
++#endif
++#ifdef	__NR_mmap2
++#	define SYS_mmap2 __NR_mmap2
++#endif
++#ifdef	__NR_modify_ldt
++#	define SYS_modify_ldt __NR_modify_ldt
++#endif
++#ifdef	__NR_mount
++#	define SYS_mount __NR_mount
++#endif
++#ifdef	__NR_mount_setattr
++#	define SYS_mount_setattr __NR_mount_setattr
++#endif
++#ifdef	__NR_move_mount
++#	define SYS_move_mount __NR_move_mount
++#endif
++#ifdef	__NR_move_pages
++#	define SYS_move_pages __NR_move_pages
++#endif
++#ifdef	__NR_mprotect
++#	define SYS_mprotect __NR_mprotect
++#endif
++#ifdef	__NR_mq_getsetattr
++#	define SYS_mq_getsetattr __NR_mq_getsetattr
++#endif
++#ifdef	__NR_mq_notify
++#	define SYS_mq_notify __NR_mq_notify
++#endif
++#ifdef	__NR_mq_open
++#	define SYS_mq_open __NR_mq_open
++#endif
++#ifdef	__NR_mq_timedreceive
++#	define SYS_mq_timedreceive __NR_mq_timedreceive
++#endif
++#ifdef	__NR_mq_timedreceive_time64
++#	define SYS_mq_timedreceive_time64 __NR_mq_timedreceive_time64
++#endif
++#ifdef	__NR_mq_timedsend
++#	define SYS_mq_timedsend __NR_mq_timedsend
++#endif
++#ifdef	__NR_mq_timedsend_time64
++#	define SYS_mq_timedsend_time64 __NR_mq_timedsend_time64
++#endif
++#ifdef	__NR_mq_unlink
++#	define SYS_mq_unlink __NR_mq_unlink
++#endif
++#ifdef	__NR_mremap
++#	define SYS_mremap __NR_mremap
++#endif
++#ifdef	__NR_mseal
++#	define SYS_mseal __NR_mseal
++#endif
++#ifdef	__NR_msgctl
++#	define SYS_msgctl __NR_msgctl
++#endif
++#ifdef	__NR_msgget
++#	define SYS_msgget __NR_msgget
++#endif
++#ifdef	__NR_msgrcv
++#	define SYS_msgrcv __NR_msgrcv
++#endif
++#ifdef	__NR_msgsnd
++#	define SYS_msgsnd __NR_msgsnd
++#endif
++#ifdef	__NR_msync
++#	define SYS_msync __NR_msync
++#endif
++#ifdef	__NR_multiplexer
++#	define SYS_multiplexer __NR_multiplexer
++#endif
++#ifdef	__NR_munlock
++#	define SYS_munlock __NR_munlock
++#endif
++#ifdef	__NR_munlockall
++#	define SYS_munlockall __NR_munlockall
++#endif
++#ifdef	__NR_munmap
++#	define SYS_munmap __NR_munmap
++#endif
++#ifdef	__NR_name_to_handle_at
++#	define SYS_name_to_handle_at __NR_name_to_handle_at
++#endif
++#ifdef	__NR_nanosleep
++#	define SYS_nanosleep __NR_nanosleep
++#endif
++#ifdef	__NR_newfstatat
++#	define SYS_newfstatat __NR_newfstatat
++#endif
++#ifdef	__NR_nfsservctl
++#	define SYS_nfsservctl __NR_nfsservctl
++#endif
++#ifdef	__NR_nice
++#	define SYS_nice __NR_nice
++#endif
++#ifdef	__NR_old_adjtimex
++#	define SYS_old_adjtimex __NR_old_adjtimex
++#endif
++#ifdef	__NR_oldfstat
++#	define SYS_oldfstat __NR_oldfstat
++#endif
++#ifdef	__NR_oldlstat
++#	define SYS_oldlstat __NR_oldlstat
++#endif
++#ifdef	__NR_oldolduname
++#	define SYS_oldolduname __NR_oldolduname
++#endif
++#ifdef	__NR_oldstat
++#	define SYS_oldstat __NR_oldstat
++#endif
++#ifdef	__NR_oldumount
++#	define SYS_oldumount __NR_oldumount
++#endif
++#ifdef	__NR_olduname
++#	define SYS_olduname __NR_olduname
++#endif
++#ifdef	__NR_open
++#	define SYS_open __NR_open
++#endif
++#ifdef	__NR_open_by_handle_at
++#	define SYS_open_by_handle_at __NR_open_by_handle_at
++#endif
++#ifdef	__NR_open_tree
++#	define SYS_open_tree __NR_open_tree
++#endif
++#ifdef	__NR_openat
++#	define SYS_openat __NR_openat
++#endif
++#ifdef	__NR_openat2
++#	define SYS_openat2 __NR_openat2
++#endif
++#ifdef	__NR_or1k_atomic
++#	define SYS_or1k_atomic __NR_or1k_atomic
++#endif
++#ifdef	__NR_osf_adjtime
++#	define SYS_osf_adjtime __NR_osf_adjtime
++#endif
++#ifdef	__NR_osf_afs_syscall
++#	define SYS_osf_afs_syscall __NR_osf_afs_syscall
++#endif
++#ifdef	__NR_osf_alt_plock
++#	define SYS_osf_alt_plock __NR_osf_alt_plock
++#endif
++#ifdef	__NR_osf_alt_setsid
++#	define SYS_osf_alt_setsid __NR_osf_alt_setsid
++#endif
++#ifdef	__NR_osf_alt_sigpending
++#	define SYS_osf_alt_sigpending __NR_osf_alt_sigpending
++#endif
++#ifdef	__NR_osf_asynch_daemon
++#	define SYS_osf_asynch_daemon __NR_osf_asynch_daemon
++#endif
++#ifdef	__NR_osf_audcntl
++#	define SYS_osf_audcntl __NR_osf_audcntl
++#endif
++#ifdef	__NR_osf_audgen
++#	define SYS_osf_audgen __NR_osf_audgen
++#endif
++#ifdef	__NR_osf_chflags
++#	define SYS_osf_chflags __NR_osf_chflags
++#endif
++#ifdef	__NR_osf_execve
++#	define SYS_osf_execve __NR_osf_execve
++#endif
++#ifdef	__NR_osf_exportfs
++#	define SYS_osf_exportfs __NR_osf_exportfs
++#endif
++#ifdef	__NR_osf_fchflags
++#	define SYS_osf_fchflags __NR_osf_fchflags
++#endif
++#ifdef	__NR_osf_fdatasync
++#	define SYS_osf_fdatasync __NR_osf_fdatasync
++#endif
++#ifdef	__NR_osf_fpathconf
++#	define SYS_osf_fpathconf __NR_osf_fpathconf
++#endif
++#ifdef	__NR_osf_fstat
++#	define SYS_osf_fstat __NR_osf_fstat
++#endif
++#ifdef	__NR_osf_fstatfs
++#	define SYS_osf_fstatfs __NR_osf_fstatfs
++#endif
++#ifdef	__NR_osf_fstatfs64
++#	define SYS_osf_fstatfs64 __NR_osf_fstatfs64
++#endif
++#ifdef	__NR_osf_fuser
++#	define SYS_osf_fuser __NR_osf_fuser
++#endif
++#ifdef	__NR_osf_getaddressconf
++#	define SYS_osf_getaddressconf __NR_osf_getaddressconf
++#endif
++#ifdef	__NR_osf_getdirentries
++#	define SYS_osf_getdirentries __NR_osf_getdirentries
++#endif
++#ifdef	__NR_osf_getdomainname
++#	define SYS_osf_getdomainname __NR_osf_getdomainname
++#endif
++#ifdef	__NR_osf_getfh
++#	define SYS_osf_getfh __NR_osf_getfh
++#endif
++#ifdef	__NR_osf_getfsstat
++#	define SYS_osf_getfsstat __NR_osf_getfsstat
++#endif
++#ifdef	__NR_osf_gethostid
++#	define SYS_osf_gethostid __NR_osf_gethostid
++#endif
++#ifdef	__NR_osf_getitimer
++#	define SYS_osf_getitimer __NR_osf_getitimer
++#endif
++#ifdef	__NR_osf_getlogin
++#	define SYS_osf_getlogin __NR_osf_getlogin
++#endif
++#ifdef	__NR_osf_getmnt
++#	define SYS_osf_getmnt __NR_osf_getmnt
++#endif
++#ifdef	__NR_osf_getrusage
++#	define SYS_osf_getrusage __NR_osf_getrusage
++#endif
++#ifdef	__NR_osf_getsysinfo
++#	define SYS_osf_getsysinfo __NR_osf_getsysinfo
++#endif
++#ifdef	__NR_osf_gettimeofday
++#	define SYS_osf_gettimeofday __NR_osf_gettimeofday
++#endif
++#ifdef	__NR_osf_kloadcall
++#	define SYS_osf_kloadcall __NR_osf_kloadcall
++#endif
++#ifdef	__NR_osf_kmodcall
++#	define SYS_osf_kmodcall __NR_osf_kmodcall
++#endif
++#ifdef	__NR_osf_lstat
++#	define SYS_osf_lstat __NR_osf_lstat
++#endif
++#ifdef	__NR_osf_memcntl
++#	define SYS_osf_memcntl __NR_osf_memcntl
++#endif
++#ifdef	__NR_osf_mincore
++#	define SYS_osf_mincore __NR_osf_mincore
++#endif
++#ifdef	__NR_osf_mount
++#	define SYS_osf_mount __NR_osf_mount
++#endif
++#ifdef	__NR_osf_mremap
++#	define SYS_osf_mremap __NR_osf_mremap
++#endif
++#ifdef	__NR_osf_msfs_syscall
++#	define SYS_osf_msfs_syscall __NR_osf_msfs_syscall
++#endif
++#ifdef	__NR_osf_msleep
++#	define SYS_osf_msleep __NR_osf_msleep
++#endif
++#ifdef	__NR_osf_mvalid
++#	define SYS_osf_mvalid __NR_osf_mvalid
++#endif
++#ifdef	__NR_osf_mwakeup
++#	define SYS_osf_mwakeup __NR_osf_mwakeup
++#endif
++#ifdef	__NR_osf_naccept
++#	define SYS_osf_naccept __NR_osf_naccept
++#endif
++#ifdef	__NR_osf_nfssvc
++#	define SYS_osf_nfssvc __NR_osf_nfssvc
++#endif
++#ifdef	__NR_osf_ngetpeername
++#	define SYS_osf_ngetpeername __NR_osf_ngetpeername
++#endif
++#ifdef	__NR_osf_ngetsockname
++#	define SYS_osf_ngetsockname __NR_osf_ngetsockname
++#endif
++#ifdef	__NR_osf_nrecvfrom
++#	define SYS_osf_nrecvfrom __NR_osf_nrecvfrom
++#endif
++#ifdef	__NR_osf_nrecvmsg
++#	define SYS_osf_nrecvmsg __NR_osf_nrecvmsg
++#endif
++#ifdef	__NR_osf_nsendmsg
++#	define SYS_osf_nsendmsg __NR_osf_nsendmsg
++#endif
++#ifdef	__NR_osf_ntp_adjtime
++#	define SYS_osf_ntp_adjtime __NR_osf_ntp_adjtime
++#endif
++#ifdef	__NR_osf_ntp_gettime
++#	define SYS_osf_ntp_gettime __NR_osf_ntp_gettime
++#endif
++#ifdef	__NR_osf_old_creat
++#	define SYS_osf_old_creat __NR_osf_old_creat
++#endif
++#ifdef	__NR_osf_old_fstat
++#	define SYS_osf_old_fstat __NR_osf_old_fstat
++#endif
++#ifdef	__NR_osf_old_getpgrp
++#	define SYS_osf_old_getpgrp __NR_osf_old_getpgrp
++#endif
++#ifdef	__NR_osf_old_killpg
++#	define SYS_osf_old_killpg __NR_osf_old_killpg
++#endif
++#ifdef	__NR_osf_old_lstat
++#	define SYS_osf_old_lstat __NR_osf_old_lstat
++#endif
++#ifdef	__NR_osf_old_open
++#	define SYS_osf_old_open __NR_osf_old_open
++#endif
++#ifdef	__NR_osf_old_sigaction
++#	define SYS_osf_old_sigaction __NR_osf_old_sigaction
++#endif
++#ifdef	__NR_osf_old_sigblock
++#	define SYS_osf_old_sigblock __NR_osf_old_sigblock
++#endif
++#ifdef	__NR_osf_old_sigreturn
++#	define SYS_osf_old_sigreturn __NR_osf_old_sigreturn
++#endif
++#ifdef	__NR_osf_old_sigsetmask
++#	define SYS_osf_old_sigsetmask __NR_osf_old_sigsetmask
++#endif
++#ifdef	__NR_osf_old_sigvec
++#	define SYS_osf_old_sigvec __NR_osf_old_sigvec
++#endif
++#ifdef	__NR_osf_old_stat
++#	define SYS_osf_old_stat __NR_osf_old_stat
++#endif
++#ifdef	__NR_osf_old_vadvise
++#	define SYS_osf_old_vadvise __NR_osf_old_vadvise
++#endif
++#ifdef	__NR_osf_old_vtrace
++#	define SYS_osf_old_vtrace __NR_osf_old_vtrace
++#endif
++#ifdef	__NR_osf_old_wait
++#	define SYS_osf_old_wait __NR_osf_old_wait
++#endif
++#ifdef	__NR_osf_oldquota
++#	define SYS_osf_oldquota __NR_osf_oldquota
++#endif
++#ifdef	__NR_osf_pathconf
++#	define SYS_osf_pathconf __NR_osf_pathconf
++#endif
++#ifdef	__NR_osf_pid_block
++#	define SYS_osf_pid_block __NR_osf_pid_block
++#endif
++#ifdef	__NR_osf_pid_unblock
++#	define SYS_osf_pid_unblock __NR_osf_pid_unblock
++#endif
++#ifdef	__NR_osf_plock
++#	define SYS_osf_plock __NR_osf_plock
++#endif
++#ifdef	__NR_osf_priocntlset
++#	define SYS_osf_priocntlset __NR_osf_priocntlset
++#endif
++#ifdef	__NR_osf_profil
++#	define SYS_osf_profil __NR_osf_profil
++#endif
++#ifdef	__NR_osf_proplist_syscall
++#	define SYS_osf_proplist_syscall __NR_osf_proplist_syscall
++#endif
++#ifdef	__NR_osf_reboot
++#	define SYS_osf_reboot __NR_osf_reboot
++#endif
++#ifdef	__NR_osf_revoke
++#	define SYS_osf_revoke __NR_osf_revoke
++#endif
++#ifdef	__NR_osf_sbrk
++#	define SYS_osf_sbrk __NR_osf_sbrk
++#endif
++#ifdef	__NR_osf_security
++#	define SYS_osf_security __NR_osf_security
++#endif
++#ifdef	__NR_osf_select
++#	define SYS_osf_select __NR_osf_select
++#endif
++#ifdef	__NR_osf_set_program_attributes
++#	define SYS_osf_set_program_attributes __NR_osf_set_program_attributes
++#endif
++#ifdef	__NR_osf_set_speculative
++#	define SYS_osf_set_speculative __NR_osf_set_speculative
++#endif
++#ifdef	__NR_osf_sethostid
++#	define SYS_osf_sethostid __NR_osf_sethostid
++#endif
++#ifdef	__NR_osf_setitimer
++#	define SYS_osf_setitimer __NR_osf_setitimer
++#endif
++#ifdef	__NR_osf_setlogin
++#	define SYS_osf_setlogin __NR_osf_setlogin
++#endif
++#ifdef	__NR_osf_setsysinfo
++#	define SYS_osf_setsysinfo __NR_osf_setsysinfo
++#endif
++#ifdef	__NR_osf_settimeofday
++#	define SYS_osf_settimeofday __NR_osf_settimeofday
++#endif
++#ifdef	__NR_osf_shmat
++#	define SYS_osf_shmat __NR_osf_shmat
++#endif
++#ifdef	__NR_osf_signal
++#	define SYS_osf_signal __NR_osf_signal
++#endif
++#ifdef	__NR_osf_sigprocmask
++#	define SYS_osf_sigprocmask __NR_osf_sigprocmask
++#endif
++#ifdef	__NR_osf_sigsendset
++#	define SYS_osf_sigsendset __NR_osf_sigsendset
++#endif
++#ifdef	__NR_osf_sigstack
++#	define SYS_osf_sigstack __NR_osf_sigstack
++#endif
++#ifdef	__NR_osf_sigwaitprim
++#	define SYS_osf_sigwaitprim __NR_osf_sigwaitprim
++#endif
++#ifdef	__NR_osf_sstk
++#	define SYS_osf_sstk __NR_osf_sstk
++#endif
++#ifdef	__NR_osf_stat
++#	define SYS_osf_stat __NR_osf_stat
++#endif
++#ifdef	__NR_osf_statfs
++#	define SYS_osf_statfs __NR_osf_statfs
++#endif
++#ifdef	__NR_osf_statfs64
++#	define SYS_osf_statfs64 __NR_osf_statfs64
++#endif
++#ifdef	__NR_osf_subsys_info
++#	define SYS_osf_subsys_info __NR_osf_subsys_info
++#endif
++#ifdef	__NR_osf_swapctl
++#	define SYS_osf_swapctl __NR_osf_swapctl
++#endif
++#ifdef	__NR_osf_swapon
++#	define SYS_osf_swapon __NR_osf_swapon
++#endif
++#ifdef	__NR_osf_syscall
++#	define SYS_osf_syscall __NR_osf_syscall
++#endif
++#ifdef	__NR_osf_sysinfo
++#	define SYS_osf_sysinfo __NR_osf_sysinfo
++#endif
++#ifdef	__NR_osf_table
++#	define SYS_osf_table __NR_osf_table
++#endif
++#ifdef	__NR_osf_uadmin
++#	define SYS_osf_uadmin __NR_osf_uadmin
++#endif
++#ifdef	__NR_osf_usleep_thread
++#	define SYS_osf_usleep_thread __NR_osf_usleep_thread
++#endif
++#ifdef	__NR_osf_uswitch
++#	define SYS_osf_uswitch __NR_osf_uswitch
++#endif
++#ifdef	__NR_osf_utc_adjtime
++#	define SYS_osf_utc_adjtime __NR_osf_utc_adjtime
++#endif
++#ifdef	__NR_osf_utc_gettime
++#	define SYS_osf_utc_gettime __NR_osf_utc_gettime
++#endif
++#ifdef	__NR_osf_utimes
++#	define SYS_osf_utimes __NR_osf_utimes
++#endif
++#ifdef	__NR_osf_utsname
++#	define SYS_osf_utsname __NR_osf_utsname
++#endif
++#ifdef	__NR_osf_wait4
++#	define SYS_osf_wait4 __NR_osf_wait4
++#endif
++#ifdef	__NR_osf_waitid
++#	define SYS_osf_waitid __NR_osf_waitid
++#endif
++#ifdef	__NR_pause
++#	define SYS_pause __NR_pause
++#endif
++#ifdef	__NR_pciconfig_iobase
++#	define SYS_pciconfig_iobase __NR_pciconfig_iobase
++#endif
++#ifdef	__NR_pciconfig_read
++#	define SYS_pciconfig_read __NR_pciconfig_read
++#endif
++#ifdef	__NR_pciconfig_write
++#	define SYS_pciconfig_write __NR_pciconfig_write
++#endif
++#ifdef	__NR_perf_event_open
++#	define SYS_perf_event_open __NR_perf_event_open
++#endif
++#ifdef	__NR_perfctr
++#	define SYS_perfctr __NR_perfctr
++#endif
++#ifdef	__NR_personality
++#	define SYS_personality __NR_personality
++#endif
++#ifdef	__NR_pidfd_getfd
++#	define SYS_pidfd_getfd __NR_pidfd_getfd
++#endif
++#ifdef	__NR_pidfd_open
++#	define SYS_pidfd_open __NR_pidfd_open
++#endif
++#ifdef	__NR_pidfd_send_signal
++#	define SYS_pidfd_send_signal __NR_pidfd_send_signal
++#endif
++#ifdef	__NR_pipe
++#	define SYS_pipe __NR_pipe
++#endif
++#ifdef	__NR_pipe2
++#	define SYS_pipe2 __NR_pipe2
++#endif
++#ifdef	__NR_pivot_root
++#	define SYS_pivot_root __NR_pivot_root
++#endif
++#ifdef	__NR_pkey_alloc
++#	define SYS_pkey_alloc __NR_pkey_alloc
++#endif
++#ifdef	__NR_pkey_free
++#	define SYS_pkey_free __NR_pkey_free
++#endif
++#ifdef	__NR_pkey_mprotect
++#	define SYS_pkey_mprotect __NR_pkey_mprotect
++#endif
++#ifdef	__NR_poll
++#	define SYS_poll __NR_poll
++#endif
++#ifdef	__NR_ppoll
++#	define SYS_ppoll __NR_ppoll
++#endif
++#ifdef	__NR_ppoll_time64
++#	define SYS_ppoll_time64 __NR_ppoll_time64
++#endif
++#ifdef	__NR_prctl
++#	define SYS_prctl __NR_prctl
++#endif
++#ifdef	__NR_pread64
++#	define SYS_pread64 __NR_pread64
++#endif
++#ifdef	__NR_preadv
++#	define SYS_preadv __NR_preadv
++#endif
++#ifdef	__NR_preadv2
++#	define SYS_preadv2 __NR_preadv2
++#endif
++#ifdef	__NR_prlimit64
++#	define SYS_prlimit64 __NR_prlimit64
++#endif
++#ifdef	__NR_process_madvise
++#	define SYS_process_madvise __NR_process_madvise
++#endif
++#ifdef	__NR_process_mrelease
++#	define SYS_process_mrelease __NR_process_mrelease
++#endif
++#ifdef	__NR_process_vm_readv
++#	define SYS_process_vm_readv __NR_process_vm_readv
++#endif
++#ifdef	__NR_process_vm_writev
++#	define SYS_process_vm_writev __NR_process_vm_writev
++#endif
++#ifdef	__NR_pselect6
++#	define SYS_pselect6 __NR_pselect6
++#endif
++#ifdef	__NR_pselect6_time64
++#	define SYS_pselect6_time64 __NR_pselect6_time64
++#endif
++#ifdef	__NR_ptrace
++#	define SYS_ptrace __NR_ptrace
++#endif
++#ifdef	__NR_pwrite64
++#	define SYS_pwrite64 __NR_pwrite64
++#endif
++#ifdef	__NR_pwritev
++#	define SYS_pwritev __NR_pwritev
++#endif
++#ifdef	__NR_pwritev2
++#	define SYS_pwritev2 __NR_pwritev2
++#endif
++#ifdef	__NR_query_module
++#	define SYS_query_module __NR_query_module
++#endif
++#ifdef	__NR_quotactl
++#	define SYS_quotactl __NR_quotactl
++#endif
++#ifdef	__NR_quotactl_fd
++#	define SYS_quotactl_fd __NR_quotactl_fd
++#endif
++#ifdef	__NR_read
++#	define SYS_read __NR_read
++#endif
++#ifdef	__NR_readahead
++#	define SYS_readahead __NR_readahead
++#endif
++#ifdef	__NR_readdir
++#	define SYS_readdir __NR_readdir
++#endif
++#ifdef	__NR_readlink
++#	define SYS_readlink __NR_readlink
++#endif
++#ifdef	__NR_readlinkat
++#	define SYS_readlinkat __NR_readlinkat
++#endif
++#ifdef	__NR_readv
++#	define SYS_readv __NR_readv
++#endif
++#ifdef	__NR_reboot
++#	define SYS_reboot __NR_reboot
++#endif
++#ifdef	__NR_recv
++#	define SYS_recv __NR_recv
++#endif
++#ifdef	__NR_recvfrom
++#	define SYS_recvfrom __NR_recvfrom
++#endif
++#ifdef	__NR_recvmmsg
++#	define SYS_recvmmsg __NR_recvmmsg
++#endif
++#ifdef	__NR_recvmmsg_time64
++#	define SYS_recvmmsg_time64 __NR_recvmmsg_time64
++#endif
++#ifdef	__NR_recvmsg
++#	define SYS_recvmsg __NR_recvmsg
++#endif
++#ifdef	__NR_remap_file_pages
++#	define SYS_remap_file_pages __NR_remap_file_pages
++#endif
++#ifdef	__NR_removexattr
++#	define SYS_removexattr __NR_removexattr
++#endif
++#ifdef	__NR_removexattrat
++#	define SYS_removexattrat __NR_removexattrat
++#endif
++#ifdef	__NR_rename
++#	define SYS_rename __NR_rename
++#endif
++#ifdef	__NR_renameat
++#	define SYS_renameat __NR_renameat
++#endif
++#ifdef	__NR_renameat2
++#	define SYS_renameat2 __NR_renameat2
++#endif
++#ifdef	__NR_request_key
++#	define SYS_request_key __NR_request_key
++#endif
++#ifdef	__NR_restart_syscall
++#	define SYS_restart_syscall __NR_restart_syscall
++#endif
++#ifdef	__NR_riscv_flush_icache
++#	define SYS_riscv_flush_icache __NR_riscv_flush_icache
++#endif
++#ifdef	__NR_riscv_hwprobe
++#	define SYS_riscv_hwprobe __NR_riscv_hwprobe
++#endif
++#ifdef	__NR_rmdir
++#	define SYS_rmdir __NR_rmdir
++#endif
++#ifdef	__NR_rseq
++#	define SYS_rseq __NR_rseq
++#endif
++#ifdef	__NR_rt_sigaction
++#	define SYS_rt_sigaction __NR_rt_sigaction
++#endif
++#ifdef	__NR_rt_sigpending
++#	define SYS_rt_sigpending __NR_rt_sigpending
++#endif
++#ifdef	__NR_rt_sigprocmask
++#	define SYS_rt_sigprocmask __NR_rt_sigprocmask
++#endif
++#ifdef	__NR_rt_sigqueueinfo
++#	define SYS_rt_sigqueueinfo __NR_rt_sigqueueinfo
++#endif
++#ifdef	__NR_rt_sigreturn
++#	define SYS_rt_sigreturn __NR_rt_sigreturn
++#endif
++#ifdef	__NR_rt_sigsuspend
++#	define SYS_rt_sigsuspend __NR_rt_sigsuspend
++#endif
++#ifdef	__NR_rt_sigtimedwait
++#	define SYS_rt_sigtimedwait __NR_rt_sigtimedwait
++#endif
++#ifdef	__NR_rt_sigtimedwait_time64
++#	define SYS_rt_sigtimedwait_time64 __NR_rt_sigtimedwait_time64
++#endif
++#ifdef	__NR_rt_tgsigqueueinfo
++#	define SYS_rt_tgsigqueueinfo __NR_rt_tgsigqueueinfo
++#endif
++#ifdef	__NR_rtas
++#	define SYS_rtas __NR_rtas
++#endif
++#ifdef	__NR_s390_guarded_storage
++#	define SYS_s390_guarded_storage __NR_s390_guarded_storage
++#endif
++#ifdef	__NR_s390_pci_mmio_read
++#	define SYS_s390_pci_mmio_read __NR_s390_pci_mmio_read
++#endif
++#ifdef	__NR_s390_pci_mmio_write
++#	define SYS_s390_pci_mmio_write __NR_s390_pci_mmio_write
++#endif
++#ifdef	__NR_s390_runtime_instr
++#	define SYS_s390_runtime_instr __NR_s390_runtime_instr
++#endif
++#ifdef	__NR_s390_sthyi
++#	define SYS_s390_sthyi __NR_s390_sthyi
++#endif
++#ifdef	__NR_sched_get_affinity
++#	define SYS_sched_get_affinity __NR_sched_get_affinity
++#endif
++#ifdef	__NR_sched_get_priority_max
++#	define SYS_sched_get_priority_max __NR_sched_get_priority_max
++#endif
++#ifdef	__NR_sched_get_priority_min
++#	define SYS_sched_get_priority_min __NR_sched_get_priority_min
++#endif
++#ifdef	__NR_sched_getaffinity
++#	define SYS_sched_getaffinity __NR_sched_getaffinity
++#endif
++#ifdef	__NR_sched_getattr
++#	define SYS_sched_getattr __NR_sched_getattr
++#endif
++#ifdef	__NR_sched_getparam
++#	define SYS_sched_getparam __NR_sched_getparam
++#endif
++#ifdef	__NR_sched_getscheduler
++#	define SYS_sched_getscheduler __NR_sched_getscheduler
++#endif
++#ifdef	__NR_sched_rr_get_interval
++#	define SYS_sched_rr_get_interval __NR_sched_rr_get_interval
++#endif
++#ifdef	__NR_sched_rr_get_interval_time64
++#	define SYS_sched_rr_get_interval_time64 __NR_sched_rr_get_interval_time64
++#endif
++#ifdef	__NR_sched_set_affinity
++#	define SYS_sched_set_affinity __NR_sched_set_affinity
++#endif
++#ifdef	__NR_sched_setaffinity
++#	define SYS_sched_setaffinity __NR_sched_setaffinity
++#endif
++#ifdef	__NR_sched_setattr
++#	define SYS_sched_setattr __NR_sched_setattr
++#endif
++#ifdef	__NR_sched_setparam
++#	define SYS_sched_setparam __NR_sched_setparam
++#endif
++#ifdef	__NR_sched_setscheduler
++#	define SYS_sched_setscheduler __NR_sched_setscheduler
++#endif
++#ifdef	__NR_sched_yield
++#	define SYS_sched_yield __NR_sched_yield
++#endif
++#ifdef	__NR_seccomp
++#	define SYS_seccomp __NR_seccomp
++#endif
++#ifdef	__NR_select
++#	define SYS_select __NR_select
++#endif
++#ifdef	__NR_semctl
++#	define SYS_semctl __NR_semctl
++#endif
++#ifdef	__NR_semget
++#	define SYS_semget __NR_semget
++#endif
++#ifdef	__NR_semop
++#	define SYS_semop __NR_semop
++#endif
++#ifdef	__NR_semtimedop
++#	define SYS_semtimedop __NR_semtimedop
++#endif
++#ifdef	__NR_semtimedop_time64
++#	define SYS_semtimedop_time64 __NR_semtimedop_time64
++#endif
++#ifdef	__NR_send
++#	define SYS_send __NR_send
++#endif
++#ifdef	__NR_sendfile
++#	define SYS_sendfile __NR_sendfile
++#endif
++#ifdef	__NR_sendfile64
++#	define SYS_sendfile64 __NR_sendfile64
++#endif
++#ifdef	__NR_sendmmsg
++#	define SYS_sendmmsg __NR_sendmmsg
++#endif
++#ifdef	__NR_sendmsg
++#	define SYS_sendmsg __NR_sendmsg
++#endif
++#ifdef	__NR_sendto
++#	define SYS_sendto __NR_sendto
++#endif
++#ifdef	__NR_set_mempolicy
++#	define SYS_set_mempolicy __NR_set_mempolicy
++#endif
++#ifdef	__NR_set_mempolicy_home_node
++#	define SYS_set_mempolicy_home_node __NR_set_mempolicy_home_node
++#endif
++#ifdef	__NR_set_robust_list
++#	define SYS_set_robust_list __NR_set_robust_list
++#endif
++#ifdef	__NR_set_thread_area
++#	define SYS_set_thread_area __NR_set_thread_area
++#endif
++#ifdef	__NR_set_tid_address
++#	define SYS_set_tid_address __NR_set_tid_address
++#endif
++#ifdef	__NR_setdomainname
++#	define SYS_setdomainname __NR_setdomainname
++#endif
++#ifdef	__NR_setfsgid
++#	define SYS_setfsgid __NR_setfsgid
++#endif
++#ifdef	__NR_setfsgid32
++#	define SYS_setfsgid32 __NR_setfsgid32
++#endif
++#ifdef	__NR_setfsuid
++#	define SYS_setfsuid __NR_setfsuid
++#endif
++#ifdef	__NR_setfsuid32
++#	define SYS_setfsuid32 __NR_setfsuid32
++#endif
++#ifdef	__NR_setgid
++#	define SYS_setgid __NR_setgid
++#endif
++#ifdef	__NR_setgid32
++#	define SYS_setgid32 __NR_setgid32
++#endif
++#ifdef	__NR_setgroups
++#	define SYS_setgroups __NR_setgroups
++#endif
++#ifdef	__NR_setgroups32
++#	define SYS_setgroups32 __NR_setgroups32
++#endif
++#ifdef	__NR_sethae
++#	define SYS_sethae __NR_sethae
++#endif
++#ifdef	__NR_sethostname
++#	define SYS_sethostname __NR_sethostname
++#endif
++#ifdef	__NR_setitimer
++#	define SYS_setitimer __NR_setitimer
++#endif
++#ifdef	__NR_setns
++#	define SYS_setns __NR_setns
++#endif
++#ifdef	__NR_setpgid
++#	define SYS_setpgid __NR_setpgid
++#endif
++#ifdef	__NR_setpgrp
++#	define SYS_setpgrp __NR_setpgrp
++#endif
++#ifdef	__NR_setpriority
++#	define SYS_setpriority __NR_setpriority
++#endif
++#ifdef	__NR_setregid
++#	define SYS_setregid __NR_setregid
++#endif
++#ifdef	__NR_setregid32
++#	define SYS_setregid32 __NR_setregid32
++#endif
++#ifdef	__NR_setresgid
++#	define SYS_setresgid __NR_setresgid
++#endif
++#ifdef	__NR_setresgid32
++#	define SYS_setresgid32 __NR_setresgid32
++#endif
++#ifdef	__NR_setresuid
++#	define SYS_setresuid __NR_setresuid
++#endif
++#ifdef	__NR_setresuid32
++#	define SYS_setresuid32 __NR_setresuid32
++#endif
++#ifdef	__NR_setreuid
++#	define SYS_setreuid __NR_setreuid
++#endif
++#ifdef	__NR_setreuid32
++#	define SYS_setreuid32 __NR_setreuid32
++#endif
++#ifdef	__NR_setrlimit
++#	define SYS_setrlimit __NR_setrlimit
++#endif
++#ifdef	__NR_setsid
++#	define SYS_setsid __NR_setsid
++#endif
++#ifdef	__NR_setsockopt
++#	define SYS_setsockopt __NR_setsockopt
++#endif
++#ifdef	__NR_settimeofday
++#	define SYS_settimeofday __NR_settimeofday
++#endif
++#ifdef	__NR_setuid
++#	define SYS_setuid __NR_setuid
++#endif
++#ifdef	__NR_setuid32
++#	define SYS_setuid32 __NR_setuid32
++#endif
++#ifdef	__NR_setxattr
++#	define SYS_setxattr __NR_setxattr
++#endif
++#ifdef	__NR_setxattrat
++#	define SYS_setxattrat __NR_setxattrat
++#endif
++#ifdef	__NR_sgetmask
++#	define SYS_sgetmask __NR_sgetmask
++#endif
++#ifdef	__NR_shmat
++#	define SYS_shmat __NR_shmat
++#endif
++#ifdef	__NR_shmctl
++#	define SYS_shmctl __NR_shmctl
++#endif
++#ifdef	__NR_shmdt
++#	define SYS_shmdt __NR_shmdt
++#endif
++#ifdef	__NR_shmget
++#	define SYS_shmget __NR_shmget
++#endif
++#ifdef	__NR_shutdown
++#	define SYS_shutdown __NR_shutdown
++#endif
++#ifdef	__NR_sigaction
++#	define SYS_sigaction __NR_sigaction
++#endif
++#ifdef	__NR_sigaltstack
++#	define SYS_sigaltstack __NR_sigaltstack
++#endif
++#ifdef	__NR_signal
++#	define SYS_signal __NR_signal
++#endif
++#ifdef	__NR_signalfd
++#	define SYS_signalfd __NR_signalfd
++#endif
++#ifdef	__NR_signalfd4
++#	define SYS_signalfd4 __NR_signalfd4
++#endif
++#ifdef	__NR_sigpending
++#	define SYS_sigpending __NR_sigpending
++#endif
++#ifdef	__NR_sigprocmask
++#	define SYS_sigprocmask __NR_sigprocmask
++#endif
++#ifdef	__NR_sigreturn
++#	define SYS_sigreturn __NR_sigreturn
++#endif
++#ifdef	__NR_sigsuspend
++#	define SYS_sigsuspend __NR_sigsuspend
++#endif
++#ifdef	__NR_socket
++#	define SYS_socket __NR_socket
++#endif
++#ifdef	__NR_socketcall
++#	define SYS_socketcall __NR_socketcall
++#endif
++#ifdef	__NR_socketpair
++#	define SYS_socketpair __NR_socketpair
++#endif
++#ifdef	__NR_spill
++#	define SYS_spill __NR_spill
++#endif
++#ifdef	__NR_splice
++#	define SYS_splice __NR_splice
++#endif
++#ifdef	__NR_spu_create
++#	define SYS_spu_create __NR_spu_create
++#endif
++#ifdef	__NR_spu_run
++#	define SYS_spu_run __NR_spu_run
++#endif
++#ifdef	__NR_ssetmask
++#	define SYS_ssetmask __NR_ssetmask
++#endif
++#ifdef	__NR_stat
++#	define SYS_stat __NR_stat
++#endif
++#ifdef	__NR_stat64
++#	define SYS_stat64 __NR_stat64
++#endif
++#ifdef	__NR_statfs
++#	define SYS_statfs __NR_statfs
++#endif
++#ifdef	__NR_statfs64
++#	define SYS_statfs64 __NR_statfs64
++#endif
++#ifdef	__NR_statmount
++#	define SYS_statmount __NR_statmount
++#endif
++#ifdef	__NR_statx
++#	define SYS_statx __NR_statx
++#endif
++#ifdef	__NR_stime
++#	define SYS_stime __NR_stime
++#endif
++#ifdef	__NR_subpage_prot
++#	define SYS_subpage_prot __NR_subpage_prot
++#endif
++#ifdef	__NR_swapcontext
++#	define SYS_swapcontext __NR_swapcontext
++#endif
++#ifdef	__NR_swapoff
++#	define SYS_swapoff __NR_swapoff
++#endif
++#ifdef	__NR_swapon
++#	define SYS_swapon __NR_swapon
++#endif
++#ifdef	__NR_switch_endian
++#	define SYS_switch_endian __NR_switch_endian
++#endif
++#ifdef	__NR_symlink
++#	define SYS_symlink __NR_symlink
++#endif
++#ifdef	__NR_symlinkat
++#	define SYS_symlinkat __NR_symlinkat
++#endif
++#ifdef	__NR_sync
++#	define SYS_sync __NR_sync
++#endif
++#ifdef	__NR_sync_file_range
++#	define SYS_sync_file_range __NR_sync_file_range
++#endif
++#ifdef	__NR_sync_file_range2
++#	define SYS_sync_file_range2 __NR_sync_file_range2
++#endif
++#ifdef	__NR_syncfs
++#	define SYS_syncfs __NR_syncfs
++#endif
++#ifdef	__NR_sys_debug_setcontext
++#	define SYS_sys_debug_setcontext __NR_sys_debug_setcontext
++#endif
++#ifdef	__NR_syscall
++#	define SYS_syscall __NR_syscall
++#endif
++#ifdef	__NR_sysfs
++#	define SYS_sysfs __NR_sysfs
++#endif
++#ifdef	__NR_sysinfo
++#	define SYS_sysinfo __NR_sysinfo
++#endif
++#ifdef	__NR_syslog
++#	define SYS_syslog __NR_syslog
++#endif
++#ifdef	__NR_sysmips
++#	define SYS_sysmips __NR_sysmips
++#endif
++#ifdef	__NR_tee
++#	define SYS_tee __NR_tee
++#endif
++#ifdef	__NR_tgkill
++#	define SYS_tgkill __NR_tgkill
++#endif
++#ifdef	__NR_time
++#	define SYS_time __NR_time
++#endif
++#ifdef	__NR_timer_create
++#	define SYS_timer_create __NR_timer_create
++#endif
++#ifdef	__NR_timer_delete
++#	define SYS_timer_delete __NR_timer_delete
++#endif
++#ifdef	__NR_timer_getoverrun
++#	define SYS_timer_getoverrun __NR_timer_getoverrun
++#endif
++#ifdef	__NR_timer_gettime
++#	define SYS_timer_gettime __NR_timer_gettime
++#endif
++#ifdef	__NR_timer_gettime64
++#	define SYS_timer_gettime64 __NR_timer_gettime64
++#endif
++#ifdef	__NR_timer_settime
++#	define SYS_timer_settime __NR_timer_settime
++#endif
++#ifdef	__NR_timer_settime64
++#	define SYS_timer_settime64 __NR_timer_settime64
++#endif
++#ifdef	__NR_timerfd
++#	define SYS_timerfd __NR_timerfd
++#endif
++#ifdef	__NR_timerfd_create
++#	define SYS_timerfd_create __NR_timerfd_create
++#endif
++#ifdef	__NR_timerfd_gettime
++#	define SYS_timerfd_gettime __NR_timerfd_gettime
++#endif
++#ifdef	__NR_timerfd_gettime64
++#	define SYS_timerfd_gettime64 __NR_timerfd_gettime64
++#endif
++#ifdef	__NR_timerfd_settime
++#	define SYS_timerfd_settime __NR_timerfd_settime
++#endif
++#ifdef	__NR_timerfd_settime64
++#	define SYS_timerfd_settime64 __NR_timerfd_settime64
++#endif
++#ifdef	__NR_times
++#	define SYS_times __NR_times
++#endif
++#ifdef	__NR_tkill
++#	define SYS_tkill __NR_tkill
++#endif
++#ifdef	__NR_truncate
++#	define SYS_truncate __NR_truncate
++#endif
++#ifdef	__NR_truncate64
++#	define SYS_truncate64 __NR_truncate64
++#endif
++#ifdef	__NR_ugetrlimit
++#	define SYS_ugetrlimit __NR_ugetrlimit
++#endif
++#ifdef	__NR_umask
++#	define SYS_umask __NR_umask
++#endif
++#ifdef	__NR_umount
++#	define SYS_umount __NR_umount
++#endif
++#ifdef	__NR_umount2
++#	define SYS_umount2 __NR_umount2
++#endif
++#ifdef	__NR_uname
++#	define SYS_uname __NR_uname
++#endif
++#ifdef	__NR_unlink
++#	define SYS_unlink __NR_unlink
++#endif
++#ifdef	__NR_unlinkat
++#	define SYS_unlinkat __NR_unlinkat
++#endif
++#ifdef	__NR_unshare
++#	define SYS_unshare __NR_unshare
++#endif
++#ifdef	__NR_uretprobe
++#	define SYS_uretprobe __NR_uretprobe
++#endif
++#ifdef	__NR_uselib
++#	define SYS_uselib __NR_uselib
++#endif
++#ifdef	__NR_userfaultfd
++#	define SYS_userfaultfd __NR_userfaultfd
++#endif
++#ifdef	__NR_ustat
++#	define SYS_ustat __NR_ustat
++#endif
++#ifdef	__NR_utime
++#	define SYS_utime __NR_utime
++#endif
++#ifdef	__NR_utimensat
++#	define SYS_utimensat __NR_utimensat
++#endif
++#ifdef	__NR_utimensat_time64
++#	define SYS_utimensat_time64 __NR_utimensat_time64
++#endif
++#ifdef	__NR_utimes
++#	define SYS_utimes __NR_utimes
++#endif
++#ifdef	__NR_utrap_install
++#	define SYS_utrap_install __NR_utrap_install
++#endif
++#ifdef	__NR_vfork
++#	define SYS_vfork __NR_vfork
++#endif
++#ifdef	__NR_vhangup
++#	define SYS_vhangup __NR_vhangup
++#endif
++#ifdef	__NR_vm86
++#	define SYS_vm86 __NR_vm86
++#endif
++#ifdef	__NR_vm86old
++#	define SYS_vm86old __NR_vm86old
++#endif
++#ifdef	__NR_vmsplice
++#	define SYS_vmsplice __NR_vmsplice
++#endif
++#ifdef	__NR_wait4
++#	define SYS_wait4 __NR_wait4
++#endif
++#ifdef	__NR_waitid
++#	define SYS_waitid __NR_waitid
++#endif
++#ifdef	__NR_waitpid
++#	define SYS_waitpid __NR_waitpid
++#endif
++#ifdef	__NR_write
++#	define SYS_write __NR_write
++#endif
++#ifdef	__NR_writev
++#	define SYS_writev __NR_writev
++#endif
++#endif /* __MLIBC_SYSCALL_ALIAS_BIT */
+diff --git a/sysdeps/ilobilix/include/mlibc/thread-entry.hpp b/sysdeps/ilobilix/include/mlibc/thread-entry.hpp
+new file mode 100644
+index 00000000..a20cab58
+--- /dev/null
++++ b/sysdeps/ilobilix/include/mlibc/thread-entry.hpp
+@@ -0,0 +1,12 @@
++#ifndef MLIBC_THREAD_ENTRY
++
++#include <mlibc/tcb.hpp>
++
++extern "C" int __mlibc_spawn_thread(int flags, void *stack, void *pid_out, void *child_tid, void *tcb);
++extern "C" void __mlibc_enter_thread(void *entry, void *user_arg);
++
++namespace mlibc {
++	void *prepare_stack(void *entry, void *user_arg);
++}
++
++#endif // MLIBC_THREAD_ENTRY
+diff --git a/sysdeps/ilobilix/include/sys/syscall.h b/sysdeps/ilobilix/include/sys/syscall.h
+new file mode 100644
+index 00000000..aeb89910
+--- /dev/null
++++ b/sysdeps/ilobilix/include/sys/syscall.h
+@@ -0,0 +1,14 @@
++#ifndef _SYS_SYSCALL_H
++#define _SYS_SYSCALL_H
++
++/* On GNU/Linux, this header provides includes __NR_-prefixed syscall numbers,
++ * and their SYS_ aliases. We defer to kernel headers for the numbers
++ * (linux-headers, or an autogenerated stub while building), and an
++ * autogenerated file containing SYS_ defines.
++ */
++/* clang-format off */
++#include <linux/unistd.h>
++#include <bits/syscall_aliases.h>
++/* clang-format on */
++
++#endif /* _SYS_SYSCALL_H */
+diff --git a/sysdeps/ilobilix/include/syscall.h b/sysdeps/ilobilix/include/syscall.h
+new file mode 100644
+index 00000000..4c305784
+--- /dev/null
++++ b/sysdeps/ilobilix/include/syscall.h
+@@ -0,0 +1 @@
++#include <sys/syscall.h>
+diff --git a/sysdeps/ilobilix/meson.build b/sysdeps/ilobilix/meson.build
+new file mode 100644
+index 00000000..61535f55
+--- /dev/null
++++ b/sysdeps/ilobilix/meson.build
+@@ -0,0 +1,141 @@
++sysdep_supported_options = {
++	'posix': true,
++	'linux': true,
++	'glibc': true,
++	'bsd': true,
++}
++
++rtld_dso_sources += files(
++	host_machine.cpu_family() / 'arch-syscall.cpp',
++	'generic/sysdeps.cpp',
++)
++
++linux_include_dirs = [
++	include_directories(host_machine.cpu_family()),
++	include_directories('include-internal/'),
++]
++
++rtld_include_dirs += linux_include_dirs
++libc_include_dirs += linux_include_dirs
++libc_sources += files(
++	host_machine.cpu_family() / 'signals.S',
++	host_machine.cpu_family() / 'arch-syscall.cpp',
++	host_machine.cpu_family() / 'assembly-asserts.cpp',
++	'generic/entry.cpp',
++	'generic/sysdeps.cpp',
++)
++
++libc_sources += files(
++	'generic/thread.cpp',
++	host_machine.cpu_family() / 'cp_syscall.S',
++	host_machine.cpu_family() / 'thread_entry.S'
++)
++
++if not no_headers
++	install_headers(
++		'include/abi-bits/auxv.h',
++		'include/abi-bits/seek-whence.h',
++		'include/abi-bits/vm-flags.h',
++		'include/abi-bits/errno.h',
++		'include/abi-bits/fcntl.h',
++		'include/abi-bits/in.h',
++		'include/abi-bits/stat.h',
++		'include/abi-bits/statx.h',
++		'include/abi-bits/signal.h',
++		'include/abi-bits/reboot.h',
++		'include/abi-bits/resource.h',
++		'include/abi-bits/socket.h',
++		'include/abi-bits/termios.h',
++		'include/abi-bits/time.h',
++		'include/abi-bits/blkcnt_t.h',
++		'include/abi-bits/blksize_t.h',
++		'include/abi-bits/dev_t.h',
++		'include/abi-bits/gid_t.h',
++		'include/abi-bits/ino_t.h',
++		'include/abi-bits/mode_t.h',
++		'include/abi-bits/nlink_t.h',
++		'include/abi-bits/pid_t.h',
++		'include/abi-bits/uid_t.h',
++		'include/abi-bits/access.h',
++		'include/abi-bits/wait.h',
++		'include/abi-bits/limits.h',
++		'include/abi-bits/utsname.h',
++		'include/abi-bits/ptrace.h',
++		'include/abi-bits/vt.h',
++		'include/abi-bits/ptrace.h',
++		'include/abi-bits/poll.h',
++		'include/abi-bits/epoll.h',
++		'include/abi-bits/packet.h',
++		'include/abi-bits/inotify.h',
++		'include/abi-bits/clockid_t.h',
++		'include/abi-bits/ipc.h',
++		'include/abi-bits/shm.h',
++		'include/abi-bits/mqueue.h',
++		'include/abi-bits/suseconds_t.h',
++		'include/abi-bits/fsfilcnt_t.h',
++		'include/abi-bits/fsblkcnt_t.h',
++		'include/abi-bits/socklen_t.h',
++		'include/abi-bits/statfs.h',
++		'include/abi-bits/statvfs.h',
++		'include/abi-bits/ioctls.h',
++		'include/abi-bits/xattr.h',
++		'include/abi-bits/msg.h',
++		'include/abi-bits/random.h',
++		'include/abi-bits/rlim_t.h',
++		'include/abi-bits/sigval.h',
++		'include/abi-bits/sigevent.h',
++		'include/abi-bits/utmpx.h',
++		'include/abi-bits/utmp-defines.h',
++		'include/abi-bits/fd_set.h',
++		'include/abi-bits/sem.h',
++		'include/abi-bits/route.h',
++		subdir: 'abi-bits',
++		follow_symlinks: true
++	)
++
++	install_headers('include/syscall.h')
++	install_headers('include/sys/syscall.h', subdir: 'sys')
++	install_headers(
++		'include/bits/syscall.h',
++		'include/bits/syscall_aliases.h',
++		subdir: 'bits'
++	)
++endif
++
++if not headers_only
++	crt = custom_target('crt1',
++		build_by_default: true,
++		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
++		input: host_machine.cpu_family() / 'crt-src/crt1.S',
++		output: 'crt1.o',
++		install: true,
++		install_dir: get_option('libdir')
++	)
++
++	crt_pie = custom_target('Scrt1',
++		build_by_default: true,
++		command: c_compiler.cmd_array() + ['-fPIE', '-c', '-o', '@OUTPUT@', '@INPUT@'],
++		input: host_machine.cpu_family() / 'crt-src/Scrt1.S',
++		output: 'Scrt1.o',
++		install: true,
++		install_dir: get_option('libdir')
++	)
++
++	custom_target('crti',
++		build_by_default: true,
++		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
++		input: host_machine.cpu_family() / 'crt-src/crti.S',
++		output: 'crti.o',
++		install: true,
++		install_dir: get_option('libdir')
++	)
++
++	custom_target('crtn',
++		build_by_default: true,
++		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
++		input: host_machine.cpu_family() / 'crt-src/crtn.S',
++		output: 'crtn.o',
++		install: true,
++		install_dir: get_option('libdir')
++	)
++endif
+diff --git a/sysdeps/ilobilix/x86_64/arch-syscall.cpp b/sysdeps/ilobilix/x86_64/arch-syscall.cpp
+new file mode 100644
+index 00000000..d2ebbe7b
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/arch-syscall.cpp
+@@ -0,0 +1,78 @@
++#include <sys/syscall.h>
++#include <bits/syscall.h>
++
++using sc_word_t = __sc_word_t;
++
++sc_word_t __do_syscall0(long sc) {
++	sc_word_t ret;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall1(long sc,
++		sc_word_t arg1) {
++	sc_word_t ret;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall2(long sc,
++		sc_word_t arg1, sc_word_t arg2) {
++	sc_word_t ret;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1), "S"(arg2)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall3(long sc,
++		sc_word_t arg1, sc_word_t arg2, sc_word_t arg3) {
++	sc_word_t ret;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1), "S"(arg2), "d"(arg3)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall4(long sc,
++		sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++		sc_word_t arg4) {
++	sc_word_t ret;
++	register sc_word_t arg4_reg asm("r10") = arg4;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1), "S"(arg2), "d"(arg3),
++				"r"(arg4_reg)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall5(long sc,
++		sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++		sc_word_t arg4, sc_word_t arg5) {
++	sc_word_t ret;
++	register sc_word_t arg4_reg asm("r10") = arg4;
++	register sc_word_t arg5_reg asm("r8") = arg5;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1), "S"(arg2), "d"(arg3),
++				"r"(arg4_reg), "r"(arg5_reg)
++			: "rcx", "r11", "memory");
++	return ret;
++}
++
++sc_word_t __do_syscall6(long sc,
++		sc_word_t arg1, sc_word_t arg2, sc_word_t arg3,
++		sc_word_t arg4, sc_word_t arg5, sc_word_t arg6) {
++	sc_word_t ret;
++	register sc_word_t arg4_reg asm("r10") = arg4;
++	register sc_word_t arg5_reg asm("r8") = arg5;
++	register sc_word_t arg6_reg asm("r9") = arg6;
++	asm volatile ("syscall" : "=a"(ret)
++			: "a"(sc), "D"(arg1), "S"(arg2), "d"(arg3),
++				"r"(arg4_reg), "r"(arg5_reg), "r"(arg6_reg)
++			: "rcx", "r11", "memory");
++	return ret;
++}
+diff --git a/sysdeps/ilobilix/x86_64/assembly-asserts.cpp b/sysdeps/ilobilix/x86_64/assembly-asserts.cpp
+new file mode 100644
+index 00000000..cb3a61d1
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/assembly-asserts.cpp
+@@ -0,0 +1,23 @@
++#include <abi-bits/signal.h>
++#include <stddef.h>
++#include "context-offsets.h"
++
++// offsets int ucontext_t as used in signals.S
++static_assert(offsetof(ucontext_t, uc_mcontext) == UCONTEXT_GREGS_OFFSET);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R8]) == UCONTEXT_OFFSET_R8);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R9]) == UCONTEXT_OFFSET_R9);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R10]) == UCONTEXT_OFFSET_R10);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R11]) == UCONTEXT_OFFSET_R11);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R12]) == UCONTEXT_OFFSET_R12);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R13]) == UCONTEXT_OFFSET_R13);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R14]) == UCONTEXT_OFFSET_R14);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_R15]) == UCONTEXT_OFFSET_R15);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RDI]) == UCONTEXT_OFFSET_RDI);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RSI]) == UCONTEXT_OFFSET_RSI);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RBP]) == UCONTEXT_OFFSET_RBP);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RBX]) == UCONTEXT_OFFSET_RBX);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RDX]) == UCONTEXT_OFFSET_RDX);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RAX]) == UCONTEXT_OFFSET_RAX);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RCX]) == UCONTEXT_OFFSET_RCX);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RSP]) == UCONTEXT_OFFSET_RSP);
++static_assert(offsetof(ucontext_t, uc_mcontext.gregs[REG_RIP]) == UCONTEXT_OFFSET_RIP);
+diff --git a/sysdeps/ilobilix/x86_64/context-offsets.h b/sysdeps/ilobilix/x86_64/context-offsets.h
+new file mode 100644
+index 00000000..30ca74af
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/context-offsets.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++#define UCONTEXT_GREGS_OFFSET 40
++
++#define UCONTEXT_OFFSET_R8 (UCONTEXT_GREGS_OFFSET + 0)
++#define UCONTEXT_OFFSET_R9 (UCONTEXT_GREGS_OFFSET + 8)
++#define UCONTEXT_OFFSET_R10 (UCONTEXT_GREGS_OFFSET + 16)
++#define UCONTEXT_OFFSET_R11 (UCONTEXT_GREGS_OFFSET + 24)
++#define UCONTEXT_OFFSET_R12 (UCONTEXT_GREGS_OFFSET + 32)
++#define UCONTEXT_OFFSET_R13 (UCONTEXT_GREGS_OFFSET + 40)
++#define UCONTEXT_OFFSET_R14 (UCONTEXT_GREGS_OFFSET + 48)
++#define UCONTEXT_OFFSET_R15 (UCONTEXT_GREGS_OFFSET + 56)
++#define UCONTEXT_OFFSET_RDI (UCONTEXT_GREGS_OFFSET + 64)
++#define UCONTEXT_OFFSET_RSI (UCONTEXT_GREGS_OFFSET + 72)
++#define UCONTEXT_OFFSET_RBP (UCONTEXT_GREGS_OFFSET + 80)
++#define UCONTEXT_OFFSET_RBX (UCONTEXT_GREGS_OFFSET + 88)
++#define UCONTEXT_OFFSET_RDX (UCONTEXT_GREGS_OFFSET + 96)
++#define UCONTEXT_OFFSET_RAX (UCONTEXT_GREGS_OFFSET + 104)
++#define UCONTEXT_OFFSET_RCX (UCONTEXT_GREGS_OFFSET + 112)
++#define UCONTEXT_OFFSET_RSP (UCONTEXT_GREGS_OFFSET + 120)
++#define UCONTEXT_OFFSET_RIP (UCONTEXT_GREGS_OFFSET + 128)
+diff --git a/sysdeps/ilobilix/x86_64/cp_syscall.S b/sysdeps/ilobilix/x86_64/cp_syscall.S
+new file mode 100644
+index 00000000..5db1f1de
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/cp_syscall.S
+@@ -0,0 +1,29 @@
++
++.section .text
++.global __mlibc_do_asm_cp_syscall
++.global __mlibc_syscall_begin
++.global __mlibc_syscall_end
++.type __mlibc_do_asm_cp_syscall, "function"
++__mlibc_do_asm_cp_syscall:
++	mov %rdi, %rax
++	mov %rsi, %rdi
++	mov %rdx, %rsi
++	mov %rcx, %rdx
++	mov %r8, %r10
++	mov %r9, %r8
++	mov 8(%rsp), %r9
++	mov %fs:0x30, %r11
++__mlibc_syscall_begin:
++	/* tcbCancelEnableBit && tcbCancelTriggerBit */
++	and $((1 << 0) | (1 << 2)), %r11
++	cmp $((1 << 0) | (1 << 2)), %r11
++	je cancel
++	syscall
++__mlibc_syscall_end:
++	ret
++
++cancel:
++	call __mlibc_do_cancel
++	hlt
++.section .note.GNU-stack,"",%progbits
++
+diff --git a/sysdeps/ilobilix/x86_64/crt-src/Scrt1.S b/sysdeps/ilobilix/x86_64/crt-src/Scrt1.S
+new file mode 100644
+index 00000000..d0e82138
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/crt-src/Scrt1.S
+@@ -0,0 +1,8 @@
++.section .text
++.global _start
++_start:
++	mov %rsp, %rdi
++	lea main(%rip), %rsi
++	call __mlibc_entry
++.section .note.GNU-stack,"",%progbits
++
+diff --git a/sysdeps/ilobilix/x86_64/crt-src/crt1.S b/sysdeps/ilobilix/x86_64/crt-src/crt1.S
+new file mode 100644
+index 00000000..9b77ee78
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/crt-src/crt1.S
+@@ -0,0 +1,8 @@
++.section .text
++.global _start
++_start:
++	mov %rsp, %rdi
++	mov $main, %rsi
++	call __mlibc_entry
++.section .note.GNU-stack,"",%progbits
++
+diff --git a/sysdeps/ilobilix/x86_64/crt-src/crti.S b/sysdeps/ilobilix/x86_64/crt-src/crti.S
+new file mode 100644
+index 00000000..911b078d
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/crt-src/crti.S
+@@ -0,0 +1,11 @@
++.section .init
++.global _init
++_init:
++	push %rax
++
++.section .fini
++.global _fini
++_fini:
++	push %rax
++.section .note.GNU-stack,"",%progbits
++
+diff --git a/sysdeps/ilobilix/x86_64/crt-src/crtn.S b/sysdeps/ilobilix/x86_64/crt-src/crtn.S
+new file mode 100644
+index 00000000..0187e50f
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/crt-src/crtn.S
+@@ -0,0 +1,9 @@
++.section .init
++	pop %rax
++	ret
++
++.section .fini
++	pop %rax
++	ret
++.section .note.GNU-stack,"",%progbits
++
+diff --git a/sysdeps/ilobilix/x86_64/signals.S b/sysdeps/ilobilix/x86_64/signals.S
+new file mode 100644
+index 00000000..7d38af0a
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/signals.S
+@@ -0,0 +1,36 @@
++#include "mlibc-asm/dwarf-helpers.h"
++#include "mlibc-asm/helpers.h"
++#include "context-offsets.h"
++#include "syscallnos.h"
++
++.section .text
++.cfi_startproc
++.cfi_signal_frame
++	cfi_set_cfa_to_ptr_with_offset DWARF_REG_RSP, UCONTEXT_OFFSET_RSP
++	cfi_set_prev_reg_value DWARF_REG_R8, DWARF_REG_RSP, UCONTEXT_OFFSET_R8
++	cfi_set_prev_reg_value DWARF_REG_R9, DWARF_REG_RSP, UCONTEXT_OFFSET_R9
++	cfi_set_prev_reg_value DWARF_REG_R10, DWARF_REG_RSP, UCONTEXT_OFFSET_R10
++	cfi_set_prev_reg_value DWARF_REG_R11, DWARF_REG_RSP, UCONTEXT_OFFSET_R11
++	cfi_set_prev_reg_value DWARF_REG_R12, DWARF_REG_RSP, UCONTEXT_OFFSET_R12
++	cfi_set_prev_reg_value DWARF_REG_R13, DWARF_REG_RSP, UCONTEXT_OFFSET_R13
++	cfi_set_prev_reg_value DWARF_REG_R14, DWARF_REG_RSP, UCONTEXT_OFFSET_R14
++	cfi_set_prev_reg_value DWARF_REG_R15, DWARF_REG_RSP, UCONTEXT_OFFSET_R15
++	cfi_set_prev_reg_value DWARF_REG_RDI, DWARF_REG_RSP, UCONTEXT_OFFSET_RDI
++	cfi_set_prev_reg_value DWARF_REG_RSI, DWARF_REG_RSP, UCONTEXT_OFFSET_RSI
++	cfi_set_prev_reg_value DWARF_REG_RBP, DWARF_REG_RSP, UCONTEXT_OFFSET_RBP
++	cfi_set_prev_reg_value DWARF_REG_RBX, DWARF_REG_RSP, UCONTEXT_OFFSET_RBX
++	cfi_set_prev_reg_value DWARF_REG_RDX, DWARF_REG_RSP, UCONTEXT_OFFSET_RDX
++	cfi_set_prev_reg_value DWARF_REG_RAX, DWARF_REG_RSP, UCONTEXT_OFFSET_RAX
++	cfi_set_prev_reg_value DWARF_REG_RCX, DWARF_REG_RSP, UCONTEXT_OFFSET_RCX
++	cfi_set_prev_reg_value DWARF_REG_RETURN_ADDRESS, DWARF_REG_RSP, UCONTEXT_OFFSET_RIP
++	nop
++
++PROC_START_NOCFI(__mlibc_signal_restore)
++PROC_ALIAS(__mlibc_signal_restore, __mlibc_signal_restore_rt)
++	mov $__NR_rt_sigreturn, %rax
++	syscall
++	ud2
++PROC_END(__mlibc_signal_restore)
++
++GNU_STACK_NOTE()
++
+diff --git a/sysdeps/ilobilix/x86_64/syscallnos.h b/sysdeps/ilobilix/x86_64/syscallnos.h
+new file mode 100644
+index 00000000..641aa67e
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/syscallnos.h
+@@ -0,0 +1,379 @@
++#ifndef __MLIBC_SYSCALLNOS_h
++#define __MLIBC_SYSCALLNOS_h
++/* This file is autogenerated. Don't bother. */
++/* Generator script: sysdeps/linux/update-syscall-list.py. */
++#define __NR_read 0
++#define __NR_write 1
++#define __NR_open 2
++#define __NR_close 3
++#define __NR_stat 4
++#define __NR_fstat 5
++#define __NR_lstat 6
++#define __NR_poll 7
++#define __NR_lseek 8
++#define __NR_mmap 9
++#define __NR_mprotect 10
++#define __NR_munmap 11
++#define __NR_brk 12
++#define __NR_rt_sigaction 13
++#define __NR_rt_sigprocmask 14
++#define __NR_rt_sigreturn 15
++#define __NR_ioctl 16
++#define __NR_pread64 17
++#define __NR_pwrite64 18
++#define __NR_readv 19
++#define __NR_writev 20
++#define __NR_access 21
++#define __NR_pipe 22
++#define __NR_select 23
++#define __NR_sched_yield 24
++#define __NR_mremap 25
++#define __NR_msync 26
++#define __NR_mincore 27
++#define __NR_madvise 28
++#define __NR_shmget 29
++#define __NR_shmat 30
++#define __NR_shmctl 31
++#define __NR_dup 32
++#define __NR_dup2 33
++#define __NR_pause 34
++#define __NR_nanosleep 35
++#define __NR_getitimer 36
++#define __NR_alarm 37
++#define __NR_setitimer 38
++#define __NR_getpid 39
++#define __NR_sendfile 40
++#define __NR_socket 41
++#define __NR_connect 42
++#define __NR_accept 43
++#define __NR_sendto 44
++#define __NR_recvfrom 45
++#define __NR_sendmsg 46
++#define __NR_recvmsg 47
++#define __NR_shutdown 48
++#define __NR_bind 49
++#define __NR_listen 50
++#define __NR_getsockname 51
++#define __NR_getpeername 52
++#define __NR_socketpair 53
++#define __NR_setsockopt 54
++#define __NR_getsockopt 55
++#define __NR_clone 56
++#define __NR_fork 57
++#define __NR_vfork 58
++#define __NR_execve 59
++#define __NR_exit 60
++#define __NR_wait4 61
++#define __NR_kill 62
++#define __NR_uname 63
++#define __NR_semget 64
++#define __NR_semop 65
++#define __NR_semctl 66
++#define __NR_shmdt 67
++#define __NR_msgget 68
++#define __NR_msgsnd 69
++#define __NR_msgrcv 70
++#define __NR_msgctl 71
++#define __NR_fcntl 72
++#define __NR_flock 73
++#define __NR_fsync 74
++#define __NR_fdatasync 75
++#define __NR_truncate 76
++#define __NR_ftruncate 77
++#define __NR_getdents 78
++#define __NR_getcwd 79
++#define __NR_chdir 80
++#define __NR_fchdir 81
++#define __NR_rename 82
++#define __NR_mkdir 83
++#define __NR_rmdir 84
++#define __NR_creat 85
++#define __NR_link 86
++#define __NR_unlink 87
++#define __NR_symlink 88
++#define __NR_readlink 89
++#define __NR_chmod 90
++#define __NR_fchmod 91
++#define __NR_chown 92
++#define __NR_fchown 93
++#define __NR_lchown 94
++#define __NR_umask 95
++#define __NR_gettimeofday 96
++#define __NR_getrlimit 97
++#define __NR_getrusage 98
++#define __NR_sysinfo 99
++#define __NR_times 100
++#define __NR_ptrace 101
++#define __NR_getuid 102
++#define __NR_syslog 103
++#define __NR_getgid 104
++#define __NR_setuid 105
++#define __NR_setgid 106
++#define __NR_geteuid 107
++#define __NR_getegid 108
++#define __NR_setpgid 109
++#define __NR_getppid 110
++#define __NR_getpgrp 111
++#define __NR_setsid 112
++#define __NR_setreuid 113
++#define __NR_setregid 114
++#define __NR_getgroups 115
++#define __NR_setgroups 116
++#define __NR_setresuid 117
++#define __NR_getresuid 118
++#define __NR_setresgid 119
++#define __NR_getresgid 120
++#define __NR_getpgid 121
++#define __NR_setfsuid 122
++#define __NR_setfsgid 123
++#define __NR_getsid 124
++#define __NR_capget 125
++#define __NR_capset 126
++#define __NR_rt_sigpending 127
++#define __NR_rt_sigtimedwait 128
++#define __NR_rt_sigqueueinfo 129
++#define __NR_rt_sigsuspend 130
++#define __NR_sigaltstack 131
++#define __NR_utime 132
++#define __NR_mknod 133
++#define __NR_uselib 134
++#define __NR_personality 135
++#define __NR_ustat 136
++#define __NR_statfs 137
++#define __NR_fstatfs 138
++#define __NR_sysfs 139
++#define __NR_getpriority 140
++#define __NR_setpriority 141
++#define __NR_sched_setparam 142
++#define __NR_sched_getparam 143
++#define __NR_sched_setscheduler 144
++#define __NR_sched_getscheduler 145
++#define __NR_sched_get_priority_max 146
++#define __NR_sched_get_priority_min 147
++#define __NR_sched_rr_get_interval 148
++#define __NR_mlock 149
++#define __NR_munlock 150
++#define __NR_mlockall 151
++#define __NR_munlockall 152
++#define __NR_vhangup 153
++#define __NR_modify_ldt 154
++#define __NR_pivot_root 155
++#define __NR__sysctl 156
++#define __NR_prctl 157
++#define __NR_arch_prctl 158
++#define __NR_adjtimex 159
++#define __NR_setrlimit 160
++#define __NR_chroot 161
++#define __NR_sync 162
++#define __NR_acct 163
++#define __NR_settimeofday 164
++#define __NR_mount 165
++#define __NR_umount2 166
++#define __NR_swapon 167
++#define __NR_swapoff 168
++#define __NR_reboot 169
++#define __NR_sethostname 170
++#define __NR_setdomainname 171
++#define __NR_iopl 172
++#define __NR_ioperm 173
++#define __NR_create_module 174
++#define __NR_init_module 175
++#define __NR_delete_module 176
++#define __NR_get_kernel_syms 177
++#define __NR_query_module 178
++#define __NR_quotactl 179
++#define __NR_nfsservctl 180
++#define __NR_getpmsg 181
++#define __NR_gettid 186
++#define __NR_readahead 187
++#define __NR_setxattr 188
++#define __NR_lsetxattr 189
++#define __NR_fsetxattr 190
++#define __NR_getxattr 191
++#define __NR_lgetxattr 192
++#define __NR_fgetxattr 193
++#define __NR_listxattr 194
++#define __NR_llistxattr 195
++#define __NR_flistxattr 196
++#define __NR_removexattr 197
++#define __NR_lremovexattr 198
++#define __NR_fremovexattr 199
++#define __NR_tkill 200
++#define __NR_time 201
++#define __NR_futex 202
++#define __NR_sched_setaffinity 203
++#define __NR_sched_getaffinity 204
++#define __NR_set_thread_area 205
++#define __NR_io_setup 206
++#define __NR_io_destroy 207
++#define __NR_io_getevents 208
++#define __NR_io_submit 209
++#define __NR_io_cancel 210
++#define __NR_get_thread_area 211
++#define __NR_lookup_dcookie 212
++#define __NR_epoll_create 213
++#define __NR_epoll_ctl_old 214
++#define __NR_epoll_wait_old 215
++#define __NR_remap_file_pages 216
++#define __NR_getdents64 217
++#define __NR_set_tid_address 218
++#define __NR_restart_syscall 219
++#define __NR_semtimedop 220
++#define __NR_fadvise64 221
++#define __NR_timer_create 222
++#define __NR_timer_settime 223
++#define __NR_timer_gettime 224
++#define __NR_timer_getoverrun 225
++#define __NR_timer_delete 226
++#define __NR_clock_settime 227
++#define __NR_clock_gettime 228
++#define __NR_clock_getres 229
++#define __NR_clock_nanosleep 230
++#define __NR_exit_group 231
++#define __NR_epoll_wait 232
++#define __NR_epoll_ctl 233
++#define __NR_tgkill 234
++#define __NR_utimes 235
++#define __NR_mbind 237
++#define __NR_set_mempolicy 238
++#define __NR_get_mempolicy 239
++#define __NR_mq_open 240
++#define __NR_mq_unlink 241
++#define __NR_mq_timedsend 242
++#define __NR_mq_timedreceive 243
++#define __NR_mq_notify 244
++#define __NR_mq_getsetattr 245
++#define __NR_kexec_load 246
++#define __NR_waitid 247
++#define __NR_add_key 248
++#define __NR_request_key 249
++#define __NR_keyctl 250
++#define __NR_ioprio_set 251
++#define __NR_ioprio_get 252
++#define __NR_inotify_init 253
++#define __NR_inotify_add_watch 254
++#define __NR_inotify_rm_watch 255
++#define __NR_migrate_pages 256
++#define __NR_openat 257
++#define __NR_mkdirat 258
++#define __NR_mknodat 259
++#define __NR_fchownat 260
++#define __NR_futimesat 261
++#define __NR_newfstatat 262
++#define __NR_unlinkat 263
++#define __NR_renameat 264
++#define __NR_linkat 265
++#define __NR_symlinkat 266
++#define __NR_readlinkat 267
++#define __NR_fchmodat 268
++#define __NR_faccessat 269
++#define __NR_pselect6 270
++#define __NR_ppoll 271
++#define __NR_unshare 272
++#define __NR_set_robust_list 273
++#define __NR_get_robust_list 274
++#define __NR_splice 275
++#define __NR_tee 276
++#define __NR_sync_file_range 277
++#define __NR_vmsplice 278
++#define __NR_move_pages 279
++#define __NR_utimensat 280
++#define __NR_epoll_pwait 281
++#define __NR_signalfd 282
++#define __NR_timerfd_create 283
++#define __NR_eventfd 284
++#define __NR_fallocate 285
++#define __NR_timerfd_settime 286
++#define __NR_timerfd_gettime 287
++#define __NR_accept4 288
++#define __NR_signalfd4 289
++#define __NR_eventfd2 290
++#define __NR_epoll_create1 291
++#define __NR_dup3 292
++#define __NR_pipe2 293
++#define __NR_inotify_init1 294
++#define __NR_preadv 295
++#define __NR_pwritev 296
++#define __NR_rt_tgsigqueueinfo 297
++#define __NR_perf_event_open 298
++#define __NR_recvmmsg 299
++#define __NR_fanotify_init 300
++#define __NR_fanotify_mark 301
++#define __NR_prlimit64 302
++#define __NR_name_to_handle_at 303
++#define __NR_open_by_handle_at 304
++#define __NR_clock_adjtime 305
++#define __NR_syncfs 306
++#define __NR_sendmmsg 307
++#define __NR_setns 308
++#define __NR_getcpu 309
++#define __NR_process_vm_readv 310
++#define __NR_process_vm_writev 311
++#define __NR_kcmp 312
++#define __NR_finit_module 313
++#define __NR_sched_setattr 314
++#define __NR_sched_getattr 315
++#define __NR_renameat2 316
++#define __NR_seccomp 317
++#define __NR_getrandom 318
++#define __NR_memfd_create 319
++#define __NR_kexec_file_load 320
++#define __NR_bpf 321
++#define __NR_execveat 322
++#define __NR_userfaultfd 323
++#define __NR_membarrier 324
++#define __NR_mlock2 325
++#define __NR_copy_file_range 326
++#define __NR_preadv2 327
++#define __NR_pwritev2 328
++#define __NR_pkey_mprotect 329
++#define __NR_pkey_alloc 330
++#define __NR_pkey_free 331
++#define __NR_statx 332
++#define __NR_io_pgetevents 333
++#define __NR_rseq 334
++#define __NR_uretprobe 335
++#define __NR_pidfd_send_signal 424
++#define __NR_io_uring_setup 425
++#define __NR_io_uring_enter 426
++#define __NR_io_uring_register 427
++#define __NR_open_tree 428
++#define __NR_move_mount 429
++#define __NR_fsopen 430
++#define __NR_fsconfig 431
++#define __NR_fsmount 432
++#define __NR_fspick 433
++#define __NR_pidfd_open 434
++#define __NR_clone3 435
++#define __NR_close_range 436
++#define __NR_openat2 437
++#define __NR_pidfd_getfd 438
++#define __NR_faccessat2 439
++#define __NR_process_madvise 440
++#define __NR_epoll_pwait2 441
++#define __NR_mount_setattr 442
++#define __NR_quotactl_fd 443
++#define __NR_landlock_create_ruleset 444
++#define __NR_landlock_add_rule 445
++#define __NR_landlock_restrict_self 446
++#define __NR_memfd_secret 447
++#define __NR_process_mrelease 448
++#define __NR_futex_waitv 449
++#define __NR_set_mempolicy_home_node 450
++#define __NR_cachestat 451
++#define __NR_fchmodat2 452
++#define __NR_map_shadow_stack 453
++#define __NR_futex_wake 454
++#define __NR_futex_wait 455
++#define __NR_futex_requeue 456
++#define __NR_statmount 457
++#define __NR_listmount 458
++#define __NR_lsm_get_self_attr 459
++#define __NR_lsm_set_self_attr 460
++#define __NR_lsm_list_modules 461
++#define __NR_mseal 462
++#define __NR_setxattrat 463
++#define __NR_getxattrat 464
++#define __NR_listxattrat 465
++#define __NR_removexattrat 466
++#endif /* __MLIBC_SYSCALLNOS_h */
+diff --git a/sysdeps/ilobilix/x86_64/thread_entry.S b/sysdeps/ilobilix/x86_64/thread_entry.S
+new file mode 100644
+index 00000000..d990972b
+--- /dev/null
++++ b/sysdeps/ilobilix/x86_64/thread_entry.S
+@@ -0,0 +1,26 @@
++#include "mlibc-asm/helpers.h"
++#include "syscallnos.h"
++
++.section .text
++
++PROC_START(__mlibc_spawn_thread)
++	xor %eax, %eax
++	/* The rest of the args are already in the right registers,
++	* only need to fixup rcx to r10
++	*/
++	mov %rcx, %r10
++	mov $__NR_clone, %rax
++	syscall
++	test %eax, %eax
++	jnz 1f
++	xor %ebp, %ebp
++	pop %rdi
++	pop %rsi
++	call __mlibc_enter_thread
++	hlt
++1:
++	ret
++PROC_END(__mlibc_spawn_thread)
++
++GNU_STACK_NOTE()
++

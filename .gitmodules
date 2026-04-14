@@ -67,3 +67,7 @@
 	path = dependencies/demangler/demangler
 	url = https://github.com/ilobilo/demangler
 	shallow = true
+[submodule "dependencies/jinx"]
+	path = dependencies/jinx
+	url = https://codeberg.org/mintsuki/jinx
+	shallow = true

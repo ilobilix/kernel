@@ -15,9 +15,15 @@ namespace arch
     void halt(bool ints)
     {
         if (ints)
-            asm volatile ("haltloop1: hlt; jmp haltloop1");
+        {
+            while (true)
+                asm volatile ("hlt");
+        }
         else
-            asm volatile ("haltloop2: cli; hlt; jmp haltloop2");
+        {
+            while (true)
+                asm volatile ("cli; hlt");
+        }
         std::unreachable();
     }
 

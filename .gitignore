@@ -1,11 +1,13 @@
-.*
-!.git*
-!.gdbinit
-!.clang_format
+.cache
+.vscode
+.xmake
+.xmake-local
+build
 
 serial.txt
 log.txt
 
-build*
-
-userspace
+userspace/*
+!userspace/jinx
+userspace/jinx/.jinx-cache
+userspace/jinx/sources

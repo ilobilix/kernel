@@ -333,7 +333,6 @@ namespace pmm
             check_and_add(sub4gib);
             check_and_add(normal);
 
-
             if (!freeing)
                 mem.used += wasted;
             else
@@ -594,6 +593,7 @@ namespace pmm
 
             add_range(memmap->base, memmap->length, false);
         }
+
         initialised = true;
 
         {

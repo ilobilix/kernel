@@ -1,0 +1,11 @@
+#!/bin/sh
+
+name=base-files
+version=0.0
+revision=1
+source_dir="base-files"
+
+package() {
+    cp -r ${source_dir}/. "${dest_dir}"/
+    find "${dest_dir}/" -type f -name ".keep" -delete
+}

@@ -38,10 +38,10 @@ namespace x86_64::apic
 
     std::pair<bool, bool> supported()
     {
-        cpu::id_res res;
-        const bool cpuid = cpu::id(1, 0, res);
-        const bool lapic = cpuid && (res.d & (1 << 9));
-        const bool x2apic = cpuid && (res.c & (1 << 21));
+        static cpu::id_res res;
+        static const bool cpuid = cpu::id(1, 0, res);
+        static const bool lapic = cpuid && (res.d & (1 << 9));
+        static const bool x2apic = cpuid && (res.c & (1 << 21));
 
         static const auto cached = []
         {

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+name=mlibc-headers
+repology_id=mlibc
+revision=1
+from_source=mlibc
+imagedeps="meson ninja-build"
+hostdeps="pkg-config"
+deps="linux-headers"
+
+configure() {
+    meson_configure \
+        -Dheaders_only=true
+}
+
+build() {
+    meson compile -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" meson install --no-rebuild
+}

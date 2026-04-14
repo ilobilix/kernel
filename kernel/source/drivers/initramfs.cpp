@@ -3,6 +3,7 @@
 module drivers.initramfs;
 
 import system.vfs;
+import magic_enum;
 import boot;
 import lib;
 import cppstd;
@@ -76,7 +77,13 @@ namespace initramfs
                     {
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifreg);
                         if (!ret)
-                            log::error("ustar: could not create a regular file '{}'", name);
+                        {
+                            log::error(
+                                "ustar: could not create a regular file '{}': {}",
+                                name, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
 
                         inode = ret.value().dentry->inode;
                         const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
@@ -91,7 +98,13 @@ namespace initramfs
                     {
                         auto ret = vfs::link(std::nullopt, name, std::nullopt, linkname);
                         if (!ret)
-                            log::error("ustar: could not create a hardlink '{}' -> '{}'", name, linkname);
+                        {
+                            log::error(
+                                "ustar: could not create a hardlink '{}' -> '{}': {}",
+                                name, linkname, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
                         inode = ret.value().dentry->inode;
                         break;
                     }
@@ -99,7 +112,13 @@ namespace initramfs
                     {
                         auto ret = vfs::symlink(std::nullopt, name, linkname);
                         if (!ret)
-                            log::error("ustar: could not create a symlink '{}' -> '{}'", name, linkname);
+                        {
+                            log::error(
+                                "ustar: could not create a symlink '{}' -> '{}': {}",
+                                name, linkname, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
                         inode = ret.value().dentry->inode;
                         break;
                     }
@@ -113,7 +132,13 @@ namespace initramfs
                     {
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifdir);
                         if (!ret)
-                            log::error("ustar: could not create a directory '{}'", name);
+                        {
+                            log::error(
+                                "ustar: could not create a directory '{}': {}",
+                                name, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
                         inode = ret.value().dentry->inode;
                         break;
                     }
