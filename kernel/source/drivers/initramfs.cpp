@@ -80,7 +80,7 @@ namespace initramfs
 
                         node = ret.value();
                         const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
-                        if (node->backing->op->write(node->backing, 0, data) != std::ssize_t(size))
+                        if (node->inode->write(0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
                             // TODO: remove node
@@ -123,7 +123,7 @@ namespace initramfs
                 }
 
                 if (node != nullptr)
-                    node->backing->stat.st_mtim = timespec { mtim, 0 };
+                    node->inode->stat.st_mtim = timespec { mtim, 0 };
 
                 next:
                 current = reinterpret_cast<header *>(reinterpret_cast<std::uintptr_t>(current) + 512 + lib::align_up(size, 512zu));

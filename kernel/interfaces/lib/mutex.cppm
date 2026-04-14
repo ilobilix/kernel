@@ -11,7 +11,7 @@ export namespace lib
     struct mutex
     {
         private:
-        spinlock<false> _lock;
+        spinlock _lock;
         semaphore _sem;
 
         public:

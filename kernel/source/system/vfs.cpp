@@ -116,8 +116,8 @@ namespace vfs
                 auto parent = current->parent.lock();
                 if (auto root = node::root(); current == root)
                     parent = root;
-                else if (current_me == current->fs->root.lock())
-                    parent = current->fs->mounted_on.lock()->parent.lock();
+                else if (current_me == current->inode->fs->root.lock())
+                    parent = current->inode->fs->mounted_on.lock()->parent.lock();
 
                 if (!parent)
                     return std::unexpected(error::not_found);
@@ -130,7 +130,7 @@ namespace vfs
                 continue;
             }
 
-            lib::ensure(current_me->fs.get() != nullptr);
+            lib::ensure(current_me->inode->fs.get() != nullptr);
 
             try_again:
             auto &children = current_me->get_children();
@@ -148,13 +148,13 @@ namespace vfs
                     return std::unexpected(ret.error());
 
                 current = ret.value();
-                if (current->backing->stat.type() != stat::type::s_ifdir)
+                if (current->inode->stat.type() != stat::type::s_ifdir)
                     return std::unexpected(error::not_a_dir);
 
                 continue;
             }
 
-            if (current_me->fs->populate(current_me, segment))
+            if (populate(current_me, segment))
                 goto try_again;
 
             break;
@@ -164,8 +164,6 @@ namespace vfs
 
     auto mount(std::shared_ptr<node> parent, lib::path source, lib::path target, std::string_view fsname) -> expect<void>
     {
-        // TODO: if fsname is empty, detect fstype from source
-
         auto fs = find_fs(fsname);
         if (!fs)
             return std::unexpected(fs.error());
@@ -180,7 +178,7 @@ namespace vfs
                 return std::unexpected(ret.error());
 
             source_node = ret->target;
-            if (source_node->backing->stat.type() != stat::type::s_ifblk)
+            if (source_node->inode->stat.type() != stat::type::s_ifblk)
                 return std::unexpected(error::not_a_block);
         }
 
@@ -190,7 +188,7 @@ namespace vfs
 
         auto target_node = ret->target;
 
-        if (target_node != node::root() && target_node->backing->stat.type() != stat::type::s_ifdir)
+        if (target_node != node::root() && target_node->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected(error::not_a_dir);
 
         auto [instance, root] = fs->get()->mount(source_node);
@@ -221,11 +219,15 @@ namespace vfs
             return std::unexpected(res.error());
 
         auto parent_node = res->target->me();
-        auto ret = parent_node->fs->create(parent_node, path.basename(), mode);
+        const auto name = path.basename();
+        auto ret = parent_node->inode->fs->create(parent_node->inode, name, mode);
         if (ret)
         {
-            auto node = ret.value();
-            node->fs = parent_node->fs;
+            auto node = std::make_shared<vfs::node>();
+            node->parent = parent;
+            node->name = name;
+            node->inode = ret.value();
+            node->inode->fs = parent_node->inode->fs;
 
             const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
@@ -247,10 +249,16 @@ namespace vfs
             return std::unexpected(res.error());
 
         auto parent_node = res->target->me();
-        auto ret = parent_node->fs->symlink(parent_node, path.basename(), target);
+        const auto name = path.basename();
+        auto ret = parent_node->inode->fs->symlink(parent_node->inode, name, target);
         if (ret)
         {
-            const auto node = ret.value();
+            auto node = std::make_shared<vfs::node>();
+            node->parent = parent;
+            node->name = name;
+            node->inode = ret.value();
+            node->inode->fs = parent_node->inode->fs;
+
             const std::unique_lock _ { parent_node->lock };
             parent_node->get_children()[node->name] = node;
             return node;
@@ -279,7 +287,32 @@ namespace vfs
             return std::unexpected(res.error());
 
         auto node = res->target->me();
-        return node->backing->stat;
+        return node->inode->stat;
+    }
+
+    bool populate(std::shared_ptr<node> parent, std::string_view name)
+    {
+        const auto ret = parent->inode->fs->populate(parent->inode, name);
+        if (!ret.has_value())
+            return false;
+
+        const auto list = ret.value();
+        if (!list.empty())
+        {
+            for (const auto [name, inode] : list)
+            {
+                auto node = std::make_shared<vfs::node>();
+                node->parent = parent;
+                node->name = name;
+                node->inode = inode;
+                node->inode->fs = parent->inode->fs;
+
+                const std::unique_lock _ { parent->lock };
+                parent->get_children()[node->name] = node;
+            }
+            return true;
+        }
+        return false;
     }
 
     initgraph::stage *root_mounted_stage()

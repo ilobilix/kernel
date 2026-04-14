@@ -25,8 +25,17 @@ namespace vmm
         anonymous = 0x20
     };
 
+    struct vmmap
+    {
+        struct entry
+        {
+        };
+        std::list<entry> entries;
+    };
+
     export struct vmspace
     {
         std::shared_ptr<pagemap> pmap;
+        vmmap map;
     };
 } // export namespace vmm

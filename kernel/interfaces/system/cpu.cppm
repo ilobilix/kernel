@@ -16,6 +16,7 @@ export namespace cpu
     extern "C++" struct processor;
     processor *nth(std::size_t n);
     std::uintptr_t nth_base(std::size_t n);
+    bool percpu_available();
 
     std::size_t bsp_idx();
     std::size_t bsp_aid();

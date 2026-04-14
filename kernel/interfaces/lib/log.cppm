@@ -8,7 +8,7 @@ import cppstd;
 
 namespace log
 {
-    constinit lib::spinlock<true> _lock;
+    constinit lib::spinlock_preempt _lock;
     std::uint64_t get_time();
 
     export namespace unsafe

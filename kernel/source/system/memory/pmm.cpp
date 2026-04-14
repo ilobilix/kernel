@@ -13,7 +13,7 @@ namespace pmm
 {
     namespace
     {
-        constinit lib::spinlock<false> lock;
+        constinit lib::spinlock lock;
         constinit memory mem;
 
         constexpr std::size_t max_order = 15;

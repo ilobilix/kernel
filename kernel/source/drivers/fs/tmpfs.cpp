@@ -9,72 +9,11 @@ import cppstd;
 
 namespace fs::tmpfs
 {
-    struct backing : vfs::backing
+    struct inode : vfs::inode
     {
-        struct ops : vfs::backing::ops
-        {
-            static std::shared_ptr<ops> singleton()
-            {
-                static auto instance = std::make_shared<ops>();
-                return instance;
-            }
-
-            std::ssize_t read(std::shared_ptr<vfs::backing> self, std::size_t offset, std::span<std::byte> buffer) override
-            {
-                auto back = reinterpret_cast<backing *>(self.get());
-                const std::unique_lock _ { back->lock };
-
-                auto size = buffer.size_bytes();
-                auto real_size = size;
-                if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
-                    real_size = size - ((offset + size) - back->stat.st_size);
-
-                std::memcpy(buffer.data(), back->data.data() + offset, real_size);
-                return real_size;
-            }
-
-            std::ssize_t write(std::shared_ptr<vfs::backing> self, std::size_t offset, std::span<std::byte> buffer) override
-            {
-                auto back = reinterpret_cast<backing *>(self.get());
-                const std::unique_lock _ { back->lock };
-
-                auto size = buffer.size_bytes();
-                back->data.resize(std::max(back->data.size(), offset + size));
-                std::memcpy(back->data.data() + offset, buffer.data(), size);
-
-                if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
-                {
-                    back->stat.st_size = offset + size;
-                    back->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(back->stat.st_blksize));
-                }
-                return size;
-            }
-
-            std::uintptr_t mmap(std::shared_ptr<vfs::backing> self, std::uintptr_t page, int flags) override
-            {
-                auto back = reinterpret_cast<backing *>(self.get());
-                const std::unique_lock _ { back->lock };
-
-                lib::ensure(page * pmm::page_size < back->data.size());
-
-                if (flags & vmm::map_flag::shared)
-                    return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
-
-                auto copy = pmm::alloc();
-                std::memcpy(lib::tohh(copy), back->data.data() + (page * pmm::page_size), std::min(pmm::page_size, back->data.size()));
-                return reinterpret_cast<std::uintptr_t>(copy);
-            }
-
-            bool munmap(std::shared_ptr<vfs::backing> self, std::uintptr_t page) override
-            {
-                lib::unused(self, page);
-                return false;
-            }
-        };
-
         std::vector<std::byte> data;
 
-        backing(ino_t ino, mode_t mode, std::shared_ptr<ops> op) : vfs::backing { op }
+        inode(ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op) : vfs::inode { op }
         {
             can_mmap = true;
 
@@ -98,61 +37,109 @@ namespace fs::tmpfs
             // stat.st_mtim = ;
             // stat.st_ctim = ;
         }
+    };
 
-        backing(ino_t ino, mode_t mode) : backing { ino, mode, ops::singleton() } { }
+    struct ops : vfs::ops
+    {
+        static std::shared_ptr<ops> singleton()
+        {
+            static auto instance = std::make_shared<ops>();
+            return instance;
+        }
+
+        std::ssize_t read(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            auto back = reinterpret_cast<inode *>(self.get());
+            const std::unique_lock _ { back->lock };
+
+            auto size = buffer.size_bytes();
+            auto real_size = size;
+            if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
+                real_size = size - ((offset + size) - back->stat.st_size);
+
+            std::memcpy(buffer.data(), back->data.data() + offset, real_size);
+            return real_size;
+        }
+
+        std::ssize_t write(std::shared_ptr<vfs::inode> self, std::uint64_t offset, std::span<std::byte> buffer) override
+        {
+            auto back = reinterpret_cast<inode *>(self.get());
+            const std::unique_lock _ { back->lock };
+
+            auto size = buffer.size_bytes();
+            back->data.resize(std::max(back->data.size(), offset + size));
+            std::memcpy(back->data.data() + offset, buffer.data(), size);
+
+            if (offset + size >= static_cast<std::size_t>(back->stat.st_size))
+            {
+                back->stat.st_size = offset + size;
+                back->stat.st_blocks = lib::div_roundup(offset + size, static_cast<std::size_t>(back->stat.st_blksize));
+            }
+            return size;
+        }
+
+        std::uintptr_t mmap(std::shared_ptr<vfs::inode> self, std::uintptr_t page, int flags) override
+        {
+            auto back = reinterpret_cast<inode *>(self.get());
+            const std::unique_lock _ { back->lock };
+
+            lib::ensure(page * pmm::page_size < back->data.size());
+
+            if (flags & vmm::map_flag::shared)
+                return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
+
+            auto copy = pmm::alloc();
+            std::memcpy(lib::tohh(copy), back->data.data() + (page * pmm::page_size), std::min(pmm::page_size, back->data.size()));
+            return reinterpret_cast<std::uintptr_t>(copy);
+        }
+
+        bool munmap(std::shared_ptr<vfs::inode> self, std::uintptr_t page) override
+        {
+            lib::unused(self, page);
+            return false;
+        }
+
+        bool sync() override { return true; }
     };
 
     struct fs : vfs::filesystem
     {
         struct instance : vfs::filesystem::instance, std::enable_shared_from_this<instance>
         {
-            std::atomic<ino_t> inode = 0;
+            std::atomic<ino_t> inode_num = 0;
 
-            auto create(std::shared_ptr<vfs::node> &parent, std::string_view name, mode_t mode) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>> override
             {
-                auto node = std::make_shared<vfs::node>();
-                node->parent = parent;
-                node->name = name;
-                node->backing = std::shared_ptr<vfs::backing>(new backing { inode++, mode });
-                return node;
+                lib::unused(parent, name);
+                return std::shared_ptr<vfs::inode>(new inode { inode_num++, mode, ops ?: ops::singleton() });
             }
 
-            auto mknod(std::shared_ptr<vfs::node> &parent, std::string_view name, mode_t mode, dev_t dev) -> vfs::expect<std::shared_ptr<vfs::node>> override
-            {
-                lib::panic("TODO: some sort of device registry");
-                lib::unused(dev);
-
-                auto node = std::make_shared<vfs::node>();
-                node->parent = parent;
-                node->name = name;
-                node->backing = std::shared_ptr<vfs::backing>(new backing { inode++, mode });
-                return node;
-            }
-
-            auto symlink(std::shared_ptr<vfs::node> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
                 return std::unexpected(vfs::error::todo);
             }
 
-            auto link(std::shared_ptr<vfs::node> &parent, std::string_view name, std::shared_ptr<vfs::node> target) -> vfs::expect<std::shared_ptr<vfs::node>> override
+            auto link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
                 return std::unexpected(vfs::error::todo);
             }
 
-            auto unlink(std::shared_ptr<vfs::node> &node) -> vfs::expect<void> override
+            auto unlink(std::shared_ptr<vfs::inode> &node) -> vfs::expect<void> override
             {
                 lib::unused(node);
                 return std::unexpected(vfs::error::todo);
             }
 
-            bool populate(std::shared_ptr<vfs::node> &node, std::string_view name = "") override
+            auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override
             {
                 lib::unused(node, name);
-                return false;
+                return std::unexpected(vfs::error::todo);
             }
+
             bool sync() override { return true; }
+
             // TODO
             bool unmount() override { lib::panic("tmpfs::unmount"); return false; }
 
@@ -166,8 +153,8 @@ namespace fs::tmpfs
             root->name = "tmpfs root. this shouldn't be visible anywhere";
 
             instance->root = root;
-            root->backing = std::make_shared<backing>(instance->inode++, static_cast<mode_t>(stat::type::s_ifdir));
-            root->fs = instance;
+            root->inode = std::make_shared<inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), ops::singleton());
+            root->inode->fs = instance;
 
             return { instance, root };
         }
@@ -200,8 +187,8 @@ namespace fs::devtmpfs
             root->children_redirect = _root;
 
             instance->root = root;
-            root->backing = std::make_shared<tmpfs::backing>(instance->inode++, static_cast<mode_t>(stat::type::s_ifdir));
-            root->fs = instance;
+            root->inode = std::make_shared<tmpfs::inode>(instance->inode_num++, static_cast<mode_t>(stat::type::s_ifdir), tmpfs::ops::singleton());
+            root->inode->fs = instance;
 
             return { instance, root };
         }

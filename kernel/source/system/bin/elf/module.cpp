@@ -133,7 +133,7 @@ namespace bin::elf::mod
             const std::unique_lock _ { lock };
 
             log::info("elf: module: loading '{}'", node->name);
-            auto &back = node->backing;
+            auto &back = node->inode;
 
             const auto ehdr = std::make_unique<Elf64_Ehdr>();
             lib::ensure(back->read(0, std::span {
@@ -419,18 +419,18 @@ namespace bin::elf::mod
         void load_external()
         {
             auto ret = vfs::resolve(nullptr, "/usr/lib/modules");
-            if (!ret || ret->target->backing->stat.type() != stat::type::s_ifdir)
+            if (!ret || ret->target->inode->stat.type() != stat::type::s_ifdir)
             {
                 log::error("elf: module: directory '/usr/lib/modules' not found");
                 return;
             }
 
             auto dir = ret->target;
-            dir->fs->populate(dir);
+            vfs::populate(dir);
 
             for (auto &[name, child] : dir->children)
             {
-                if (!name.ends_with(".ko") || child->backing->stat.type() != stat::type::s_ifreg)
+                if (!name.ends_with(".ko") || child->inode->stat.type() != stat::type::s_ifreg)
                     continue;
 
                 load(child);

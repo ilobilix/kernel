@@ -76,6 +76,11 @@ namespace cpu
         return bases ? bases[n] : 0;
     }
 
+    bool percpu_available()
+    {
+        return bases != nullptr;
+    }
+
     extern "C++" processor *self()
     {
         return bases ? std::addressof(me.get()) : nullptr;

@@ -17,7 +17,7 @@ namespace uacpi
 
         std::atomic_size_t workers { 0 };
         lib::semaphore semaphore { };
-        lib::spinlock<false> lock;
+        lib::spinlock lock;
     } // namespace
 
     void worker_caller(queue_type *queue)
@@ -530,23 +530,23 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_spinlock()
     {
-        return reinterpret_cast<uacpi_handle>(new lib::spinlock<true>);
+        return reinterpret_cast<uacpi_handle>(new lib::spinlock_ints);
     }
 
     void uacpi_kernel_free_spinlock(uacpi_handle handle)
     {
-        delete reinterpret_cast<lib::spinlock<true> *>(handle);
+        delete reinterpret_cast<lib::spinlock_ints *>(handle);
     }
 
     uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle handle)
     {
-        reinterpret_cast<lib::spinlock<true> *>(handle)->lock();
+        reinterpret_cast<lib::spinlock_ints *>(handle)->lock();
         return 0;
     }
 
     void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags)
     {
-        reinterpret_cast<lib::spinlock<true> *>(handle)->unlock();
+        reinterpret_cast<lib::spinlock_ints *>(handle)->unlock();
     }
 
     uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx)

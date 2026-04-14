@@ -6,8 +6,10 @@ import cppstd;
 
 namespace lib::lock
 {
-    bool lock();
-    void unlock(bool ints);
+    bool lock_ints();
+    void unlock_ints(bool ints);
+    bool lock_preempt();
+    void unlock_preempt(bool preempt);
     void pause();
 
     // auto clock() -> std::uint64_t (*)();
@@ -16,27 +18,30 @@ namespace lib::lock
 
 export namespace lib
 {
-    template<bool ints>
-    class spinlock { };
+    enum lock_type { none, ints, preempt };
+
+    template<lock_type Type>
+    class spinlock_base { };
 
     template<>
-    class spinlock<false>
+    class spinlock_base<lock_type::none>
     {
-        friend class spinlock<true>;
+        friend class spinlock_base<lock_type::ints>;
+        friend class spinlock_base<lock_type::preempt>;
 
         private:
         std::atomic_size_t _next_ticket;
         std::atomic_size_t _serving_ticket;
 
         public:
-        constexpr spinlock()
+        constexpr spinlock_base()
             : _next_ticket { 0 }, _serving_ticket { 0 } { }
 
-        spinlock(const spinlock &) = delete;
-        spinlock(spinlock &&) = delete;
+        spinlock_base(const spinlock_base &) = delete;
+        spinlock_base(spinlock_base &&) = delete;
 
-        spinlock &operator=(const spinlock &) = delete;
-        spinlock &operator=(spinlock &&) = delete;
+        spinlock_base &operator=(const spinlock_base &) = delete;
+        spinlock_base &operator=(spinlock_base &&) = delete;
 
         void lock()
         {
@@ -87,30 +92,62 @@ export namespace lib
     };
 
     template<>
-    class spinlock<true> : public spinlock<false>
+    class spinlock_base<lock_type::ints> : public spinlock_base<lock_type::none>
     {
         private:
         bool _interrupts;
 
         public:
-        constexpr spinlock()
-            : spinlock<false> { }, _interrupts { false } { }
+        constexpr spinlock_base()
+            : spinlock_base<lock_type::none> { }, _interrupts { false } { }
 
-        using spinlock<false>::spinlock;
+        using spinlock_base<lock_type::none>::spinlock_base;
 
         void lock()
         {
-            spinlock<false>::lock();
-            _interrupts = lock::lock();
+            spinlock_base<lock_type::none>::lock();
+            _interrupts = lock::lock_ints();
         }
 
         bool unlock()
         {
-            if (!spinlock<false>::unlock())
+            if (!spinlock_base<lock_type::none>::unlock())
                 return false;
 
-            lock::unlock(_interrupts);
+            lock::unlock_ints(_interrupts);
             return true;
         }
     };
+
+    template<>
+    class spinlock_base<lock_type::preempt> : public spinlock_base<lock_type::none>
+    {
+        private:
+        bool _preempt;
+
+        public:
+        constexpr spinlock_base()
+            : spinlock_base<lock_type::none> { }, _preempt { false } { }
+
+        using spinlock_base<lock_type::none>::spinlock_base;
+
+        void lock()
+        {
+            spinlock_base<lock_type::none>::lock();
+            _preempt = lock::lock_preempt();
+        }
+
+        bool unlock()
+        {
+            if (!spinlock_base<lock_type::none>::unlock())
+                return false;
+
+            lock::unlock_preempt(_preempt);
+            return true;
+        }
+    };
+
+    using spinlock = spinlock_base<lock_type::none>;
+    using spinlock_ints = spinlock_base<lock_type::ints>;
+    using spinlock_preempt = spinlock_base<lock_type::preempt>;
 } // export namespace lib

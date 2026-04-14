@@ -48,7 +48,7 @@ export namespace sched
         std::uint64_t vruntime;
         std::uint64_t schedule_time;
 
-        lib::spinlock<false> sleep_lock;
+        lib::spinlock sleep_lock;
         bool sleep_ints;
         std::size_t wake_reason;
         std::optional<std::size_t> sleep_for;
@@ -95,7 +95,7 @@ export namespace sched
         mode_t umask = static_cast<mode_t>(fmode::s_iwgrp | fmode::s_iwoth);
         // TODO: fd table
 
-        lib::spinlock<false> lock;
+        lib::spinlock lock;
 
         std::weak_ptr<process> parent;
         lib::map::flat_hash<std::size_t, std::shared_ptr<process>> children;
@@ -123,7 +123,7 @@ export namespace sched
             }
         };
 
-        lib::spinlock<true> lock;
+        lib::spinlock_preempt lock;
 
         lib::btree::multiset<std::shared_ptr<thread>, compare> queue;
         std::shared_ptr<thread> running_thread;
@@ -142,6 +142,10 @@ export namespace sched
 
     std::size_t allocate_cpu();
     void enqueue(std::shared_ptr<thread> &thread, std::size_t cpu_idx);
+
+    void enable();
+    void disable();
+    bool is_enabled();
 
     [[noreturn]] void start();
 

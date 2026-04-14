@@ -7,8 +7,48 @@ import cppstd;
 
 export namespace lib
 {
-    // TODO: make me smol
+    // TODO
     struct rwlock
+    {
+        private:
+
+        public:
+        constexpr rwlock() { }
+
+        rwlock(const rwlock &) = delete;
+        rwlock(rwlock &&) = delete;
+
+        rwlock &operator=(const rwlock &) = delete;
+        rwlock &operator=(rwlock &&) = delete;
+
+        void read_lock()
+        {
+        }
+
+        void write_lock()
+        {
+        }
+
+        void read_unlock()
+        {
+        }
+
+        void write_unlock()
+        {
+        }
+
+        bool is_read_locked()
+        {
+            return false;
+        }
+
+        bool is_write_locked()
+        {
+            return false;
+        }
+    };
+
+    struct rwmutex
     {
         private:
         std::size_t counter;
@@ -16,14 +56,14 @@ export namespace lib
         mutex global;
 
         public:
-        constexpr rwlock()
+        constexpr rwmutex()
             : counter { 0 }, readers { }, global { } { }
 
-        rwlock(const rwlock &) = delete;
-        rwlock(rwlock &&) = delete;
+        rwmutex(const rwmutex &) = delete;
+        rwmutex(rwmutex &&) = delete;
 
-        rwlock &operator=(const rwlock &) = delete;
-        rwlock &operator=(rwlock &&) = delete;
+        rwmutex &operator=(const rwmutex &) = delete;
+        rwmutex &operator=(rwmutex &&) = delete;
 
         void read_lock()
         {
