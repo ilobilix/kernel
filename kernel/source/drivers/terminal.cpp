@@ -17,31 +17,31 @@ import std;
 
 namespace term
 {
-    void *alloc(std::size_t size) { return std::malloc(size); }
-    void free(void *ptr, std::size_t) { std::free(ptr); }
+    namespace
+    {
+        auto font = const_cast<void *>(reinterpret_cast<const void *>(unifont));
+        std::uint32_t ansi_colours[] { 0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500, 0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA };
+        std::uint32_t ansi_bright_colours[] { 0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55, 0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF };
+    } // namespace
 
     void init()
     {
 #if !ILOBILIX_MAX_UACPI_POINTS
         log::info("initializing the graphical terminal");
 
-        auto font = const_cast<void *>(reinterpret_cast<const void *>(unifont));
         for (auto &frm : frm::framebuffers)
         {
             auto ctx = flanterm_fb_init(
-                alloc, free,
+                std::malloc, [](void *ptr, std::size_t) { std::free(ptr); },
                 reinterpret_cast<std::uint32_t *>(frm.address),
                 frm.width, frm.height, frm.pitch,
                 frm.red_mask_size, frm.red_mask_shift,
                 frm.green_mask_size, frm.green_mask_shift,
                 frm.blue_mask_size, frm.blue_mask_shift,
-                nullptr,
-                nullptr, nullptr,
-                nullptr, nullptr,
-                nullptr, nullptr,
+                nullptr, ansi_colours, ansi_bright_colours,
+                nullptr, nullptr, nullptr, nullptr,
                 font, UNIFONT_WIDTH, UNIFONT_HEIGHT, 1,
-                0, 0,
-                0
+                0, 0, 0
             );
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");
