@@ -43,7 +43,7 @@ namespace aarch64::output::pl011
         lib::mmio::out<16>(addr + 0x30, (1 << 0) | (1 << 8) | (1 << 9));
 
         using namespace ::output::serial;
-        static constinit printer printer { printc };
-        register_printer(printer);
+        static constinit logger log { printc };
+        register_logger(log);
     }
 } // namespace aarch64::output::pl011

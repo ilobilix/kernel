@@ -41,41 +41,6 @@ namespace syscall::vfs
             return fd->file->path;
         }
 
-        constexpr errnos map_error(error err)
-        {
-            switch (err)
-            {
-                case error::todo:
-                    return ENOSYS;
-                case error::already_exists:
-                    return EEXIST;
-                case error::not_found:
-                    return ENOENT;
-                case error::not_a_dir:
-                    return ENOTDIR;
-                case error::not_a_block:
-                    return ENOTBLK;
-                case error::symloop_max:
-                    return ELOOP;
-                case error::target_is_a_dir:
-                    return EISDIR;
-                case error::target_is_busy:
-                    return EBUSY;
-                case error::dir_not_empty:
-                    return ENOTEMPTY;
-                case error::different_filesystem:
-                    return EXDEV;
-                case error::invalid_filesystem:
-                    return ENODEV;
-                case error::invalid_mount:
-                case error::invalid_symlink:
-                    return EINVAL;
-                default:
-                    lib::panic("unhandled vfs error: {}", magic_enum::enum_name(err));
-            }
-            std::unreachable();
-        }
-
         std::optional<resolve_res> resolve_from(sched::process *proc, int dirfd, lib::path_view path)
         {
             auto parent = get_parent(proc, dirfd, path);
@@ -84,7 +49,7 @@ namespace syscall::vfs
 
             auto res = resolve(std::move(parent), path);
             if (!res.has_value())
-                return (errno = map_error(res.error()), std::nullopt);
+                return (errno = lib::map_error(res.error()), std::nullopt);
 
             return *res;
         }
@@ -141,7 +106,7 @@ namespace syscall::vfs
             {
                 auto reduced = reduce(std::move(res->parent), std::move(target));
                 if (!reduced.has_value())
-                    return (errno = map_error(reduced.error()), std::nullopt);
+                    return (errno = lib::map_error(reduced.error()), std::nullopt);
                 target = std::move(*reduced);
             }
             return target;
@@ -187,7 +152,7 @@ namespace syscall::vfs
 
             auto created = create(parent->target, pathstr.basename(), (mode & ~proc->umask));
             if (!created.has_value())
-                return (errno = map_error(created.error()), -1);
+                return (errno = lib::map_error(created.error()), -1);
 
             lib::bug_on(!created->dentry || created->dentry->inode);
 
@@ -216,7 +181,7 @@ namespace syscall::vfs
             {
                 auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
-                    return (errno = map_error(reduced.error()), -1);
+                    return (errno = lib::map_error(reduced.error()), -1);
                 target = std::move(*reduced);
             }
         }
@@ -300,11 +265,11 @@ namespace syscall::vfs
             return (errno = EFAULT, -1);
 
         const auto ret = fdesc->file->read(*uspan);
-        if (ret < 0)
-            return (errno = -ret, -1);
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
 
         stat.update_time(stat::time::access);
-        return ret;
+        return *ret;
     }
 
     std::ssize_t write(int fd, const void __user *buf, std::size_t count)
@@ -328,13 +293,13 @@ namespace syscall::vfs
             return (errno = EFAULT, -1);
 
         const auto ret = fdesc->file->write(*uspan);
-        if (ret < 0)
-            return (errno = -ret, -1);
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
 
         // TODO: sync
 
         stat.update_time(stat::time::modify | stat::time::status);
-        return ret;
+        return *ret;
     }
 
     std::ssize_t pread(int fd, void __user *buf, std::size_t count, off_t offset)
@@ -358,11 +323,11 @@ namespace syscall::vfs
             return (errno = EFAULT, -1);
 
         const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
-        if (ret < 0)
-            return (errno = -ret, -1);
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
 
         stat.update_time(stat::time::access);
-        return ret;
+        return *ret;
     }
 
     std::ssize_t pwrite(int fd, const void __user *buf, std::size_t count, off_t offset)
@@ -386,11 +351,11 @@ namespace syscall::vfs
             return (errno = EFAULT, -1);
 
         const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
-        if (ret < 0)
-            return (errno = -ret, -1);
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
 
         stat.update_time(stat::time::modify | stat::time::status);
-        return ret;
+        return *ret;
     }
 
     struct iovec
@@ -427,13 +392,13 @@ namespace syscall::vfs
                 return (errno = EFAULT, -1);
 
             const auto ret = fdesc->file->read(*uspan);
-            if (ret < 0)
-                return (errno = -ret, -1);
+            if (!ret.has_value())
+                return (errno = lib::map_error(ret.error()), -1);
 
-            if (ret == 0)
+            if (*ret == 0)
                 break;
 
-            total_read += static_cast<std::size_t>(ret);
+            total_read += *ret;
         }
 
         stat.update_time(stat::time::access);
@@ -468,10 +433,10 @@ namespace syscall::vfs
                 return (errno = EFAULT, -1);
 
             const auto ret = fdesc->file->write(*uspan);
-            if (ret < 0)
-                return (errno = -ret, -1);
+            if (!ret.has_value())
+                return (errno = lib::map_error(ret.error()), -1);
 
-            total_written += static_cast<std::size_t>(ret);
+            total_written += *ret;
         }
 
         stat.update_time(stat::time::modify | stat::time::status);
@@ -506,14 +471,14 @@ namespace syscall::vfs
                 return (errno = EFAULT, -1);
 
             const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
-            if (ret < 0)
-                return (errno = -ret, -1);
+            if (!ret.has_value())
+                return (errno = lib::map_error(ret.error()), -1);
 
-            if (ret == 0)
+            if (*ret == 0)
                 break;
 
-            total_read += static_cast<std::size_t>(ret);
-            offset += static_cast<off_t>(ret);
+            total_read += *ret;
+            offset += static_cast<off_t>(*ret);
         }
 
         stat.update_time(stat::time::access);
@@ -548,11 +513,11 @@ namespace syscall::vfs
                 return (errno = EFAULT, -1);
 
             const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
-            if (ret < 0)
-                return (errno = -ret, -1);
+            if (!ret.has_value())
+                return (errno = lib::map_error(ret.error()), -1);
 
-            total_written += static_cast<std::size_t>(ret);
-            offset += static_cast<off_t>(ret);
+            total_written += *ret;
+            offset += static_cast<off_t>(*ret);
         }
 
         stat.update_time(stat::time::modify | stat::time::status);
@@ -680,7 +645,10 @@ namespace syscall::vfs
         if (fdesc == nullptr)
             return -1;
 
-        return fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
+        const auto ret = fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
+        if (!ret.has_value())
+            return (errno = lib::map_error(ret.error()), -1);
+        return *ret;
     }
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)
@@ -766,7 +734,7 @@ namespace syscall::vfs
         if (flags & ~(o_closexec | o_direct | o_nonblock))
             return (errno = EINVAL, -1);
 
-        auto shared_inode = std::make_shared<inode>(pipe::get_ops());
+        auto shared_inode = std::make_shared<inode>();
         {
             shared_inode->stat.st_blksize = 0x1000;
             shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;

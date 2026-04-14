@@ -8,6 +8,7 @@ export import :buffer;
 export import :bug_on;
 export import :endian;
 export import :errno;
+export import :error;
 export import :hash;
 export import :initgraph;
 export import :io;

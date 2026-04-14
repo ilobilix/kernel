@@ -31,7 +31,7 @@ namespace vfs::pipe
             return instance;
         }
 
-        bool open(std::shared_ptr<vfs::file> self, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> self, int flags) override
         {
             lib::bug_on(!self);
 
@@ -39,7 +39,7 @@ namespace vfs::pipe
             const bool wr = is_write(flags);
 
             if (!(rd ^ wr))
-                return (errno = EINVAL, false);
+                return std::unexpected { lib::err::invalid_flags };
 
             if (!self->private_data)
                 self->private_data = std::make_shared<data>();
@@ -50,10 +50,10 @@ namespace vfs::pipe
             if (wr)
                 pdata->writers++;
 
-            return true;
+            return { };
         }
 
-        bool close(std::shared_ptr<vfs::file> self) override
+        lib::expect<void> close(std::shared_ptr<vfs::file> self) override
         {
             lib::bug_on(!self || !self->private_data);
 
@@ -66,10 +66,10 @@ namespace vfs::pipe
                 pdata->writers--;
 
             self->private_data.reset();
-            return true;
+            return { };
         }
 
-        std::ssize_t read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
@@ -80,7 +80,7 @@ namespace vfs::pipe
             // TODO: packets
             const bool direct = (file->flags & o_direct) != 0;
             if (direct)
-                return (errno = ENOSYS, -1);
+                return std::unexpected { lib::err::todo };
 
             const std::size_t size = std::min(buffer.size_bytes(), data::buffer_size);
             lib::buffer<char> buf { size };
@@ -101,14 +101,14 @@ namespace vfs::pipe
                     return 0;
 
                 if (nonblock)
-                    return (errno = EAGAIN, -1);
+                    return std::unexpected { lib::err::try_again };
 
                 if (!pdata->read_wait.wait())
-                    return (errno = EINTR, -1);
+                    return std::unexpected { lib::err::interrupted };
             }
         }
 
-        std::ssize_t write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
         {
             lib::unused(offset);
             lib::bug_on(!file || !file->private_data);
@@ -119,11 +119,11 @@ namespace vfs::pipe
             // TODO: packets
             const bool direct = (file->flags & o_direct) != 0;
             if (direct)
-                return (errno = ENOSYS, -1);
+                return std::unexpected { lib::err::todo };
 
             if (pdata->readers == 0)
                 // TODO: SIGPIPE
-                return (errno = EPIPE, -1);
+                return std::unexpected { lib::err::no_readers };
 
             std::size_t total_written = 0;
             const std::size_t count = buffer.size_bytes();
@@ -157,21 +157,21 @@ namespace vfs::pipe
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
-                        return (errno = EPIPE, -1);
+                        return std::unexpected { lib::err::no_readers };
                     }
 
                     if (nonblock)
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
-                        return (errno = EAGAIN, -1);
+                        return std::unexpected { lib::err::try_again };
                     }
 
                     if (!pdata->write_wait.wait())
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
-                        return (errno = EINTR, -1);
+                        return std::unexpected { lib::err::interrupted };
                     }
                 }
                 total_written += chunk_written;
@@ -179,10 +179,10 @@ namespace vfs::pipe
             return static_cast<std::ssize_t>(total_written);
         }
 
-        bool trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(file, size);
-            return true;
+            return { };
         }
     };
 

@@ -9,27 +9,27 @@ namespace output::serial
 {
     namespace
     {
-        constinit printer *printers = nullptr;
+        constinit logger *loggers = nullptr;
     } // namespace
 
-    void register_printer(printer &prn)
+    void register_logger(logger &log)
     {
-        if (printers == nullptr)
+        if (loggers == nullptr)
         {
-            printers = &prn;
-            prn.next = nullptr;
+            loggers = &log;
+            log.next = nullptr;
             return;
         }
         else
         {
-            prn.next = printers;
-            printers = &prn;
+            log.next = loggers;
+            loggers = &log;
         }
     }
 
     void printc(char chr)
     {
-        auto current = printers;
+        auto current = loggers;
         while (current != nullptr)
         {
             current->printc(chr);

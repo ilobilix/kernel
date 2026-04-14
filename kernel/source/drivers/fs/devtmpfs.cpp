@@ -3,6 +3,7 @@
 module drivers.fs.devtmpfs;
 
 import drivers.fs.tmpfs;
+import system.vfs.dev;
 import system.vfs;
 import magic_enum;
 import lib;
@@ -16,7 +17,7 @@ namespace fs::devtmpfs
         std::shared_ptr<vfs::dentry> root;
         mutable std::list<std::shared_ptr<struct vfs::mount>> mounts;
 
-        auto mount(std::shared_ptr<vfs::dentry> src) const -> vfs::expect<std::shared_ptr<struct vfs::mount>> override
+        auto mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src);
 
@@ -34,9 +35,10 @@ namespace fs::devtmpfs
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir),
-                tmpfs::ops::singleton()
+                static_cast<mode_t>(stat::type::s_ifdir)
             );
+
+            vfs::dev::register_fs_ops(locked->dev_id, tmpfs::ops::singleton());
         }
     };
 
@@ -88,7 +90,7 @@ namespace fs::devtmpfs
         lib::initgraph::entail { mounted_stage() },
         [] {
             const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);
-            if (!cerr && cerr.error() != vfs::error::already_exists)
+            if (!cerr && cerr.error() != lib::err::already_exists)
             {
                 lib::panic(
                     "devtmpfs: failed to create directory '/dev': {}",

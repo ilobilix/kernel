@@ -5,14 +5,15 @@ module drivers.fs.tmpfs;
 import system.memory.virt;
 import system.scheduler;
 import system.chrono;
+import system.vfs.dev;
 import system.vfs;
 import lib;
 import std;
 
 namespace fs::tmpfs
 {
-    inode::inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> op)
-        : vfs::inode { op }, memory { std::make_shared<vmm::memobject>() }
+    inode::inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
+        : vfs::inode { }, memory { std::make_shared<vmm::memobject>() }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
@@ -38,7 +39,7 @@ namespace fs::tmpfs
         );
     }
 
-    std::ssize_t ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> ops::read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -55,7 +56,7 @@ namespace fs::tmpfs
         return real_size;
     }
 
-    std::ssize_t ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> ops::write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -71,14 +72,14 @@ namespace fs::tmpfs
         return size;
     }
 
-    bool ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
+    lib::expect<void> ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         const auto current_size = static_cast<std::size_t>(inod->stat.st_size);
         if (size == current_size)
-            return true;
+            return { };
 
         if (size < current_size)
             inod->memory->clear(size, 0, current_size - size);
@@ -87,10 +88,10 @@ namespace fs::tmpfs
 
         inod->stat.st_size = size;
         inod->stat.st_blocks = lib::div_roundup(size, static_cast<std::size_t>(inod->stat.st_blksize));
-        return true;
+        return { };
     }
 
-    std::shared_ptr<vmm::object> ops::map(std::shared_ptr<vfs::file> file, bool priv)
+    lib::expect<std::shared_ptr<vmm::object>> ops::map(std::shared_ptr<vfs::file> file, bool priv)
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -104,37 +105,35 @@ namespace fs::tmpfs
         return inod->memory;
     }
 
-    bool ops::sync() { return true; }
-
-    auto fs::instance::create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev, std::shared_ptr<vfs::ops> ops) -> vfs::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::create(std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
-        return std::shared_ptr<vfs::inode>(new inode { dev_id, rdev, next_inode++, mode, ops ?: ops::singleton() });
+        return std::shared_ptr<vfs::inode>(new inode { dev_id, rdev, next_inode++, mode });
     }
 
-    auto fs::instance::symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> vfs::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::symlink(std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(target);
-        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, nullptr);
+        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0);
     }
 
-    auto fs::instance::link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> vfs::expect<std::shared_ptr<vfs::inode>>
+    auto fs::instance::link(std::shared_ptr<vfs::inode> &parent, std::string_view name, std::shared_ptr<vfs::inode> target) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
         target->stat.st_nlink++;
         return target;
     }
 
-    auto fs::instance::unlink(std::shared_ptr<vfs::inode> &node) -> vfs::expect<void>
+    auto fs::instance::unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void>
     {
         node->stat.st_nlink--;
         return { };
     }
 
-    auto fs::instance::populate(std::shared_ptr<vfs::inode> &node, std::string_view name) -> vfs::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>>
+    auto fs::instance::populate(std::shared_ptr<vfs::inode> &node, std::string_view name) -> lib::expect<std::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>>
     {
         lib::unused(node, name);
-        return std::unexpected(vfs::error::todo);
+        return std::unexpected { lib::err::todo };
     }
 
     bool fs::instance::sync() { return true; }
@@ -145,7 +144,7 @@ namespace fs::tmpfs
         return false;
     }
 
-    auto fs::mount(std::shared_ptr<vfs::dentry> src) const -> vfs::expect<std::shared_ptr<struct vfs::mount>>
+    auto fs::mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>>
     {
         lib::unused(src);
 
@@ -157,9 +156,10 @@ namespace fs::tmpfs
         root->name = "tmpfs root. this shouldn't be visible anywhere";
         root->inode = std::make_shared<inode>(
             dev_id, 0, locked->next_inode++,
-            static_cast<mode_t>(stat::type::s_ifdir),
-            ops::singleton()
+            static_cast<mode_t>(stat::type::s_ifdir)
         );
+
+        vfs::dev::register_fs_ops(dev_id, ops::singleton());
 
         auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
         mounts.push_back(mount);

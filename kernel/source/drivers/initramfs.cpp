@@ -122,9 +122,13 @@ namespace initramfs
                         ).value();
 
                         auto file = vfs::file::create(ret.value(), 0, 0, 0);
-                        if (file->pwrite(0, data) != std::ssize_t(size))
+                        if (const auto res = file->pwrite(0, data); !res.has_value() || res.value() != size)
                         {
-                            lib::error("ustar: could not write to a regular file '{}'", name);
+                            lib::error(
+                                "ustar: could not write to a regular file '{}': {}",
+                                name, res.has_value() ? "size mismatch" : magic_enum::enum_name(res.error())
+                            );
+
                             if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
                             {
                                 lib::error(
