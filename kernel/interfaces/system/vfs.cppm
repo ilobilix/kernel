@@ -11,10 +11,20 @@ export namespace vfs
     {
         todo,
         already_exists,
+
         not_found,
         not_a_dir,
         not_a_block,
+
         symloop_max,
+
+        target_is_a_dir,
+        target_is_busy,
+
+        dir_not_empty,
+
+        different_filesystem,
+
         invalid_filesystem,
         invalid_mount,
         invalid_symlink
