@@ -167,7 +167,7 @@ namespace fs::dev::tty
             return inst->ioctl(request, argp);
         }
 
-        test_driver() : driver { "tty-test", 4, 0, termios { } } { }
+        test_driver() : driver { "tty-test", 4, 0, ktermios::standard() } { }
     };
 
     struct ops : vfs::ops
