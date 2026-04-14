@@ -126,6 +126,15 @@ export namespace sched
         return spawn(reinterpret_cast<std::uintptr_t>(func), arg, nice);
     }
 
+    template<typename Func, typename Arg>
+    inline thread_t *spawn(Func &&func, Arg arg, nice_t nice = default_nice)
+    {
+        return spawn(
+            reinterpret_cast<std::uintptr_t>(func),
+            reinterpret_cast<std::uintptr_t>(arg), nice
+        );
+    }
+
     bool wake_up(thread_t *thread, bool preempt = true);
 
     bool yield();

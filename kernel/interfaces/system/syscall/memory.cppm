@@ -12,4 +12,6 @@ export namespace syscall::memory
     int mprotect(void *addr, std::size_t len, int prot);
 
     void *brk(void *addr);
+
+    int mincore(std::size_t start, std::size_t len, unsigned char __user *vec);
 } // export namespace syscall::memory

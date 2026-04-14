@@ -159,4 +159,10 @@ namespace syscall::memory
         vmspace->current_brk = address;
         return addr;
     }
+
+    int mincore(std::size_t start, std::size_t len, unsigned char __user *vec)
+    {
+        lib::unused(start, len, vec);
+        return (errno = ENOSYS, -1);
+    }
 } // namespace syscall::memory

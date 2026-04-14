@@ -421,6 +421,8 @@ export namespace fs::dev::tty
     struct driver;
     struct instance
     {
+        static constexpr std::size_t raw_buffer_size = 4096;
+
         driver *drv;
         std::uint32_t minor;
         std::atomic<std::uint32_t> ref;
@@ -439,10 +441,18 @@ export namespace fs::dev::tty
         };
         lib::locker<ctrl_t, sched::mutex> ctrl;
 
+        lib::rbspscd<std::byte, raw_buffer_size> raw_buffer;
+        sched::wait_queue_t raw_wq;
+        sched::thread_t *worker_thread;
+        std::atomic_bool raw_should_work;
+
         std::weak_ptr<instance> link;
 
         instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc);
-        virtual ~instance() = default;
+        virtual ~instance();
+
+        [[noreturn]]
+        static void raw_worker(instance *self);
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
@@ -478,13 +488,9 @@ export namespace fs::dev::tty
         // called by hardware
         bool receive(std::span<std::byte> buffer)
         {
-            const auto locked = ldisc.lock();
-            if (locked.value())
-            {
-                locked.value()->receive(buffer);
-                return true;
-            }
-            return false;
+            const auto [pushed, _] = raw_buffer.push(buffer);
+            raw_wq.wake_one();
+            return pushed;
         }
 
         void hangup();
