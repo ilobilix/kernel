@@ -27,8 +27,8 @@ function http_get
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 
-XMAKE_RELEASE="$(curl --silent "https://api.github.com/repos/xmake-io/xmake/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')"
-# XMAKE_RELEASE="v3.0.0"
+# XMAKE_RELEASE="$(curl --silent "https://api.github.com/repos/xmake-io/xmake/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')"
+XMAKE_RELEASE="v3.0.1"
 XMAKE_URL="https://github.com/xmake-io/xmake/releases/download/${XMAKE_RELEASE}/xmake-bundle-${XMAKE_RELEASE}.linux.x86_64"
 
 XMAKE_DIR="$SCRIPT_DIR/.xmake-local"

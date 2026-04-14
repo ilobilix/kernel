@@ -2,6 +2,7 @@
 
 module;
 
+#include <frg/rbtree.hpp>
 #include <frg/pairing_heap.hpp>
 #include <frg/intrusive.hpp>
 #include <frg/small_vector.hpp>
@@ -16,6 +17,8 @@ export namespace frg
 {
     using ::frg::pairing_heap;
     using ::frg::pairing_heap_hook;
+    using ::frg::rbtree;
+    using ::frg::rbtree_hook;
     using ::frg::intrusive_list;
     using ::frg::locate_member;
     using ::frg::small_vector;

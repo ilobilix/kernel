@@ -9,6 +9,7 @@ module x86_64.drivers.timers.hpet;
 
 import system.memory;
 import system.time;
+import magic_enum;
 import boot;
 import arch;
 import lib;
@@ -62,7 +63,11 @@ namespace x86_64::timers::hpet
                 value += (1ul << 32);
 
             if (last_val - value > (mask >> 1))
-                last.compare_exchange_strong(last_val, value, std::memory_order_relaxed, std::memory_order_relaxed);
+                last.compare_exchange_strong(
+                    last_val, value,
+                    std::memory_order_relaxed,
+                    std::memory_order_relaxed
+                );
 
             return value;
         }
@@ -94,7 +99,7 @@ namespace x86_64::timers::hpet
 
     std::uint64_t time_ns()
     {
-        lib::ensure(!!initialised);
+        lib::bug_if_not(!!initialised);
         return freq.nanos(read()) - offset;
     }
 
@@ -119,9 +124,11 @@ namespace x86_64::timers::hpet
 
         const auto psize = vmm::page_size::small;
         const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto flags = vmm::pflag::rw;
+        const auto caching = vmm::caching::mmio;
 
-        if (!vmm::kernel_pagemap->map(vaddr, paddr, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
-            lib::panic("could not map HPET");
+        if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)
+            lib::panic("could not map hpet: {}", magic_enum::enum_name(ret.error()));
 
         const auto cap = read(regs::cap);
         is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);

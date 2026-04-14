@@ -192,6 +192,8 @@ export namespace std
 
     namespace ranges
     {
+        using std::ranges::to;
+
         using std::ranges::all_of;
         using std::ranges::any_of;
         using std::ranges::none_of;

@@ -25,8 +25,9 @@ namespace arch
 
     void halt_others()
     {
-        if (cpu::cpu_count() != 0)
-            x86_64::apic::ipi(0, x86_64::apic::dest::all_noself, x86_64::idt::panic_int);
+        using namespace x86_64;
+        if (cpu::cpu_count() != 0 && apic::is_initialised())
+            apic::ipi(apic::shorthand::all_noself, apic::delivery::fixed, idt::panic_int);
     }
 
     void wfi() { asm volatile ("hlt"); }
@@ -119,6 +120,7 @@ namespace arch
             x86_64::timers::tsc::init();
 
             x86_64::apic::init_cpu();
+
             ptr->online = true;
 
             sched::start();

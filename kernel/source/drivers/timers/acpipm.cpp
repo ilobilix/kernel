@@ -64,7 +64,7 @@ namespace timers::acpipm
 
     void calibrate(std::size_t ms)
     {
-        lib::ensure(supported() && (ms * frequency) / 1'000 <= mask);
+        lib::bug_if_not(supported() && (ms * frequency) / 1'000 <= mask);
 
         const auto ticks = (ms * frequency) / 1'000;
 

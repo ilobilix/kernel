@@ -227,7 +227,7 @@ namespace cpu
                     return;
 
                 cpu::id_res res;
-                lib::ensure(cpu::id(0x0D, 0, res));
+                lib::bug_if_not(cpu::id(0x0D, 0, res));
 
                 bool xopt = cpu::id(0x0D, 1, res) && (res.a & (1 << 0));
 

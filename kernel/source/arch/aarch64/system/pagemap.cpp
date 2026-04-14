@@ -74,8 +74,8 @@ namespace vmm
 
     std::uintptr_t pagemap::to_arch(flag flags, caching cache, page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(cache));
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(cache));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
 
         std::uintptr_t ret = arch::flag::valid | arch::flag::access | arch::flag::in_share;
 
@@ -140,13 +140,13 @@ namespace vmm
         return (addr & (1ul << 63)) ? accessor.ttbr1 : _table;
     }
 
-    std::size_t pagemap::from_page_size(page_size psize)
+    [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
         return arch::page_sizes[std::to_underlying(psize)];
     }
 
-    page_size pagemap::max_page_size(std::size_t size)
+    [[gnu::pure]] page_size pagemap::max_page_size(std::size_t size)
     {
         if (size > arch::page_sizes[2])
             return page_size::large;

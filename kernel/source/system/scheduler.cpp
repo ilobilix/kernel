@@ -51,27 +51,18 @@ namespace sched
             return pid;
         }
 
-        std::shared_ptr<thread> next_thread()
-        {
-            auto locked = percpu->queue.write_lock();
-
-            const auto left = locked->begin();
-            if (left == locked->end())
-                return percpu->idle_thread;
-            return std::move(locked->extract(left).value());
-        }
-
         void save(std::shared_ptr<thread> thread, cpu::registers *regs)
         {
             std::memcpy(&thread->regs, regs, sizeof(cpu::registers));
             arch::save(thread);
         }
 
-        void load(std::shared_ptr<thread> &thread, cpu::registers *regs)
+        void load(bool same_pid, std::shared_ptr<thread> &thread, cpu::registers *regs)
         {
             std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
             arch::load(thread);
-            proc_for(thread->pid)->vmspace->pmap->load();
+            if (!same_pid)
+                proc_for(thread->pid)->vmspace->pmap->load();
         }
 
         void idle()
@@ -95,7 +86,7 @@ namespace sched
         // TODO: mmap
         auto &pmap = proc->vmspace->pmap;
         const auto vaddr = (proc->next_stack_top -= boot::ustack_size);
-        if (const auto ret = pmap->map_alloc(vaddr, boot::ustack_size, vmm::flag::rwu, vmm::page_size::small); !ret)
+        if (const auto ret = pmap->map_alloc(vaddr, boot::ustack_size, vmm::pflag::rwu, vmm::page_size::small); !ret)
             lib::panic("could not map user thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::ustack_size;
@@ -105,7 +96,7 @@ namespace sched
     {
         auto &pmap = proc->vmspace->pmap;
         auto vaddr = vmm::alloc_vpages(vmm::space_type::stack, boot::kstack_size / pmm::page_size);
-        if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::flag::rw, vmm::page_size::small); !ret)
+        if (const auto ret = pmap->map_alloc(vaddr, boot::kstack_size, vmm::pflag::rw, vmm::page_size::small); !ret)
             lib::panic("could not map kernel thread stack: {}", magic_enum::enum_name(ret.error()));
 
         return vaddr + boot::kstack_size;
@@ -263,7 +254,10 @@ namespace sched
     void schedule(cpu::registers *regs)
     {
         if (!preemption.get())
+        {
+            arch::reschedule(timeslice);
             return;
+        }
 
         in_scheduler = true;
 
@@ -272,64 +266,84 @@ namespace sched
 
         const auto self = cpu::self();
 
-        auto current = percpu->running_thread;
-        if (current && current->status != status::killed)
+        std::shared_ptr<thread> next;
         {
-            if (current != percpu->idle_thread)
+            auto locked = percpu->queue.write_lock();
+            for (auto it = locked->begin(); it != locked->end(); it++)
             {
-                save(current, regs);
-
-                if (current->status == status::sleeping)
-                    current->sleep_lock.unlock();
-
-                current->vruntime += time - current->schedule_time;
-                enqueue(current, self->idx);
-            }
-        }
-        // TODO: if killed
-
-        std::list<std::shared_ptr<thread>> tmpqueue;
-
-        auto first = next_thread();
-        auto next = first;
-        while (next->status != status::ready)
-        {
-            if (next->status == status::sleeping)
-            {
-                if (next->sleep_until.has_value() && time >= next->sleep_until.value())
+                auto &thread = *it;
+                switch (thread->status)
                 {
-                    next->status = status::ready;
-                    next->wake_reason = wake_reason::success;
-                    break;
+                    case status::sleeping:
+                        if (!thread->sleep_until.has_value() || time < thread->sleep_until.value())
+                            break;
+                        thread->status = status::ready;
+                        thread->wake_reason = wake_reason::success;
+                        [[fallthrough]];
+                    case status::ready:
+                        next = std::move(locked->extract(it).value());
+                        goto found;
+                    case status::running:
+                        lib::panic("found a running thread in scheduler queue");
+                        std::unreachable();
+                    case status::killed:
+                        // TODO
+                        break;
+                    case status::blocked:
+                    case status::not_ready:
+                        break;
                 }
             }
+            found:
+        }
 
-            tmpqueue.push_back(next);
-            next = next_thread();
-            if (next == percpu->idle_thread)
-                break;
-
-            if (next == first)
+        auto current = percpu->running_thread;
+        std::optional<std::size_t> prev_pid { };
+        if (current)
+        {
+            if (current->status == status::killed)
             {
-                tmpqueue.push_back(next);
-                next = percpu->idle_thread;
+                // TODO
+            }
+            else
+            {
+                prev_pid = current->pid;
+                const bool is_idle = (current == percpu->idle_thread);
+                if (!is_idle)
+                {
+                    if (next == nullptr && current->status == status::running)
+                        next = current;
+                    else if (current->status == status::sleeping)
+                        current->sleep_lock.unlock();
+
+                    current->vruntime += time - current->schedule_time;
+                    if (next != current)
+                    {
+                        save(current, regs);
+                        enqueue(current, self->idx);
+                    }
+                }
+                // should it save idle thread ctx?
+                else save(current, regs);
             }
         }
 
-        for (auto &thread : tmpqueue)
-            enqueue(thread, self->idx);
+        if (next == nullptr)
+            next = percpu->idle_thread;
+        else
+            next->schedule_time = time;
 
-        // tmpqueue.clear();
+        if (next != current)
+        {
+            next->running_on = self->self;
+            next->status = status::running;
+            percpu->running_thread = next;
 
-        next->running_on = self->self;
-        percpu->running_thread = next;
+            const bool same_pid = (prev_pid.has_value() && prev_pid.value() == next->pid);
+            load(same_pid, next, regs);
+        }
 
-        next->schedule_time = time;
-        next->status = status::running;
-
-        load(next, regs);
         arch::reschedule(timeslice);
-
         in_scheduler = false;
     }
 
@@ -349,7 +363,7 @@ namespace sched
                 nullptr,
                 std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
             );
-            lib::ensure(proc->pid == 0);
+            lib::bug_if_not(proc->pid == 0);
         }
     };
 

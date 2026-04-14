@@ -14,6 +14,7 @@ module system.pci;
 
 import system.memory.virt;
 import system.acpi;
+import magic_enum;
 import lib;
 import cppstd;
 
@@ -34,17 +35,22 @@ namespace pci::acpi
 
         std::uintptr_t getaddr(std::uint32_t bus, std::uint32_t dev, std::uint32_t func, std::size_t offset)
         {
-            lib::ensure(_bus_start <= bus && bus <= _bus_end);
+            lib::bug_if_not(_bus_start <= bus && bus <= _bus_end);
             const auto paddr = (_base + ((bus - _bus_start) << 20) | (dev << 15) | (func << 12));
 
             if (mappings.contains(paddr))
                 return mappings[paddr] + offset;
 
             static constexpr auto size = 1zu << 20;
-            const auto vaddr = vmm::alloc_vpages(vmm::space_type::pci, size);
+            // TODO: random page faults when it's in higher half
+            const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::space_type::pci, size));
 
-            if (!vmm::kernel_pagemap->map(vaddr, paddr, size, vmm::flag::rw, vmm::pagemap::max_page_size(size), vmm::caching::mmio))
-                lib::panic("could not map ecam memory");
+            const auto flags = vmm::pflag::rw;
+            const auto psize = vmm::pagemap::max_page_size(size);
+            const auto caching = vmm::caching::mmio;
+
+            if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, size, flags, psize, caching); !ret)
+                lib::panic("could not map ecam memory: {}", magic_enum::enum_name(ret.error()));
 
             mappings[paddr] = vaddr;
             return vaddr + offset;
@@ -56,8 +62,8 @@ namespace pci::acpi
 
         std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) override
         {
-            lib::ensure(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
-            lib::ensure(seg == _seg);
+            lib::bug_if_not(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
+            lib::bug_if_not(seg == _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
 
@@ -79,8 +85,8 @@ namespace pci::acpi
 
         void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) override
         {
-            lib::ensure(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
-            lib::ensure(seg == _seg);
+            lib::bug_if_not(width == sizeof(std::uint8_t) || width == sizeof(std::uint16_t) || width == sizeof(std::uint32_t));
+            lib::bug_if_not(seg == _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
 
@@ -157,14 +163,14 @@ namespace pci::acpi
                 {
                     uacpi_resources *res;
                     ret = uacpi_get_current_resources(route.source, &res);
-                    lib::ensure(ret == UACPI_STATUS_OK);
+                    lib::bug_if_not(ret == UACPI_STATUS_OK);
 
                     switch (res->entries[0].type)
                     {
                         case UACPI_RESOURCE_TYPE_IRQ:
                         {
                             const auto &irq = res->entries[0].irq;
-                            lib::ensure(irq.num_irqs >= 1);
+                            lib::bug_if_not(irq.num_irqs >= 1);
                             gsi = irq.irqs[0];
                             if (irq.triggering == UACPI_TRIGGERING_EDGE)
                                 triggering = flags::edge;
@@ -175,7 +181,7 @@ namespace pci::acpi
                         case UACPI_RESOURCE_TYPE_EXTENDED_IRQ:
                         {
                             const auto &irq = res->entries[0].extended_irq;
-                            lib::ensure(irq.num_irqs >= 1);
+                            lib::bug_if_not(irq.num_irqs >= 1);
                             gsi = irq.irqs[0];
                             if (irq.triggering == UACPI_TRIGGERING_EDGE)
                                 triggering = flags::edge;

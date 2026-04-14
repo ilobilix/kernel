@@ -2,7 +2,7 @@
 
 export module lib:bitmap;
 
-import :ensure;
+import :bug_if_not;
 import :math;
 import cppstd;
 
@@ -18,7 +18,7 @@ export namespace lib
         bool _allocated;
 
         public:
-        friend void swap(bitmap &lhs, bitmap &rhs)
+        friend constexpr void swap(bitmap &lhs, bitmap &rhs)
         {
             using std::swap;
             swap(lhs._data, rhs._data);
@@ -29,10 +29,10 @@ export namespace lib
 
         constexpr bitmap()
             : _data { nullptr }, _count { 0 }, _initialised { false }, _allocated { false } { };
-        bitmap(std::uint8_t *data, std::size_t count)
+        constexpr bitmap(std::uint8_t *data, std::size_t count)
             : _data { data }, _count { count }, _initialised { true }, _allocated { false } { };
 
-        bitmap(std::size_t count)
+        constexpr bitmap(std::size_t count)
         {
             const auto size = div_roundup(count, 8u);
 
@@ -41,26 +41,34 @@ export namespace lib
             _allocated = true;
 
             _initialised = true;
+
+            clear();
         }
 
         bitmap(const bitmap &other) = delete;
         bitmap &operator=(const bitmap &other) = delete;
 
-        bitmap(bitmap &&other) : bitmap { } { swap(*this, other); }
-        bitmap &operator=(bitmap &&other) { swap(*this, other); return *this; }
+        constexpr bitmap(bitmap &&other) : bitmap { } { swap(*this, other); }
+        constexpr bitmap &operator=(bitmap &&other) { swap(*this, other); return *this; }
 
-        ~bitmap()
+        constexpr ~bitmap()
         {
             if (_allocated)
                 delete[] _data;
         }
 
-        void initialise(std::uint8_t *data, std::size_t count)
+        constexpr void initialise(std::uint8_t *data, std::size_t count)
         {
-            lib::ensure(!_initialised);
+            lib::bug_if_not(!_initialised);
             _data = data;
             _count = count;
             _initialised = true;
+        }
+
+        constexpr void clear(int ch = 0)
+        {
+            lib::bug_if_not(!!_initialised);
+            std::memset(_data, ch, div_roundup(_count, 8u));
         }
 
         struct bit
@@ -84,19 +92,19 @@ export namespace lib
 
         constexpr bit operator[](std::size_t index)
         {
-            lib::ensure(!!_initialised);
+            lib::bug_if_not(!!_initialised);
             return bit(*this, index);
         }
 
         constexpr bool get(std::size_t index)
         {
-            lib::ensure(!!_initialised);
+            lib::bug_if_not(!!_initialised);
             return _data[index / 8] & (1 << (index % 8));
         }
 
         constexpr bool set(std::size_t index, bool value)
         {
-            lib::ensure(!!_initialised);
+            lib::bug_if_not(!!_initialised);
             const auto ret = get(index);
 
             if (value == true)

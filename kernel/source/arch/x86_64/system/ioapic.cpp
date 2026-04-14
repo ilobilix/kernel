@@ -11,6 +11,7 @@ import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
+import magic_enum;
 import lib;
 import cppstd;
 
@@ -65,8 +66,8 @@ namespace x86_64::apic::io
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
 
-                if (!vmm::kernel_pagemap->map(_mmio, mmio, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
-                    lib::panic("could not map ioapic mmio");
+                if (const auto ret = vmm::kernel_pagemap->map(_mmio, mmio, npsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+                    lib::panic("could not map ioapic mmio: {}", magic_enum::enum_name(ret.error()));
 
                 _redirs = ((read(0x01) >> 16) & 0xFF) + 1;
                 for (std::size_t i = 0; i < _redirs; i++)
@@ -154,7 +155,7 @@ namespace x86_64::apic::io
 
     void mask(std::uint8_t vector)
     {
-        lib::ensure(vector >= 0x20);
+        lib::bug_if_not(vector >= 0x20);
 
         log::debug("ioapic: masking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);
@@ -166,7 +167,7 @@ namespace x86_64::apic::io
 
     void unmask(std::uint8_t vector)
     {
-        lib::ensure(vector >= 0x20);
+        lib::bug_if_not(vector >= 0x20);
 
         log::debug("ioapic: unmasking vector 0x{:X}", vector);
         const auto gsi = irq2iso(vector - 0x20);

@@ -26,7 +26,7 @@ export namespace arch
         return ret;
     }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
+    void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, log::level lvl);
 
     initgraph::stage *bsp_stage()
     {

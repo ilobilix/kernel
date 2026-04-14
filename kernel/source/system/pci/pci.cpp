@@ -138,8 +138,8 @@ namespace pci
 
     std::uintptr_t bar::map()
     {
-        lib::ensure(type == type::mem);
-        lib::ensure(phys && size);
+        lib::bug_if_not(type == type::mem);
+        lib::bug_if_not(phys && size);
 
         if (virt != 0)
             return virt;
@@ -154,8 +154,8 @@ namespace pci
 
         const auto vaddr = vmm::alloc_vpages(vmm::space_type::pci, lib::div_roundup(size, pmm::page_size));
 
-        if (!pmap->map(vaddr, paddr, alsize, vmm::flag::rw, psize, vmm::caching::mmio))
-            lib::panic("could not map pci bar");
+        if (const auto ret = pmap->map(vaddr, paddr, alsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+            lib::panic("could not map pci bar: {}", magic_enum::enum_name(ret.error()));
 
         return virt = (vaddr + (phys - paddr));
     }
@@ -264,22 +264,22 @@ namespace pci
 
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus)
     {
-        lib::ensure(static_cast<bool>(io));
+        lib::bug_if_not(static_cast<bool>(io));
         const std::uint32_t idx = (seg << 8 | bus);
-        lib::ensure(!ios.contains(idx));
+        lib::bug_if_not(!ios.contains(idx));
         ios[idx] = io;
     }
 
     std::shared_ptr<configio> getio(std::uint16_t seg, std::uint8_t bus)
     {
         const std::uint32_t idx = (seg << 8 | bus);
-        lib::ensure(ios.contains(idx));
+        lib::bug_if_not(ios.contains(idx));
         return ios[idx];
     }
 
     void addrb(std::shared_ptr<bus> rb)
     {
-        lib::ensure(static_cast<bool>(rb));
+        lib::bug_if_not(static_cast<bool>(rb));
         rbs.push_back(rb);
     }
 

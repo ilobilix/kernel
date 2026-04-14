@@ -29,5 +29,5 @@ export namespace lib::mmio
     inline Type in(auto addr) { return in<Type>(addr); }
 
     template<std::size_t N, typename Type = bits2uint_t<N>>
-    inline void out(auto addr, auto val) { out<Type>(addr, val); }
+    inline void out(auto addr, Type val) { out<Type>(addr, val); }
 } // export namespace lib::mmio

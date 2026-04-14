@@ -1,10 +1,15 @@
 // Copyright (C) 2024-2025  ilobilo
 
+module;
+
+#include <arch/x86_64/system/cpu.hpp>
+
 module x86_64.system.idt;
 
 import x86_64.system.ioapic;
 import x86_64.system.lapic;
 import x86_64.system.pic;
+import system.memory.virt;
 import system.interrupts;
 import system.cpu.self;
 import system.cpu;
@@ -98,6 +103,10 @@ namespace x86_64::idt
         }
         else if (vector < irq(0))
         {
+            const bool by_write = (regs->error_code & (1 << 2)) != 0;
+            if (vector == 14 && (regs->cs & 0x03) && vmm::handle_pfault(rdreg(cr2), by_write))
+                return;
+
             if (self)
                 lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self->idx);
             else
@@ -128,7 +137,7 @@ namespace x86_64::idt
             log::info("idt: setting up irq handlers");
 
             // page fault ist 0
-            idt[14].ist = 1;
+            // idt[14].ist = 1;
         }
 
         irq_handlers.get(cpu::nth_base(cpu->idx)).resize(num_preints);

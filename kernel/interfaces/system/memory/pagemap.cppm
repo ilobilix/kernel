@@ -28,7 +28,7 @@ export namespace vmm
         framebuffer = write_combining
     };
 
-    enum class flag
+    enum class pflag
     {
         none = 0,
         read = (1 << 0),
@@ -70,40 +70,62 @@ export namespace vmm
         static const std::uintptr_t valid_table_flags;
         static const std::uintptr_t new_table_flags;
 
-        struct entry
+        class entry
         {
-            std::uintptr_t value = 0;
+            private:
+            std::uintptr_t _value = 0;
 
-            void clear() { value = 0; }
-            void clearflags() { value &= pa_mask; }
-
-            void setflags(std::uintptr_t aflags, bool enabled)
+            class accessor
             {
-                if (enabled)
-                    value |= aflags;
-                else
-                    value &= ~aflags;
-            }
+                friend class entry;
 
-            bool getflags(std::uintptr_t aflags) const
-            {
-                return (value & aflags) == aflags;
-            }
+                private:
+                std::uintptr_t &_parent;
 
-            std::uintptr_t getflags() const
-            {
-                return value & ~pa_mask;
-            }
+                accessor(std::uintptr_t &parent)
+                    : _parent { parent }, value { _parent } { }
 
-            void setaddr(std::uintptr_t paddr)
-            {
-                value = (value & ~pa_mask) | (paddr & pa_mask);
-            }
+                public:
+                std::uintptr_t value = 0;
 
-            std::uintptr_t getaddr() const
-            {
-                return value & pa_mask;
-            }
+                accessor &clear() { value = 0; return *this; }
+                accessor &clearflags() { value &= pa_mask; return *this; }
+
+                accessor &setflags(std::uintptr_t aflags, bool enabled)
+                {
+                    if (enabled)
+                        value |= aflags;
+                    else
+                        value &= ~aflags;
+                    return *this;
+                }
+
+                bool getflags(std::uintptr_t aflags) const
+                {
+                    return (value & aflags) == aflags;
+                }
+
+                std::uintptr_t getflags() const
+                {
+                    return value & ~pa_mask;
+                }
+
+                accessor &setaddr(std::uintptr_t paddr)
+                {
+                    value = (value & ~pa_mask) | (paddr & pa_mask);
+                    return *this;
+                }
+
+                std::uintptr_t getaddr() const
+                {
+                    return value & pa_mask;
+                }
+
+                accessor &write() { _parent = value; return *this; }
+            };
+
+            public:
+            accessor access() { return _value; }
         };
 
         struct [[gnu::packed]] table
@@ -119,8 +141,8 @@ export namespace vmm
         static page_size fixpsize(page_size psize);
         static void invalidate(std::uintptr_t vaddr);
 
-        static std::uintptr_t to_arch(flag flags, caching cache, page_size psize);
-        static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<flag, caching>;
+        static std::uintptr_t to_arch(pflag flags, caching cache, page_size psize);
+        static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>;
 
         static auto getlvl(entry &entry, bool allocate) -> table *;
 
@@ -129,13 +151,13 @@ export namespace vmm
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
 
-        static std::size_t from_page_size(page_size psize);
-        static page_size max_page_size(std::size_t size);
+        [[gnu::pure]] static std::size_t from_page_size(page_size psize);
+        [[gnu::pure]] static page_size max_page_size(std::size_t size);
 
-        std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::small, caching cache = caching::normal);
-        std::expected<void, error> map_alloc(std::uintptr_t vaddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::small, caching cache = caching::normal);
+        std::expected<void, error> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
+        std::expected<void, error> map_alloc(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
 
-        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, flag flags = flag::rw, page_size psize = page_size::small, caching cache = caching::normal);
+        std::expected<void, error> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, page_size psize = page_size::small, caching cache = caching::normal);
         std::expected<void, error> unmap(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::small);
         std::expected<void, error> unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize = page_size::small);
 

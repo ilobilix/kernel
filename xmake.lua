@@ -87,11 +87,6 @@ option("qemu_accel")
     set_showmenu(true)
     set_description("QEMU accelerators. Disabled when debugging")
 
-option("qemu_gdb")
-    set_default(false)
-    set_showmenu(true)
-    set_description("Pass '-s -S' to QEMU when debugging")
-
 option("qemu_vnc")
     set_default(false)
     set_showmenu(true)
@@ -130,7 +125,7 @@ local qemu_accel_args = {
 local qemu_dbg_args = {
     "-no-reboot", "-no-shutdown",
     "-d", "int", "-D", logfile,
-    "-monitor", "telnet:127.0.0.1:12345,server,nowait"
+    -- "-monitor", "telnet:127.0.0.1:12345,server,nowait"
 }
 
 local bios = false
@@ -199,7 +194,10 @@ toolchain("ilobilix-clang")
             "-fno-rtti",
             "-fno-exceptions",
             "-fsized-deallocation",
-            "-fcheck-new"
+            "-fcheck-new",
+
+            "-D__cpp_lib_ranges_to_container=202202L",
+            "-D__glibcxx_ranges_to_container=202202L"
         }
 
         local ld_args = {
@@ -329,6 +327,11 @@ target("initramfs")
         local created = false
 
         local function create_initramfs()
+            local tar = find_program("tar")
+            if tar == nil then
+                raise("program 'tar' not found!")
+            end
+
             os.tryrm(targetfile)
             os.tryrm(modules_dir)
             os.mkdir(modules_dir)
@@ -347,7 +350,7 @@ target("initramfs")
             end
 
             print(" => building the initramfs...")
-            os.execv(find_program("tar"), { "--format", "posix", "-cf", targetfile, "-C", sysroot, "./" })
+            os.execv(tar, { "--format", "posix", "-cf", targetfile, "-C", sysroot, "./" })
 
             created = true
         end
@@ -390,8 +393,8 @@ target("iso")
         local limine_dep = target:deps()["limine"]
         local limine_exec = limine_dep:targetfile()
 
-        local binaries = limine_dep:get("values")["binaries"]
-        local uefi_binaries = limine_dep:get("values")["uefi-binaries"]
+        local cd_binaries = limine_dep:get("values")["cd-binaries"]
+        local uefi_binary = limine_dep:get("values")["uefi-binary"]
 
         local limine_files = {
             "$(projectdir)/misc/limine.conf"
@@ -421,6 +424,11 @@ target("iso")
         local created = false
 
         local function create_iso()
+            local xorriso = find_program("xorriso")
+            if xorriso == nil then
+                raise("program 'xorriso' not found!")
+            end
+
             os.tryrm(targetfile)
             os.tryrm(iso_dir)
 
@@ -431,16 +439,13 @@ target("iso")
 
             print(" => copying target files to temporary iso directory...")
 
-            -- for idx, val in ipairs(boot_files) do
-            --     os.cp(val, iso_dir_b)
-            -- end
             for idx, val in ipairs(limine_files) do
                 os.cp(val, iso_dir_bl)
             end
-            for idx, val in ipairs(binaries) do
+            for idx, val in ipairs(cd_binaries) do
                 os.cp(val, iso_dir_bl)
             end
-            for idx, val in ipairs(uefi_binaries) do
+            for idx, val in ipairs(uefi_binary) do
                 os.cp(val, iso_dir_eb)
             end
             os.cp(kernelfile, path.join(iso_dir_b, "kernel.elf"))
@@ -451,7 +456,7 @@ target("iso")
             )
 
             print(" => building the iso...")
-            os.execv(find_program("xorriso"), xorriso_args)
+            os.execv(xorriso, xorriso_args)
 
             print(" => installing limine...")
             os.execv(limine_exec, { "bios-install", targetfile })
@@ -464,6 +469,140 @@ target("iso")
 
         if not created and not os.isfile(targetfile) then
             create_iso()
+        end
+    end)
+
+target("hdd")
+    set_default(false)
+    set_kind("phony")
+    add_deps("ovmf-binaries", "limine", "initramfs", "modules", "ilobilix.elf")
+
+    on_clean(function (target)
+        os.rm(get_targetfile(target:targetdir(), "image", ".hdd"))
+    end)
+
+    on_build(function (target)
+        import("core.project.project")
+        import("core.project.depend")
+        import("lib.detect.find_program")
+
+        targetfile = get_targetfile(target:targetdir(), "image", ".hdd")
+        target:set("values", "targetfile", targetfile)
+
+        local kernel = project.target("ilobilix.elf")
+        local initramfs = project.target("initramfs")
+
+        local hdd_dirname = "ilobilix.hdd.dir"
+        local hdd_dir = path.join(os.tmpdir(), hdd_dirname)
+
+        local limine_dep = target:deps()["limine"]
+        local limine_exec = limine_dep:targetfile()
+
+        local uefi_binary = limine_dep:get("values")["uefi-binary"]
+        local bios_sys = limine_dep:get("values")["bios-sys"]
+
+        local limine_conf = path.join(os.projectdir(), "/misc/limine.conf")
+
+        local kernelfile = kernel:targetfile()
+        local initramfsfile = initramfs:get("values", "targetfile")["targetfile"]
+
+        local created = false
+        local function create_hdd()
+            os.tryrm(targetfile)
+
+            local dd = find_program("dd")
+            if dd == nil then
+                raise("program 'dd' not found!")
+            end
+            local sgdisk = find_program("sgdisk", {
+                paths = {
+                    "/sbin", "/usr/sbin", "/usr/local/sbin",
+                    "/bin", "/usr/bin", "/usr/local/bin"
+                }
+            })
+            if sgdisk == nil then
+                raise("program 'sgdisk' not found!")
+            end
+            local mformat = find_program("mformat")
+            if mformat == nil then
+                raise("program 'mformat' not found!")
+            end
+            local mcopy = find_program("mcopy")
+            if mcopy == nil then
+                raise("program 'mcopy' not found!")
+            end
+            local mmd = find_program("mmd")
+            if mmd == nil then
+                raise("program 'mmd' not found!")
+            end
+
+            local dd_args = {
+                "if=/dev/zero", "bs=1M", "count=0",
+                "seek=64", "of=" .. targetfile
+            }
+
+            local sgdisk_args = {
+                targetfile,
+                "-n", "1:2048",
+                "-t", "1:ef00"
+            }
+
+            if is_arch("x86_64") then
+                multi_insert(sgdisk_args, "-m", "1")
+            end
+
+            try {
+                function ()
+                    print(" => running dd...")
+                    os.execv(dd, dd_args)
+
+                    print(" => running sgdisk...")
+                    os.execv(sgdisk, sgdisk_args)
+
+                    if is_arch("x86_64") then
+                        print(" => limine bios-install...")
+                        os.execv(limine_exec, { "bios-install", targetfile })
+                    end
+
+                    print(" => copying necessary files...")
+                    os.execv(mformat, { "-i", targetfile .. "@@1M" })
+                    os.execv(mmd, { "-i", targetfile .. "@@1M",
+                        "::/EFI", "::/EFI/BOOT", "::/boot", "::/boot/limine"
+                    })
+                    os.execv(mcopy, { "-i", targetfile .. "@@1M",
+                        kernelfile, "::/boot/kernel.elf"
+                    })
+                    os.execv(mcopy, { "-i", targetfile .. "@@1M",
+                        initramfsfile, "::/boot/initramfs.tar"
+                    })
+                    os.execv(mcopy, { "-i", targetfile .. "@@1M",
+                        limine_conf, "::/boot/limine"
+                    })
+                    if is_arch("x86_64") then
+                        os.execv(mcopy, { "-i", targetfile .. "@@1M",
+                            bios_sys, "::/boot/limine"
+                        })
+                    end
+                    os.execv(mcopy, { "-i", targetfile .. "@@1M",
+                        uefi_binary, "::/EFI/BOOT"
+                    })
+
+                    print(" => hdd image built")
+                    created = true
+                end,
+                catch {
+                    function (errors)
+                        os.tryrm(targetfile)
+                        raise(errors)
+                    end
+                }
+            }
+        end
+
+        depend.on_changed(create_hdd, { files = { kernelfile, initramfsfile } })
+
+        if not created and not os.isfile(targetfile) then
+            create_hdd()
         end
     end)
 
@@ -511,13 +650,17 @@ task("qemu")
             qemu_exec = find_program("qemu-system-aarch64")
         end
 
+        if qemu_exec == nil then
+            raise("could not find qemu for the current architecture!")
+        end
+
         if not option.get("uefi") and not bios then
             raise("BIOS not supported on this architecture")
         end
 
         if option.get("debug") then
             multi_insert(qemu_args, unpack(qemu_dbg_args))
-            if get_config("qemu_gdb") then
+            if option.get("gdb") then
                 multi_insert(qemu_args,
                     "-s", "-S"
                 )
@@ -526,11 +669,20 @@ task("qemu")
             multi_insert(qemu_args, unpack(qemu_accel_args))
         end
 
-        local iso = project.target("iso")
-        local ovmf_fd = iso:deps()["ovmf-binaries"]:get("values")["ovmf-binary"]
+        -- local iso = project.target("iso")
+        -- local ovmf_fd = iso:deps()["ovmf-binaries"]:get("values")["ovmf-binary"]
+
+        -- multi_insert(qemu_args,
+        --     "-cdrom", iso:get("values", "targetfile")["targetfile"]
+        -- )
+
+        local hdd = project.target("hdd")
+        local ovmf_fd = hdd:deps()["ovmf-binaries"]:get("values")["ovmf-binary"]
 
         multi_insert(qemu_args,
-            "-cdrom", iso:get("values", "targetfile")["targetfile"]
+            "-drive",
+            "file=" .. hdd:get("values", "targetfile")["targetfile"] ..
+            ",format=raw,media=disk"
         )
 
         if option.get("uefi") then
@@ -548,7 +700,7 @@ task("qemu")
 target("bios")
     set_default(false)
     set_kind("phony")
-    add_deps("iso")
+    add_deps("hdd")
 
     on_run(function (target)
         import("core.project.task")
@@ -559,7 +711,7 @@ target("bios")
 target("bios-debug")
     set_default(false)
     set_kind("phony")
-    add_deps("iso")
+    add_deps("hdd")
 
     on_run(function (target)
         import("core.project.task")
@@ -567,10 +719,21 @@ target("bios-debug")
         task.run("qemu", { uefi = false, debug = true })
     end)
 
+target("bios-gdb")
+    set_default(false)
+    set_kind("phony")
+    add_deps("hdd")
+
+    on_run(function (target)
+        import("core.project.task")
+        import("core.project.project")
+        task.run("qemu", { uefi = false, debug = true, gdb = true })
+    end)
+
 target("uefi")
     set_default(true)
     set_kind("phony")
-    add_deps("iso")
+    add_deps("hdd")
 
     on_run(function (target)
         import("core.project.task")
@@ -581,12 +744,23 @@ target("uefi")
 target("uefi-debug")
     set_default(false)
     set_kind("phony")
-    add_deps("iso")
+    add_deps("hdd")
 
     on_run(function (target)
         import("core.project.task")
         import("core.project.project")
         task.run("qemu", { uefi = true, debug = true })
+    end)
+
+target("uefi-gdb")
+    set_default(false)
+    set_kind("phony")
+    add_deps("hdd")
+
+    on_run(function (target)
+        import("core.project.task")
+        import("core.project.project")
+        task.run("qemu", { uefi = true, debug = true, gdb = true })
     end)
 
 -- <-- targets.run

@@ -142,7 +142,7 @@ namespace bin::elf::mod
             auto &back = node->inode;
 
             const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
-            lib::ensure(back->read(0, std::span {
+            lib::bug_if_not(back->read(0, std::span {
                 file.get(), static_cast<std::size_t>(back->stat.st_size)
             }) == back->stat.st_size);
 
@@ -196,7 +196,7 @@ namespace bin::elf::mod
 
             const auto loaded_at = vmm::alloc_vpages(vmm::space_type::modules, max_size);
 
-            const auto flags = vmm::flag::rw;
+            const auto flags = vmm::pflag::rw;
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
             const auto npages = lib::div_roundup(npsize, pmm::page_size);
@@ -294,7 +294,7 @@ namespace bin::elf::mod
                                 default: break;
                             }
                         }
-                        lib::ensure(
+                        lib::bug_if_not(
                             dt_strtab != 0 && dt_symtab != 0 && /* dt_strsz != 0 && */
                             dt_rela != 0 && dt_relasz != 0 && dt_relaent != 0
                         );
@@ -388,13 +388,13 @@ namespace bin::elf::mod
                 if (phdr->p_type != PT_LOAD)
                     continue;
 
-                auto flags = vmm::flag::none;
+                auto flags = vmm::pflag::none;
                 if (phdr->p_flags & PF_R)
-                    flags |= vmm::flag::read;
+                    flags |= vmm::pflag::read;
                 if (phdr->p_flags & PF_W)
-                    flags |= vmm::flag::write;
+                    flags |= vmm::pflag::write;
                 if (phdr->p_flags & PF_X)
-                    flags |= vmm::flag::exec;
+                    flags |= vmm::pflag::exec;
 
                 const auto aligned = lib::align_down(loaded_at + phdr->p_vaddr, pmm::page_size);
                 const auto size = lib::align_up(phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size);

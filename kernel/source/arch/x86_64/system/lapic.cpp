@@ -11,6 +11,7 @@ import drivers.timers;
 import system.memory;
 import system.cpu.self;
 import system.cpu;
+import magic_enum;
 import lib;
 import cppstd;
 
@@ -26,6 +27,8 @@ namespace x86_64::apic
 
         lib::freqfrac freq;
         bool is_calibrated = false;
+
+        bool initialised = false;
 
         std::uint32_t to_x2apic(std::uint32_t reg)
         {
@@ -71,6 +74,8 @@ namespace x86_64::apic
         return { lapic, x2apic && cached };
     }
 
+    bool is_initialised() { return initialised; }
+
     std::uint32_t read(std::uint32_t reg)
     {
         if (x2apic)
@@ -81,17 +86,28 @@ namespace x86_64::apic
 
     void write(std::uint32_t reg, std::uint64_t val)
     {
-        if (x2apic)
-            cpu::msr::write(to_x2apic(reg), val);
-        else
+        if (!x2apic)
+        {
+            if (reg == reg::icr)
+            {
+                asm volatile ("" ::: "memory");
+                lib::mmio::out<32>(mmio + reg::icrh, val >> 32);
+            }
             lib::mmio::out<32>(mmio + reg, val);
+        }
+        else
+        {
+            if (reg == reg::icr)
+                asm volatile ("mfence; lfence" ::: "memory");
+            cpu::msr::write(to_x2apic(reg), val);
+        }
     }
 
     // the frequency should be the same on all cores
     // https://discord.com/channels/440442961147199490/734392369230643320/1398724196154216700
     void calibrate_timer()
     {
-        lib::ensure(!!supported().first);
+        lib::bug_if_not(!!supported().first);
 
         if (cpu::self()->idx != cpu::bsp_idx())
             return;
@@ -136,25 +152,35 @@ namespace x86_64::apic
     }
 
     void eoi() { write(0xB0, 0); }
-    void ipi(std::uint32_t id, dest dsh, std::uint64_t args)
+
+    void ipi(shorthand dest, delivery del, std::uint8_t vec)
     {
-        const auto flags = (static_cast<std::uint32_t>(dsh) << 18) | args;
-        if (!x2apic)
-        {
-            asm volatile ("" ::: "memory");
-            write(reg::icrh, id << 24);
-            write(reg::icrl, flags);
-        }
+        const auto val =
+            static_cast<std::uint64_t>(del) << 8 |
+            static_cast<std::uint64_t>(dest) << 18 |
+            (1 << 14) | vec;
+
+        write(reg::icr, val);
+    }
+
+    void ipi(std::uint32_t id, destination dest, delivery del, std::uint8_t vec)
+    {
+        auto val =
+            static_cast<std::uint64_t>(del) << 8 |
+            static_cast<std::uint64_t>(dest) << 10 |
+            (1 << 14) | vec;
+
+        if (x2apic)
+            val |= static_cast<std::uint64_t>(id) << 32;
         else
-        {
-            asm volatile ("mfence; lfence" ::: "memory");
-            write(reg::icrl, (static_cast<std::uint64_t>(id) << 32) | flags);
-        }
+            val |= static_cast<std::uint64_t>(id & 0xFF) << 56;
+
+        write(reg::icr, val);
     }
 
     void arm(std::size_t ns, std::uint8_t vector)
     {
-        lib::ensure(!!is_calibrated);
+        lib::bug_if_not(!!is_calibrated);
 
         if (ns == 0)
             ns = 1;
@@ -182,12 +208,16 @@ namespace x86_64::apic
         if (!lapic)
             lib::panic("CPU does not support lapic");
 
+        // ! TODO: xapic sipi doesn't work
+        if (!_x2apic)
+            lib::panic("TODO: xapic sipi does not work");
+
         auto val = cpu::msr::read(reg::apic_base);
         const bool is_bsp = (val & (1 << 8));
-        const auto phys_mmio = val & ~0xFFF;
+        const auto phys_mmio = val & 0xFFFFF000;
 
         if (!is_bsp)
-            lib::ensure(x2apic == _x2apic, "x2apic support differs from the BSP");
+            lib::bug_if_not(x2apic == _x2apic, "x2apic support differs from the BSP");
         else
             x2apic = _x2apic;
 
@@ -199,6 +229,8 @@ namespace x86_64::apic
         // x2APIC enable
         if (x2apic)
             val |= (1 << 10);
+        else
+            val &= ~(1 << 10);
         cpu::msr::write(reg::apic_base, val);
 
         if (!x2apic)
@@ -213,15 +245,19 @@ namespace x86_64::apic
                 const auto psize = vmm::page_size::small;
                 const auto npsize = vmm::pagemap::from_page_size(psize);
 
-                if (!vmm::kernel_pagemap->map(mmio, pmmio, npsize, vmm::flag::rw, psize, vmm::caching::mmio))
-                    lib::panic("could not map lapic mmio");
+                if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, vmm::pflag::rw, psize, vmm::caching::mmio); !ret)
+                    lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
             }
-            else lib::ensure(phys_mmio == pmmio, "APIC mmio address differs from the BSP");
+            else lib::bug_if_not(phys_mmio == pmmio, "APIC mmio address differs from the BSP");
         }
 
         // Enable all external interrupts
         write(reg::tpr, 0x00);
         // Enable APIC and set spurious interrupt vector to 0xFF
         write(reg::siv, (1 << 8) | 0xFF);
+
+        // TODO: nmi
+
+        initialised = true;
     }
 } // namespace x86_64::apic

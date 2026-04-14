@@ -243,8 +243,8 @@ extern "C"
 
         const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::space_type::acpi, lib::div_roundup(size, pmm::page_size)));
 
-        if (!pmap->map(vaddr, paddr, size, vmm::flag::rw, psize))
-            lib::panic("could not map acpi memory");
+        if (const auto ret = pmap->map(vaddr, paddr, size, vmm::pflag::rw, psize); !ret)
+            lib::panic("could not map uacpi memory: {}", magic_enum::enum_name(ret.error()));
 
         return reinterpret_cast<std::uint8_t *>(vaddr) + (addr - paddr);
     }

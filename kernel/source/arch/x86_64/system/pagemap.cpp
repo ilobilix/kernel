@@ -65,22 +65,22 @@ namespace vmm
         cpu::invlpg(vaddr);
     }
 
-    std::uintptr_t pagemap::to_arch(flag flags, caching cache, page_size psize)
+    std::uintptr_t pagemap::to_arch(pflag flags, caching cache, page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(cache));
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(cache));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
 
         std::uintptr_t ret = 0;
 
-        if ((flags & flag::read) != flag::none)
+        if ((flags & pflag::read) != pflag::none)
             ret |= arch::flag::present;
-        if ((flags & flag::write) != flag::none)
+        if ((flags & pflag::write) != pflag::none)
             ret |= arch::flag::write;
-        if ((flags & flag::user) != flag::none)
+        if ((flags & pflag::user) != pflag::none)
             ret |= arch::flag::user;
-        if ((flags & flag::global) != flag::none)
+        if ((flags & pflag::global) != pflag::none)
             ret |= arch::flag::global;
-        if ((flags & flag::exec) == flag::none)
+        if ((flags & pflag::exec) == pflag::none)
             ret |= arch::flag::no_exec;
 
         if (psize != page_size::small)
@@ -124,20 +124,20 @@ namespace vmm
         return ret;
     }
 
-    auto pagemap::from_arch(std::uintptr_t flags, page_size psize) -> std::pair<flag, caching>
+    auto pagemap::from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>
     {
-        auto ret = flag::exec;
+        auto ret = pflag::exec;
         {
             if (flags & arch::flag::present)
-                ret |= flag::read;
+                ret |= pflag::read;
             if (flags & arch::flag::write)
-                ret |= flag::write;
+                ret |= pflag::write;
             if (flags & arch::flag::user)
-                ret |= flag::user;
+                ret |= pflag::user;
             if (flags & arch::flag::global)
-                ret |= flag::global;
+                ret |= pflag::global;
             if (flags & arch::flag::no_exec)
-                ret &= ~flag::exec;
+                ret &= ~pflag::exec;
         }
 
         auto cache = caching::normal;
@@ -169,13 +169,13 @@ namespace vmm
         return _table;
     }
 
-    std::size_t pagemap::from_page_size(page_size psize)
+    [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
         return arch::page_sizes[std::to_underlying(psize)];
     }
 
-    page_size pagemap::max_page_size(std::size_t size)
+    [[gnu::pure]] page_size pagemap::max_page_size(std::size_t size)
     {
         if (size > arch::page_sizes[2])
             return page_size::large;

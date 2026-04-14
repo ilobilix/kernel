@@ -54,7 +54,7 @@ namespace net::ipv4
         std::byte *to_bytes(std::byte *ptr) const
         {
             // TODO: options
-            lib::ensure(ihl == 5);
+            lib::bug_if_not(ihl == 5);
             auto bytes = reinterpret_cast<std::uint8_t *>(ptr);
 
             *bytes++ = (4 << 4) | ihl;

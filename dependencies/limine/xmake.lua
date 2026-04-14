@@ -11,23 +11,26 @@ target("limine")
     add_includedirs("limine", { public = true })
 
     on_config(function (target)
-        local binaries = {
+        local cd_binaries = {
             "$(projectdir)/dependencies/limine/limine/limine-uefi-cd.bin"
         }
-        local uefi_binaries = { }
+        local uefi_binary = ""
+        local bios_sys = ""
 
         if is_arch("x86_64") then
-            table.insert(binaries, "$(projectdir)/dependencies/limine/limine/limine-bios.sys")
-            table.insert(binaries, "$(projectdir)/dependencies/limine/limine/limine-bios-cd.bin")
-            table.insert(uefi_binaries, "$(projectdir)/dependencies/limine/limine/BOOTX64.EFI")
+            table.insert(cd_binaries, "$(projectdir)/dependencies/limine/limine/limine-bios.sys")
+            table.insert(cd_binaries, "$(projectdir)/dependencies/limine/limine/limine-bios-cd.bin")
+            uefi_binary = "$(projectdir)/dependencies/limine/limine/BOOTX64.EFI"
+            bios_sys = "$(projectdir)/dependencies/limine/limine/limine-bios.sys"
         elseif is_arch("aarch64") then
-            table.insert(uefi_binaries, "$(projectdir)/dependencies/limine/limine/BOOTAA64.EFI")
+            uefi_binary = "$(projectdir)/dependencies/limine/limine/BOOTAA64.EFI"
         else
             raise("unknown limine architecture")
         end
 
-        target:set("values", "binaries", binaries)
-        target:set("values", "uefi-binaries", uefi_binaries)
+        target:set("values", "cd-binaries", cd_binaries)
+        target:set("values", "uefi-binary", uefi_binary)
+        target:set("values", "bios-sys", bios_sys)
     end)
 
     on_build(function (target)

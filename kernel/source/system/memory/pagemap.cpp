@@ -25,16 +25,19 @@ namespace vmm
     auto pagemap::getlvl(entry &entry, bool allocate) -> table *
     {
         table *ret = nullptr;
-        if (!entry.getflags(valid_table_flags))
+
+        auto accessor = entry.access();
+        if (!accessor.getflags(valid_table_flags))
         {
             if (allocate == false)
                 return nullptr;
 
-            entry.clear();
-            entry.setaddr(reinterpret_cast<std::uintptr_t>(ret = new_table()));
-            entry.setflags(new_table_flags, true);
+            accessor.clear()
+                .setaddr(reinterpret_cast<std::uintptr_t>(ret = new_table()))
+                .setflags(new_table_flags, true)
+                .write();
         }
-        else ret = reinterpret_cast<table *>(entry.getaddr());
+        else ret = reinterpret_cast<table *>(accessor.getaddr());
 
         return lib::tohh(ret);
     }
@@ -66,10 +69,10 @@ namespace vmm
         std::unreachable();
     }
 
-    std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags, page_size psize, caching cache)
+    std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
-        lib::ensure(magic_enum::enum_contains(cache));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(cache));
 
         psize = fixpsize(psize);
 
@@ -93,28 +96,30 @@ namespace vmm
                     if (!ret1.has_value())
                         return std::unexpected { ret1.error() };
 
-                    auto &pte = ret1.value().get();
-                    pte.clear();
+                    auto &pte = ret1->get();
+                    pte.access().clear().write();
                     invalidate(vaddr + ii);
                 }
                 return std::unexpected { ret.error() };
             }
             else
             {
-                auto &pte = ret.value().get();
-                pte.clear();
-                pte.setaddr(paddr + i);
-                pte.setflags(aflags, true);
+                auto &pte = ret->get();
+                pte.access()
+                    .clear()
+                    .setaddr(paddr + i)
+                    .setflags(aflags, true)
+                    .write();
             }
         }
 
         return { };
     }
 
-    std::expected<void, error> pagemap::map_alloc(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
+    std::expected<void, error> pagemap::map_alloc(std::uintptr_t vaddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
-        lib::ensure(magic_enum::enum_contains(cache));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(cache));
 
         struct page { page *next = nullptr; };
         page *current = nullptr;
@@ -162,10 +167,10 @@ namespace vmm
         return { };
     }
 
-    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, flag flags, page_size psize, caching cache)
+    std::expected<void, error> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, page_size psize, caching cache)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
-        lib::ensure(magic_enum::enum_contains(cache));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(cache));
 
         psize = fixpsize(psize);
         const auto npsize = from_page_size(psize);
@@ -181,9 +186,11 @@ namespace vmm
             const auto ret = getpte(vaddr + i, psize, false);
             if (ret.has_value())
             {
-                auto &pte = ret.value().get();
-                pte.clearflags();
-                pte.setflags(aflags, true);
+                auto &pte = ret->get();
+                pte.access()
+                    .clearflags()
+                    .setflags(aflags, true)
+                    .write();
                 invalidate(vaddr + i);
             }
             else return std::unexpected { ret.error() };
@@ -194,7 +201,7 @@ namespace vmm
 
     std::expected<void, error> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
 
         const std::unique_lock _ { _lock };
 
@@ -206,11 +213,14 @@ namespace vmm
         for (std::size_t i = 0; i < length; i += npsize)
         {
             const auto ret = getpte(vaddr + i, psize, false);
-            if (!ret.has_value())
-                return std::unexpected { ret.error() };
 
-            auto &pte = ret.value().get();
-            pte.clear();
+            // if there's a hole that's not mapped, don't throw an error
+            if (!ret.has_value())
+                continue;
+                // return std::unexpected { ret.error() };
+
+            auto &pte = ret->get();
+            pte.access().clear().write();
             invalidate(vaddr + i);
         }
 
@@ -219,7 +229,7 @@ namespace vmm
 
     std::expected<void, error> pagemap::unmap_dealloc(std::uintptr_t vaddr, std::size_t length, page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
 
         psize = fixpsize(psize);
         const auto npsize = from_page_size(psize);
@@ -242,7 +252,7 @@ namespace vmm
 
     std::expected<std::uintptr_t, error> pagemap::translate(std::uintptr_t vaddr, page_size psize)
     {
-        lib::ensure(magic_enum::enum_contains(psize));
+        lib::bug_if_not(magic_enum::enum_contains(psize));
 
         const std::unique_lock _ { _lock };
 
@@ -254,7 +264,7 @@ namespace vmm
         if (!ret.has_value())
             return std::unexpected { ret.error() };
 
-        return ret.value().get().getaddr();
+        return ret->get().access().getaddr();
     }
 
     void init()
@@ -301,7 +311,7 @@ namespace vmm
 
                 log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
-                if (const auto ret = kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache); !ret)
+                if (const auto ret = kernel_pagemap->map(vaddr, base, len, pflag::rw, psize, cache); !ret)
                     lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
             }
         }
@@ -325,13 +335,13 @@ namespace vmm
                     const std::uintptr_t vaddr = phdr->p_vaddr;
                     const auto size = phdr->p_memsz;
 
-                    auto flags = flag::none;
+                    auto flags = pflag::none;
                     if (phdr->p_flags & PF_R)
-                        flags |= flag::read;
+                        flags |= pflag::read;
                     if (phdr->p_flags & PF_W)
-                        flags |= flag::write;
+                        flags |= pflag::write;
                     if (phdr->p_flags & PF_X)
-                        flags |= flag::exec;
+                        flags |= pflag::exec;
 
                     log::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
 

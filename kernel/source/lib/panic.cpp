@@ -74,6 +74,7 @@ namespace lib
     }
 } // namespace lib
 
+#if ILOBILIX_DEBUG
 extern "C" [[gnu::noreturn]]
 void assert_fail(const char *message, const char *file, int line, const char *func)
 {
@@ -98,3 +99,4 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
     const custom_location loc { file, line, func };
     lib::vpanic(message, std::make_format_args(), nullptr, loc);
 }
+#endif

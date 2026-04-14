@@ -104,14 +104,14 @@ export namespace pci
         template<typename Type>
         Type read(std::uint8_t dev, std::uint8_t func, auto offset) const
         {
-            lib::ensure(!io.expired());
+            lib::bug_if_not(!io.expired());
             return io.lock()->read<Type>(seg, id, dev, func, offset);
         }
 
         template<typename Type>
         void write(std::uint8_t dev, std::uint8_t func, auto offset, auto value) const
         {
-            lib::ensure(!io.expired());
+            lib::bug_if_not(!io.expired());
             io.lock()->write<Type>(seg, id, dev, func, offset, value);
         }
 
@@ -154,14 +154,14 @@ export namespace pci
         template<typename Type>
         Type read(auto offset) const
         {
-            lib::ensure(!parent.expired());
+            lib::bug_if_not(!parent.expired());
             return parent.lock()->read<Type>(dev, func, offset);
         }
 
         template<typename Type>
         void write(auto offset, auto value) const
         {
-            lib::ensure(!parent.expired());
+            lib::bug_if_not(!parent.expired());
             parent.lock()->write<Type>(dev, func, offset, value);
         }
 
@@ -227,7 +227,7 @@ export namespace pci
 
     std::uint32_t devidx(const auto &dev)
     {
-        lib::ensure(static_cast<bool>(dev));
+        lib::bug_if_not(static_cast<bool>(dev));
         const auto parent = dev->parent.lock();
         return devidx(parent->seg, parent->id, dev->dev, dev->func);
     }
