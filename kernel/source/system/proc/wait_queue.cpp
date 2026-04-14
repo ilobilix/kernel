@@ -11,53 +11,65 @@ namespace sched
         return sched::current_thread();
     }
 
-    void wait_queue_t::prepare_wait(wait_queue_entry_t *entry, bool uninterruptible)
-    {
-        auto locked = entries.lock();
-        locked->push_back(entry);
-        static_cast<thread_t *>(entry->thread)->state = uninterruptible
-            ? thread_state::blocked
-            : thread_state::sleeping;
-    }
-
-    void wait_queue_t::finish_wait(wait_queue_entry_t *entry)
-    {
-        auto locked = entries.lock();
-        locked->remove(entry);
-    }
-
     bool wait_queue_t::wait(std::uint64_t ns)
     {
+        if (pending.load(std::memory_order_acquire) > 0)
+        {
+            pending.fetch_sub(1, std::memory_order_acquire);
+            return true;
+        }
+
         wait_queue_entry_t entry { };
-        prepare_wait(&entry, false);
+
+        lock.lock();
+        auto thread = static_cast<thread_t *>(entry.thread);
+        entries.push_back(&entry);
+        thread->state = thread_state::sleeping;
 
         if (ns == 0)
+        {
+            lock.unlock();
             return sched::yield();
+        }
 
         sleep_entry_t timeout {
-            .thread = static_cast<thread_t *>(entry.thread),
+            .thread = thread,
             .deadline_ns = 0,
             .expired = false,
             .hook = { }
         };
         arm_thread_timeout(&timeout, ns);
 
+        lock.unlock();
         const bool interrupted = sched::yield();
         if (timeout.expired)
-            finish_wait(&entry);
-        else
-            cancel_thread_timeout(&timeout);
+        {
+            lock.lock();
+            entries.remove(&entry);
+            lock.unlock();
+        }
+        else cancel_thread_timeout(&timeout);
 
         return interrupted;
     }
 
     void wait_queue_t::wait_unint(std::uint64_t ns)
     {
+        if (pending.load(std::memory_order_acquire) > 0)
+        {
+            pending.fetch_sub(1, std::memory_order_acquire);
+            return;
+        }
+
         wait_queue_entry_t entry { };
-        prepare_wait(&entry, true);
+
+        lock.lock();
+        entries.push_back(&entry);
+        static_cast<thread_t *>(entry.thread)->state = thread_state::blocked;
 
         if (ns == 0)
         {
+            lock.unlock();
             sched::yield();
             return;
         }
@@ -70,46 +82,41 @@ namespace sched
         };
         arm_thread_timeout(&timeout, ns);
 
+        lock.unlock();
         sched::yield();
+
         if (timeout.expired)
-            finish_wait(&entry);
-        else
-            cancel_thread_timeout(&timeout);
+        {
+            lock.lock();
+            entries.remove(&entry);
+            lock.unlock();
+        }
+        else cancel_thread_timeout(&timeout);
     }
 
-    void wait_queue_t::wake_one()
+    void wait_queue_t::wake_one(bool drop)
     {
-        auto locked = entries.lock();
-        if (locked->empty())
+        lock.lock();
+        if (entries.empty())
+        {
+            if (!drop)
+                pending.fetch_add(1, std::memory_order_release);
+            lock.unlock();
             return;
-        auto entry = locked->pop_front();
+        }
+        auto entry = entries.pop_front();
+        lock.unlock();
         wake_up(static_cast<thread_t *>(entry->thread), true);
     }
 
     void wait_queue_t::wake_all()
     {
-        auto locked = entries.lock();
-        while (!locked->empty())
+        lock.lock();
+        while (!entries.empty())
         {
-            auto entry = locked->pop_front();
-            wake_up(static_cast<thread_t *>(entry->thread), true);
+            auto entry = entries.pop_front();
+            wake_up(static_cast<thread_t *>(entry->thread), false);
         }
-    }
-
-    void wait_queue_t::wake_exclusive()
-    {
-        auto locked = entries.lock();
-        auto it = locked->begin();
-        while (it != locked->end())
-        {
-            auto entry = (it++).value();
-            locked->remove(entry);
-
-            const bool exclusive = entry->exclusive;
-            wake_up(static_cast<thread_t *>(entry->thread), true);
-
-            if (exclusive)
-                break;
-        }
+        lock.unlock();
     }
 } // namespace sched

@@ -56,7 +56,7 @@ namespace fs::dev::tty
             if (noctty && (proc->pid == proc->session->sid)) // is leader
             {
                 auto locked = inst->ctrl.lock();
-                if (!locked->session)
+                if (locked->session.use_count() == 0)
                 {
                     auto ctty_locked = proc->session->ctty.lock();
                     if (!ctty_locked.value())
@@ -79,17 +79,17 @@ namespace fs::dev::tty
             if (const auto ret = inst->close(); !ret)
                 return ret;
 
-            if (auto locked = inst->ctrl.lock(); locked->session)
+            auto locked = inst->ctrl.lock();
+            if (auto session = locked->session.lock())
             {
-                lib::bug_on(!locked->group);
-                if (const auto session = locked->session)
+                lib::bug_on(locked->group.use_count() == 0);
                 {
                     auto ctty = session->ctty.lock();
                     if (ctty.value() == inst)
                         ctty.value() = nullptr;
                 }
-                locked->session = nullptr;
-                locked->group = nullptr;
+                locked->session.reset();
+                locked->group.reset();
             }
             return { };
         }
@@ -774,13 +774,23 @@ namespace fs::dev::tty
         switch (request)
         {
             case tiocgpgrp:
-                if (!argp.write(inst->ctrl.lock()->group->pgid))
+            {
+                auto glocked = inst->ctrl.lock()->group.lock();
+                if (!glocked)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+                if (!argp.write(glocked->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
+            }
             case tiocspgrp:
-                if (!argp.read(inst->ctrl.lock()->group->pgid))
+            {
+                auto glocked = inst->ctrl.lock()->group.lock();
+                if (!glocked)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+                if (!argp.read(glocked->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
+            }
             case tiocgwinsz:
                 if (!argp.write(inst->winsize.lock().value()))
                     return std::unexpected { lib::err::invalid_address };

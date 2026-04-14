@@ -16,35 +16,30 @@ export namespace sched
 
         public:
         thread_base_t *thread;
-        bool exclusive;
-
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
-        wait_queue_entry_t(bool exclusive = false, thread_base_t *thread = current_thread())
-            : thread { thread }, exclusive { exclusive }, hook { } { }
+        wait_queue_entry_t()
+            : thread { current_thread() }, hook { } { }
     };
 
     struct wait_queue_t
     {
         private:
-        lib::locker<
-            lib::intrusive_list<
-                wait_queue_entry_t,
-                &wait_queue_entry_t::hook
-            >, lib::spinlock
+        lib::intrusive_list<
+            wait_queue_entry_t,
+            &wait_queue_entry_t::hook
         > entries;
 
-        public:
-        wait_queue_t() = default;
+        lib::spinlock_irq lock;
+        std::atomic_size_t pending;
 
-        void prepare_wait(wait_queue_entry_t *entry, bool uninterruptible);
-        void finish_wait(wait_queue_entry_t *entry);
+        public:
+        wait_queue_t() : entries { }, lock { }, pending { 0 } { }
 
         bool wait(std::uint64_t ns = 0);
         void wait_unint(std::uint64_t ns = 0);
 
-        void wake_one();
+        void wake_one(bool drop = false);
         void wake_all();
-        void wake_exclusive();
     };
 } // export namespace sched
