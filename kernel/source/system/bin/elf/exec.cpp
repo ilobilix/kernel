@@ -244,7 +244,7 @@ namespace bin::elf::exec
             auto execfn_path = req.pathname.empty() ? vfs::pathname_from(req.file->path) : req.pathname;
             const std::string_view plaform_name { ILOBILIX_SYSNAME };
 
-            constexpr std::size_t num_auxvals = 17;
+            constexpr std::size_t num_auxvals = 16;
 
             const bool one_more = (req.argv.size() + req.envp.size() + 1) & 1;
             const auto required_size =
@@ -360,7 +360,6 @@ namespace bin::elf::exec
             write_auxv(AT_EXECFN, execfn_offset);
             write_auxv(AT_RANDOM, random_offset);
             write_auxv(AT_SECURE, 0);
-            write_auxv(AT_BASE_PLATFORM, platform_offset);
 
             if (num != num_auxvals)
                 lib::panic("you frogot to update num_auxvals");
