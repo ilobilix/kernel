@@ -15,7 +15,7 @@ export namespace lib
         semaphore _sem;
 
         public:
-        constexpr mutex() : _lock { }, _sem { } { }
+        mutex() : _lock { }, _sem { } { }
 
         mutex(const mutex &) = delete;
         mutex(mutex &&) = delete;

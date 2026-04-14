@@ -11,8 +11,8 @@ namespace std
         constexpr void err() { static_assert(B, "std::mutex is not implemented, use lib::mutex"); }
 
         constexpr void lock() { err(); }
-        constexpr bool try_lock() { err(); }
-        constexpr bool try_lock_until(auto) { err(); }
+        constexpr bool try_lock() { err(); return false; }
+        constexpr bool try_lock_until(auto) { err(); return false; }
         constexpr void unlock() { err(); }
     };
     using mutex = mutex_err<false>;

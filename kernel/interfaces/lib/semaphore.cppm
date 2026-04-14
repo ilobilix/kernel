@@ -19,8 +19,7 @@ export namespace lib
         bool test();
 
         public:
-        constexpr semaphore()
-            : lock { }, threads { }, signals { 0 } { }
+        semaphore() : lock { }, threads { }, signals { 0 } { }
 
         semaphore(const semaphore &) = delete;
         semaphore(semaphore &&) = delete;

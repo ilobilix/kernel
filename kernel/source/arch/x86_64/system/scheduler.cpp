@@ -51,7 +51,7 @@ namespace sched::arch
             lib::panic("could not map thread fpu storage: {}", magic_enum::enum_name(ret.error()));
         thread->fpu = reinterpret_cast<std::byte *>(vfpu);
 
-        thread->pfstack_top = thread::allocate_kstack(proc);
+        // thread->pfstack_top = thread::allocate_kstack(proc);
 
         if (thread->is_user)
         {
@@ -99,8 +99,9 @@ namespace sched::arch
 
     void load(const std::shared_ptr<thread> &thread)
     {
-        x86_64::gdt::tss::self().ist[0] = thread->pfstack_top;
-        x86_64::gdt::tss::self().rsp[0] = thread->kstack_top;
+        auto &tss = x86_64::gdt::tss::self();
+        // tss.ist[0] = thread->pfstack_top;
+        tss.rsp[0] = thread->kstack_top;
 
         cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread.get()));
 
