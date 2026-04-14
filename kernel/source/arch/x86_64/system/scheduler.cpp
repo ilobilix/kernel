@@ -23,6 +23,9 @@ namespace sched
 extern "C"
 {
     void sched_switch_context(cpu::registers *current, cpu::registers *next);
+
+    [[noreturn]]
+    void sched_enter_user(std::uintptr_t ip, std::uintptr_t stack);
 } // extern "C"
 
 namespace sched::arch
@@ -70,7 +73,7 @@ namespace sched::arch
         );
     }
 
-    void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
+    void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg)
     {
         lib::unused(proc);
 
@@ -83,13 +86,13 @@ namespace sched::arch
         thread->fpu = lib::allocz<std::byte *>(fpu.size);
         thread->fpu_size = fpu.size;
 
+        regs.cs = gdt::segment::code;
+        regs.ss = gdt::segment::data;
+
+        regs.rsp = thread->kstack_top;
+
         if (thread->is_user)
         {
-            regs.cs = gdt::segment::ucode | 0x03;
-            regs.ss = gdt::segment::udata | 0x03;
-
-            regs.rsp = thread->ustack_top;
-
             fpu.restore(thread->fpu);
 
             constexpr std::uint16_t default_fcw = 0b1100111111;
@@ -100,13 +103,15 @@ namespace sched::arch
 
             fpu.save(thread->fpu);
         }
-        else
-        {
-            regs.cs = gdt::segment::code;
-            regs.ss = gdt::segment::data;
+    }
 
-            regs.rsp = thread->kstack_top;
-        }
+    [[noreturn]]
+    void enter_user(thread *thread, std::uintptr_t ip, std::uintptr_t stack)
+    {
+        lib::unused(thread);
+        ::arch::int_switch(false);
+        thread->in_trampoline = false;
+        sched_enter_user(ip, stack);
     }
 
     void deinitialise(process *proc, thread *thread)
@@ -117,7 +122,7 @@ namespace sched::arch
 
     void save(thread *thread)
     {
-        if (thread->is_user)
+        if (!thread->in_trampoline && thread->is_user)
         {
             thread->gs_base = cpu::gs::read_kernel();
             thread->fs_base = cpu::fs::read();
@@ -129,7 +134,7 @@ namespace sched::arch
     {
         cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread));
 
-        if (thread->is_user)
+        if (!thread->in_trampoline && thread->is_user)
         {
             auto &tss = gdt::tss::self();
             tss.rsp[0] = thread->kstack_top;
@@ -144,10 +149,5 @@ namespace sched::arch
     {
         lib::bug_on(!current || !next);
         sched_switch_context(&current->regs, &next->regs);
-    }
-
-    void update_stack(thread *thread, std::uintptr_t addr)
-    {
-        thread->regs.rsp = addr;
     }
 } // namespace sched::arch

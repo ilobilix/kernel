@@ -189,9 +189,9 @@ export namespace vfs
             return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual lib::expect<std::shared_ptr<vmm::object>> map(std::shared_ptr<file> file, bool priv)
+        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file> file)
         {
-            lib::unused(file, priv);
+            lib::unused(file);
             return std::unexpected { lib::err::mapping_unsupported };
         }
 
@@ -475,13 +475,13 @@ export namespace vfs
             return ops->get()->ioctl(shared_from_this(), request, argp);
         }
 
-        lib::expect<std::shared_ptr<vmm::object>> map(bool priv)
+        lib::expect<vmm::object::ptr> map()
         {
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
             const std::unique_lock _ { path.dentry->inode->lock };
-            return ops->get()->map(shared_from_this(), priv);
+            return ops->get()->map(shared_from_this());
         }
 
         lib::expect<void> sync()

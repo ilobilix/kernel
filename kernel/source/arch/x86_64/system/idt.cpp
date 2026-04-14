@@ -123,10 +123,16 @@ namespace x86_64::idt
 
                 goto end;
             }
-            else if (vector == 14 && (regs->cs & 0x03 || x86_64::syscall::is_in_syscall()))
+            else if (vector == 14)
             {
-                const bool by_write = (regs->error_code & (1 << 2)) != 0;
-                if (vmm::handle_pfault(cpu::read_reg<"cr2">(), by_write))
+                vmm::pfault_state state {
+                    cpu::read_reg<"cr2">(),
+                    (regs->error_code & (1 << 0)) != 0,
+                    (regs->error_code & (1 << 1)) != 0,
+                    (regs->error_code & (1 << 4)) != 0,
+                    (regs->error_code & (1 << 2)) != 0
+                };
+                if (vmm::handle_pfault(state))
                     goto end;
             }
 

@@ -31,6 +31,14 @@ namespace bin::elf::exec
             Elf64_Addr at_phnum;
         };
 
+        struct ctx
+        {
+            bin::exec::request req;
+            std::uintptr_t entry;
+            std::uintptr_t interp_base;
+            auxval auxv;
+        };
+
         static auto load_file(const std::shared_ptr<vfs::file> &file, std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr)
             -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
         {
@@ -49,17 +57,15 @@ namespace bin::elf::exec
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
 
-            auxval aux
-            {
-                .at_entry = addr + ehdr.e_entry,
-                .at_phdr = addr + ehdr.e_phoff,
-                .at_phent = ehdr.e_phentsize,
-                .at_phnum = ehdr.e_phnum
-            };
-
             std::shared_ptr<vfs::file> interp { };
 
             std::uintptr_t max_end = 0;
+            std::uintptr_t base_addr = addr;
+            bool is_first = true;
+
+            std::uintptr_t phdr_vaddr = 0;
+            bool has_phdr = false;
+
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
@@ -89,24 +95,34 @@ namespace bin::elf::exec
                         const auto psize = vmm::default_page_size();
                         const auto misalign = phdr.p_vaddr & (psize - 1);
 
-                        const auto address = addr + phdr.p_vaddr - misalign;
-                        max_end = std::max(max_end, address + phdr.p_memsz + misalign);
+                        const auto paloffset = phdr.p_offset - misalign;
+                        const auto padded = phdr.p_filesz + misalign;
 
-                        auto obj = std::make_shared<vmm::memobject>();
+                        // TODO: map the file
+                        vmm::object::ptr obj { new vmm::memobject { } };
 
-                        lib::membuffer file_buffer { phdr.p_filesz };
+                        lib::membuffer file_buffer { padded };
                         const auto file_uspan = file_buffer.maybe_uspan();
                         lib::panic_if(!file_uspan.has_value());
 
-                        const auto ret = file->pread(phdr.p_offset, file_uspan.value());
+                        const auto ret = file->pread(paloffset, file_uspan.value());
                         if (!ret.has_value())
-                            lib::panic("elf: could not read phdr data: {}", magic_enum::enum_name(ret.error()));
-                        if (*ret != phdr.p_filesz)
-                            lib::panic("elf: phdr data size mismatch: {} != {}", *ret, phdr.p_filesz);
+                        {
+                            lib::panic(
+                                "elf: could not read phdr data: {}",
+                                magic_enum::enum_name(ret.error())
+                            );
+                        }
 
-                        lib::panic_if(obj->write(
-                            misalign, file_uspan.value()
-                        ) != phdr.p_filesz);
+                        if (*ret != file_uspan->size_bytes())
+                        {
+                            lib::panic(
+                                "elf: phdr data size mismatch: {} != {}",
+                                *ret, file_uspan->size_bytes()
+                            );
+                        }
+
+                        lib::panic_if(obj->write(0, file_uspan.value()) != padded);
 
                         if (phdr.p_memsz > phdr.p_filesz)
                         {
@@ -117,21 +133,49 @@ namespace bin::elf::exec
                             const auto zeroes_uspan = zeroes.maybe_uspan();
                             lib::panic_if(!zeroes_uspan.has_value());
 
-                            lib::panic_if(obj->write(
-                                misalign + phdr.p_filesz, zeroes_uspan.value()
-                            ) != zeroes_len);
+                            lib::panic_if(obj->write(padded, zeroes_uspan.value()) != zeroes_len);
                         }
 
-                        lib::panic_if(!vmspace->map(
-                            address, phdr.p_memsz + misalign,
-                            prot, vmm::flag::private_,
-                            obj, 0
-                        ));
+                        auto flags = vmm::flag::private_ | vmm::flag::untouchable;
+                        std::uintptr_t address = 0;
 
+                        if (ehdr.e_type != ET_DYN)
+                        {
+                            flags |= vmm::flag::fixed;
+                            address = phdr.p_vaddr - misalign;
+                        }
+                        else
+                        {
+                            if (base_addr || !is_first)
+                                flags |= vmm::flag::fixed;
+
+                            address = base_addr ? (base_addr + phdr.p_vaddr - misalign) : 0;
+                        }
+
+                        const auto mret = vmspace->map(
+                            address, phdr.p_memsz + misalign,
+                            prot, prot, flags, obj, 0
+                        );
+
+                        lib::panic_if(
+                            !mret.has_value(),
+                            "elf: could not map segment: {} {}",
+                            magic_enum::enum_name(mret.error())
+                        );
+
+                        if (!base_addr && is_first)
+                        {
+                            base_addr = mret.value() - (phdr.p_vaddr - misalign);
+                            addr = base_addr;
+                        }
+
+                        max_end = std::max(max_end, base_addr + phdr.p_memsz + misalign);
+                        is_first = false;
                         break;
                     }
                     case PT_PHDR:
-                        aux.at_phdr = addr + phdr.p_vaddr;
+                        phdr_vaddr = addr + phdr.p_vaddr;
+                        has_phdr = true;
                         break;
                     case PT_INTERP:
                     {
@@ -174,7 +218,151 @@ namespace bin::elf::exec
                 }
             }
 
+            auxval aux
+            {
+                .at_entry = addr + ehdr.e_entry,
+                .at_phdr = has_phdr ? (addr + phdr_vaddr) : (addr + ehdr.e_phoff),
+                .at_phent = ehdr.e_phentsize,
+                .at_phnum = ehdr.e_phnum
+            };
+
             return std::make_tuple(aux, interp, lib::align_up(max_end, vmm::default_page_size()));
+        }
+
+        [[noreturn]]
+        static void trampoline(ctx *ctx)
+        {
+            auto &req = ctx->req;
+            auto &auxv = ctx->auxv;
+
+            const auto thread = sched::this_thread();
+            const auto proc = thread->parent;
+
+            const auto stack_size = boot::ustack_size;
+            const auto addr_top = thread->ustack_top;
+            const auto addr_bottom = addr_top - stack_size;
+
+            auto execfn_path = req.pathname.empty()
+                ? vfs::pathname_from(req.file->path)
+                : req.pathname;
+
+            const std::string_view plaform_name { ILOBILIX_SYSNAME };
+
+            auto offset = stack_size;
+            const auto curr = [&] {
+                return addr_bottom + offset;
+            };
+
+            const auto copy_to_user = [](std::uintptr_t dest, const void *src, std::size_t len) {
+                auto ptr = reinterpret_cast<__user void *>(dest);
+                // TODO
+                lib::panic_if(!lib::copy_to_user(ptr, src, len));
+            };
+
+            const auto write = [&](std::uint64_t val) {
+                copy_to_user(curr(), &val, sizeof(val));
+            };
+
+            std::vector<std::uintptr_t> envp_offsets { };
+            envp_offsets.reserve(req.envp.size());
+            for (const auto &env : req.envp)
+            {
+                offset -= env.length() + 1;
+                copy_to_user(curr(), env.c_str(), env.length() + 1);
+                envp_offsets.push_back(addr_bottom + offset);
+            }
+
+            std::vector<std::uintptr_t> argv_offsets { };
+            argv_offsets.reserve(req.argv.size());
+            for (const auto &arg : req.argv)
+            {
+                offset -= arg.length() + 1;
+                copy_to_user(curr(), arg.c_str(), arg.length() + 1);
+                argv_offsets.push_back(addr_bottom + offset);
+            }
+
+            std::uintptr_t execfn_offset = 0;
+            {
+                offset -= execfn_path.length() + 1;
+                copy_to_user(curr(), execfn_path.c_str(), execfn_path.length() + 1);
+                execfn_offset = addr_bottom + offset;
+            }
+
+            std::uintptr_t platform_offset = 0;
+            {
+                offset -= plaform_name.length() + 1;
+                copy_to_user(curr(), plaform_name.data(), plaform_name.length() + 1);
+                platform_offset = addr_bottom + offset;
+            }
+
+            std::uintptr_t random_offset = 0;
+            {
+                offset -= 16;
+                const auto uspan = lib::maybe_uspan<std::byte>::create(
+                    reinterpret_cast<__user std::byte *>(curr()), 16
+                );
+                lib::bug_on(!uspan.has_value());
+                lib::bug_on(lib::random_bytes(*uspan) != 16);
+                random_offset = addr_bottom + offset;
+            }
+
+            offset = lib::align_down(offset, 16);
+            if ((req.argv.size() + req.envp.size() + 1) & 1)
+            {
+                offset -= 8;
+                write(0);
+            }
+
+            const auto write_auxv = [&](int type, std::uint64_t value)
+            {
+                offset -= 8;
+                write(value);
+                offset -= 8;
+                write(type);
+            };
+
+            write_auxv(AT_NULL, 0);
+            write_auxv(AT_PHDR, auxv.at_phdr);
+            write_auxv(AT_PHENT, auxv.at_phent);
+            write_auxv(AT_PHNUM, auxv.at_phnum);
+            write_auxv(AT_PAGESZ, vmm::default_page_size());
+            write_auxv(AT_BASE, ctx->interp_base);
+            write_auxv(AT_ENTRY, auxv.at_entry);
+            write_auxv(AT_NOTELF, 0);
+            write_auxv(AT_UID, proc->ruid);
+            write_auxv(AT_EUID, proc->euid);
+            write_auxv(AT_GID, proc->rgid);
+            write_auxv(AT_EGID, proc->egid);
+            write_auxv(AT_PLATFORM, platform_offset);
+            // write_auxv(AT_HWCAP, 0); // TODO
+            write_auxv(AT_EXECFN, execfn_offset);
+            write_auxv(AT_RANDOM, random_offset);
+            write_auxv(AT_SECURE, 0);
+
+            offset -= 8;
+            write(0);
+
+            for (auto it = envp_offsets.rbegin(); it != envp_offsets.rend(); it++)
+            {
+                offset -= 8;
+                write(*it);
+            }
+
+            offset -= 8;
+            write(0);
+
+            for (auto it = argv_offsets.rbegin(); it != argv_offsets.rend(); it++)
+            {
+                offset -= 8;
+                write(*it);
+            }
+
+            offset -= 8;
+            write(req.argv.size());
+
+            const auto entry = ctx->entry;
+            delete ctx;
+            thread->enter_user(entry, addr_bottom + offset);
         }
 
         public:
@@ -231,168 +419,15 @@ namespace bin::elf::exec
                 entry = iauxv.at_entry;
                 lib::bug_on(ii != nullptr);
             }
-            proc->vmspace->init_brk(exec_end);
+            // proc->vmspace->init_brk(exec_end);
 
-            auto thread = sched::thread::create(proc, entry, 0, true);
-
-            lib::bug_on(thread->ustack_obj.expired());
-            const auto obj = thread->ustack_obj.lock();
-
-            const auto stack_size = boot::ustack_size;
-            const auto addr_bottom = thread->ustack_top - stack_size;
-
-            auto execfn_path = req.pathname.empty() ? vfs::pathname_from(req.file->path) : req.pathname;
-            const std::string_view plaform_name { ILOBILIX_SYSNAME };
-
-            constexpr std::size_t num_auxvals = 16;
-
-            const bool one_more = (req.argv.size() + req.envp.size() + 1) & 1;
-            const auto required_size =
-                lib::align_up(
-                    std::accumulate(
-                        req.envp.begin(), req.envp.end(), std::size_t { 0 },
-                        [](std::size_t acc, const std::string &env) {
-                            return acc + env.length() + 1;
-                        }
-                    ) +
-                    std::accumulate(
-                        req.argv.begin(), req.argv.end(), std::size_t { 0 },
-                        [](std::size_t acc, const std::string &arg) {
-                            return acc + arg.length() + 1;
-                        }
-                    ) +
-                    execfn_path.length() + 1 +
-                    plaform_name.length() + 1 + 16, 16
-                ) + (one_more ? 8 : 0) + (num_auxvals * 16) + 8 +
-                req.envp.size() * 8 + 8 + req.argv.size() * 8 + 8;
-
-            lib::bug_on(required_size % 16 != 0);
-
-            lib::membuffer stack_buffer { required_size };
-            std::memset(stack_buffer.data(), 0, stack_buffer.size());
-
-            const auto stack_buffer_uspan = stack_buffer.maybe_uspan();
-            lib::panic_if(!stack_buffer_uspan.has_value());
-
-            auto offset = stack_size;
-            const auto sptr = [&] {
-                return reinterpret_cast<std::uintptr_t *>(
-                    reinterpret_cast<std::uintptr_t>(stack_buffer.data()) + required_size - (stack_size - offset)
-                );
-            };
-
-            std::vector<std::uintptr_t> envp_offsets { };
-            envp_offsets.reserve(req.envp.size());
-            for (const auto &env : req.envp)
-            {
-                offset -= env.length() + 1;
-                std::memcpy(sptr(), env.c_str(), env.length() + 1);
-                envp_offsets.push_back(addr_bottom + offset);
-            }
-
-            std::vector<std::uintptr_t> argv_offsets { };
-            argv_offsets.reserve(req.argv.size());
-            for (const auto &arg : req.argv)
-            {
-                offset -= arg.length() + 1;
-                std::memcpy(sptr(), arg.c_str(), arg.length() + 1);
-                argv_offsets.push_back(addr_bottom + offset);
-            }
-
-            std::uintptr_t execfn_offset = 0;
-            {
-                offset -= execfn_path.length() + 1;
-                std::memcpy(sptr(), execfn_path.c_str(), execfn_path.length() + 1);
-                execfn_offset = addr_bottom + offset;
-            }
-
-            std::uintptr_t platform_offset = 0;
-            {
-                offset -= plaform_name.length() + 1;
-                std::memcpy(sptr(), plaform_name.data(), plaform_name.length() + 1);
-                platform_offset = addr_bottom + offset;
-            }
-
-            std::uintptr_t random_offset = 0;
-            {
-                offset -= 16;
-                const auto uspan = lib::maybe_uspan<std::byte>::create(
-                    reinterpret_cast<std::byte *>(sptr()), 16
-                );
-                lib::bug_on(!uspan.has_value());
-                lib::bug_on(lib::random_bytes(*uspan) != 16);
-                random_offset = addr_bottom + offset;
-            }
-
-            offset = lib::align_down(offset, 16);
-            if (one_more)
-            {
-                offset -= 8;
-                *sptr() = 0;
-            }
-
-            std::size_t num = 0;
-            const auto write_auxv = [&](int type, std::uint64_t value)
-            {
-                if (num++ == num_auxvals)
-                    lib::panic("you frogot to update num_auxvals");
-
-                offset -= 8;
-                *sptr() = value;
-                offset -= 8;
-                *sptr() = type;
-            };
-
-            write_auxv(AT_NULL, 0);
-            write_auxv(AT_PHDR, auxv.at_phdr);
-            write_auxv(AT_PHENT, auxv.at_phent);
-            write_auxv(AT_PHNUM, auxv.at_phnum);
-            write_auxv(AT_PAGESZ, vmm::default_page_size());
-            write_auxv(AT_BASE, interp_base);
-            write_auxv(AT_ENTRY, auxv.at_entry);
-            write_auxv(AT_NOTELF, 0);
-            write_auxv(AT_UID, proc->ruid);
-            write_auxv(AT_EUID, proc->euid);
-            write_auxv(AT_GID, proc->rgid);
-            write_auxv(AT_EGID, proc->egid);
-            write_auxv(AT_PLATFORM, platform_offset);
-            // write_auxv(AT_HWCAP, 0); // TODO
-            write_auxv(AT_EXECFN, execfn_offset);
-            write_auxv(AT_RANDOM, random_offset);
-            write_auxv(AT_SECURE, 0);
-
-            if (num != num_auxvals)
-                lib::panic("you frogot to update num_auxvals");
-
-            offset -= 8;
-            *sptr() = 0;
-
-            for (auto it = envp_offsets.rbegin(); it != envp_offsets.rend(); it++)
-            {
-                offset -= 8;
-                *sptr() = *it;
-            }
-
-            offset -= 8;
-            *sptr() = 0;
-
-            for (auto it = argv_offsets.rbegin(); it != argv_offsets.rend(); it++)
-            {
-                offset -= 8;
-                *sptr() = *it;
-            }
-
-            offset -= 8;
-            *sptr() = req.argv.size();
-
-            lib::bug_on((stack_size - offset) != required_size);
-
-            lib::panic_if(obj->write(
-                offset, stack_buffer_uspan.value()
-            ) != stack_buffer.size());
-
-            thread->update_ustack(addr_bottom + offset);
-            return thread;
+            const auto arg = new ctx { req, entry, interp_base, auxv };
+            return sched::thread::create(
+                proc,
+                reinterpret_cast<std::uintptr_t>(trampoline),
+                reinterpret_cast<std::uintptr_t>(arg),
+                true
+            );
         }
     };
 

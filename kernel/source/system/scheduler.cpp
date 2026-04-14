@@ -77,8 +77,11 @@ namespace sched
         void reschedule(std::size_t ms);
         void reschedule_other(std::size_t cpu);
 
-        void finalise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg);
+        void initialise(process *proc, thread *thread, std::uintptr_t ip, std::uintptr_t arg);
         void deinitialise(process *proc, thread *thread);
+
+        [[noreturn]]
+        void enter_user(thread *thread, std::uintptr_t ip, std::uintptr_t stack);
 
         void save(thread *thread);
         void load(thread *thread);
@@ -253,10 +256,11 @@ namespace sched
         return it->second;
     }
 
-    void thread::update_ustack(std::uintptr_t addr)
+    [[noreturn]]
+    void thread::enter_user(std::uintptr_t ip, std::uintptr_t stack)
     {
         lib::bug_on(!is_user);
-        arch::update_stack(this, addr);
+        arch::enter_user(this, ip, stack);
     }
 
     void thread::prepare_sleep(std::size_t ms)
@@ -354,12 +358,9 @@ namespace sched
 
         if (is_user)
         {
-            const auto obj_ref = ustack_obj.use_count();
             const auto &vmspace = parent->vmspace;
-            // const auto vaddr = ustack_top - boot::ustack_size;
-            // lib::panic_if(!vmspace->unmap(vaddr, boot::ustack_size));
-            lib::panic_if(!vmspace->unmap(ustack_obj.lock()));
-            lib::panic_if(ustack_obj.use_count() != obj_ref - 1);
+            const auto vaddr = ustack_top - boot::ustack_size;
+            lib::panic_if(!vmspace->unmap(vaddr, boot::ustack_size));
         }
 
         arch::deinitialise(parent, this);
@@ -382,23 +383,26 @@ namespace sched
 
         if (is_user)
         {
+            thread->in_trampoline = true;
+
             auto &vmspace = parent->vmspace;
 
             const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
-            auto obj = std::make_shared<vmm::memobject>();
+            const auto prot = vmm::read | vmm::write;
+            const auto flags = vmm::private_ | vmm::anonymous | vmm::fixed_noreplace;
 
             lib::panic_if(!vmspace->map(
                 vaddr, boot::ustack_size,
-                vmm::prot::read | vmm::prot::write,
-                vmm::flag::private_ | vmm::flag::untouchable, obj, 0
+                prot, prot, flags, nullptr, 0
             ));
 
-            thread->ustack_obj = obj;
+            // TODO: guard page
+
             thread->ustack_top = vaddr + boot::ustack_size;
         }
         else thread->ustack_top = stack;
 
-        arch::finalise(parent, thread, ip, arg);
+        arch::initialise(parent, thread, ip, arg);
 
         const std::unique_lock _ { parent->lock };
         parent->threads[thread->tid] = thread;

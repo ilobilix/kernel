@@ -4,6 +4,7 @@ module system.syscall.memory;
 
 import system.memory.virt;
 import system.scheduler;
+import system.vfs;
 import lib;
 
 import std;
@@ -16,10 +17,9 @@ namespace syscall::memory
 
         const bool priv = (flags & vmm::flag::private_);
         const bool shared = (flags & vmm::flag::shared);
-        const bool fixed = (flags & vmm::flag::fixed);
         const bool anon = (flags & vmm::flag::anonymous);
 
-        if ((priv && shared) || (!priv && !shared) || (fd >= 0 && anon) || length == 0)
+        if (!(priv ^ shared) || (fd >= 0 && anon) || length == 0)
             return (errno = EINVAL, invalid_addr);
 
         const auto psize = vmm::default_page_size();
@@ -37,58 +37,50 @@ namespace syscall::memory
         const auto proc = sched::this_thread()->parent;
         const auto &vmspace = proc->vmspace;
 
-        std::uintptr_t address = reinterpret_cast<std::uintptr_t>(addr);
+        vmm::prot_t max_prot = 0;
+        if (anon)
+            max_prot = vmm::prot::read | vmm::prot::write | vmm::prot::exec;
 
-        if (fixed == true)
-        {
-            if (address < vmm::vmspace::mmap_min || address % psize != 0)
-                return (errno = EINVAL, invalid_addr);
-
-            if (vmspace->is_mapped(address, length) && !vmspace->unmap(address, length))
-                return (errno = EINVAL, invalid_addr);
-        }
-        else
-        {
-            auto ret = vmspace->find_free_region(length);
-            if (!ret.has_value())
-                return (errno = ENOMEM, invalid_addr);
-            address = ret.value();
-        }
-
-        if (address + length < address)
-            return (errno = EINVAL, invalid_addr);
-
-        std::shared_ptr<vmm::object> obj;
+        vmm::object::ptr obj;
         if (!anon && fd >= 0)
         {
             auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
             if (!fdesc)
                 return (errno = EBADF, invalid_addr);
 
-            const auto ret = fdesc->file->map(priv);
+            const auto ret = fdesc->file->map();
             if (!ret.has_value())
                 return (errno = lib::map_error(ret.error()), invalid_addr);
 
             obj = *ret;
             if (!obj)
                 return (errno = ENODEV, invalid_addr);
+
+            const bool is_write = vfs::is_write(fdesc->file->flags);
+            if (shared)
+                max_prot = vmm::prot::read | (is_write ? vmm::prot::write : 0);
+            else // private
+                max_prot = vmm::prot::read | vmm::prot::write | vmm::prot::exec;
+
+            // TODO: mounted with noexec
         }
         else
         {
             if (offset != 0)
                 return (errno = EINVAL, invalid_addr);
-            obj = std::make_shared<vmm::memobject>();
+            obj = new vmm::memobject { };
         }
 
-        if (!vmspace->map(
-            address, length,
-            static_cast<std::uint8_t>(prot),
-            static_cast<std::uint8_t>(flags),
+        const auto ret = vmspace->map(
+            reinterpret_cast<std::uintptr_t>(addr), length,
+            prot, max_prot, flags,
             obj, static_cast<off_t>(offset)
-        ))
+        );
+
+        if (!ret.has_value())
             return (errno = ENOMEM, invalid_addr);
 
-        return reinterpret_cast<void *>(address);
+        return reinterpret_cast<void *>(ret.value());
     }
 
     int munmap(void *addr, std::size_t length)
@@ -115,36 +107,38 @@ namespace syscall::memory
 
     void *brk(void *addr)
     {
-        const auto proc = sched::this_thread()->parent;
-        const auto &vmspace = proc->vmspace;
+        // const auto proc = sched::this_thread()->parent;
+        // const auto &vmspace = proc->vmspace;
 
-        const auto psize = vmm::default_page_size();
+        // const auto psize = vmm::default_page_size();
 
-        const auto address = reinterpret_cast<std::uintptr_t>(addr);
-        const auto old = vmspace->brk;
+        // const auto address = reinterpret_cast<std::uintptr_t>(addr);
+        // const auto old = vmspace->brk;
 
-        if (address == old)
-            return reinterpret_cast<void *>(old);
+        // if (address == old)
+        //     return reinterpret_cast<void *>(old);
 
-        if (address > old)
-        {
-            const auto begin = lib::align_up(old, psize);
-            const auto length = lib::align_up(address - begin, psize);
-            if (length == 0 || vmspace->is_mapped(begin, length))
-                return reinterpret_cast<void *>(old);
+        // if (address > old)
+        // {
+        //     const auto begin = lib::align_up(old, psize);
+        //     const auto length = lib::align_up(address - begin, psize);
+        //     if (length == 0 || vmspace->is_mapped(begin, length))
+        //         return reinterpret_cast<void *>(old);
 
-            auto obj = std::make_shared<vmm::memobject>();
-            if (!vmspace->map(
-                begin, length,
-                vmm::prot::read | vmm::prot::write | vmm::prot::exec,
-                vmm::flag::private_ | vmm::flag::anonymous,
-                obj, 0
-            ))
-                return reinterpret_cast<void *>(old);
-        }
-        else return reinterpret_cast<void *>(old); // TODO
+        //     auto obj = std::make_shared<vmm::memobject>();
+        //     if (!vmspace->map(
+        //         begin, length,
+        //         vmm::prot::read | vmm::prot::write | vmm::prot::exec,
+        //         vmm::flag::private_ | vmm::flag::anonymous,
+        //         obj, 0
+        //     ))
+        //         return reinterpret_cast<void *>(old);
+        // }
+        // else return reinterpret_cast<void *>(old); // TODO
 
-        vmspace->brk = address;
-        return addr;
+        // vmspace->brk = address;
+        // return addr;
+
+        return (errno = ENOSYS, reinterpret_cast<void *>(-1));
     }
 } // namespace syscall::memory

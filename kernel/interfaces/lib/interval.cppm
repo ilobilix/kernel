@@ -279,8 +279,7 @@ export namespace lib
 
             friend constexpr bool operator==(const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs)
             {
-                return (lhs._tree == rhs._tree && lhs._current == rhs._current) ||
-                       (lhs._current == nullptr && rhs._current == nullptr);
+                return lhs._tree == rhs._tree && lhs._current == rhs._current;
             }
 
             friend constexpr bool operator!=(const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs)
@@ -363,7 +362,7 @@ export namespace lib
             bug_on(lb >= ub);
             return std::ranges::subrange(
                 overlapping_iterator { this, _rbtree.root(), lb, ub },
-                overlapping_iterator { }
+                overlapping_iterator { this, nullptr, lb, ub }
             );
         }
 
@@ -372,7 +371,7 @@ export namespace lib
             bug_on(lb >= ub);
             return std::ranges::subrange(
                 const_overlapping_iterator { this, _rbtree.root(), lb, ub },
-                const_overlapping_iterator { }
+                const_overlapping_iterator { this, nullptr, lb, ub }
             );
         }
 
@@ -401,6 +400,7 @@ export namespace lib
         constexpr Type *last() const { return _rbtree.last(); }
 
         constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
+        constexpr Type *find(auto cmp) const { return _rbtree.find(cmp); }
 
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
@@ -523,6 +523,7 @@ export namespace lib
         constexpr Type *last() const { return _itree.last(); }
 
         constexpr bool contains(Type *x) const { return _itree.contains(x); }
+        constexpr Type *find(auto cmp) const { return _itree.find(cmp); }
 
         constexpr std::size_t size() const { return _itree.size(); }
         constexpr bool empty() const { return _itree.empty(); }
