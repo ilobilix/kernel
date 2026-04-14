@@ -28,7 +28,7 @@
 	shallow = true
 [submodule "dependencies/parallel-hashmap/parallel-hashmap"]
 	path = dependencies/parallel-hashmap/parallel-hashmap
-	url = https://github.com/greg7mdp/parallel-hashmap
+	url = https://github.com/ilobilo/parallel-hashmap
 	shallow = true
 [submodule "dependencies/string/string"]
 	path = dependencies/string/string
