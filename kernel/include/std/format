@@ -1,0 +1,7 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <fmt/color.h>
+
+namespace std { using namespace fmt; }

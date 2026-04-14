@@ -1,0 +1,9 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#define NOSTD_STRING_FLOAT 0
+#include <nostd/string.hpp>
+
+namespace std { using namespace nostd; }
+using namespace nostd::literals::string_literals;

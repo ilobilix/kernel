@@ -1,0 +1,10 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include_next <cstddef>
+
+namespace std
+{
+    using ::ssize_t;
+} // namespace std

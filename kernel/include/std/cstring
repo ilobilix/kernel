@@ -1,0 +1,31 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <string.h>
+
+namespace std
+{
+    using ::memcpy;
+    using ::memcmp;
+    using ::memset;
+    using ::memmove;
+    using ::memchr;
+
+    using ::strlen;
+    using ::strdup;
+
+    using ::strcat;
+    using ::strncat;
+
+    using ::strchr;
+
+    using ::strcmp;
+    using ::strncmp;
+
+    using ::strcpy;
+    using ::strncpy;
+
+    using ::strstr;
+    using ::strrev;
+} // namespace std

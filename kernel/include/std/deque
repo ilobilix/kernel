@@ -1,0 +1,13 @@
+// Copyright (C) 2024  ilobilo
+
+#pragma once
+
+#include <veque.hpp>
+
+namespace std
+{
+    using deque_traits = veque::fast_resize_traits;
+
+    template<typename Type, typename Allocator = allocator<Type>>
+    using deque = veque::veque<Type, deque_traits, Allocator>;
+} // namespace std
