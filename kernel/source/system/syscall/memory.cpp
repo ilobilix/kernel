@@ -107,38 +107,41 @@ namespace syscall::memory
 
     void *brk(void *addr)
     {
-        // const auto proc = sched::this_thread()->parent;
-        // const auto &vmspace = proc->vmspace;
+        const auto proc = sched::this_thread()->parent;
+        const auto &vmspace = proc->vmspace;
 
-        // const auto psize = vmm::default_page_size();
+        const auto psize = vmm::default_page_size();
 
-        // const auto address = reinterpret_cast<std::uintptr_t>(addr);
-        // const auto old = vmspace->brk;
+        const auto address = reinterpret_cast<std::uintptr_t>(addr);
+        const auto old = vmspace->current_brk;
 
-        // if (address == old)
-        //     return reinterpret_cast<void *>(old);
+        if (address == old)
+            return reinterpret_cast<void *>(old);
 
-        // if (address > old)
-        // {
-        //     const auto begin = lib::align_up(old, psize);
-        //     const auto length = lib::align_up(address - begin, psize);
-        //     if (length == 0 || vmspace->is_mapped(begin, length))
-        //         return reinterpret_cast<void *>(old);
+        if (address > old)
+        {
+            const auto begin = lib::align_up(old, psize);
+            const auto length = lib::align_up(address - begin, psize);
+            if (length == 0)
+                return reinterpret_cast<void *>(old);
 
-        //     auto obj = std::make_shared<vmm::memobject>();
-        //     if (!vmspace->map(
-        //         begin, length,
-        //         vmm::prot::read | vmm::prot::write | vmm::prot::exec,
-        //         vmm::flag::private_ | vmm::flag::anonymous,
-        //         obj, 0
-        //     ))
-        //         return reinterpret_cast<void *>(old);
-        // }
-        // else return reinterpret_cast<void *>(old); // TODO
+            vmm::memobject::ptr obj { new vmm::memobject { } };
 
-        // vmspace->brk = address;
-        // return addr;
+            const auto prot = vmm::prot::read | vmm::prot::write | vmm::prot::exec;
+            const auto flags = vmm::flag::private_ | vmm::flag::anonymous;
 
-        return (errno = ENOSYS, reinterpret_cast<void *>(-1));
+            const auto ret = vmspace->map(
+                begin, length,
+                prot, prot, flags,
+                obj, 0
+            );
+
+            if (!ret.has_value())
+                return reinterpret_cast<void *>(old);
+        }
+        else return reinterpret_cast<void *>(old); // TODO
+
+        vmspace->current_brk = address;
+        return addr;
     }
 } // namespace syscall::memory

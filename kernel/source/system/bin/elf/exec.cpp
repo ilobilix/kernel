@@ -174,7 +174,7 @@ namespace bin::elf::exec
                         break;
                     }
                     case PT_PHDR:
-                        phdr_vaddr = addr + phdr.p_vaddr;
+                        phdr_vaddr = phdr.p_vaddr;
                         has_phdr = true;
                         break;
                     case PT_INTERP:
@@ -419,7 +419,8 @@ namespace bin::elf::exec
                 entry = iauxv.at_entry;
                 lib::bug_on(ii != nullptr);
             }
-            // proc->vmspace->init_brk(exec_end);
+
+            proc->vmspace->current_brk = exec_end;
 
             const auto arg = new ctx { req, entry, interp_base, auxv };
             return sched::thread::create(

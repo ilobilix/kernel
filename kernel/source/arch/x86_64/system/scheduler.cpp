@@ -111,6 +111,11 @@ namespace sched::arch
         lib::unused(thread);
         ::arch::int_switch(false);
         thread->in_trampoline = false;
+
+        auto &tss = gdt::tss::self();
+        tss.rsp[0] = thread->kstack_top;
+        cpu::gs::write_kernel(thread->gs_base);
+
         sched_enter_user(ip, stack);
     }
 

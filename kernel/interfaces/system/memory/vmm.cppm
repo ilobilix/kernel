@@ -117,6 +117,8 @@ export namespace vmm
         > cache;
 
         protected:
+        page::flag type;
+
         virtual lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) = 0;
         virtual lib::expect<void> write_pages(std::size_t idx, std::span<page *> pages) = 0;
 
@@ -125,18 +127,14 @@ export namespace vmm
         public:
         lib::intrusive_ptr_hook hook;
 
-        lib::expect<void> read_pages(
-            std::uint64_t offp, std::span<page *> pages,
-            std::size_t idx, madv_t advise, flag_t flags
-        );
-
-        lib::expect<void> write_back(std::uint64_t offp, std::size_t num_pages, flag_t flags);
+        lib::expect<void> read_pages(std::uint64_t offp, std::span<page *> pages, std::size_t idx);
+        lib::expect<void> write_back(std::uint64_t offp, std::size_t num_pages);
 
         std::size_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
-        object() = default;
+        object(page::flag type) : type { type } { };
         virtual ~object() { }
 
         using ptr = lib::intrusive_ptr<object, &object::hook>;
@@ -156,6 +154,9 @@ export namespace vmm
             lib::unused(idx, pages);
             return { };
         }
+
+        public:
+        memobject() : object { page::flag::anonymous } { }
     };
 
     struct entry
@@ -199,6 +200,8 @@ export namespace vmm
             >,
             lib::rwmutex
         > tree;
+
+        std::uintptr_t current_brk;
 
         lib::expect<std::uintptr_t> map(
             std::uintptr_t hint, std::size_t length,
