@@ -685,54 +685,6 @@ namespace fs::dev::tty
         return drv->ioctl(this, request, argp);
     }
 
-    struct test_driver : driver
-    {
-        struct test_instance : instance
-        {
-            std::size_t transmit(std::span<std::byte> buffer) override
-            {
-                const std::string_view str {
-                    reinterpret_cast<const char *>(buffer.data()),
-                    buffer.size_bytes()
-                };
-                lib::print("{}", str);
-                return buffer.size_bytes();
-            }
-
-            std::size_t can_transmit() override
-            {
-                return std::numeric_limits<std::size_t>::max();
-            }
-
-            lib::expect<void> open(std::shared_ptr<vfs::file> self) override
-            {
-                lib::unused(self);
-                return { };
-            }
-
-            lib::expect<void> close() override { return { }; }
-
-            test_instance(driver *drv, std::uint32_t minor)
-                : instance { drv, minor, std::make_unique<default_ldisc>(this) } { }
-        };
-
-        std::shared_ptr<instance> create_instance(std::uint32_t minor) override
-        {
-            if constexpr (debug)
-                lib::debug("tty: creating test instance with minor {}", minor);
-            return std::make_shared<test_instance>(this, minor);
-        }
-
-        void destroy_instance(std::shared_ptr<instance> inst) override
-        {
-            lib::unused(inst);
-            if constexpr (debug)
-                lib::debug("tty: destroying test instance with minor {}", inst->minor);
-        }
-
-        test_driver() : driver { "tty-test", 4, 0, 4, ktermios::standard() } { }
-    };
-
     lib::expect<void> ops::open(std::shared_ptr<vfs::file> self, int flags)
     {
         lib::bug_on(!self || self->private_data != nullptr);
@@ -910,33 +862,6 @@ namespace fs::dev::tty
                     magic_enum::enum_name(ret.error())
                 );
             }
-
-            const auto test_drv = new test_driver { };
-            register_driver(test_drv);
-
-            const auto add_test_tty = [&]
-            {
-                static std::size_t minor = 0;
-                register_dev_ops(makedev(test_drv->major, minor), ops::singleton());
-
-                const auto name = fmt::format("/dev/tty{}", minor);
-                auto ret = vfs::create(
-                    std::nullopt, name, stat::s_ifchr | 0666,
-                    makedev(test_drv->major, minor)
-                );
-
-                minor++;
-                if (!ret.has_value())
-                {
-                    lib::error(
-                        "tty: could not create '{}': {}",
-                        name, magic_enum::enum_name(ret.error())
-                    );
-                }
-            };
-
-            for (std::size_t i = 0; i < 4; i++)
-                add_test_tty();
         }
     };
 } // namespace fs::dev::tty
