@@ -8,6 +8,27 @@ import cppstd;
 
 namespace syscall::proc
 {
+    namespace
+    {
+        template<typename Type>
+        inline std::optional<Type> copy_from(const Type __user *uptr)
+        {
+            if (uptr == nullptr)
+                return std::nullopt;
+            Type val;
+            lib::copy_from_user(&val, uptr, sizeof(Type));
+            return val;
+        }
+
+        template<typename Type>
+        inline void copy_to(Type __user *uptr, const Type &val)
+        {
+            if (uptr == nullptr)
+                return;
+            lib::copy_to_user(uptr, &val, sizeof(Type));
+        }
+    } // namespace
+
     pid_t gettid()
     {
         return sched::this_thread()->tid;
@@ -115,11 +136,123 @@ namespace syscall::proc
         return (errno = ENOSYS, -1);
     }
 
-    long futex(std::uint32_t __user *uaddr, int futex_op, std::uint32_t val, const timespec *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3)
+    constexpr int FD_SETSIZE = 1024;
+    struct [[aligned(alignof(long))]] fd_set
+    {
+        std::uint8_t fds_bits[FD_SETSIZE / 8];
+    };
+    static_assert(sizeof(fd_set) == FD_SETSIZE / 8);
+
+    struct sigset_t
+    {
+        unsigned long sig[1024 / (8 * sizeof(long))];
+    };
+
+    namespace
+    {
+        inline void FD_CLR(int fd, fd_set *set)
+        {
+            lib::bug_on(fd >= FD_SETSIZE);
+            set->fds_bits[fd / 8] &= ~(1 << (fd % 8));
+        }
+
+        inline int FD_ISSET(int fd, const fd_set *set)
+        {
+            lib::bug_on(fd >= FD_SETSIZE);
+            return set->fds_bits[fd / 8] & (1 << (fd % 8));
+        }
+
+        inline void FD_SET(int fd, fd_set *set) {
+            lib::bug_on(fd >= FD_SETSIZE);
+            set->fds_bits[fd / 8] |= 1 << (fd % 8);
+        }
+
+        inline void FD_ZERO(fd_set *set)
+        {
+            std::memset(set->fds_bits, 0, sizeof(fd_set));
+        }
+
+        int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
+        {
+            auto count_bits = [](const fd_set *set) -> std::size_t
+            {
+                if (set == nullptr)
+                    return 0;
+
+                std::size_t count = 0;
+                for (std::size_t i = 0; i < sizeof(set->fds_bits); i++)
+                    count += std::popcount(set->fds_bits[i]);
+                return count;
+            };
+
+            // TODO
+            lib::unused(nfds, timeout, update_timeout, sigmask);
+            lib::unused(FD_CLR, FD_ISSET, FD_SET, FD_ZERO);
+
+            const int total_fds =
+                count_bits(readfds) +
+                count_bits(writefds) +
+                count_bits(exceptfds);
+
+            return total_fds;
+        }
+
+        int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timespec *timeout, bool update_timeout, const sigset_t __user *sigmask)
+        {
+            auto kreadfds = copy_from(readfds);
+            auto kwritefds = copy_from(writefds);
+            auto kexceptfds = copy_from(exceptfds);
+            auto ksigmask = copy_from(sigmask);
+
+            const auto ret = pselect(
+                nfds,
+                kreadfds ? &kreadfds.value() : nullptr,
+                kwritefds ? &kwritefds.value() : nullptr,
+                kexceptfds ? &kexceptfds.value() : nullptr,
+                timeout, update_timeout,
+                ksigmask ? &ksigmask.value() : nullptr
+            );
+
+            if (kreadfds.has_value())
+                copy_to(readfds, kreadfds.value());
+            if (kwritefds.has_value())
+                copy_to(writefds, kwritefds.value());
+            if (kexceptfds.has_value())
+                copy_to(exceptfds, kexceptfds.value());
+
+            return ret;
+        }
+    } // namespace
+
+    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout)
+    {
+        auto ktimeval = copy_from(timeout);
+        std::optional<timespec> ktimeout { };
+        if (ktimeval.has_value())
+            ktimeout.emplace(ktimeval.value());
+
+        return pselect(
+            nfds, readfds, writefds, exceptfds,
+            ktimeout ? &ktimeout.value() : nullptr,
+            (timeout != nullptr), nullptr
+        );
+    }
+
+    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const sigset_t __user *sigmask)
+    {
+        auto ktimeout = copy_from(timeout);
+        return pselect(
+            nfds, readfds, writefds, exceptfds,
+            ktimeout ? &ktimeout.value() : nullptr,
+            false, sigmask
+        );
+    }
+
+    long futex(std::uint32_t __user *uaddr, int futex_op, std::uint32_t val, const timespec __user *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3)
     {
         lib::unused(uaddr, futex_op, val, timeout, uaddr2, val3);
-        return 0;
         // return (errno = ENOSYS, -1);
+        return 0;
     }
 
     struct rlimit
