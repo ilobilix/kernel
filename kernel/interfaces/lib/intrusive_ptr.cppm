@@ -3,6 +3,7 @@
 export module lib:intrusive_ptr;
 
 import :bug_on;
+import :types;
 import std;
 
 export namespace lib
@@ -55,11 +56,18 @@ export namespace lib
         }
 
         public:
+        using value_type = Type;
+
         constexpr intrusive_ptr() : _ptr { nullptr } { }
         constexpr intrusive_ptr(std::nullptr_t) : _ptr { nullptr } { }
 
         explicit constexpr intrusive_ptr(Type *ptr)
             : _ptr { ptr } { ref(); }
+
+        template<typename UType>
+            requires std::is_convertible_v<UType *, Type *>
+        explicit constexpr intrusive_ptr(UType *ptr)
+            : _ptr { static_cast<Type *>(ptr) } { ref(); }
 
         constexpr intrusive_ptr(const intrusive_ptr &rhs)
             : _ptr { rhs._ptr } { ref(); }
@@ -69,12 +77,34 @@ export namespace lib
         template<typename UType, auto UHook>
             requires std::is_convertible_v<UType *, Type *>
         constexpr intrusive_ptr(const intrusive_ptr<UType, UHook> &rhs)
-            : _ptr { rhs._ptr } { ref(); }
+            : _ptr { static_cast<Type *>(rhs._ptr) } { ref(); }
 
         template<typename UType, auto UHook>
             requires std::is_convertible_v<UType *, Type *>
         constexpr intrusive_ptr(intrusive_ptr<UType, UHook> &&rhs)
-            : _ptr { rhs._ptr } { rhs._ptr = nullptr; }
+            : _ptr { static_cast<Type *>(rhs._ptr) } { rhs._ptr = nullptr; }
+
+        constexpr intrusive_ptr &operator=(Type *ptr)
+        {
+            if (_ptr != ptr)
+            {
+                intrusive_ptr tmp { ptr };
+                swap(tmp);
+            }
+            return *this;
+        }
+
+        template<typename UType>
+            requires std::is_convertible_v<UType *, Type *>
+        constexpr intrusive_ptr &operator=(UType *ptr)
+        {
+            if (_ptr != ptr)
+            {
+                intrusive_ptr tmp { ptr };
+                swap(tmp);
+            }
+            return *this;
+        }
 
         constexpr intrusive_ptr &operator=(const intrusive_ptr &rhs)
         {
@@ -168,6 +198,6 @@ export namespace lib
     template<typename Type, auto Hook, typename ...Args>
     constexpr intrusive_ptr<Type, Hook> make_intrusive(Args &&...args)
     {
-        return intrusive_ptr<Type, Hook>(new Type { std::forward<Args>(args)... });
+        return intrusive_ptr<Type, Hook> { new Type { std::forward<Args>(args)... } };
     }
 } // export namespace lib

@@ -67,12 +67,17 @@ export namespace lib
                 auto new_min = lower(node);
                 std::size_t new_max_gap = 0;
 
+                IType left_max = 0;
+                bool has_left = false;
+
                 auto left = rhook(node)->left;
                 auto right = rhook(node)->right;
 
                 if (left != nullptr)
                 {
-                    const auto left_max = ihook(left)->subtree_max;
+                    has_left = true;
+
+                    left_max = ihook(left)->subtree_max;
                     const auto left_min = ihook(left)->subtree_min;
 
                     if (left_max > new_max)
@@ -80,7 +85,10 @@ export namespace lib
                     if (left_min < new_min)
                         new_min = left_min;
 
-                    const auto gap_before = lower(node) - left_max;
+                    IType gap_before = 0;
+                    if (lower(node) > left_max)
+                        gap_before = lower(node) - left_max;
+
                     new_max_gap = std::max({
                         new_max_gap,
                         ihook(left)->subtree_max_gap,
@@ -98,7 +106,14 @@ export namespace lib
                     if (right_min < new_min)
                         new_min = right_min;
 
-                    const auto gap_after = right_min - upper(node);
+                    IType coverage_bound = upper(node);
+                    if (has_left && left_max > coverage_bound)
+                        coverage_bound = left_max;
+
+                    IType gap_after = 0;
+                    if (right_min > coverage_bound)
+                        gap_after = right_min - coverage_bound;
+
                     new_max_gap = std::max({
                         new_max_gap,
                         ihook(right)->subtree_max_gap,
@@ -284,6 +299,8 @@ export namespace lib
         using overlapping_iterator = overlapping_iterator_base<Type>;
         using const_overlapping_iterator = overlapping_iterator_base<const Type>;
 
+        static inline constexpr Type *nil() { return decltype(_rbtree)::nil(); }
+
         constexpr interval_tree() : _rbtree { } { }
 
         constexpr interval_tree(const interval_tree &) = delete;
@@ -305,6 +322,8 @@ export namespace lib
         {
             bug_on(lower(node) > upper(node));
             ihook(node)->subtree_max = upper(node);
+            ihook(node)->subtree_min = lower(node);
+            ihook(node)->subtree_max_gap = 0;
             _rbtree.insert(node);
         }
 
@@ -331,6 +350,14 @@ export namespace lib
             return next;
         }
 
+        constexpr void clear(auto destroyer)
+        {
+            if (empty())
+                return;
+
+            _rbtree.clear(destroyer);
+        }
+
         constexpr auto overlapping(IType lb, IType ub)
         {
             bug_on(lb >= ub);
@@ -348,6 +375,9 @@ export namespace lib
                 const_overlapping_iterator { }
             );
         }
+
+        constexpr Type *root() const { return _rbtree.root(); }
+        constexpr Type *head() const { return _rbtree.root(); }
 
         constexpr iterator begin() { return _rbtree.begin(); }
         constexpr iterator end() { return _rbtree.end(); }
@@ -367,6 +397,11 @@ export namespace lib
         constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
         constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
 
+        constexpr Type *first() const { return _rbtree.first(); }
+        constexpr Type *last() const { return _rbtree.last(); }
+
+        constexpr bool contains(Type *x) const { return _rbtree.contains(x); }
+
         constexpr std::size_t size() const { return _rbtree.size(); }
         constexpr bool empty() const { return _rbtree.empty(); }
     };
@@ -381,17 +416,6 @@ export namespace lib
         private:
         interval_tree<Type, IType, Lower, Upper, Hook, IHook> _itree;
 
-        constexpr void _delete_subtree(Type *node)
-        {
-            if (!node)
-                return;
-
-            auto h = &(node->*Hook);
-            _delete_subtree(h->left);
-            _delete_subtree(h->right);
-            delete node;
-        }
-
         public:
         using iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::iterator;
         using const_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_iterator;
@@ -401,6 +425,8 @@ export namespace lib
 
         using overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::overlapping_iterator;
         using const_overlapping_iterator = typename interval_tree<Type, IType, Lower, Upper, Hook, IHook>::const_overlapping_iterator;
+
+        static inline constexpr Type *nil() { return decltype(_itree)::nil(); }
 
         constexpr interval_tree_alloc() : _itree { } { }
 
@@ -458,8 +484,8 @@ export namespace lib
         {
             if (_itree.empty())
                 return;
-            _delete_subtree(_itree._rbtree.root());
-            _itree = { };
+
+            _itree._rbtree.clear([](Type *x) { delete x; });
         }
 
         constexpr auto overlapping(IType lb, IType ub)
@@ -471,6 +497,9 @@ export namespace lib
         {
             return _itree.overlapping(lb, ub);
         }
+
+        constexpr Type *root() const { return _itree.root(); }
+        constexpr Type *head() const { return _itree.head(); }
 
         constexpr iterator begin() { return _itree.begin(); }
         constexpr iterator end() { return _itree.end(); }
@@ -489,6 +518,11 @@ export namespace lib
 
         constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
         constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
+
+        constexpr Type *first() const { return _itree.first(); }
+        constexpr Type *last() const { return _itree.last(); }
+
+        constexpr bool contains(Type *x) const { return _itree.contains(x); }
 
         constexpr std::size_t size() const { return _itree.size(); }
         constexpr bool empty() const { return _itree.empty(); }
