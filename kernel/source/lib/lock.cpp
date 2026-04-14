@@ -12,8 +12,7 @@ namespace lib::lock
 {
     namespace
     {
-        cpu_local<std::atomic_size_t> irq_depth;
-        cpu_local_init(irq_depth, 0uz);
+        cpu_local(std::atomic_size_t, irq_depth, 0uz);
     } // namespace
 
     bool acquire_irq()
@@ -22,12 +21,17 @@ namespace lib::lock
         if (!cpu::local::available())
             return ret;
 
-        if (cpu::self()->in_interrupt.load(std::memory_order_acquire))
+        acquire_preempt();
+        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
+        {
+            release_preempt();
             return ret;
+        }
 
-        if (irq_depth->fetch_add(1, std::memory_order_acquire) == 0)
+        if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
             arch::int_switch(false);
 
+        release_preempt();
         return ret;
     }
 
@@ -39,24 +43,26 @@ namespace lib::lock
             return;
         }
 
-        if (cpu::self()->in_interrupt.load(std::memory_order_acquire))
+        acquire_preempt();
+        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
+        {
+            release_preempt();
             return;
+        }
 
-        if (irq_depth->fetch_sub(1, std::memory_order_release) == 1)
+        if (irq_depth.unsafe_get().fetch_sub(1, std::memory_order_release) == 1)
             arch::int_switch(old);
+
+        release_preempt();
     }
 
     void acquire_preempt()
     {
-        if (!sched::is_initialised())
-            return;
         sched::disable();
     }
 
     void release_preempt()
     {
-        if (!sched::is_initialised())
-            return;
         sched::enable();
     }
 

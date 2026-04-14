@@ -59,15 +59,16 @@ export namespace sched
         cpu::processor *running_on;
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
-        std::size_t preemption;
+        std::ssize_t preemption = 0;
 
         std::weak_ptr<vmm::memobject> ustack_obj;
 
         pid_t tid;
         process *parent;
 
-        status status;
+        status status = status::not_ready;
         bool is_user;
+        bool can_migrate = true;
 
         cpu::registers regs;
 

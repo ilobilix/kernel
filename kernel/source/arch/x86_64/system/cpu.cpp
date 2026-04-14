@@ -128,13 +128,12 @@ namespace cpu
             constexpr std::uint32_t rfbm_low = rfbm & 0xFFFFFFFF;
             constexpr std::uint32_t rfbm_high = (rfbm >> 32) & 0xFFFFFFFF;
 
-            cpu_local<fpu> fpu_percpu;
-            cpu_local_init(fpu_percpu);
+            cpu_local(fpu, fpu_percpu);
         } // namespace
 
         fpu &get_fpu()
         {
-            return fpu_percpu.get();
+            return fpu_percpu.unsafe_get();
         }
 
         void xsaveopt(std::byte *region)

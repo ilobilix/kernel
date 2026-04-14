@@ -52,7 +52,7 @@ namespace x86_64::timers::tsc
         if (!supported())
             return;
 
-        if (cpu::self()->idx == cpu::bsp_idx())
+        if (cpu::self().unsafe_get().idx == cpu::bsp_idx())
         {
             std::uint64_t val = 0;
 

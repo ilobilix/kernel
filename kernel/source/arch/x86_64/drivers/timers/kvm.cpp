@@ -37,14 +37,13 @@ namespace x86_64::timers::kvm
 
         bool initialised = false;
 
-        cpu_local<void *> clockptr;
-        cpu_local_init(clockptr, nullptr);
+        cpu_local(void *, clockptr, nullptr);
 
         std::uint64_t time_ns()
         {
             lib::bug_on(!initialised);
 
-            volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
+            volatile auto pvclock = clockptr.read<kvmclock_info *>();
 
             while (pvclock->version % 2)
                 arch::pause();
@@ -80,7 +79,7 @@ namespace x86_64::timers::kvm
 
     std::uint64_t tsc_freq()
     {
-        volatile auto pvclock = static_cast<kvmclock_info *>(clockptr.get());
+        volatile auto pvclock = clockptr.read<kvmclock_info *>();
 
         std::uint64_t freq = (1'000'000'000ull << 32) / pvclock->tsc_to_system_mul;
         if (pvclock->tsc_shift < 0)
@@ -119,9 +118,7 @@ namespace x86_64::timers::kvm
         if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache); !ret)
             lib::panic("pmm: could not map kvmclock: {}", magic_enum::enum_name(ret.error()));
 
-        const auto obj = std::construct_at<kvmclock_info>(reinterpret_cast<kvmclock_info *>(vaddr));
-        clockptr = reinterpret_cast<void *>(obj);
-
+        clockptr.write(std::construct_at<kvmclock_info>(reinterpret_cast<kvmclock_info *>(vaddr)));
         cpu::msr::write(0x4B564D01, paddr | 1);
 
         [[maybe_unused]]

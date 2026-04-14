@@ -8,6 +8,16 @@ import std;
 extern "C" char __start_percpu[];
 extern "C" char __end_percpu[];
 
+namespace cpu::local
+{
+    template<typename Type, auto Member>
+    concept helper_enabled = (std::is_class_v<Type> || std::is_union_v<Type>) &&
+        std::is_member_object_pointer_v<decltype(Member)>;
+
+    void begin_access();
+    void end_access();
+} // namespace cpu::local
+
 export namespace cpu
 {
     struct processor
@@ -26,14 +36,71 @@ export namespace cpu
 
     namespace local
     {
-        template<typename Type, std::size_t Size = sizeof(Type)>
+        template<typename Type>
         class storage
         {
             private:
-            alignas(Type) std::byte _storage[Size];
+            alignas(Type) std::byte _storage[sizeof(Type)];
 
             public:
-            Type &get(std::uintptr_t base = self_addr()) const
+            constexpr storage() = default;
+
+            template<typename NType>
+            void write(const NType &value, std::uintptr_t off = 0)
+            {
+                begin_access();
+                const auto base = self_addr();
+                const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
+                const auto offset = addr - peraddr + off;
+
+                *const_cast<NType *>(std::launder(reinterpret_cast<volatile NType *>(reinterpret_cast<std::uintptr_t>(base) + offset))) = value;
+                end_access();
+            }
+
+            template<typename NType, auto Member>
+                requires helper_enabled<Type, Member>
+            void write(const NType &value)
+            {
+                begin_access();
+                unsafe_get().*Member = value;
+                end_access();
+            }
+
+            template<typename NType, auto Member>
+                requires helper_enabled<Type, Member>
+            void write(NType &&value)
+            {
+                begin_access();
+                unsafe_get().*Member = std::forward<NType>(value);
+                end_access();
+            }
+
+            template<typename NType = Type>
+            NType read(std::uintptr_t off = 0) const
+            {
+                begin_access();
+                const auto base = self_addr();
+                const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
+                const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
+                const auto offset = addr - peraddr + off;
+
+                auto result = *const_cast<NType *>(std::launder(reinterpret_cast<volatile NType *>(reinterpret_cast<std::uintptr_t>(base) + offset)));
+                end_access();
+                return result;
+            }
+
+            template<typename NType, auto Member>
+                requires helper_enabled<Type, Member>
+            NType read() const
+            {
+                begin_access();
+                auto ret = unsafe_get().*Member;
+                end_access();
+                return ret;
+            }
+
+            Type &unsafe_get(std::uintptr_t base = self_addr()) const
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
                 const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
@@ -41,12 +108,8 @@ export namespace cpu
                 return *const_cast<Type *>(std::launder(reinterpret_cast<volatile Type *>(reinterpret_cast<std::uintptr_t>(base) + offset)));
             }
 
-            Type *operator->() { return std::addressof(get()); }
-            Type &operator=(const Type &rhs) { return get() = rhs; }
-            auto &operator[](std::size_t idx) { return get()[idx]; }
-
             template<typename ...Args>
-            void initialise_base(std::uintptr_t base, Args &&...args) const
+            void initialise(std::uintptr_t base, Args &&...args) const
             {
                 const auto addr = reinterpret_cast<std::uintptr_t>(std::addressof(_storage));
                 const auto peraddr = reinterpret_cast<std::uintptr_t>(__start_percpu);
@@ -54,12 +117,6 @@ export namespace cpu
 
                 auto ptr = reinterpret_cast<void *>(base + offset);
                 new(ptr) Type { std::forward<Args>(args)... };
-            }
-
-            template<typename ...Args>
-            void initialise(Args &&...args)
-            {
-                initialise_base(self_addr(), args...);
             }
         };
 
@@ -73,5 +130,5 @@ export namespace cpu
         bool available();
     } // namespace local
 
-    processor *self();
+    local::storage<processor> &self();
 } // export namespace cpu

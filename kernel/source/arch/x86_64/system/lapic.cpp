@@ -148,7 +148,7 @@ namespace x86_64::apic
     {
         lib::bug_on(!supported().first);
 
-        if (cpu::self()->idx != cpu::bsp_idx())
+        if (cpu::self().unsafe_get().idx != cpu::bsp_idx())
             return;
 
         if (tsc_deadline)
@@ -272,13 +272,12 @@ namespace x86_64::apic
         }
     }
 
-    cpu_local<std::uint32_t> acpi_id;
-    cpu_local_init(acpi_id);
+    cpu_local(std::uint32_t, acpi_id);
 
     void init_cpu()
     {
-        const auto self = cpu::self();
-        if (self->idx != cpu::bsp_idx())
+        const auto &self = cpu::self().unsafe_get();
+        if (self.idx != cpu::bsp_idx())
         {
             auto val = cpu::msr::read(reg::apic_base);
             if (!x2apic && pmmio != (val & 0xFFFFF000))
@@ -289,30 +288,30 @@ namespace x86_64::apic
             enable(val);
         }
 
-        const auto ret = interrupts::allocate(self->idx, 0xFF);
+        const auto ret = interrupts::allocate(self.idx, 0xFF);
         lib::bug_on(!ret.has_value() || ret->second != 0xFF);
 
         write(reg::siv, 0xFF);
         write(reg::err, 0);
 
-        if (self->idx == cpu::bsp_idx())
+        if (self.idx == cpu::bsp_idx())
         {
             for (const auto &entry : acpi::madt::lapics)
             {
-                if (entry.id == self->arch_id)
+                if (entry.id == self.arch_id)
                 {
                     const auto base = cpu::local::nth_base(cpu::local::arch2idx(entry.id));
-                    acpi_id.get(base) = entry.uid;
+                    acpi_id.unsafe_get(base) = entry.uid;
                 }
             }
             if (x2apic)
             {
                 for (const auto &entry : acpi::madt::x2apics)
                 {
-                    if (entry.id == self->arch_id)
+                    if (entry.id == self.arch_id)
                     {
                         const auto base = cpu::local::nth_base(cpu::local::arch2idx(entry.id));
-                        acpi_id.get(base) = entry.uid;
+                        acpi_id.unsafe_get(base) = entry.uid;
                     }
                 }
             }
@@ -331,14 +330,14 @@ namespace x86_64::apic
 
         for (const auto &entry : acpi::madt::lapic_nmis)
         {
-            if (entry.uid == 0xFF || entry.uid == acpi_id.get())
+            if (entry.uid == 0xFF || entry.uid == acpi_id.unsafe_get())
                 setup_nmi(entry.lint, entry.flags);
         }
         if (x2apic)
         {
             for (const auto &entry : acpi::madt::x2apic_nmis)
             {
-                if (entry.uid == 0xFFFFFFFF || entry.uid == acpi_id.get())
+                if (entry.uid == 0xFFFFFFFF || entry.uid == acpi_id.unsafe_get())
                     setup_nmi(entry.lint, entry.flags);
             }
         }

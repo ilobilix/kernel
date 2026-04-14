@@ -28,15 +28,12 @@ namespace x86_64::gdt
         };
     } // namespace
 
-    cpu_local<entries> gdt_local;
-    cpu_local<tss::reg> tss_local;
-
-    cpu_local_init(gdt_local);
-    cpu_local_init(tss_local);
+    cpu_local(entries, gdt_local, default_gdt);
+    cpu_local(tss::reg, tss_local);
 
     namespace tss
     {
-        reg &self() { return tss_local.get(); }
+        reg &self() { return tss_local.unsafe_get(); }
     } // namespace tss
 
     void init()
@@ -54,28 +51,29 @@ namespace x86_64::gdt
         if (cpu->idx == cpu::bsp_idx())
             lib::info("gdt: loading on bsp");
 
+        auto &tlocal = tss_local.unsafe_get();
         // nmi
-        tss_local->ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        tlocal.ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
         // page fault
-        tss_local->ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        tlocal.ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
         // scheduler
-        tss_local->ist[2] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        tlocal.ist[2] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
 
-        tss_local->iopboffset = sizeof(tss::reg);
+        tlocal.iopboffset = sizeof(tss::reg);
 
-        const auto base = reinterpret_cast<std::uintptr_t>(&tss_local.get());
+        const auto base = reinterpret_cast<std::uintptr_t>(&tlocal);
         const std::uint16_t limit = sizeof(tss::reg) - 1;
 
-        gdt_local = default_gdt;
-        gdt_local->tss.limit0 = limit;
-        gdt_local->tss.base0 = base;
-        gdt_local->tss.base1 = base >> 16;
-        gdt_local->tss.base2 = base >> 24;
-        gdt_local->tss.base3 = base >> 32;
+        auto &glocal = gdt_local.unsafe_get();
+        glocal.tss.limit0 = limit;
+        glocal.tss.base0 = base;
+        glocal.tss.base1 = base >> 16;
+        glocal.tss.base2 = base >> 24;
+        glocal.tss.base3 = base >> 32;
 
         const reg gdtr {
             sizeof(entries) - 1,
-            reinterpret_cast<std::uintptr_t>(&gdt_local.get()),
+            reinterpret_cast<std::uintptr_t>(&glocal),
         };
 
         load(reinterpret_cast<std::uintptr_t>(&gdtr), segment::data, segment::code, segment::tss);

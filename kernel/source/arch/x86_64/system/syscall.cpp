@@ -104,12 +104,11 @@ namespace x86_64::syscall
         [439] = { "faccessat2", vfs::faccessat2 }
     };
 
-    cpu_local<bool> in_syscall;
-    cpu_local_init(in_syscall, false);
+    cpu_local(bool, in_syscall);
 
     bool is_in_syscall()
     {
-        return in_syscall.get();
+        return in_syscall.read();
     }
 
     extern "C" void syscall_entry();
@@ -119,9 +118,9 @@ namespace x86_64::syscall
         if (idx >= std::size(table) || !table[idx].is_valid())
             lib::panic("invalid syscall: {}", idx);
 
-        in_syscall = true;
+        in_syscall.write(true);
         regs->rax = table[idx].invoke(regs);
-        in_syscall = false;
+        in_syscall.write(false);
     }
 
     void init_cpu()
