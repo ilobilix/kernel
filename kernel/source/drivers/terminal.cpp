@@ -27,7 +27,7 @@ namespace term
             0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF
         };
 
-        char font[] {
+        std::int8_t font[] {
             #embed "../../embed/font.bin"
         };
 

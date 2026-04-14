@@ -12,7 +12,7 @@ import std;
 #if ILOBILIX_EXTRA_PANIC_MSG
 namespace
 {
-    char nooo_unicode[] {
+    std::int8_t nooo_unicode[] {
         #embed "../../embed/nooo.uni"
     };
 
