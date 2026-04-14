@@ -2,6 +2,8 @@
 
 module arch;
 
+import system.scheduler;
+import drivers.timers;
 import system.cpu;
 import cppstd;
 
@@ -43,14 +45,37 @@ namespace arch
     void dump_regs(cpu::registers *regs, cpu::extra_regs, log::level lvl) { lib::unused(regs, lvl); }
 
     void early_init() { }
-    void init()
+
+    initgraph::task bsp_task
     {
-        cpu::init();
-    }
+        "arch.init-bsp",
+        initgraph::require { },
+        initgraph::entail { bsp_stage() },
+        [] {
+            cpu::init_bsp();
+        }
+    };
+
+    initgraph::task cpus_task
+    {
+        "arch.init-cpus",
+        initgraph::require { bsp_stage(), timers::available_stage() },
+        initgraph::entail { cpus_stage() },
+        [] {
+            cpu::init();
+        }
+    };
 
     namespace core
     {
-        void entry(boot::limine_mp_info *cpu) { lib::unused(cpu); }
-        void bsp(boot::limine_mp_info *cpu) { lib::unused(cpu); }
+        void entry(boot::limine_mp_info *cpu)
+        {
+            cpu::write_el1_base(cpu->extra_argument);
+            sched::start();
+        }
+        void bsp(boot::limine_mp_info *cpu)
+        {
+            cpu::write_el1_base(cpu->extra_argument);
+        }
     } // namespace core
 } // namespace arch

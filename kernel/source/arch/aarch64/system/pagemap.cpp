@@ -1,8 +1,14 @@
 // Copyright (C) 2024-2025  ilobilo
 
+module;
+
+#include <arch/aarch64/system/cpu.hpp>
+
 module system.memory.virt;
 
 import system.memory.phys;
+import system.cpu;
+import boot;
 import lib;
 import cppstd;
 
@@ -10,44 +16,256 @@ import :pagemap;
 
 namespace vmm
 {
-    std::uintptr_t pagemap::pa_mask = 0;
+    namespace arch
+    {
+        namespace
+        {
+            enum flag : std::uintptr_t
+            {
+                valid = (1 << 0),
+                table = (1 << 1),
+                block = (0 << 1),
+                page = (1 << 1),
 
-    const std::uintptr_t pagemap::valid_table_flags = 0;
-    const std::uintptr_t pagemap::new_table_flags = 0;
+                user = (1 << 6),
 
-    struct pagemap::table { };
+                read_write = (0 << 7),
+                read_only = (1 << 7),
+
+                access = (1 << 10),
+                not_global = (1 << 11),
+                exec_never = (1ul << 54),
+
+                // non_share = (0b00 << 8),
+                // out_share = (0b10 << 8),
+                in_share = (0b11 << 8),
+            };
+
+            std::size_t page_sizes[]
+            {
+                0, // page_size::small
+                0, // page_size::medium
+                0  // page_size::large
+            };
+        } // namespace
+    } // namespace arch
+
+    std::uintptr_t pagemap::pa_mask;
+
+    const std::uintptr_t pagemap::valid_table_flags = arch::valid | arch::table;
+    const std::uintptr_t pagemap::new_table_flags = arch::valid | arch::table;
+
+    struct [[gnu::packed]] pagemap::table
+    {
+        entry entries[512];
+    };
+    pagemap::table *ttbr1;
 
     auto pagemap::new_table() -> table *
     {
-        return pmm::alloc<table *>();
+        static_assert(sizeof(pagemap::table) == pmm::page_size);
+        return pmm::alloc<table *>(1, true);
     }
 
     page_size pagemap::fixpsize(page_size psize) { return psize; }
-    void pagemap::invalidate(std::uintptr_t vaddr) { lib::unused(vaddr); }
+    void pagemap::invalidate(std::uintptr_t vaddr)
+    {
+        cpu::invlpg(vaddr);
+    }
 
-    std::uintptr_t pagemap::to_arch(flag flags, caching cache, page_size psize) { lib::unused(flags, cache, psize); return 0; }
+    std::uintptr_t pagemap::to_arch(flag flags, caching cache, page_size psize)
+    {
+        lib::ensure(magic_enum::enum_contains(cache));
+        lib::ensure(magic_enum::enum_contains(psize));
+
+        std::uintptr_t ret = arch::flag::valid | arch::flag::access | arch::flag::in_share;
+
+        if ((flags & flag::write) == flag::none)
+            ret |= arch::flag::read_only;
+        if ((flags & flag::user) != flag::none)
+            ret |= arch::flag::user;
+        if ((flags & flag::global) == flag::none)
+            ret |= arch::flag::not_global;
+        if ((flags & flag::exec) == flag::none)
+            ret |= arch::flag::exec_never;
+
+        if (psize == page_size::small)
+            ret |= arch::flag::page;
+
+        switch (cache)
+        {
+            case caching::uncacheable:
+            case caching::uncacheable_strong:
+                ret |= (1 << 2);
+                break;
+            case caching::device:
+                ret |= (2 << 2);
+                break;
+            default:
+                ret |= (0 << 2);
+        }
+        return ret;
+    }
 
     auto pagemap::from_arch(std::uintptr_t flags, page_size psize) -> std::pair<flag, caching>
     {
-        lib::unused(flags, psize);
-        return { flag::rw, caching::normal };
+        lib::unused(psize);
+
+        auto ret = flag::none;
+        {
+            if ((flags & arch::flag::access) != 0)
+                ret |= flag::read;
+            if ((flags & arch::flag::read_only) == 0)
+                ret |= flag::write;
+            if ((flags & arch::flag::user) != 0)
+                ret |= flag::read;
+            if ((flags & arch::flag::not_global) == 0)
+                ret |= flag::global;
+            if ((flags & arch::flag::exec_never) == 0)
+                ret |= flag::exec;
+        }
+
+        auto cache = caching::normal;
+        {
+            if (flags & (1 << 2))
+                cache = caching::uncacheable_strong;
+            else if (flags & (2 << 2))
+                cache = caching::device;
+        }
+
+        return { ret, cache };
     }
 
-    std::size_t pagemap::from_page_size(page_size psize) { lib::unused(psize); return 0; }
-    page_size pagemap::max_page_size(std::size_t size) { lib::unused(size); return page_size::small; }
+    std::size_t pagemap::from_page_size(page_size psize)
+    {
+        lib::ensure(magic_enum::enum_contains(psize));
+        return arch::page_sizes[std::to_underlying(psize)];
+    }
+
+    page_size pagemap::max_page_size(std::size_t size)
+    {
+        if (size > arch::page_sizes[2])
+            return page_size::large;
+        else if (size > arch::page_sizes[1])
+            return page_size::medium;
+
+        return page_size::small;
+    }
 
     auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>
     {
-        lib::unused(vaddr, psize, allocate);
-        return std::unexpected { error::invalid_entry };
+        static constexpr std::uintptr_t bits = 0b111111111;
+        static constexpr std::size_t levels = 4;
+        static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
+
+        auto pml = lib::tohh((vaddr & (1ul << 63)) ? ttbr1 : _table);
+
+        const auto retidx = levels - static_cast<std::size_t>(psize) - 1;
+        auto shift = shift_start;
+
+        for (std::size_t i = 0; i < levels; i++)
+        {
+            auto &entry = pml->entries[(vaddr >> shift) & bits];
+
+            if (i == retidx)
+                return std::ref(entry);
+
+            pml = getlvl(entry, allocate);
+            if (pml == nullptr)
+                return std::unexpected { error::invalid_entry };
+
+            shift -= 9;
+        }
+        std::unreachable();
     }
 
-    void pagemap::store() { }
-    void pagemap::load() const { }
+    static std::size_t n = 0;
+    static std::uint64_t tg0 = 0;
+
+    void pagemap::load() const
+    {
+        if (n < (cpu::cpu_count() ?: boot::requests::smp.response->cpu_count))
+        {
+            constexpr auto bits = [](std::size_t top, std::size_t bottom, std::uint64_t value)
+            {
+                std::uint64_t vbit = (1ul << ((top + 1) - bottom));
+                return (value & (vbit - 1)) << bottom;
+            };
+
+            std::uint64_t sctlr_el1 = mrs(sctlr_el1);
+            sctlr_el1 &= ~(1 << 1); // disable alignment check
+            sctlr_el1 |= (1 << 2);
+            sctlr_el1 |= (1 << 12);
+            msr(sctlr_el1, sctlr_el1);
+
+            std::uint64_t tcr_el1 = mrs(tcr_el1);
+            tcr_el1 |= bits(34, 32, 0b011); // ips: 4 tib
+            // ttbr1_el1
+            tcr_el1 |= bits(29, 28, 0b11); // sh1: ish
+            tcr_el1 |= bits(27, 26, 0b01); // orgn1: wbwa
+            tcr_el1 |= bits(25, 24, 0b01); // irgn1: wbwa
+            tcr_el1 |= bits(21, 16, 16); // t1sz: 48 bits
+            // ttbr0_el1
+            tcr_el1 |= bits(15, 14, tg0); // tg0
+            tcr_el1 |= bits(13, 12, 0b11); // sh0: ish
+            tcr_el1 |= bits(11, 10, 0b01); // orgn0: wbwa
+            tcr_el1 |= bits(9, 8, 0b01); // irgn0: wbwa
+            tcr_el1 |= bits(5, 0, 16); // t0sz: 48 bits
+            msr(tcr_el1, tcr_el1);
+
+            std::uint64_t mair_el1 = 0;
+            mair_el1 |= (0xFF << (0 * 8)); // normal
+            mair_el1 |= (0x40 << (1 * 8)); // non-cachable
+            mair_el1 |= (0x00 << (2 * 8)); // nGnRnE
+            msr(mair_el1, mair_el1);
+
+            asm volatile("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(ttbr1)) : "memory");
+            n++;
+        }
+        asm volatile("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
+    }
 
     pagemap::pagemap() : _table { new_table() }
     {
-        lib::panic("TODO: pagemap");
+        if (!kernel_pagemap.valid())
+        {
+            // assume currently initialising the kernel_pagemap
+            ttbr1 = new_table();
+
+            std::uint64_t tcr_el1 = mrs(tcr_el1);
+            const auto tg1 = (tcr_el1 >> 30) & 0b11;
+            std::size_t psize = 0;
+            if (tg1 == 0b10)
+            {
+                psize = lib::kib(4);
+                pa_mask = 0x0000FFFFFFFFF000;
+                tg0 = 0b00;
+            }
+            else if (tg1 == 0b01)
+            {
+                psize = lib::kib(16);
+                pa_mask = 0x0000FFFFFFFFC000;
+                tg0 = 0b10;
+            }
+            else if (tg1 == 0b11)
+            {
+                psize = lib::kib(64);
+                pa_mask = 0x0000FFFFFFFF0000;
+                tg0 = 0b01;
+            }
+            else lib::panic("unknown page size");
+
+            log::debug("vmm: page size is 0x{:X} kib", psize);
+
+            arch::page_sizes[0] = psize;
+            arch::page_sizes[1] = arch::page_sizes[0] * 512;
+            arch::page_sizes[2] = arch::page_sizes[1] * 512;
+
+            // // pre-allocate higher half
+            // auto table = lib::tohh(_table);
+            // for (std::size_t i = 256; i < 512; i++)
+            //     getlvl(ttbr1->entries[i], true);
+        }
     }
 
     pagemap::~pagemap() { lib::panic("TODO"); }

@@ -109,6 +109,7 @@ namespace vmm
                 ret |= arch::flag::pcd;
                 break;
             case caching::uncacheable_strong:
+            case caching::device:
                 ret |= arch::flag::pcd | arch::flag::pwt;
                 break;
             case caching::write_through:
@@ -208,13 +209,6 @@ namespace vmm
             shift -= 9;
         }
         std::unreachable();
-    }
-
-    void pagemap::store()
-    {
-        std::uintptr_t addr;
-        asm volatile ("mov %0, cr3" : "=r"(addr) :: "memory");
-        _table = reinterpret_cast<table *>(addr);
     }
 
     void pagemap::load() const
