@@ -45,8 +45,6 @@ target("modules")
 
     after_config(function (target)
         import("core.project.project")
-        import("core.project.depend")
-        import("core.tool.linker")
 
         local kernel = project.target("ilobilix.elf")
 
@@ -54,24 +52,48 @@ target("modules")
             local split = val:trim():split(".", { plain = true })
             if #split > 2 then
                 local child = project.target(val)
+                local values = child:get("values")
+                local is_external = values ~= nil and values["is_external"]
 
                 child:add("deps", "modules.dependencies")
-                child:set("kind", "shared")
                 child:set("default", false)
 
                 table.remove(split, 1)
                 table.remove(split, 1)
 
+                if is_external then
+                    child:set("kind", "shared")
+                    target:add("values", "modules.external_modules", path.join(os.projectdir(), child:targetfile()))
+                else
+                    child:set("kind", "object")
+                end
+            end
+        end
+    end)
+
+    before_build(function (target)
+        import("core.project.project")
+        import("core.project.depend")
+
+        local kernel = project.target("ilobilix.elf")
+
+        for idx, val in ipairs(target:values("modules.deps")) do
+            local split = val:trim():split(".", { plain = true })
+            if #split > 2 then
+                local child = project.target(val)
                 local values = child:get("values")
-                if values ~= nil and values["is_external"] then
+                local is_external = values ~= nil and values["is_external"]
+
+                table.remove(split, 1)
+                table.remove(split, 1)
+
+                if is_external then
                     local targetfile = child:targetfile()
                     local dot_ko = table.concat(split, ".") .. ".ko"
 
                     depend.on_changed(function ()
                         print(" => external module: " .. dot_ko)
                     end, { files = targetfile })
-
-                    target:add("values", "modules.external_modules", path.join(os.projectdir(), targetfile))
                 else
                     local objects_all = child:objectfiles()
                     local objects = os.files(path.join(path.directory(objects_all[1]), "*.o"))

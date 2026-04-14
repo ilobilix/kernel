@@ -172,7 +172,6 @@ toolchain("ilobilix-clang")
 
     on_load(function (toolchain)
         local cx_args = {
-            "-fpic", "-fpie",
             "-ffreestanding",
             "-fno-stack-protector",
             "-fno-omit-frame-pointer",
