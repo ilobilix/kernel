@@ -85,8 +85,6 @@ namespace arch
         {
             auto ptr = reinterpret_cast<cpu::processor *>(cpu->extra_argument);
 
-            vmm::kernel_pagemap->load();
-
             x86_64::gdt::init_on(ptr);
             x86_64::idt::init_on(ptr);
 

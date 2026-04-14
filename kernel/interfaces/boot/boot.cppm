@@ -23,9 +23,9 @@ export namespace boot
 {
     std::shared_ptr<sched::process> pid0;
 
-    // constexpr std::uintptr_t kernel_stack_size = 0x10000; // 64 kib
-    constexpr std::uintptr_t kernel_stack_size = 0x4000; // 16 kib
-    constexpr std::uintptr_t user_stack_size = 0x200000; // 2 mib
+    // constexpr std::uintptr_t kstack_size = 0x10000; // 64 kib
+    constexpr std::uintptr_t kstack_size = 0x4000; // 16 kib
+    constexpr std::uintptr_t ustack_size = 0x200000; // 2 mib
 
     constexpr std::size_t limine_rev = 3;
 
@@ -154,7 +154,7 @@ export namespace boot
             .id = LIMINE_STACK_SIZE_REQUEST,
             .revision = 0,
             .response = nullptr,
-            .stack_size = kernel_stack_size
+            .stack_size = kstack_size
         };
     } // namespace requests
 

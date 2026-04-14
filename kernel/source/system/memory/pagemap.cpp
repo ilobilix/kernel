@@ -209,7 +209,7 @@ namespace vmm
 
         vspace_base = lib::tohh(lib::align_up(pmm::info().top, lib::gib(1)));
         for (std::size_t i = 0; auto &entry : vspaces)
-            entry = vspace_base + (lib::gib(1) * (i++));
+            entry = vspace_base + (lib::gib(1 /* TODO: more than 1 gib? */) * (i++));
     }
 
     std::uintptr_t alloc_vpages(space_type type, std::size_t pages)

@@ -28,7 +28,7 @@ namespace pmm
         return mem;
     }
 
-    void *alloc(std::size_t count)
+    void *alloc(std::size_t count, bool clear)
     {
         if (count == 0)
             return nullptr;
@@ -65,7 +65,9 @@ namespace pmm
             if (ret == nullptr)
                 lib::panic("out of physical memory to allocate");
         }
-        // std::memset(lib::tohh(ret), 0, count * page_size);
+
+        if (clear)
+            std::memset(lib::tohh(ret), 0, count * page_size);
 
         mem.used += count * page_size;
         return ret;

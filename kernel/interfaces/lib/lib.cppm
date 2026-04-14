@@ -14,6 +14,7 @@ export import :map;
 export import :math;
 export import :misc;
 export import :mmio;
+export import :mod;
 export import :mutex;
 export import :panic;
 export import :partitions;

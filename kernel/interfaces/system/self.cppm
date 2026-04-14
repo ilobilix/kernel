@@ -20,6 +20,7 @@ export namespace cpu
             // do not move
             processor *self;
             std::uintptr_t stack_top;
+            std::uintptr_t initial_pmap;
 
             std::size_t idx;
             std::size_t arch_id;

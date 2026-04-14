@@ -7,6 +7,11 @@ target("modules.dependencies")
     add_deps("ilobilix.modules", { inherit = false })
     add_deps("ilobilix.dependencies")
 
+    add_defines(
+        "declare_module(name)=[[gnu::used, gnu::section(\".modules\")]] const mod::declare name",
+        { public = true }
+    )
+
     if is_arch("x86_64") then
         local flags = {
             "-mcmodel=large"

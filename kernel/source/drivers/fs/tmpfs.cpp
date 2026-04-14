@@ -60,7 +60,7 @@ namespace fs::tmpfs
                 if (flags & vmm::map::shared)
                     return lib::fromhh(reinterpret_cast<std::uintptr_t>(back->data.data()) + (page * pmm::page_size));
 
-                auto copy = pmm::alloc(1);
+                auto copy = pmm::alloc();
                 std::memcpy(lib::tohh(copy), back->data.data() + (page * pmm::page_size), std::min(pmm::page_size, back->data.size()));
                 return reinterpret_cast<std::uintptr_t>(copy);
             }

@@ -74,25 +74,27 @@ namespace sched
     std::uintptr_t thread::allocate_ustack()
     {
         auto parent = proc.lock();
-        auto paddr = pmm::alloc<std::uintptr_t>(lib::div_roundup(boot::user_stack_size, pmm::page_size));
-        auto vaddr = (parent->next_stack_top -= boot::user_stack_size);
 
-        auto psize = vmm::pagemap::max_page_size(boot::user_stack_size);
-        if (!parent->vspace->pmap->map(vaddr, paddr, boot::user_stack_size, vmm::flag::rw, psize))
-            lib::panic("could not map user stack");
+        const auto vaddr = (parent->next_stack_top -= boot::ustack_size);
+        for (std::size_t i = 0; i < boot::ustack_size; i += pmm::page_size)
+        {
+            if (!parent->vspace->pmap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
+                lib::panic("could not map user stack");
+        }
 
-        stacks.push_back(reinterpret_cast<std::byte *>(paddr));
-        return vaddr + boot::user_stack_size;
+        return vaddr + boot::ustack_size;
     }
 
     std::uintptr_t thread::allocate_kstack()
     {
-        auto paddr = pmm::alloc<std::byte *>(lib::div_roundup(boot::kernel_stack_size, pmm::page_size));
-        auto vaddr = lib::tohh(paddr);
-        std::memset(vaddr, 0, boot::kernel_stack_size);
+        auto vaddr = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
+        for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
+        {
+            if (!vmm::kernel_pagemap->map(vaddr + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))
+                lib::panic("could not map kernel stack");
+        }
 
-        stacks.push_back(paddr);
-        return reinterpret_cast<std::uintptr_t>(vaddr) + boot::kernel_stack_size;
+        return vaddr + boot::kstack_size;
     }
 
     std::shared_ptr<thread> thread::create(std::shared_ptr<process> parent, std::uintptr_t ip)
@@ -149,8 +151,24 @@ namespace sched
 
     thread::~thread()
     {
-        for (auto &stack : stacks)
-            pmm::free(stack, lib::div_roundup(boot::kernel_stack_size, pmm::page_size));
+        auto unmap_stack = [](auto &pmap, std::uintptr_t top, std::size_t size)
+        {
+            const std::uintptr_t bottom = top - size;
+            for (std::size_t i = 0; i < size; i += pmm::page_size)
+            {
+                const auto vaddr = bottom + i;
+                const auto ret = pmap->translate(vaddr);
+                if (!ret.has_value())
+                    lib::panic("could not unmap user stack");
+                pmm::free(ret.value());
+            }
+        };
+        if (is_user)
+        {
+            auto pmap = proc.lock()->vspace->pmap;
+            unmap_stack(pmap, ustack_top, boot::ustack_size);
+        }
+        unmap_stack(vmm::kernel_pagemap, kstack_top, boot::kstack_size);
 
         // TODO
     }
