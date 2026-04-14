@@ -17,7 +17,7 @@ namespace timers::acpipm
 {
     namespace
     {
-        constexpr std::size_t frequency = 3579545;
+        constexpr lib::freqfrac freq { 3579545 };
 
         acpi_gas timer_block;
         uacpi_mapped_gas *mapped;
@@ -25,20 +25,20 @@ namespace timers::acpipm
 
         std::uint64_t read()
         {
-            auto read_internal = [] {
+            const auto read_internal = [] {
                 std::uint64_t value;
                 uacpi_gas_read_mapped(mapped, &value);
                 return value;
             };
 
-            std::uint32_t v1 = 0, v2 = 0, v3 = 0;
-            do {
-                v1 = read_internal();
-                v2 = read_internal();
-                v3 = read_internal();
-            } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
+            // std::uint32_t v1 = 0, v2 = 0, v3 = 0;
+            // do {
+            //     v1 = read_internal();
+            //     v2 = read_internal();
+            //     v3 = read_internal();
+            // } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
 
-            return v2;
+            return read_internal();
         }
     } // namespace
 
@@ -62,11 +62,12 @@ namespace timers::acpipm
         return cached;
     }
 
-    void calibrate(std::size_t ms)
+    std::size_t calibrate(std::size_t ms)
     {
-        lib::bug_on(!supported() || (ms * frequency) / 1'000 > mask);
+        lib::bug_on(!supported());
 
-        const auto ticks = (ms * frequency) / 1'000;
+        const auto ticks = freq.ticks(ms * 1'000'000);
+        lib::bug_on(ticks > mask);
 
         const auto start = read();
         auto current = start;
@@ -77,6 +78,7 @@ namespace timers::acpipm
             if (current < start)
                 current += mask;
         }
+        return freq.nanos(current - start);
     }
 
     initgraph::stage *available_stage()

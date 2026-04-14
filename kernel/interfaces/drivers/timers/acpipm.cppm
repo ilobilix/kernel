@@ -12,7 +12,7 @@ import cppstd;
 export namespace timers::acpipm
 {
     bool supported();
-    void calibrate(std::size_t ms);
+    std::size_t calibrate(std::size_t ms);
 
     initgraph::stage *available_stage();
 } // export namespace timers::acpipm

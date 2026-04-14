@@ -64,7 +64,7 @@ namespace cpu
             if (idx == 0)
                 log::info("cpu: initialising bsp: arch id: {}", aid);
             else
-                log::info("cpu: bringing up cpu {}: arch id: {}", idx, aid);
+                log::info("cpu: bringing up ap {}", idx, aid);
 
             const auto base = per::init();
             me.initialise_base(bases[idx] = base);

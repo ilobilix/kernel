@@ -137,11 +137,11 @@ namespace x86_64::apic
             for (std::size_t i = 0; i < times; i++)
             {
                 write(reg::tic, 0xFFFFFFFF);
-                calibrator(millis);
+                const auto slept_for = calibrator(millis);
                 const auto count = read(reg::tcc);
                 write(reg::tic, 0);
 
-                val += (0xFFFFFFFF - count) * (1'000 / millis);
+                val += ((0xFFFFFFFF - count) * 1'000'000'000) / slept_for;
             }
             val /= times;
         }

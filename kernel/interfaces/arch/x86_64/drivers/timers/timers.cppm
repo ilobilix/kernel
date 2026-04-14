@@ -14,5 +14,5 @@ import cppstd;
 export namespace timers::arch
 {
     using namespace x86_64::timers;
-    auto calibrator() -> void (*)(std::size_t ms);
+    auto calibrator() -> std::size_t (*)(std::size_t ms);
 } // export namespace timers::arch
