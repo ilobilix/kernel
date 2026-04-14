@@ -71,6 +71,7 @@ sched_return_to_user:
     push 0x2B # cs
     push rdi # rip
 
+    cli
     swapgs
     iretq
 .global sched_return_to_user
