@@ -47,18 +47,6 @@ export namespace pci
         virtual ~configio() { }
     };
 
-    struct bar
-    {
-        std::uintptr_t virt, phys;
-        std::size_t size;
-        bool prefetch, bits64;
-
-        enum class type { invalid, io, mem };
-        type type;
-
-        std::uintptr_t map();
-    };
-
     struct device;
     struct bridge;
     struct bus;
@@ -84,7 +72,13 @@ export namespace pci
             std::uint8_t flags;
         };
 
-        virtual std::unique_ptr<router> downstream(std::shared_ptr<bus> &bus) = 0;
+        std::shared_ptr<router> parent;
+        std::shared_ptr<bus> mybus;
+
+        router(std::shared_ptr<router> parent, std::shared_ptr<bus> mybus)
+            : parent { parent }, mybus { mybus } { }
+
+        virtual std::shared_ptr<router> downstream(std::shared_ptr<bus> &bus) = 0;
         auto resolve(std::int32_t dev, std::uint8_t pin, std::int32_t func = -1) -> entry *;
 
         virtual ~router() { }
@@ -102,7 +96,7 @@ export namespace pci
 
         std::shared_ptr<configio> io;
         std::shared_ptr<bridge> bridge;
-        std::unique_ptr<router> router;
+        std::shared_ptr<router> router;
 
         std::vector<std::shared_ptr<device>> devices { };
         std::vector<std::shared_ptr<pci::bridge>> bridges { };
@@ -132,6 +126,18 @@ export namespace pci
         {
             write<lib::bits2uint_t<N>>(dev, func, offset, value);
         }
+    };
+
+    struct bar
+    {
+        std::uintptr_t virt, phys;
+        std::size_t size;
+        bool prefetch, bits64;
+
+        enum class type { invalid, io, mem };
+        type type;
+
+        std::uintptr_t map();
     };
 
     struct entity
@@ -171,6 +177,8 @@ export namespace pci
             write<lib::bits2uint_t<N>>(offset, value);
         }
 
+        void read_bars(std::size_t nbars);
+
         virtual std::span<bar> get_bars() = 0;
         virtual ~entity() { }
     };
@@ -183,7 +191,7 @@ export namespace pci
         std::array<bar, 2> bars;
 
         bridge(std::shared_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
-            : entity { bus, dev, func } { }
+            : entity { bus, dev, func } { read_bars(2); }
 
         std::span<bar> get_bars() override { return bars; }
     };
@@ -201,7 +209,7 @@ export namespace pci
         } irq;
 
         device(std::shared_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
-            : entity { bus, dev, func } { }
+            : entity { bus, dev, func } { read_bars(6); }
 
         std::span<bar> get_bars() override { return bars; }
     };

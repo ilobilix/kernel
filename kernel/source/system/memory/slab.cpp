@@ -9,8 +9,10 @@ import std;
 
 namespace slab
 {
-    struct vallocator
+    struct policy
     {
+        static inline constexpr std::size_t page_size = pmm::page_size;
+
         std::uintptr_t map(std::size_t length)
         {
             return lib::tohh(pmm::alloc<std::uintptr_t>(lib::div_roundup(length, pmm::page_size)));
@@ -22,9 +24,9 @@ namespace slab
         }
     };
 
-    constinit vallocator virt_alloc;
-    constinit frg::manual_box<frg::slab_pool<vallocator, lib::spinlock>> pool;
-    constinit frg::manual_box<frg::slab_allocator<vallocator, lib::spinlock>> kalloc;
+    constinit policy valloc;
+    constinit frg::manual_box<frg::slab_pool<policy, lib::spinlock<false>>> pool;
+    constinit frg::manual_box<frg::slab_allocator<policy, lib::spinlock<false>>> kalloc;
 
     void *alloc(std::size_t size)
     {
@@ -45,7 +47,7 @@ namespace slab
     {
         log::info("heap: initialising the slab allocator");
 
-        pool.initialize(virt_alloc);
+        pool.initialize(valloc);
         kalloc.initialize(pool.get());
     }
 } // namespace slab

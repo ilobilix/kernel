@@ -46,8 +46,7 @@ export namespace x86_64::idt
 
         void load() const
         {
-            asm volatile ("cli");
-            asm volatile ("lidt %0" :: "memory"(*this));
+            asm volatile ("cli; lidt %0" :: "memory"(*this));
         }
     };
 
@@ -59,7 +58,8 @@ export namespace x86_64::idt
 
     constexpr ptr invalid { 0, 0 };
 
-    std::optional<std::reference_wrapper<interrupts::handler>> handler_at(std::size_t cpuidx, std::uint8_t num);
+    [[nodiscard]]
+    auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>;
 
     void init();
     void init_on(cpu::processor *cpu);

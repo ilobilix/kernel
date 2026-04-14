@@ -2,6 +2,7 @@
 
 module system.memory.phys;
 
+import frigg;
 import boot;
 import lib;
 import std;
@@ -13,7 +14,7 @@ namespace pmm
         constexpr std::size_t available = 0;
         constexpr std::size_t used = 1;
 
-        constinit lib::spinlock lock;
+        constinit lib::spinlock<false> lock;
         constinit lib::bitmap bitmap;
         std::size_t index = 0;
 
@@ -63,7 +64,7 @@ namespace pmm
             if (ret == nullptr)
                 lib::panic("out of physical memory to allocate");
         }
-        std::memset(lib::tohh(ret), 0, count * page_size);
+        // std::memset(lib::tohh(ret), 0, count * page_size);
 
         mem.used += count * page_size;
         return ret;

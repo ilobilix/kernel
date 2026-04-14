@@ -55,7 +55,9 @@ namespace vmm
     auto pagemap::new_table() -> table *
     {
         static_assert(sizeof(pagemap::table) == pmm::page_size);
-        return pmm::alloc<table *>();
+        auto ptr = pmm::alloc<table *>();
+        std::memset(lib::tohh(ptr), 0, sizeof(table));
+        return ptr;
     }
 
     page_size pagemap::fixpsize(page_size psize)

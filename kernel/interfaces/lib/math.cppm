@@ -29,11 +29,9 @@ export namespace lib
 
     inline constexpr bool has_bits(std::unsigned_integral auto val, auto ...bits)
     {
-        constexpr auto has_bits_internal = [](auto val, std::size_t bit)
-        {
+        return ([](auto val, std::size_t bit) {
             return (val & (1ul << bit)) == (1ul << bit);
-        };
-        return (has_bits_internal(val, bits) && ...);
+        } (val, bits) && ...);
     }
 
     inline constexpr bool ishh(auto val)
@@ -89,6 +87,27 @@ export namespace lib
     inline constexpr auto log2(Type val)
     {
         return std::bit_width<Type>(val) - 1;
+    }
+
+    inline constexpr bool is_pow2(std::unsigned_integral auto num)
+    {
+        return !(num & (num - 1));
+    }
+
+    inline constexpr std::size_t next_pow2(std::size_t val)
+    {
+        val--;
+        val |= val >> 1;
+        val |= val >> 2;
+        val |= val >> 4;
+        val |= val >> 8;
+        val |= val >> 16;
+        return ++val;
+    }
+
+    inline constexpr std::size_t pre_pow2(std::size_t val)
+    {
+        return next_pow2(val) >> 1;
     }
 
     inline constexpr std::pair<std::uint64_t, std::uint64_t> freq2nspn(std::uint64_t freq)

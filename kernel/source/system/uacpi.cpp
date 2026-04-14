@@ -207,9 +207,9 @@ extern "C"
 
 #ifndef UACPI_SIZED_FREES
     void uacpi_kernel_free(void *mem) { std::free(mem); }
-    #else
+#else
     void uacpi_kernel_free(void *mem, uacpi_size) { std::free(mem); }
-    #endif
+#endif
 
 #ifndef UACPI_FORMATTED_LOGGING
     void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *str)
@@ -418,23 +418,23 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_spinlock()
     {
-        return reinterpret_cast<uacpi_handle>(new lib::spinlock);
+        return reinterpret_cast<uacpi_handle>(new lib::spinlock<true>);
     }
 
     void uacpi_kernel_free_spinlock(uacpi_handle handle)
     {
-        delete reinterpret_cast<lib::spinlock *>(handle);
+        delete reinterpret_cast<lib::spinlock<true> *>(handle);
     }
 
     uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle handle)
     {
-        reinterpret_cast<lib::spinlock *>(handle)->lock();
+        reinterpret_cast<lib::spinlock<true> *>(handle)->lock();
         return 0;
     }
 
     void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags)
     {
-        reinterpret_cast<lib::spinlock *>(handle)->unlock();
+        reinterpret_cast<lib::spinlock<true> *>(handle)->unlock();
     }
 
     // TODO
