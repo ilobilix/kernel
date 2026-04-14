@@ -37,117 +37,37 @@ extern "C"
         return UACPI_STATUS_OK;
     }
 
-    uacpi_status uacpi_kernel_raw_memory_read(uacpi_phys_addr address, uacpi_u8 byte_width, uacpi_u64 *out_value)
+    struct pci_dev
     {
-        auto *ptr = uacpi_kernel_map(address, byte_width);
-        switch (byte_width)
-        {
-            case 1:
-                *out_value = lib::mmio::in<8>(ptr);
-                break;
-            case 2:
-                *out_value = lib::mmio::in<16>(ptr);
-                break;
-            case 4:
-                *out_value = lib::mmio::in<32>(ptr);
-                break;
-            case 8:
-                *out_value = lib::mmio::in<64>(ptr);
-                break;
-            default:
-                std::unreachable();
-        }
-        uacpi_kernel_unmap(ptr, byte_width);
-        return UACPI_STATUS_OK;
-    }
+        std::shared_ptr<pci::configio> io;
+        uacpi_pci_address addr;
+    };
 
-    uacpi_status uacpi_kernel_raw_memory_write(uacpi_phys_addr address, uacpi_u8 byte_width, uacpi_u64 in_value)
+    uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
     {
-        auto *ptr = uacpi_kernel_map(address, byte_width);
-        switch (byte_width)
-        {
-            case 1:
-                lib::mmio::out<8>(ptr, in_value);
-                break;
-            case 2:
-                lib::mmio::out<16>(ptr, in_value);
-                break;
-            case 4:
-                lib::mmio::out<32>(ptr, in_value);
-                break;
-            case 8:
-                lib::mmio::out<64>(ptr, in_value);
-                break;
-            default:
-                std::unreachable();
-        }
-        uacpi_kernel_unmap(ptr, byte_width);
-        return UACPI_STATUS_OK;
-    }
-
-    uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64 *out_value)
-    {
-        if constexpr (lib::io::supported)
-        {
-            switch (byte_width)
-            {
-                case 1:
-                    *out_value = lib::io::in<8>(address);
-                    break;
-                case 2:
-                    *out_value = lib::io::in<16>(address);
-                    break;
-                case 4:
-                    *out_value = lib::io::in<32>(address);
-                    break;
-                default:
-                    std::unreachable();
-            }
-            return UACPI_STATUS_OK;
-        }
-        return UACPI_STATUS_UNIMPLEMENTED;
-    }
-
-    uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64 in_value)
-    {
-        if constexpr (lib::io::supported)
-        {
-            switch (byte_width)
-            {
-                case 1:
-                    lib::io::out<8>(address, in_value);
-                    break;
-                case 2:
-                    lib::io::out<16>(address, in_value);
-                    break;
-                case 4:
-                    lib::io::out<32>(address, in_value);
-                    break;
-                default:
-                    std::unreachable();
-            }
-            return UACPI_STATUS_OK;
-        }
-        return UACPI_STATUS_UNIMPLEMENTED;
-    }
-
-    uacpi_status uacpi_kernel_pci_read(uacpi_pci_address *address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 *value)
-    {
-        auto io = pci::getio(address->segment, address->bus);
+        auto io = pci::getio(address.segment, address.bus);
         if (!io) [[unlikely]]
-            return UACPI_STATUS_INTERNAL_ERROR;
+            return UACPI_STATUS_INVALID_ARGUMENT;
 
-        *value = io->read(address->segment, address->bus, address->device, address->function, offset, byte_width);
+        *out_handle = new pci_dev { io, address };
         return UACPI_STATUS_OK;
     }
 
-    uacpi_status uacpi_kernel_pci_write(uacpi_pci_address *address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
+    void uacpi_kernel_pci_device_close(uacpi_handle handle)
     {
-        auto io = pci::getio(address->segment, address->bus);
-        if (!io) [[unlikely]]
-            return UACPI_STATUS_INTERNAL_ERROR;
+        delete reinterpret_cast<pci_dev *>(handle);
+    }
 
-        io->write(address->segment, address->bus, address->device, address->function, offset, value, byte_width);
+    uacpi_status uacpi_kernel_pci_read(uacpi_handle device, uacpi_size offset,uacpi_u8 byte_width, uacpi_u64 *value)
+    {
+        auto dev = reinterpret_cast<pci_dev *>(device);
+        *value = dev->io->read(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, byte_width);
+        return UACPI_STATUS_OK;
+    }
+    uacpi_status uacpi_kernel_pci_write(uacpi_handle device, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
+    {
+        auto dev = reinterpret_cast<pci_dev *>(device);
+        dev->io->write(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, value, byte_width);
         return UACPI_STATUS_OK;
     }
 
@@ -156,16 +76,55 @@ extern "C"
         *out_handle = reinterpret_cast<uacpi_handle>(base);
         return UACPI_STATUS_OK;
     }
+
     void uacpi_kernel_io_unmap(uacpi_handle) { }
 
     uacpi_status uacpi_kernel_io_read(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 *value)
     {
-        return uacpi_kernel_raw_io_read(reinterpret_cast<uacpi_io_addr>(handle) + offset, byte_width, value);
+        if constexpr (lib::io::supported)
+        {
+            auto address = reinterpret_cast<std::size_t>(handle) + offset;
+            switch (byte_width)
+            {
+                case sizeof(std::uint8_t):
+                    *value = lib::io::in<8>(address);
+                    break;
+                case sizeof(std::uint16_t):
+                    *value = lib::io::in<16>(address);
+                    break;
+                case sizeof(std::uint32_t):
+                    *value = lib::io::in<32>(address);
+                    break;
+                default:
+                    std::unreachable();
+            }
+            return UACPI_STATUS_OK;
+        }
+        return UACPI_STATUS_UNIMPLEMENTED;
     }
 
     uacpi_status uacpi_kernel_io_write(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
     {
-        return uacpi_kernel_raw_io_write(reinterpret_cast<uacpi_io_addr>(handle) + offset, byte_width, value);
+        if constexpr (lib::io::supported)
+        {
+            auto address = reinterpret_cast<std::size_t>(handle) + offset;
+            switch (byte_width)
+            {
+                case sizeof(std::uint8_t):
+                    lib::io::out<8>(address, value);
+                    break;
+                case sizeof(std::uint16_t):
+                    lib::io::out<16>(address, value);
+                    break;
+                case sizeof(std::uint32_t):
+                    lib::io::out<32>(address, value);
+                    break;
+                default:
+                    std::unreachable();
+            }
+            return UACPI_STATUS_OK;
+        }
+        return UACPI_STATUS_UNIMPLEMENTED;
     }
 
     void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size len)
@@ -203,7 +162,10 @@ extern "C"
     }
 
     void *uacpi_kernel_alloc(uacpi_size size) { return std::malloc(size); }
-    void *uacpi_kernel_calloc(uacpi_size count, uacpi_size size) { return std::calloc(count, size); }
+
+#ifdef UACPI_NATIVE_ALLOC_ZEROED
+    void *uacpi_kernel_alloc_zeroed(uacpi_size size) { return std::calloc(1, size); }
+#endif
 
 #ifndef UACPI_SIZED_FREES
     void uacpi_kernel_free(void *mem) { std::free(mem); }
