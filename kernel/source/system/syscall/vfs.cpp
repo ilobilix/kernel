@@ -82,11 +82,11 @@ namespace syscall::vfs
             if (!parent.has_value())
                 return std::nullopt;
 
-            const auto res = vfs::resolve(parent, path);
+            auto res = resolve(parent, path);
             if (!res)
                 return (errno = map_error(res.error()), std::nullopt);
 
-            return res.value();
+            return std::move(res.value());
         }
 
         std::optional<lib::path> get_path(const char __user *pathname)
@@ -94,12 +94,12 @@ namespace syscall::vfs
             if (pathname == nullptr)
                 return (errno = EFAULT, std::nullopt);
 
-            const auto pathname_len = lib::strnlen_user(pathname, vfs::path_max);
+            const auto pathname_len = lib::strnlen_user(pathname, path_max);
             if (pathname_len < 0)
                 return (errno = EFAULT, std::nullopt);
             if (pathname_len == 0)
                 return (errno = EINVAL, std::nullopt);
-            if (pathname_len == vfs::path_max)
+            if (pathname_len == path_max)
                 return (errno = ENAMETOOLONG, std::nullopt);
 
             lib::path path { static_cast<std::size_t>(pathname_len), 0 };
@@ -112,7 +112,7 @@ namespace syscall::vfs
             return std::move(path);
         }
 
-        std::optional<vfs::path> get_target(sched::process *proc, int dirfd, const char __user *pathname, bool follow_links, bool empty_path)
+        std::optional<path> get_target(sched::process *proc, int dirfd, const char __user *pathname, bool follow_links, bool empty_path)
         {
             if (empty_path)
             {
@@ -130,22 +130,19 @@ namespace syscall::vfs
             if (!val.has_value())
                 return std::nullopt;
 
-            const auto path = val.value();
-
-            vfs::path target { };
-            const auto res = resolve_from(proc, dirfd, path);
+            auto res = resolve_from(proc, dirfd, val.value());
             if (!res.has_value())
                 return std::nullopt;
 
-            target = res->target;
+            auto target = std::move(res->target);
             lib::bug_on(!target.dentry || !target.dentry->inode);
 
             if (follow_links)
             {
-                const auto reduced = vfs::reduce(res->parent, target);
+                auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
                     return (errno = map_error(reduced.error()), std::nullopt);
-                target = reduced.value();
+                target = std::move(reduced.value());
             }
             return target;
         }
@@ -172,23 +169,23 @@ namespace syscall::vfs
         if (!val.has_value())
             return -1;
 
-        const auto path = val.value();
+        const auto pathstr = val.value();
 
-        vfs::path target { };
-        const auto res = resolve_from(proc, dirfd, path);
+        path target { };
+        auto res = resolve_from(proc, dirfd, pathstr);
         if (!res.has_value())
         {
             if ((flags & o_creat) == 0)
                 return -1;
 
-            const auto parent = resolve_from(proc, dirfd, path.dirname());
+            const auto parent = resolve_from(proc, dirfd, pathstr.dirname());
             if (!parent.has_value())
                 return -1;
 
             if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
                 return (errno = ENOTDIR, -1);
 
-            const auto created = vfs::create(parent->target, path.basename(), (mode & ~proc->umask));
+            auto created = create(parent->target, pathstr.basename(), (mode & ~proc->umask));
             if (!created.has_value())
                 return (errno = map_error(created.error()), -1);
 
@@ -203,7 +200,7 @@ namespace syscall::vfs
             else
                 stat.st_gid = proc->egid;
 
-            target = created.value();
+            target = std::move(created.value());
         }
         else if ((flags & o_excl) && (flags & o_creat))
         {
@@ -212,15 +209,15 @@ namespace syscall::vfs
         }
         else
         {
-            target = res->target;
+            target = std::move(res->target);
             lib::bug_on(!target.dentry || !target.dentry->inode);
 
             if (follow_links)
             {
-                const auto reduced = vfs::reduce(res->parent, target);
+                auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
                     return (errno = map_error(reduced.error()), -1);
-                target = reduced.value();
+                target = std::move(reduced.value());
             }
         }
 
@@ -664,7 +661,7 @@ namespace syscall::vfs
             return (errno = EINVAL, -1);
 
         const auto supgids = proc->supplementary_gids.read_lock();
-        if (!vfs::check_access(uid, gid, *supgids, target->dentry->inode->stat, mode))
+        if (!check_access(uid, gid, *supgids, target->dentry->inode->stat, mode))
             return (errno = EACCES, -1);
 
         return 0;
@@ -752,7 +749,7 @@ namespace syscall::vfs
     {
         const auto proc = sched::this_thread()->parent;
 
-        const auto path_str = vfs::pathname_from(proc->cwd);
+        const auto path_str = pathname_from(proc->cwd);
         if (path_str.size() + 1 > size)
             return (errno = ERANGE, nullptr);
 
@@ -769,14 +766,14 @@ namespace syscall::vfs
         if (flags & ~(o_closexec | o_direct | o_nonblock))
             return (errno = EINVAL, -1);
 
-        const auto inode = std::make_shared<vfs::inode>(pipe::get_ops());
+        auto shared_inode = std::make_shared<inode>(pipe::get_ops());
         {
-            inode->stat.st_blksize = 0x1000;
-            inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
-            inode->stat.st_uid = proc->euid;
-            inode->stat.st_gid = proc->egid;
+            shared_inode->stat.st_blksize = 0x1000;
+            shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
+            shared_inode->stat.st_uid = proc->euid;
+            shared_inode->stat.st_gid = proc->egid;
 
-            inode->stat.update_time(
+            shared_inode->stat.update_time(
                 stat::time::access |
                 stat::time::modify |
                 stat::time::status
@@ -785,9 +782,9 @@ namespace syscall::vfs
 
         std::array<int, 2> fds;
 
-        const auto rdentry = std::make_shared<vfs::dentry>();
+        const auto rdentry = std::make_shared<dentry>();
         rdentry->name = "<[PIPE READ]>";
-        rdentry->inode = inode;
+        rdentry->inode = shared_inode;
 
         const auto rfdesc = filedesc::create({
             .dentry = rdentry,
@@ -806,9 +803,9 @@ namespace syscall::vfs
             return (errno = EIO, -1);
         }
 
-        const auto wdentry = std::make_shared<vfs::dentry>();
+        const auto wdentry = std::make_shared<dentry>();
         wdentry->name = "<[PIPE WRITE]>";
-        wdentry->inode = inode;
+        wdentry->inode = std::move(shared_inode);
 
         const auto wfdesc = filedesc::create({
             .dentry = wdentry,
