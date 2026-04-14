@@ -3,7 +3,6 @@
 export module system.memory.virt;
 export import :pagemap;
 
-import magic_enum;
 import cppstd;
 import lib;
 
@@ -24,7 +23,9 @@ export namespace vmm
         shared = 0x01,
         private_ = 0x02,
         fixed = 0x10,
-        anonymous = 0x20
+        anonymous = 0x20,
+
+        cow = 0x40
     };
 
     class object
@@ -36,26 +37,27 @@ export namespace vmm
         > pages;
 
         private:
-        virtual std::uintptr_t get_page_internal(std::size_t idx) = 0;
-        // TODO: sync
+        virtual std::uintptr_t request_page(std::size_t idx) = 0;
+        virtual void write_back() = 0;
 
         public:
         object() = default;
         virtual ~object() { };
 
         std::uintptr_t get_page(std::size_t idx);
+
         std::size_t read(std::uint64_t offset, std::span<std::byte> buffer);
         std::size_t write(std::uint64_t offset, std::span<std::byte> buffer);
-
     };
 
-    class physobject : public object
+    class memobject : public object
     {
         private:
-        std::uintptr_t get_page_internal(std::size_t idx) override;
+        std::uintptr_t request_page(std::size_t idx) override;
+        void write_back() override;
 
         public:
-        ~physobject();
+        ~memobject();
     };
 
     struct mapping
@@ -93,12 +95,6 @@ export namespace vmm
     };
 
     bool handle_pfault(std::uintptr_t addr, bool on_write);
-
-    using magic_enum::bitwise_operators::operator~;
-    using magic_enum::bitwise_operators::operator&;
-    using magic_enum::bitwise_operators::operator&=;
-    using magic_enum::bitwise_operators::operator|;
-    using magic_enum::bitwise_operators::operator|=;
 
     enum class space_type : std::size_t
     {

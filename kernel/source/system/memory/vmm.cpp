@@ -17,7 +17,7 @@ namespace vmm
         if (const auto page = locked->find(idx); page != locked->end())
             return page->second;
 
-        if (const auto page = get_page_internal(idx))
+        if (const auto page = request_page(idx))
         {
             locked->insert({ idx, page });
             return page;
@@ -68,7 +68,7 @@ namespace vmm
                 break;
 
             std::memcpy(
-                reinterpret_cast<void *>(lib::tohh(page) + misalign),
+                reinterpret_cast<void *>(page + misalign),
                 buffer.subspan(progress, csize).data(),
                 csize
             );
@@ -77,13 +77,15 @@ namespace vmm
         return progress;
     }
 
-    std::uintptr_t physobject::get_page_internal(std::size_t idx)
+    std::uintptr_t memobject::request_page(std::size_t idx)
     {
         lib::unused(idx);
         return pmm::alloc<std::uintptr_t>();
     }
 
-    physobject::~physobject()
+    void memobject::write_back() { }
+
+    memobject::~memobject()
     {
         for (const auto &[idx, page] : *pages.lock())
             pmm::free(page);
@@ -101,8 +103,8 @@ namespace vmm
         if (address % psize)
             return std::unexpected { error::addr_not_aligned };
 
-        const auto startp = lib::align_down(address, psize);
-        const auto endp = lib::align_up(address + length, psize);
+        const auto startp = lib::div_rounddown(address, psize);
+        const auto endp = lib::div_roundup(address + length, psize);
 
         const auto locked = tree.write_lock();
 
@@ -190,16 +192,66 @@ namespace vmm
 
         const auto page = addr / psize;
 
-        const auto overlapping = std::ranges::to<std::vector<mapping>>(
-            std::views::filter(*vmspace->tree.read_lock(), [page](const auto &entry) {
-                return entry.startp <= page && page < entry.endp;
-            })
-        );
-
-        if (!overlapping.empty())
+        std::shared_ptr<object> obj { };
+        std::size_t pidx = 0;
+        auto pflags = pflag::none;
         {
-            lib::unused(on_write);
-            // TODO
+            const auto wlocked = vmspace->tree.write_lock();
+            const auto it = std::ranges::find_if(*wlocked, [page](const auto &entry) {
+                return entry.startp <= page && page < entry.endp;
+            });
+
+            if (it != wlocked->end())
+            {
+                auto &entry = *it;
+
+                if (on_write && (entry.flags & flag::cow))
+                {
+                    if (entry.obj.use_count() > 1)
+                    {
+                        obj.reset(new memobject { });
+                        for (std::size_t i = 0; i < entry.endp - entry.startp; i++)
+                        {
+                            lib::membuffer buf { psize };
+                            const std::size_t offset = i * psize + entry.offset;
+
+                            entry.obj->read(offset, buf.span());
+                            obj->write(offset, buf.span());
+                        }
+                        lib::bug_on(!vmspace->map(
+                            entry.startp * psize,
+                            (entry.endp - entry.startp) * psize,
+                            entry.prot, entry.flags & ~flag::cow,
+                            obj, entry.offset
+                        ));
+                        goto exit;
+                    }
+                    entry.flags &= ~flag::cow;
+                }
+                obj = entry.obj;
+
+                exit:
+                pidx = (page - entry.startp) + entry.offset * psize;
+                pflags = [prot = entry.prot] {
+                    auto ret = pflag::none;
+                    if (prot & prot::read)
+                        ret |= pflag::read;
+                    if (prot & prot::write)
+                        ret |= pflag::write;
+                    if (prot & prot::exec)
+                        ret |= pflag::exec;
+                    return ret;
+                } ();
+            }
+
+            if (obj != nullptr)
+            {
+                if (const auto pg = obj->get_page(pidx))
+                {
+                    if (vmspace->pmap->map(page * psize, pg, psize, pflags))
+                        return true;
+                }
+            }
         }
 
         return false;

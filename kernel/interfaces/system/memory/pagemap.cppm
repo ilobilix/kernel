@@ -2,6 +2,7 @@
 
 export module system.memory.virt:pagemap;
 
+import magic_enum;
 import frigg;
 import lib;
 import cppstd;
@@ -55,9 +56,14 @@ export namespace vmm
     {
         addr_not_aligned,
         not_mapped,
-        already_mapped,
         invalid_entry
     };
+
+    using magic_enum::bitwise_operators::operator~;
+    using magic_enum::bitwise_operators::operator&;
+    using magic_enum::bitwise_operators::operator&=;
+    using magic_enum::bitwise_operators::operator|;
+    using magic_enum::bitwise_operators::operator|=;
 
     class pagemap
     {

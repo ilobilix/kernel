@@ -352,6 +352,7 @@ target("initramfs")
     end)
 
     on_clean(function (target)
+        os.tryrm(initramfs_dir())
         os.tryrm(path.join(target:targetdir(), "initramfs.tar"))
     end)
 
