@@ -38,7 +38,7 @@ namespace x86_64::gdt
     void init_on(cpu::processor *cpu)
     {
         if (cpu->idx == cpu::bsp_idx)
-            log::info("gdt: loading on BSP");
+            log::info("gdt: loading on bsp");
 
         auto &gdt = cpu->arch.gdt;
         auto &tss = cpu->arch.tss;

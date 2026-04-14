@@ -19,7 +19,7 @@ namespace x86_64::timers::tsc
             std::uint32_t a, b, c, d;
             // auto tsc = cpu::id(0x01, 0, a, b, c, d) && (d & (1 << 4));
             auto invariant = cpu::id(0x80000007, 0, a, b, c, d) && (d & (1 << 8));
-            log::info("tsc: invariant TSC supported: {}", invariant);
+            log::info("tsc: is invariant: {}", invariant);
             return invariant;
         } ();
         return cached;

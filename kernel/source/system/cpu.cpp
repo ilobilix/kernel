@@ -47,7 +47,7 @@ namespace cpu
             if (aid != bsp_aid)
                 continue;
 
-            log::info("cpu: {} {}: arch id: {}", "initialising BSP", i, aid);
+            log::info("cpu: {} {}: arch id: {}", "initialising bsp", i, aid);
 
             auto &proc = processors[i];
             proc.self = &proc;

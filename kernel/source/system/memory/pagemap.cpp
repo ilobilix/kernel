@@ -1,5 +1,9 @@
 // Copyright (C) 2024-2025  ilobilo
 
+module;
+
+#include <elf.h>
+
 module system.memory.virt;
 
 import system.memory.phys;
@@ -140,7 +144,7 @@ namespace vmm
                 const auto memmap = memmaps[i];
                 const auto type = static_cast<boot::memmap>(memmap->type);
 
-                if (type != boot::memmap::usable && type != boot::memmap::bootloader_reclaimable &&
+                if (type != boot::memmap::usable && type != boot::memmap::bootloader &&
                     type != boot::memmap::kernel_and_modules && type != boot::memmap::framebuffer)
                     continue;
 
@@ -157,24 +161,47 @@ namespace vmm
                 const auto vaddr = lib::tohh(base);
                 const auto len = end - base;
 
-                log::debug("vmm: -  type: {}, size: {} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
+                log::debug("vmm: -  type: {}, size: 0x{:X} bytes, 0x{:X} -> 0x{:X}", magic_enum::enum_name(type), len, vaddr, base);
 
                 if (!kernel_pagemap->map(vaddr, base, len, flag::rw, psize, cache))
                     lib::panic("could not map virtual memory");
             }
         }
         {
-            static constexpr auto flags = flag::rwx;
             static constexpr auto psize = page_size::small;
             static constexpr auto cache = caching::normal;
 
             const auto kernel_file = boot::requests::kernel_file.response->executable_file;
             const auto kernel_addr = boot::requests::kernel_address.response;
 
-            log::debug("vmm: - kernel binary: size: {} bytes, 0x{:X} -> 0x{:X}", kernel_file->size, kernel_addr->virtual_base, kernel_addr->physical_base);
+            const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
+            auto phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff);
 
-            if (!kernel_pagemap->map(kernel_addr->virtual_base, kernel_addr->physical_base, kernel_file->size, flags, psize, cache))
-                lib::panic("could not map virtual memory");
+            log::debug("vmm: - kernel binary");
+
+            for (std::size_t i = 0; i < ehdr->e_phnum; i++)
+            {
+                if (phdr->p_type == PT_LOAD)
+                {
+                    const std::uintptr_t paddr = phdr->p_vaddr - kernel_addr->virtual_base + kernel_addr->physical_base;
+                    const std::uintptr_t vaddr = phdr->p_vaddr;
+                    const auto size = phdr->p_memsz;
+
+                    auto flags = flag::none;
+                    if (phdr->p_flags & PF_R)
+                        flags |= flag::read;
+                    if (phdr->p_flags & PF_W)
+                        flags |= flag::write;
+                    if (phdr->p_flags & PF_X)
+                        flags |= flag::exec;
+
+                    log::debug("vmm: -  phdr: size: 0x{:X} bytes, flags: 0b{:b}, 0x{:X} -> 0x{:X}", size, static_cast<std::uint8_t>(flags), paddr, vaddr);
+
+                    if (!kernel_pagemap->map(vaddr, paddr, size, flags, psize, cache))
+                        lib::panic("could not map virtual memory");
+                }
+                phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize);
+            }
         }
 
         log::debug("vmm: loading the pagemap");

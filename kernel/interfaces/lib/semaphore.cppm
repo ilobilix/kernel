@@ -30,6 +30,6 @@ export namespace lib
 
         void wait();
         bool wait_for(std::size_t ms);
-        void signal(std::size_t n = 1);
+        void signal(std::size_t n = 1, bool drop = false);
     };
 } // export namespace lib

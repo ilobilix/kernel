@@ -3,7 +3,68 @@
 #include <uacpi/kernel_api.h>
 
 import ilobilix;
+import magic_enum;
 import std;
+
+namespace uacpi
+{
+    namespace
+    {
+        using queue_type = std::deque<std::pair<uacpi_work_handler, uacpi_handle>>;
+        queue_type notify { };
+        queue_type gpe { };
+
+        std::atomic_size_t workers { 0 };
+        lib::semaphore semaphore { };
+        lib::spinlock<false> lock;
+    } // namespace
+
+    void worker_caller(queue_type *queue)
+    {
+        while (true)
+        {
+            while (queue->empty())
+                sched::yield();
+
+            lock.lock();
+            auto [handler, handle] = queue->pop_front_element();
+            lock.unlock();
+
+            handler(handle);
+
+            workers.fetch_sub(1, std::memory_order_acq_rel);
+            semaphore.signal(0, true);
+        }
+    }
+
+    void notify_worker()
+    {
+        worker_caller(&notify);
+        arch::halt(true);
+    }
+
+    void gpe_worker()
+    {
+        worker_caller(&gpe);
+        arch::halt(true);
+    }
+
+    void init_workers()
+    {
+        auto notify_thread = sched::thread::create(
+            boot::pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
+        );
+        auto gpe_thread = sched::thread::create(
+            boot::pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
+        );
+
+        notify_thread->status = sched::status::ready;
+        gpe_thread->status = sched::status::ready;
+
+        sched::enqueue(notify_thread, cpu::self()->idx);
+        sched::enqueue(gpe_thread, cpu::self()->idx);
+    }
+} // namespace uacpi
 
 extern "C"
 {
@@ -310,6 +371,7 @@ extern "C"
     {
         delete reinterpret_cast<lib::mutex *>(handle);
     }
+
     struct simple_event
     {
         std::atomic<size_t> counter;
@@ -342,7 +404,11 @@ extern "C"
     uacpi_thread_id uacpi_kernel_get_thread_id()
     {
         if (sched::initialised)
-            return reinterpret_cast<uacpi_thread_id>(cpu::self()->sched.running_thread->tid);
+        {
+            auto thread = cpu::self()->sched.running_thread;
+            auto proc = thread->proc.lock();
+            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, proc->pid));
+        }
 
         return reinterpret_cast<uacpi_thread_id>(1);
     }
@@ -474,21 +540,31 @@ extern "C"
         reinterpret_cast<lib::spinlock<true> *>(handle)->unlock();
     }
 
-    // TODO
-    /*
-    * Schedules deferred work for execution.
-    * Might be invoked from an interrupt context.
-    */
-    uacpi_status uacpi_kernel_schedule_work(
-        uacpi_work_type, uacpi_work_handler, uacpi_handle
-    ) { return UACPI_STATUS_UNIMPLEMENTED; }
+    uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx)
+    {
+        const std::unique_lock _ { uacpi::lock };
+        log::debug("uacpi: scheduling work of type {}", magic_enum::enum_name(type));
+        switch (type)
+        {
+            case UACPI_WORK_GPE_EXECUTION:
+                uacpi::gpe.emplace_back(handler, ctx);
+                uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
+                break;
+            case UACPI_WORK_NOTIFICATION:
+                uacpi::notify.emplace_back(handler, ctx);
+                uacpi::workers.fetch_add(1, std::memory_order_acq_rel);
+                break;
+            default:
+                return UACPI_STATUS_INVALID_ARGUMENT;
+        }
+        return UACPI_STATUS_OK;
+    }
 
-    // TODO
-    /*
-    * Blocks until all scheduled work is complete and the work queue becomes empty.
-    */
     uacpi_status uacpi_kernel_wait_for_work_completion()
     {
-        return UACPI_STATUS_UNIMPLEMENTED;
+        while (uacpi::workers.load(std::memory_order_acquire))
+            uacpi::semaphore.wait();
+
+        return UACPI_STATUS_OK;
     }
 } // extern "C"
