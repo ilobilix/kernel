@@ -78,7 +78,7 @@ namespace syscall::memory
         );
 
         if (!ret.has_value())
-            return (errno = ENOMEM, invalid_addr);
+            return (errno = lib::map_error(ret.error()), invalid_addr);
 
         return reinterpret_cast<void *>(ret.value());
     }
@@ -89,7 +89,7 @@ namespace syscall::memory
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->unmap(reinterpret_cast<std::uintptr_t>(addr), length);
-        return res ? 0 : (errno = EINVAL, -1);
+        return res ? 0 : (errno = lib::map_error(res.error()), -1);
     }
 
     int mprotect(void *addr, std::size_t len, int prot)
@@ -102,7 +102,7 @@ namespace syscall::memory
             static_cast<std::uint8_t>(prot)
         );
 
-        return res ? 0 : (errno = ENOMEM, -1);
+        return res ? 0 : (errno = lib::map_error(res.error()), -1);
     }
 
     void *brk(void *addr)
