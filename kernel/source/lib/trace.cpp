@@ -49,7 +49,7 @@ namespace lib
         if (ip != 0)
             print(ip);
 
-        for (std::size_t i = 0; i < 10; i++)
+        for (std::size_t i = 0; i < 20; i++)
         {
             if (!frame || !frame->ip)
                 break;

@@ -51,18 +51,19 @@ namespace uacpi
 
     void init_workers()
     {
+        auto pid0 = sched::proc_for(0);
         auto notify_thread = sched::thread::create(
-            boot::pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
+            pid0, reinterpret_cast<std::uintptr_t>(notify_worker)
         );
         auto gpe_thread = sched::thread::create(
-            boot::pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
+            pid0, reinterpret_cast<std::uintptr_t>(gpe_worker)
         );
 
         notify_thread->status = sched::status::ready;
         gpe_thread->status = sched::status::ready;
 
-        sched::enqueue(notify_thread, cpu::self()->idx);
-        sched::enqueue(gpe_thread, cpu::self()->idx);
+        sched::enqueue(notify_thread, sched::allocate_cpu());
+        sched::enqueue(gpe_thread, sched::allocate_cpu());
     }
 } // namespace uacpi
 
@@ -405,8 +406,8 @@ extern "C"
     {
         if (sched::initialised)
         {
-            auto thread = sched::percpu->running_thread;
-            auto proc = thread->proc.lock();
+            const auto &thread = sched::percpu->running_thread;
+            const auto &proc = sched::proc_for(thread->pid);
             return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, proc->pid));
         }
 

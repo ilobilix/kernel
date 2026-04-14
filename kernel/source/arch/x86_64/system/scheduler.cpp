@@ -33,7 +33,7 @@ namespace sched::arch
             x86_64::apic::arm(ms * 1'000'000, 0xFF);
     }
 
-    void finalise(std::shared_ptr<thread> thread, std::uintptr_t ip)
+    void finalise(std::shared_ptr<thread> &thread, std::uintptr_t ip)
     {
         auto &fpu = cpu::features::fpu;
 
@@ -72,14 +72,14 @@ namespace sched::arch
         }
     }
 
-    void deinitialise(std::shared_ptr<thread> thread)
+    void deinitialise(std::shared_ptr<thread> &thread)
     {
         auto &fpu = cpu::features::fpu;
         auto pages = lib::div_roundup(fpu.size, pmm::page_size);
         pmm::free(lib::fromhh(thread->fpu), pages);
     }
 
-    void save(std::shared_ptr<thread> thread)
+    void save(std::shared_ptr<thread> &thread)
     {
         if (thread->is_user)
         {
@@ -89,7 +89,7 @@ namespace sched::arch
         }
     }
 
-    void load(std::shared_ptr<thread> thread)
+    void load(std::shared_ptr<thread> &thread)
     {
         x86_64::gdt::tss::self().ist[0] = thread->pfstack_top;
 
