@@ -2,7 +2,7 @@
 
 module arch;
 
-import system.scheduler;
+import system.sched;
 import drivers.timers;
 import drivers.output;
 import system.cpu;

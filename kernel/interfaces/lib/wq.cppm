@@ -2,7 +2,7 @@
 
 export module lib:wq;
 
-import system.scheduler.base;
+import system.sched.thread_base;
 import std;
 
 import :spinlock;
@@ -14,12 +14,12 @@ export namespace lib
     struct wait_queue_entry
     {
         lib::intrusive_list_hook<wait_queue_entry> hook;
-        sched::thread_base *thread;
+        sched::thread_base_t *thread;
         wait_queue *queue;
 
         std::atomic_bool triggered;
 
-        wait_queue_entry(sched::thread_base *thread)
+        wait_queue_entry(sched::thread_base_t *thread)
             : thread { thread }, queue { nullptr }, triggered { false } { }
     };
 

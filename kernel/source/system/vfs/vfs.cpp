@@ -2,10 +2,11 @@
 
 module system.vfs;
 
-import system.scheduler;
 import system.cpu.local;
 import system.vfs.dev;
+import system.sched;
 import drivers.fs;
+import magic_enum;
 import lib;
 import std;
 
@@ -221,7 +222,11 @@ namespace vfs
     path get_root(bool absolute)
     {
         if (!absolute)
-            return sched::this_thread()->parent->vfs->root;
+        {
+            auto proc = sched::current_process();
+            if (proc->vfs) [[likely]]
+                return proc->vfs->root;
+        }
 
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
         while (!ret.dentry->child_mounts.empty())
@@ -259,7 +264,11 @@ namespace vfs
     std::shared_ptr<dentry> dentry::root(bool absolute)
     {
         if (!absolute)
-            return sched::this_thread()->parent->vfs->root.dentry;
+        {
+            auto proc = sched::current_process();
+            if (proc->vfs) [[likely]]
+                return proc->vfs->root.dentry;
+        }
         return vfs::root;
     }
 
@@ -299,7 +308,8 @@ namespace vfs
 
     auto path_for(lib::path _path) -> lib::expect<path>
     {
-        auto res = resolve(sched::this_thread()->parent->vfs->root, _path);
+        // hmmm is this correct?
+        auto res = resolve(std::nullopt, _path);
         if (!res)
             return std::unexpected { res.error() };
         return res->target;
@@ -644,63 +654,119 @@ namespace vfs
         return { };
     }
 
-    bool check_access(uid_t uid, gid_t gid, const std::span<const gid_t> &supgids, const ::stat &stat, int mode)
+    bool fdtable::close(int fd)
     {
-        if (mode == f_ok)
-            return true;
-
-        if (uid == 0)
-        {
-            if (!(mode & x_ok))
-                return true;
-
-            if (stat.type() == ::stat::s_ifdir)
-                return true;
-
-            return (stat.st_mode & (s_ixusr | s_ixgrp | s_ixoth)) != 0;
-        }
-
-        auto rbit = s_iroth;
-        auto wbit = s_iwoth;
-        auto xbit = s_ixoth;
-
-        if (uid == stat.st_uid)
-        {
-            rbit = s_irusr;
-            wbit = s_iwusr;
-            xbit = s_ixusr;
-        }
-        else
-        {
-            bool is_group = (gid == stat.st_gid);
-            if (!is_group)
-            {
-                for (const auto &supgid : supgids)
-                {
-                    if (supgid == stat.st_gid)
-                    {
-                        is_group = true;
-                        break;
-                    }
-                }
-            }
-
-            if (is_group)
-            {
-                rbit = s_irgrp;
-                wbit = s_iwgrp;
-                xbit = s_ixgrp;
-            }
-        }
-
-        if ((mode & r_ok) && !(stat.st_mode & rbit))
+        auto fdesc = get(fd);
+        if (!fdesc)
             return false;
-        if ((mode & w_ok) && !(stat.st_mode & wbit))
+
+        if (!fds.write_lock()->erase(fd))
             return false;
-        if ((mode & x_ok) && !(stat.st_mode & xbit))
-            return false;
+
+        if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+        {
+            if (const auto ret = fdesc->file->close(); !ret)
+                lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+        }
 
         return true;
+    }
+
+    std::shared_ptr<vfs::filedesc> fdtable::get(int fd)
+    {
+        const auto rlocked = fds.read_lock();
+        auto it = rlocked->find(fd);
+        if (it == rlocked->end())
+            return nullptr;
+        return it->second;
+    }
+
+    int fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force)
+    {
+        auto wlocked = fds.write_lock();
+        if (wlocked->contains(fd))
+        {
+            if (!force)
+            {
+                fd = next_fd++;
+                while (wlocked->contains(fd))
+                    fd++;
+                next_fd = fd + 1;
+            }
+            else lib::bug_on(!wlocked->erase(fd));
+        }
+        else if (fd >= next_fd)
+            next_fd = fd + 1;
+
+        wlocked.value()[fd] = std::move(desc);
+        return fd;
+    }
+
+    int fdtable::dup(int oldfd, int newfd, bool closexec, bool force)
+    {
+        if (oldfd < 0 || newfd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = get(oldfd);
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
+        const auto fd = alloc(std::move(newfdesc), newfd, force);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+        fdesc->file->ref.fetch_add(1);
+        return fd;
+    }
+
+    void fdtable::close_on_exec()
+    {
+        auto wlocked = fds.write_lock();
+        for (auto it = wlocked->begin(); it != wlocked->end(); )
+        {
+            if (it->second && it->second->closexec.load(std::memory_order_relaxed))
+            {
+                auto &fdesc = it->second;
+                if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+                {
+                    if (const auto ret = fdesc->file->close(); !ret)
+                        lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+                }
+                it = wlocked->erase(it);
+            }
+            else it++;
+        }
+    }
+
+    fdtable::fdtable(fdtable &other) : next_fd { other.next_fd }
+    {
+        auto orlocked = other.fds.read_lock();
+        auto wlocked = fds.write_lock();
+
+        for (const auto &[fd, old_desc] : *orlocked)
+        {
+            if (!old_desc)
+                continue;
+
+            old_desc->file->ref.fetch_add(1, std::memory_order_relaxed);
+            wlocked.value()[fd] = std::make_shared<vfs::filedesc>(
+                old_desc->file,
+                old_desc->closexec.load(std::memory_order_relaxed)
+            );
+        }
+    }
+
+    fdtable::~fdtable()
+    {
+        auto wlocked = fds.write_lock();
+        for (auto &[fd, fdesc] : *wlocked)
+        {
+            if (fdesc && fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+            {
+                if (const auto ret = fdesc->file->close(); !ret)
+                    lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+            }
+        }
+        wlocked->clear();
     }
 
     lib::initgraph::stage *root_mounted_stage()
@@ -721,9 +787,6 @@ namespace vfs
         lib::initgraph::entail { root_mounted_stage() },
         [] {
             lib::bug_on(!mount("", "/", "tmpfs", 0));
-
-            const auto pid0 = sched::get_pid0();
-            pid0->vfs->root = pid0->vfs->cwd = get_root(true);
         }
     };
 } // namespace vfs

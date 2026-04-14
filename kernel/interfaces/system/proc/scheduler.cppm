@@ -2,6 +2,8 @@
 
 export module system.sched;
 
+export import system.sched.thread_base;
+
 export import :cred;
 export import :perm;
 export import :nice;
@@ -24,11 +26,18 @@ namespace sched::arch
     thread_t *current_thread();
 
     void init_core(thread_t *initial);
-    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_kernel);
+    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline);
+
+    void arm_timer_ns(std::uint64_t ns);
 
     void context_switch(thread_t *prev, thread_t *next);
     [[noreturn]] void return_to_user(std::uintptr_t ip, std::uintptr_t stack);
 } // namespace sched::arch
+
+namespace sched
+{
+    bool running = false;
+} // namespace sched
 
 export namespace sched
 {
@@ -40,6 +49,11 @@ export namespace sched
 
     // start scheduling on this code
     [[noreturn]] void start();
+
+    [[noreturn]] inline void jump_to_user(std::uintptr_t ip, std::uintptr_t stack)
+    {
+        arch::return_to_user(ip, stack);
+    }
 
     inline thread_t *current_thread()
     {
@@ -53,20 +67,26 @@ export namespace sched
 
     inline void preempt_disable()
     {
+        if (!running) [[unlikely]]
+            return;
         current_thread()->preempt_count.fetch_add(1, std::memory_order_acquire);
     }
 
-    inline void preempt_enable()
+    inline bool preempt_enable()
     {
-        auto thread = current_thread();
-        if (thread->preempt_count.fetch_sub(1, std::memory_order_release) == 1
-            && thread->needs_resched())
-            schedule();
+        if (!running) [[unlikely]]
+            return false;
+        return current_thread()->preempt_count.fetch_sub(1, std::memory_order_release) == 1;
     }
 
     inline bool is_preempt_disabled()
     {
-        return current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
+        return running && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
+    }
+
+    inline bool is_running()
+    {
+        return running;
     }
 
     // pick next thread and switch to it
@@ -77,10 +97,22 @@ export namespace sched
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
 
     // create a user thread
-    thread_t *create_uthread(process_t *proc, std::uintptr_t entry, std::uintptr_t stack, nice_t nice = default_nice);
+    thread_t *create_uthread(
+        process_t *proc, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline,
+        std::uintptr_t stack, nice_t nice = default_nice
+    );
 
     // enqueue a new thread on current cpu
     void enqueue_new(thread_t *thread);
+
+    // create a new kernel thread and enqueue it
+    thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice);
+
+    template<std::invocable Func>
+    inline thread_t *spawn(Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice)
+    {
+        return spawn(reinterpret_cast<std::uintptr_t>(func), arg, nice);
+    }
 
     bool wake_up(thread_t *thread, bool preempt = true);
 
@@ -104,10 +136,6 @@ export namespace sched
 
     // get process with the pid
     process_t *get_process(pid_t pid);
-
-    void preempt_disable();
-    void preempt_enable();
-    bool is_preempt_disabled();
 
     // called from a timer interrupt
     void tick();

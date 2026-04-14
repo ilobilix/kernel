@@ -4,7 +4,6 @@ module system.memory.phys;
 
 import drivers.initramfs;
 import system.memory.virt;
-import system.scheduler;
 import magic_enum;
 import frigg;
 import boot;

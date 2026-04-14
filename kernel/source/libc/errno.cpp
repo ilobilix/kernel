@@ -3,12 +3,12 @@
 #include <cerrno>
 
 import system.cpu.local;
-import system.scheduler;
+import system.sched;
 
 extern "C"
 {
     errnos *errno_type::errno_location()
     {
-        return &sched::this_thread()->err;
+        return &sched::current_thread()->err;
     }
 } // extern "C"

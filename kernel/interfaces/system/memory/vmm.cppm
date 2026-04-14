@@ -198,6 +198,12 @@ export namespace vmm
 
         std::uintptr_t current_brk;
 
+        std::atomic<std::uintptr_t> next_stack_top = vspace_top;
+        inline std::uintptr_t alloc_stack_top(std::size_t size)
+        {
+            return next_stack_top.fetch_sub(size, std::memory_order_relaxed);
+        }
+
         lib::expect<std::uintptr_t> map(
             std::uintptr_t hint, std::size_t length,
             prot_t prot, prot_t max_prot, flag_t flags,

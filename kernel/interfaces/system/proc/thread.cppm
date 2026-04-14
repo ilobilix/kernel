@@ -78,9 +78,16 @@ export namespace sched
         std::uintptr_t clear_child_tid = 0;
         std::uintptr_t set_child_tid = 0;
 
+        errnos err;
+
         inline bool is_kernel() const
         {
             return (flags & thread_flags::kernel) != thread_flags::none;
+        }
+
+        inline bool is_idle() const
+        {
+            return (flags & thread_flags::idle) != thread_flags::none;
         }
 
         inline bool needs_resched() const

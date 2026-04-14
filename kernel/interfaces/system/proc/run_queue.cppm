@@ -38,7 +38,7 @@ export namespace sched
 {
     struct run_queue_t
     {
-        lib::spinlock lock;
+        lib::spinlock_irq lock;
 
         lib::rbtree<
             thread_t, &thread_t::hook,

@@ -2,14 +2,14 @@
 
 module lib;
 
-import system.scheduler;
+import system.sched;
 import std;
 
 namespace lib::syscall
 {
     std::pair<std::size_t, std::size_t> get_ptid()
     {
-        auto me = sched::this_thread();
-        return { me->parent->pid, me->tid };
+        auto thread = sched::current_thread();
+        return { thread->proc->pid, thread->tid };
     }
 } // namespace lib::syscall

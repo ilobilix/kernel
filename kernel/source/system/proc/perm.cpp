@@ -50,22 +50,6 @@ namespace sched
 
     bool check_perms(const std::shared_ptr<cred_t> &cred, const stat &stat, access_mode desired)
     {
-        if (capable(cred, cap_t::dac_override))
-        {
-            if ((desired & access_mode::exec) == access_mode::none)
-                return true;
-
-            if (stat.st_mode & (s_ixusr | s_ixgrp | s_ixoth))
-                return true;
-        }
-
-        if (capable(cred, cap_t::dac_read_search))
-        {
-            if ((desired & access_mode::write) == access_mode::none &&
-                (desired & access_mode::exec) == access_mode::none)
-                return true;
-        }
-
         mode_t mode = stat.st_mode;
         mode_t granted = 0;
 
@@ -88,7 +72,27 @@ namespace sched
         if ((desired & access_mode::exec) != access_mode::none)
             needed |= 1;
 
-        return (granted & needed) == needed;
+        if ((granted & needed) == needed)
+            return true;
+
+        const bool is_dir = (stat.type() == stat::s_ifdir);
+        if (capable(cred, cap_t::dac_override))
+        {
+            if ((desired & access_mode::exec) == access_mode::none)
+                return true;
+
+            if (is_dir || (stat.st_mode & (s_ixusr | s_ixgrp | s_ixoth)))
+                return true;
+        }
+
+        if (capable(cred, cap_t::dac_read_search))
+        {
+            if ((desired & access_mode::write) == access_mode::none &&
+                (is_dir || (desired & access_mode::exec) == access_mode::none))
+                return true;
+        }
+
+        return false;
     }
 
     bool check_perms(const stat &stat, access_mode mode)
@@ -329,13 +333,16 @@ namespace sched
             return 0;
 
         auto &gids = cred->supp_gids.gids;
-        const auto size = std::min(groups.size(), gids.size());
+        if (const auto size = groups.size())
+        {
+            if (size < gids.size())
+                return std::unexpected { lib::err::invalid_length };
 
-        std::span<gid_t> span { gids.data(), size };
-        if (!groups.copy_from(span))
-            return std::unexpected { lib::err::invalid_address };
-
-        return size;
+            std::span<gid_t> span { gids.data(), size };
+            if (!groups.copy_from(span))
+                return std::unexpected { lib::err::invalid_address };
+        }
+        return gids.size();
     }
 
     lib::expect<void> capget(pid_t pid, cap_user_data_t *data)

@@ -2,7 +2,7 @@
 
 module lib;
 
-import system.scheduler;
+import system.sched;
 import system.cpu.local;
 import system.chrono;
 import arch;
@@ -52,12 +52,12 @@ namespace lib::lock
 
     void acquire_preempt()
     {
-        sched::disable();
+        sched::preempt_disable();
     }
 
     void release_preempt()
     {
-        sched::enable();
+        sched::preempt_enable();
     }
 
     void pause() { arch::pause(); }

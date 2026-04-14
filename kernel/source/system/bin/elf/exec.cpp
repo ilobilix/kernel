@@ -7,7 +7,7 @@ module;
 module system.bin.elf;
 
 import system.bin.exec;
-import system.scheduler;
+import system.sched;
 import system.memory;
 import system.vfs;
 import magic_enum;
@@ -294,8 +294,8 @@ namespace bin::elf::exec
             auto &req = ctx->req;
             auto &auxv = ctx->auxv;
 
-            const auto thread = sched::this_thread();
-            const auto proc = thread->parent;
+            const auto thread = sched::current_thread();
+            const auto proc = thread->proc;
 
             const auto stack_size = boot::ustack_size;
             const auto addr_top = thread->ustack_top;
@@ -391,10 +391,10 @@ namespace bin::elf::exec
             write_auxv(AT_BASE, ctx->interp_base);
             write_auxv(AT_ENTRY, auxv.at_entry);
             write_auxv(AT_NOTELF, 0);
-            write_auxv(AT_UID, proc->ruid);
-            write_auxv(AT_EUID, proc->euid);
-            write_auxv(AT_GID, proc->rgid);
-            write_auxv(AT_EGID, proc->egid);
+            write_auxv(AT_UID, proc->cred->ruid);
+            write_auxv(AT_EUID, proc->cred->euid);
+            write_auxv(AT_GID, proc->cred->rgid);
+            write_auxv(AT_EGID, proc->cred->egid);
             write_auxv(AT_PLATFORM, platform_offset);
             // write_auxv(AT_HWCAP, 0); // TODO
             write_auxv(AT_EXECFN, execfn_offset);
@@ -423,8 +423,10 @@ namespace bin::elf::exec
             write(req.argv.size());
 
             const auto entry = ctx->entry;
+            const auto stack = addr_bottom + offset;
             delete ctx;
-            thread->enter_user(entry, addr_bottom + offset);
+
+            sched::jump_to_user(entry, stack);
         }
 
         public:
@@ -453,7 +455,7 @@ namespace bin::elf::exec
                 ehdr.e_machine == EM_CURRENT;
         }
 
-        sched::thread *load(const bin::exec::request &req,  sched::process *proc) const override
+        sched::thread_t *load(const bin::exec::request &req,  sched::process_t *proc) const override
         {
             lib::bug_on(!proc);
 
@@ -489,11 +491,12 @@ namespace bin::elf::exec
             proc->vmspace->current_brk = brk_base;
 
             const auto arg = new ctx { req, entry, interp_base, auxv };
-            return sched::thread::create(
+            return sched::create_uthread(
                 proc,
                 reinterpret_cast<std::uintptr_t>(trampoline),
                 reinterpret_cast<std::uintptr_t>(arg),
-                true
+                true, // is_trampoline
+                0 // stack will be allocated by create_uthread
             );
         }
     };

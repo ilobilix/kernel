@@ -18,7 +18,7 @@ namespace bin::script
             return false;
         }
 
-        sched::thread *load(const exec::request &req,  sched::process *proc) const override
+        sched::thread_t *load(const exec::request &req,  sched::process_t *proc) const override
         {
             lib::unused(req, proc);
             return nullptr;

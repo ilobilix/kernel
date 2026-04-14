@@ -3,7 +3,7 @@
 module drivers.fs.tmpfs;
 
 import system.memory.virt;
-import system.scheduler;
+import system.sched;
 import system.chrono;
 import system.vfs.dev;
 import system.vfs;
@@ -26,11 +26,16 @@ namespace fs::tmpfs
         stat.st_mode = mode;
         stat.st_nlink = 1;
 
-        const auto thread = sched::this_thread();
-        const auto proc = thread->parent;
-
-        stat.st_uid = proc->euid;
-        stat.st_gid = proc->egid;
+        if (const auto proc = sched::current_process(); proc->cred)
+        {
+            stat.st_uid = proc->cred->euid;
+            stat.st_gid = proc->cred->egid;
+        }
+        else
+        {
+            stat.st_uid = 0;
+            stat.st_gid = 0;
+        }
 
         stat.update_time(
             stat::time::access |

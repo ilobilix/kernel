@@ -2,7 +2,7 @@
 
 export module system.syscall.vfs;
 
-import system.scheduler;
+import system.sched;
 import system.vfs;
 import lib;
 import std;
@@ -11,7 +11,7 @@ export namespace syscall::vfs
 {
     using namespace ::vfs;
     std::optional<path> get_target(
-        sched::process *proc, int dirfd, const char __user *pathname,
+        sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     );
 

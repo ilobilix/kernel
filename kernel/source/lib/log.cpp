@@ -8,7 +8,7 @@ module lib;
 
 import drivers.output.terminal;
 import drivers.output.serial;
-import system.scheduler;
+import system.sched;
 import system.chrono;
 import arch;
 import std;
@@ -812,12 +812,9 @@ namespace lib::log
     {
         "log.create-thread",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage()
-        },
         [] {
 #if !ILOBILIX_SYSCALL_LOG
-            sched::spawn(reinterpret_cast<std::uintptr_t>(consumer));
+            sched::spawn(consumer);
 #endif
         }
     };

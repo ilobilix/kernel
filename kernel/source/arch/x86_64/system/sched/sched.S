@@ -10,7 +10,16 @@ sched_kthread_trampoline:
 .global sched_kthread_trampoline
 
 sched_uthread_trampoline:
-    # TODO
+    test r12, r12
+    jz .no_trampoline
+
+    mov rdi, r13
+    jmp r12
+
+.no_trampoline:
+    mov rdi, r13
+    mov rsi, r15
+    jmp sched_return_to_user
 .global sched_uthread_trampoline
 
 sched_context_switch:
@@ -36,19 +45,32 @@ sched_context_switch:
     mov r13, [rsi + 32]
     mov r14, [rsi + 40]
     mov r15, [rsi + 48]
-    push qword ptr [rsi + 56]
-    popfq
 
     mov rcx, 0xC0000101
-    # rdx already holds the next thread address
+    mov rax, rdx
     shr rdx, 32
     wrmsr
 
+    push qword ptr [rsi + 56]
+    popfq
+
     jmp [rsi + 64]
+
 .resume:
     ret
 .global sched_context_switch
 
 sched_return_to_user:
-    # TODO
+    push 0x23 # ss
+    push rsi # rsp
+
+    # rflags
+    # TODO-SCHED-REWRITE
+    pushfq
+    or qword ptr [rsp], 0x200
+    # push 0x202
+
+    push 0x2B # cs
+    push rdi # rip
+    iretq
 .global sched_return_to_user

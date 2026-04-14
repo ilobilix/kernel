@@ -7,7 +7,6 @@ module;
 
 module system.syscall.misc;
 
-import system.scheduler;
 import lib;
 import std;
 
