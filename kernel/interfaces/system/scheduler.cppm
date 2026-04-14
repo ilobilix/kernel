@@ -7,6 +7,7 @@ import system.memory.virt;
 import system.cpu.self;
 import system.cpu;
 import system.vfs;
+import drivers.fs.dev.tty;
 import frigg;
 import lib;
 import cppstd;
@@ -184,23 +185,29 @@ export namespace sched
         pid_t sid;
         lib::locker<
             lib::map::flat_hash<
-                pid_t, std::shared_ptr<group>
+                pid_t, group *
             >, lib::rwspinlock
         > members;
+
+        lib::locker<
+            std::shared_ptr<
+                fs::dev::tty::instance
+            >, lib::mutex
+        > controlling_tty = nullptr;
     };
 
     bool is_initialised();
 
     process *proc_for(pid_t pid);
 
-    std::shared_ptr<group> group_for(pid_t pgid);
-    std::shared_ptr<session> session_for(pid_t sid);
+    group *group_for(pid_t pgid);
+    session *session_for(pid_t sid);
 
-    std::shared_ptr<group> create_group(process *proc);
-    std::shared_ptr<session> create_session(std::shared_ptr<group> grp);
+    group *create_group(process *proc);
+    session *create_session(group *grp);
 
-    bool change_group(process *proc, std::shared_ptr<group> grp);
-    bool change_session(std::shared_ptr<group> grp, std::shared_ptr<session> sess);
+    bool change_group(process *proc, group *grp);
+    bool change_session(group *grp, session *sess);
 
     thread *this_thread();
 

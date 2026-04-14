@@ -130,9 +130,9 @@ export namespace vfs
     struct file;
     struct ops
     {
-        virtual bool open(std::shared_ptr<file> self)
+        virtual bool open(std::shared_ptr<file> self, int flags)
         {
-            lib::unused(self);
+            lib::unused(self, flags);
             return true;
         }
 
@@ -256,9 +256,9 @@ export namespace vfs
 
         std::shared_ptr<void> private_data;
 
-        bool open()
+        bool open(int flags)
         {
-            return get_ops()->open(shared_from_this());
+            return get_ops()->open(shared_from_this(), flags);
         }
 
         bool close()

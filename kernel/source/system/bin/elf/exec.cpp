@@ -125,6 +125,8 @@ namespace bin::elf::exec
                             phdr.p_filesz - 1
                         };
 
+                        lib::panic_if(lib::path_view { path } .is_absolute() == false);
+
                         auto ret = vfs::resolve(file->path, path);
                         if (!ret.has_value())
                         {

@@ -78,7 +78,7 @@ export namespace fs::dev::tty
             pid_t pgid;
             pid_t sid;
         };
-        lib::locker<ctrl_t, lib::rwmutex> ctrl;
+        lib::locker<ctrl_t, lib::mutex> ctrl;
 
         std::weak_ptr<instance> link;
 
