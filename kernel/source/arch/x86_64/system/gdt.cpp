@@ -44,7 +44,7 @@ namespace x86_64::gdt
         auto &tss = cpu->arch.tss;
 
         auto allocate_stack = [] {
-            auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
+            const auto stack = vmm::alloc_vpages(vmm::space_type::other, boot::kstack_size / pmm::page_size);
             for (std::size_t i = 0; i < boot::kstack_size; i += pmm::page_size)
             {
                 if (!vmm::kernel_pagemap->map(stack + i, pmm::alloc<std::uintptr_t>(1, true), pmm::page_size))

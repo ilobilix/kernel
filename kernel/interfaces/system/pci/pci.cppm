@@ -78,7 +78,7 @@ export namespace pci
         router(std::weak_ptr<router> parent, std::weak_ptr<bus> mybus)
             : parent { parent }, mybus { mybus } { }
 
-        virtual std::shared_ptr<router> downstream(std::shared_ptr<bus> &bus) = 0;
+        virtual std::shared_ptr<router> downstream(std::shared_ptr<router> me, std::shared_ptr<bus> &bus) = 0;
         auto resolve(std::int32_t dev, std::uint8_t pin, std::int32_t func = -1) -> entry *;
 
         virtual ~router() { }

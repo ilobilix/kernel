@@ -426,7 +426,7 @@ extern "C"
         else if (timeout == 0x0000)
             locked = mutex->try_lock();
         else
-            locked = mutex->try_lock_until(timeout * 1'000'000);
+            locked = mutex->try_lock_until(static_cast<std::size_t>(timeout) * 1'000'000);
 
         return locked ? UACPI_STATUS_OK : UACPI_STATUS_TIMEOUT;
     }
