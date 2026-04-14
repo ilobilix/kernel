@@ -58,6 +58,11 @@ export namespace syscall::vfs
     std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz);
     std::ssize_t readlink(const char __user *pathname, char __user *buf, std::size_t bufsiz);
 
+    int mkdirat(int dirfd, const char __user *pathname, mode_t mode);
+    int mkdir(const char __user *pathname, mode_t mode);
+
+    int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
+
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);
 
