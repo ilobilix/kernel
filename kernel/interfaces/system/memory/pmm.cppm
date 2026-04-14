@@ -3,37 +3,13 @@
 export module system.memory.phys;
 import std;
 
-namespace pmm
-{
-    export constexpr std::size_t page_size = 0x1000;
-    constexpr std::size_t max_order = 15;
-
-    constexpr std::size_t page_bits = 12; // std::countr_zero(page_size)
-    constexpr std::size_t paddr_bits = 48;
-} // namespace pmm
-
 export namespace pmm
 {
-    struct page
-    {
-        union {
-            struct {
-                std::uint64_t next_paddr : paddr_bits - page_bits;
-                std::uint64_t order : std::bit_width(max_order);
-                std::uint64_t allocated : 1;
-            };
-            std::uint64_t raw;
-        };
-        std::uint64_t raw2;
-    };
-    static_assert(sizeof(page) == 16);
+    constexpr std::size_t page_size = 0x1000;
+    constexpr std::size_t max_order = 15;
 
-    enum class type
-    {
-        sub1mib,
-        sub4gib,
-        normal
-    };
+    constexpr std::size_t page_bits = std::countr_zero(page_size);
+    constexpr std::size_t paddr_bits = 48;
 
     struct memory
     {
@@ -50,13 +26,12 @@ export namespace pmm
     };
     memory info();
 
-    page *page_for(std::uintptr_t addr);
-
-    template<typename Type> requires (std::is_pointer_v<Type>)
-    inline page *page_for(Type ptr)
+    enum class type
     {
-        return page_for(reinterpret_cast<std::uintptr_t>(ptr));
-    }
+        sub1mib,
+        sub4gib,
+        normal
+    };
 
     [[nodiscard]]
     std::uintptr_t alloc(std::size_t count = 1, bool clear = false, type tp = type::normal);
