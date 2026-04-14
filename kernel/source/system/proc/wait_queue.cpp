@@ -29,7 +29,7 @@ namespace sched
         if (pending.load(std::memory_order_acquire) > 0)
         {
             pending.fetch_sub(1, std::memory_order_acquire);
-            return true;
+            return false;
         }
 
         wait_queue_entry_t entry { };
@@ -39,7 +39,7 @@ namespace sched
         {
             pending.fetch_sub(1, std::memory_order_release);
             lock.unlock();
-            return true;
+            return false;
         }
 
         entries.push_back(&entry);

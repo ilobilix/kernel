@@ -110,7 +110,7 @@ namespace vfs::pipe
                 if (nonblock)
                     return std::unexpected { lib::err::try_again };
 
-                if (!pdata->read_wait.wait())
+                if (pdata->read_wait.wait())
                     return std::unexpected { lib::err::interrupted };
             }
         }
@@ -183,7 +183,7 @@ namespace vfs::pipe
                         return std::unexpected { lib::err::try_again };
                     }
 
-                    if (!pdata->write_wait.wait())
+                    if (pdata->write_wait.wait())
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
