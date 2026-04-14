@@ -12,6 +12,8 @@ export namespace lib
     struct interval_hook
     {
         IType subtree_max;
+        IType subtree_min;
+        IType subtree_max_gap;
     };
 
     template<
@@ -62,27 +64,57 @@ export namespace lib
             static constexpr bool operator()(Type *node)
             {
                 auto new_max = upper(node);
+                auto new_min = lower(node);
+                std::size_t new_max_gap = 0;
+
                 auto left = rhook(node)->left;
                 auto right = rhook(node)->right;
 
                 if (left != nullptr)
                 {
                     const auto left_max = ihook(left)->subtree_max;
+                    const auto left_min = ihook(left)->subtree_min;
+
                     if (left_max > new_max)
                         new_max = left_max;
+                    if (left_min < new_min)
+                        new_min = left_min;
+
+                    const auto gap_before = lower(node) - left_max;
+                    new_max_gap = std::max({
+                        new_max_gap,
+                        ihook(left)->subtree_max_gap,
+                        gap_before
+                    });
                 }
 
                 if (right != nullptr)
                 {
                     const auto right_max = ihook(right)->subtree_max;
+                    const auto right_min = ihook(right)->subtree_min;
+
                     if (right_max > new_max)
                         new_max = right_max;
+                    if (right_min < new_min)
+                        new_min = right_min;
+
+                    const auto gap_after = right_min - upper(node);
+                    new_max_gap = std::max({
+                        new_max_gap,
+                        ihook(right)->subtree_max_gap,
+                        gap_after
+                    });
                 }
 
-                if (new_max == ihook(node)->subtree_max)
+                if (new_max == ihook(node)->subtree_max &&
+                    new_min == ihook(node)->subtree_min &&
+                    new_max_gap == ihook(node)->subtree_max_gap)
                     return false;
 
                 ihook(node)->subtree_max = new_max;
+                ihook(node)->subtree_min = new_min;
+                ihook(node)->subtree_max_gap = new_max_gap;
+
                 return true;
             }
         };

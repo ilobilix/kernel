@@ -92,7 +92,7 @@ namespace vmm
             const auto current_psize = static_cast<page_size>(levels - i - 1);
             pml = getlvl(entry, allocate, split, current_psize);
             if (pml == nullptr)
-                return std::unexpected { lib::err::invalid_entry };
+                return std::unexpected { lib::err::invalid_pml_entry };
 
             shift -= 9;
         }
@@ -275,7 +275,7 @@ namespace vmm
 
         const auto addr = ret->get().access().getaddr();
         if (!is_canonical(addr))
-            return std::unexpected { lib::err::invalid_entry };
+            return std::unexpected { lib::err::invalid_pml_entry };
 
         return addr;
     }

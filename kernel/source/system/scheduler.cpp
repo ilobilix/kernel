@@ -273,6 +273,18 @@ namespace sched
         sleep_until = std::nullopt;
     }
 
+    void thread::cancel_sleep()
+    {
+        if (status != status::sleeping)
+            return;
+
+        status = status::running;
+        sleep_for = std::nullopt;
+        sleep_lock.unlock();
+
+        arch::int_switch(sleep_ints);
+    }
+
     bool thread::wake_up(std::size_t reason)
     {
         const bool ints = arch::int_switch_status(false);
@@ -506,7 +518,7 @@ namespace sched
         return percpu.read<thread *, &percpu::running_thread>();
     }
 
-    std::size_t sleep_for(std::size_t ms)
+    std::size_t sleep(std::size_t ms)
     {
         this_thread()->prepare_sleep(ms);
         return yield();

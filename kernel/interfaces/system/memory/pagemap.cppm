@@ -50,6 +50,12 @@ export namespace vmm
         rwxu = rwx | user
     };
 
+    using magic_enum::bitwise_operators::operator~;
+    using magic_enum::bitwise_operators::operator&;
+    using magic_enum::bitwise_operators::operator&=;
+    using magic_enum::bitwise_operators::operator|;
+    using magic_enum::bitwise_operators::operator|=;
+
     enum class page_size
     {
         // do not modify
@@ -57,12 +63,6 @@ export namespace vmm
         medium,
         large
     };
-
-    using magic_enum::bitwise_operators::operator~;
-    using magic_enum::bitwise_operators::operator&;
-    using magic_enum::bitwise_operators::operator&=;
-    using magic_enum::bitwise_operators::operator|;
-    using magic_enum::bitwise_operators::operator|=;
 
     class pagemap
     {

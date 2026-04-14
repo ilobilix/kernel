@@ -187,7 +187,7 @@ export namespace fs::dev::tty
             if ((c_cflag & cbaud) == bother)
                 return c_ispeed;
             const auto ispeed = (c_cflag & cibaud) >> 16;
-            return ispeed == 0 ? get_ospeed() : ispeed;
+            return ispeed == 0 ? (c_cflag & cbaud) : ispeed;
         }
 
         speed_t get_ospeed() const

@@ -62,7 +62,6 @@ export namespace lib
     template<typename Type, rbtree_hook<Type> Type::*Member, typename Less, typename Aug = default_augmentor<Type>>
     class rbtree
     {
-
         template<typename Type1, rbtree_hook<Type1> Type1::*, typename, typename>
         friend class rbtree_alloc;
 
@@ -501,7 +500,7 @@ export namespace lib
                 return *this;
             }
 
-            constexpr iterator_base operator++(int)
+            constexpr const iterator_base operator++(int)
             {
                 auto ret { *this };
                 ++(*this);
@@ -520,7 +519,7 @@ export namespace lib
                 return *this;
             }
 
-            constexpr iterator_base operator--(int)
+            constexpr const iterator_base operator--(int)
             {
                 auto ret { *this };
                 --(*this);
@@ -529,8 +528,7 @@ export namespace lib
 
             friend constexpr bool operator==(const iterator_base &lhs, const iterator_base &rhs)
             {
-                return (lhs._tree == rhs._tree && lhs._current == rhs._current) ||
-                       (lhs._current == nullptr && rhs._current == nullptr);
+                return lhs._tree == rhs._tree && lhs._current == rhs._current;
             }
 
             friend constexpr bool operator!=(const iterator_base &lhs, const iterator_base &rhs)
@@ -562,6 +560,7 @@ export namespace lib
         {
             if (this != &rhs)
             {
+                bug_on(!empty());
                 _root = rhs._root;
                 _head = rhs._head;
                 _size = rhs._size;

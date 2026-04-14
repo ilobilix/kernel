@@ -34,7 +34,8 @@ export namespace lib
         invalid_symlink,
         invalid_flags,
         invalid_type,
-        invalid_entry,
+        invalid_pml_entry,
+        invalid_length,
         invalid_address,
         invalid_fd,
 
@@ -51,7 +52,8 @@ export namespace lib
 
         addr_not_aligned,
         addr_in_use,
-        not_mapped
+        not_mapped,
+        out_of_memory
     };
 
     template<typename Type>
@@ -89,11 +91,14 @@ export namespace lib
             case err::invalid_mount:
             case err::invalid_symlink:
             case err::invalid_flags:
+            case err::invalid_type:
+            case err::invalid_pml_entry:
+            case err::invalid_length:
             case err::buffer_too_small:
+            case err::addr_not_aligned:
                 return EINVAL;
-            // case err::invalid_entry:
-            //     return ;
             case err::invalid_address:
+            case err::not_mapped:
                 return EFAULT;
             case err::invalid_fd:
                 return EBADF;
@@ -111,16 +116,12 @@ export namespace lib
                 return ENODEV;
             case err::io_error:
                 return EIO;
-            // case err::addr_not_aligned:
-            //     return ;
-            // case err::addr_in_use:
-            //     return ;
-            // case err::not_mapped:
-            //     return ;
-            default:
-                lib::panic("unhandled vfs err: {}", magic_enum::enum_name(err));
+            case err::addr_in_use:
+                return EADDRINUSE;
+            case err::out_of_memory:
+                return ENOMEM;
         }
+        lib::panic("unhandled err: {}", magic_enum::enum_name(err));
         std::unreachable();
     }
-
 } // export namespace lib
