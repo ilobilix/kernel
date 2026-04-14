@@ -81,6 +81,8 @@ namespace sched
         void save(thread *thread);
         void load(thread *thread);
 
+        void ctx_switch(thread *current, thread *next);
+
         void update_stack(thread *thread, std::uintptr_t addr);
     } // namespace arch
 
@@ -117,13 +119,15 @@ namespace sched
 
         void save(thread *thread, cpu::registers *regs)
         {
-            std::memcpy(&thread->regs, regs, sizeof(cpu::registers));
+            if (regs)
+                std::memcpy(&thread->regs, regs, sizeof(cpu::registers));
             arch::save(thread);
         }
 
         void load(bool same_pid, thread *thread, cpu::registers *regs)
         {
-            std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
+            if (regs)
+                std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
             arch::load(thread);
             if (!same_pid)
                 thread->parent->vmspace->pmap->load();
@@ -505,6 +509,7 @@ namespace sched
         return yield();
     }
 
+    void schedule(cpu::registers *regs);
     std::size_t yield()
     {
         auto thread = this_thread();
@@ -523,7 +528,7 @@ namespace sched
             percpu->sleep_queue.lock()->insert(thread);
         }
 
-        arch::reschedule(0);
+        schedule(nullptr);
         arch::int_switch(old);
 
         return eeping ? thread->wake_reason : wake_reason::success;
@@ -703,6 +708,7 @@ namespace sched
         auto &pcpu = percpu.get();
         if (pcpu.preemption.load(std::memory_order_acquire) > 0)
         {
+            lib::bug_on(!regs);
             arch::reschedule(timeslice);
             return;
         }
@@ -867,10 +873,13 @@ namespace sched
                 arch::reschedule(timeslice);
             }
             else if (earliest_wake > time)
-                arch::reschedule(earliest_wake - time);;
+                arch::reschedule(earliest_wake - time);
         }
 
         pcpu.in_scheduler.store(false, std::memory_order_release);
+
+        if (!regs)
+            arch::ctx_switch(current, next);
     }
 
     lib::initgraph::stage *pid0_created_stage()

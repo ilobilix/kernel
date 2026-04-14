@@ -91,7 +91,9 @@ export namespace cpu
             std::uint32_t eax = 0, signature[3] { };
             for (std::uint32_t base = 0x40000000; base < 0x40010000; base += 0x100)
             {
-                cpu::id(base, 0, eax, signature[0], signature[1], signature[2], false);
+                if (!cpu::id(base, 0, eax, signature[0], signature[1], signature[2], false))
+                    continue;
+
                 if (!std::memcmp("KVMKVMKVM\0\0\0", signature, 12))
                     return { hypervisor::kvm, base };
                 else if (!std::memcmp("TCGTCGTCGTCG", signature, 12))

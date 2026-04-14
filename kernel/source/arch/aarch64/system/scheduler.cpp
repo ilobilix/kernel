@@ -46,6 +46,11 @@ namespace sched::arch
         lib::unused(thread);
     }
 
+    void ctx_switch(thread *current, thread *next)
+    {
+        lib::unused(current, next);
+    }
+
     void update_stack(thread *thread, std::uintptr_t addr)
     {
         lib::unused(thread, addr);

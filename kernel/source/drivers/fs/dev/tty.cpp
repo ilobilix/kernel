@@ -333,12 +333,12 @@ namespace fs::dev::tty
             if (termios.c_iflag & istrip)
                 chr &= 0x7F;
 
-            if (termios.c_iflag & igncr && chr == '\r')
+            if ((termios.c_iflag & igncr) && chr == '\r')
                 continue;
 
-            if (termios.c_iflag & inlcr && chr == '\n')
+            if ((termios.c_iflag & inlcr) && chr == '\n')
                 chr = '\r';
-            else if (termios.c_iflag & icrnl && chr == '\r')
+            else if ((termios.c_iflag & icrnl) && chr == '\r')
                 chr = '\n';
 
             if (termios.c_iflag & iuclc)
@@ -539,7 +539,7 @@ namespace fs::dev::tty
             return chr;
         };
 
-        const auto copy = [&](auto &in_locked, std::size_t  available, std::size_t start_from)
+        const auto copy = [&](auto &in_locked, std::size_t available, std::size_t start_from)
         {
             std::size_t to_read = std::min(size - start_from, available);
             if (to_read == 0)
@@ -712,10 +712,9 @@ namespace fs::dev::tty
                         bool interrupted = in_sem.wait_for(ms);
                         in_locked.lock();
 
+                        available = get_available(in_locked);
                         if (!interrupted && available == 0) // expired
                             return progress;
-
-                        available = get_available(in_locked);
                     }
                 }
                 return progress;
@@ -1135,6 +1134,7 @@ namespace fs::dev::tty
                 lib::debug("tty: created ({}, {}) as '{}'", drv->major, minor, name);
         };
 
+        lib::panic_if((drv->flags & unnumbered) && drv->num_devices > 1);
         for (std::size_t i = 0; i < drv->num_devices; i++)
             add_one(i, drv->minor_start + i);
     }

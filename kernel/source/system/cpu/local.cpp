@@ -99,7 +99,7 @@ namespace cpu
 
         processor *nth(std::size_t n)
         {
-            lib::bug_on(n >= count());
+            lib::bug_on(n >= count() || !bases);
             return std::addressof(me.get(bases[n]));
         }
 
@@ -129,6 +129,7 @@ namespace cpu
 
     processor *self()
     {
-        return local::bases ? std::addressof(local::me.get()) : nullptr;
+        lib::bug_on(!local::bases);
+        return std::addressof(local::me.get());
     }
 } // namespace cpu
