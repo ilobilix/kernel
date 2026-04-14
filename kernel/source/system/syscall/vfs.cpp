@@ -114,8 +114,7 @@ namespace syscall::vfs
 
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
         auto &fdt = proc->fdt;
 
         const bool follow_links = (flags & o_nofollow) == 0;
@@ -211,8 +210,7 @@ namespace syscall::vfs
 
     int close(int fd)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0 || !proc->fdt.close(static_cast<std::size_t>(fd)))
             return (errno = EBADF, -1);
@@ -222,8 +220,7 @@ namespace syscall::vfs
 
     std::ssize_t read(int fd, void __user *buf, std::size_t count)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0)
             return (errno = EBADF, -1);
@@ -253,8 +250,7 @@ namespace syscall::vfs
 
     std::ssize_t write(int fd, const void __user *buf, std::size_t count)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0)
             return (errno = EBADF, -1);
@@ -282,8 +278,7 @@ namespace syscall::vfs
 
     off_t lseek(int fd, off_t offset, int whence)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0)
             return (errno = EBADF, -1);
@@ -331,8 +326,7 @@ namespace syscall::vfs
 
     int fstatat(int dirfd, const char __user *pathname, ::stat __user *statbuf, int flags)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (flags & at_empty_path)
         {
@@ -383,8 +377,7 @@ namespace syscall::vfs
 
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0)
             return (errno = EBADF, -1);
@@ -398,8 +391,7 @@ namespace syscall::vfs
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         if (fd < 0)
             return (errno = EBADF, -1);
@@ -438,8 +430,7 @@ namespace syscall::vfs
 
     char *getcwd(char __user *buf, std::size_t size)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
 
         const auto path_str = vfs::pathname_from(proc->cwd);
         if (path_str.size() + 1 > size)

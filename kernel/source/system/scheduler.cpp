@@ -159,7 +159,7 @@ namespace sched
             std::memcpy(regs, &thread->regs, sizeof(cpu::registers));
             arch::load(thread);
             if (!same_pid)
-                proc_for(thread->pid)->vmspace->pmap->load();
+                thread->parent->vmspace->pmap->load();
         }
 
         void idle()
@@ -262,14 +262,13 @@ namespace sched
 
     thread::~thread()
     {
-        const auto &proc = proc_for(pid);
-        const auto &pmap = proc->vmspace->pmap;
+        const auto &pmap = parent->vmspace->pmap;
 
         const std::uintptr_t bottom = kstack_top - boot::kstack_size;
         if (const auto ret = pmap->unmap_dealloc(bottom, boot::kstack_size, vmm::page_size::small); !ret)
             lib::panic("could not unmap thread's kernel stack: {}", magic_enum::enum_name(ret.error()));
 
-        arch::deinitialise(proc, this);
+        arch::deinitialise(parent, this);
 
         lib::panic("TODO: thread {} deconstructor", tid);
     }
@@ -280,7 +279,7 @@ namespace sched
         auto thread = new sched::thread { };
 
         thread->tid = parent->next_tid++;
-        thread->pid = parent->pid;
+        thread->parent = parent;
         thread->status = status::not_ready;
         thread->is_user = is_user;
         thread->priority = default_prio;
@@ -470,7 +469,7 @@ namespace sched
                 // TODO
                 const auto thread = std::move(list.front());
                 list.pop_front();
-                auto proc = proc_for(thread->pid);
+                auto proc = thread->parent;
                 lib::bug_on(proc->threads.erase(thread->tid) != 1);
                 delete thread;
                 if (proc->threads.empty())
@@ -616,7 +615,7 @@ namespace sched
             }
             else
             {
-                prev_pid = current->pid;
+                prev_pid = current->parent->pid;
                 if (!is_current_idle) [[likely]]
                 {
                     if (next == nullptr && current->status == status::running) [[unlikely]]
@@ -653,7 +652,7 @@ namespace sched
             next->status = status::running;
             percpu->running_thread = next;
 
-            const bool same_pid = (prev_pid.has_value() && prev_pid.value() == next->pid);
+            const bool same_pid = (prev_pid.has_value() && prev_pid.value() == next->parent->pid);
             load(same_pid, next, regs);
         }
 

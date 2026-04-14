@@ -69,7 +69,7 @@ export namespace sched
         std::weak_ptr<vmm::memobject> ustack_obj;
 
         std::size_t tid;
-        std::size_t pid;
+        process *parent;
 
         status status;
         bool is_user;

@@ -425,9 +425,8 @@ namespace vmm
     bool handle_pfault(std::uintptr_t addr, bool on_write)
     {
         const auto psize = default_page_size();
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
-        const auto vmspace = proc->vmspace;
+        const auto proc = sched::this_thread()->parent;
+        const auto &vmspace = proc->vmspace;
 
         const auto page = addr / psize;
 

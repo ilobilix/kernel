@@ -32,8 +32,7 @@ namespace syscall::memory
         if (!anon && fd < 0)
             return (errno = EBADF, invalid_addr);
 
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
         const auto &vmspace = proc->vmspace;
 
         std::uintptr_t address = reinterpret_cast<std::uintptr_t>(addr);
@@ -87,8 +86,7 @@ namespace syscall::memory
 
     int munmap(void *addr, std::size_t length)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->unmap(reinterpret_cast<std::uintptr_t>(addr), length);
@@ -97,8 +95,7 @@ namespace syscall::memory
 
     int mprotect(void *addr, std::size_t len, int prot)
     {
-        const auto thread = sched::this_thread();
-        const auto proc = sched::proc_for(thread->pid);
+        const auto proc = sched::this_thread()->parent;
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->protect(
