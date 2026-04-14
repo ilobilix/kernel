@@ -41,6 +41,8 @@ export namespace syscall::proc
         int how, const struct sigset_t __user *set,
         struct sigset_t __user *oldset, std::size_t sigsetsize
     );
+    int sigaltstack(const struct stack_t __user *ss, stack_t __user *old_ss);
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig);
 
     long futex(

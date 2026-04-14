@@ -61,6 +61,9 @@ export namespace syscall::vfs
     int mkdirat(int dirfd, const char __user *pathname, mode_t mode);
     int mkdir(const char __user *pathname, mode_t mode);
 
+    int unlinkat(int dirfd, const char __user *pathname, int flags);
+    int unlink(const char __user *pathname);
+
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
     int ioctl(int fd, unsigned long request, void __user *argp);

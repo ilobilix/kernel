@@ -392,6 +392,15 @@ export namespace lib
                 if (y != right(nh, z))
                 {
                     transplant(nh, y, right(nh, y));
+                    auto c = parent(nh, x);
+                    const auto stop = right(nh, z);
+                    while (true)
+                    {
+                        augment(c);
+                        if (c == stop)
+                            break;
+                        c = parent(nh, c);
+                    }
                     hook(nh, y)->right = right(nh, z);
                     hook(nh, right(nh, y))->parent = y;
                 }

@@ -81,7 +81,7 @@ namespace output::term
             frm->green_mask_size, frm->green_mask_shift,
             frm->blue_mask_size, frm->blue_mask_shift,
             nullptr, ansi_colours, ansi_bright_colours,
-            nullptr, &default_fg, nullptr, &default_fg,
+            nullptr, nullptr /* &default_fg */, nullptr, &default_fg,
             font, 8, 16, 1,
             0, 0, 0, FLANTERM_FB_ROTATE_0
         );

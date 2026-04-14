@@ -1130,6 +1130,41 @@ namespace syscall::vfs
         return mkdirat(at_fdcwd, pathname, mode);
     }
 
+    // TODO: this is a stub
+    int unlinkat(int dirfd, const char __user *pathname, int flags)
+    {
+        // if (flags & ~at_removedir)
+        //     return (errno = EINVAL, -1);
+
+        // TODO
+        if (flags & at_removedir)
+            return (errno = EINVAL);
+
+        const auto proc = sched::current_process();
+
+        auto val = get_path(pathname);
+        if (!val.has_value())
+            return -1;
+
+        const auto path = std::move(*val);
+        if (resolve_from(proc, dirfd, path).has_value())
+            return (errno = EEXIST, -1);
+
+        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        if (!parent.has_value())
+            return -1;
+
+        if (const auto ret = unlink(parent->target, path.basename()); !ret)
+            return (errno = lib::map_error(ret.error()), -1);
+
+        return 0;
+    }
+
+    int unlink(const char __user *pathname)
+    {
+        return unlinkat(at_fdcwd, pathname, 0);
+    }
+
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags)
     {
         constexpr int utime_now = ((1l << 30) - 1l);

@@ -216,6 +216,13 @@ namespace syscall::proc
         return (errno = ENOSYS, -1);
     }
 
+    int sigaltstack(const struct stack_t __user *ss, stack_t __user *old_ss)
+    {
+        // TODO
+        lib::unused(ss, old_ss);
+        return (errno = ENOSYS, -1);
+    }
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig)
     {
         // TODO

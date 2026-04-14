@@ -103,10 +103,7 @@ namespace fs::dev::tty
     void default_ldisc::open()
     {
         should_work.store(true, std::memory_order_relaxed);
-        worker_thread = sched::spawn(
-            reinterpret_cast<std::uintptr_t>(worker),
-            reinterpret_cast<std::uintptr_t>(this), -10
-        );
+        worker_thread = sched::spawn(worker, this, -10);
         lib::bug_on(!worker_thread);
     }
 
@@ -860,8 +857,55 @@ namespace fs::dev::tty
 
     instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
-          termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { }
-    { lib::bug_on(drv == nullptr); }
+          termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { },
+          raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { true }
+    {
+        lib::bug_on(drv == nullptr);
+        worker_thread = sched::spawn(raw_worker, this, -10);
+        lib::bug_on(!worker_thread);
+    }
+
+    instance::~instance()
+    {
+        if (!raw_should_work.load(std::memory_order_relaxed))
+        {
+            lib::bug_on(worker_thread != nullptr);
+            return;
+        }
+
+        raw_should_work.store(false, std::memory_order_relaxed);
+        raw_wq.wake_one();
+
+        while (!raw_should_work.load(std::memory_order_relaxed))
+            sched::yield();
+    }
+
+    [[noreturn]]
+    void instance::raw_worker(instance *self)
+    {
+        lib::bug_on(!self || sched::current_thread() != self->worker_thread);
+
+        while (true)
+        {
+            if (!self->raw_should_work.load(std::memory_order_relaxed))
+            {
+                self->raw_should_work.store(true, std::memory_order_relaxed);
+                sched::thread_exit(0);
+            }
+
+            std::array<std::byte, 64> chunk;
+            const auto num = self->raw_buffer.pop(std::span { chunk });
+            if (num == 0)
+            {
+                self->raw_wq.wait();
+                continue;
+            }
+
+            const auto locked = self->ldisc.lock();
+            if (locked.value())
+                locked.value()->receive(std::span { chunk.data(), num });
+        }
+    }
 
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {

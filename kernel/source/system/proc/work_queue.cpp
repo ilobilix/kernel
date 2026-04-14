@@ -60,10 +60,7 @@ namespace sched
             pid0_created_stage()
         },
         [] {
-            wq.worker_thread = sched::spawn(
-                workqueue_t::worker,
-                reinterpret_cast<std::uintptr_t>(&wq)
-            );
+            wq.worker_thread = sched::spawn(workqueue_t::worker, &wq, 5);
         }
     };
 
