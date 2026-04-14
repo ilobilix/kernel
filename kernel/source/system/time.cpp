@@ -54,10 +54,4 @@ namespace time
 
         return true;
     }
-
-    bool sleep_ns(std::size_t ns)
-    {
-        // TODO: propa eep
-        return stall_ns(ns);
-    }
 } // namespace time

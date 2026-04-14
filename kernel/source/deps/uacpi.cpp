@@ -293,7 +293,12 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        time::sleep_ns(msec * 1'000'000);
+        if (sched::initialised)
+        {
+            sched::this_thread()->prepare_sleep(msec);
+            sched::yield();
+        }
+        else uacpi_kernel_stall(msec * 1'000);
     }
 
     uacpi_handle uacpi_kernel_create_mutex()
@@ -305,15 +310,33 @@ extern "C"
     {
         delete reinterpret_cast<lib::mutex *>(handle);
     }
+    struct simple_event
+    {
+        std::atomic<size_t> counter;
+
+        bool decrement()
+        {
+            while (true)
+            {
+                auto value = counter.load(std::memory_order::acquire);
+                if (value == 0)
+                    return false;
+
+                if (counter.compare_exchange_strong(value, value - 1, std::memory_order::acq_rel, std::memory_order::acquire))
+                    return true;
+            }
+        }
+    };
+
 
     uacpi_handle uacpi_kernel_create_event()
     {
-        return reinterpret_cast<uacpi_handle>(new lib::simple_event);
+        return reinterpret_cast<uacpi_handle>(new simple_event);
     }
 
     void uacpi_kernel_free_event(uacpi_handle handle)
     {
-        delete reinterpret_cast<lib::simple_event *>(handle);
+        delete reinterpret_cast<simple_event *>(handle);
     }
 
     uacpi_thread_id uacpi_kernel_get_thread_id()
@@ -350,28 +373,36 @@ extern "C"
 
     uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle handle, uacpi_u16 timeout)
     {
-        auto event = reinterpret_cast<lib::simple_event *>(handle);
+        auto event = reinterpret_cast<simple_event *>(handle);
         if (timeout == 0xFFFF)
-            event->await();
+        {
+            while (!event->decrement())
+                uacpi_kernel_sleep(10);
+        }
         else
-            return event->await_timeout(timeout * 1'000'000) ? UACPI_TRUE : UACPI_FALSE;
+        {
+            std::int32_t value = timeout;
+            while (!event->decrement())
+            {
+                if (value <= 0)
+                    return UACPI_FALSE;
+                uacpi_kernel_sleep(10);
+                value -= 10;
+            }
+        }
         return UACPI_TRUE;
     }
 
     void uacpi_kernel_signal_event(uacpi_handle handle)
     {
-        auto event = reinterpret_cast<lib::simple_event *>(handle);
-        event->trigger();
+        auto event = reinterpret_cast<simple_event *>(handle);
+        event->counter.fetch_add(1, std::memory_order_acq_rel);
     }
 
     void uacpi_kernel_reset_event(uacpi_handle handle)
     {
-        auto event = reinterpret_cast<lib::simple_event *>(handle);
-        if (event->drop())
-        {
-            while (event->num_awaiters())
-                event->trigger();
-        }
+        auto event = reinterpret_cast<simple_event *>(handle);
+        event->counter.store(0, std::memory_order_release);
     }
 
     uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request *req)

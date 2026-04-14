@@ -19,6 +19,13 @@ export namespace arch
     void int_switch(bool on);
     bool int_status();
 
+    inline bool int_switch_status(bool on)
+    {
+        auto ret = int_status();
+        int_switch(on);
+        return ret;
+    }
+
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregsregs, log::level lvl);
 
     void init();

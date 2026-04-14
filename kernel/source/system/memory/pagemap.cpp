@@ -1,6 +1,7 @@
 // Copyright (C) 2024-2025  ilobilo
 
 module system.memory.virt;
+
 import system.memory.phys;
 import magic_enum;
 import boot;
