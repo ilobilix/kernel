@@ -16,6 +16,14 @@ namespace sched::arch
     {
     }
 
+    void enable()
+    {
+    }
+
+    void disable()
+    {
+    }
+
     void reschedule(std::size_t ms)
     {
         lib::unused(ms);

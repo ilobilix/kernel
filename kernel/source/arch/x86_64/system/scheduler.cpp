@@ -20,6 +20,11 @@ namespace sched
     void schedule(cpu::registers *regs);
 } // namespace sched
 
+extern "C"
+{
+    void sched_switch_context(cpu::registers *current, cpu::registers *next);
+} // extern "C"
+
 namespace sched::arch
 {
     static constexpr std::size_t sched_vector = 0xFE;
@@ -34,6 +39,16 @@ namespace sched::arch
         auto [handler, vec] = *ret;
         lib::bug_on(sched_vector != vec);
         handler.set(schedule);
+    }
+
+    void enable()
+    {
+        asm volatile ("dec qword ptr gs:24" ::: "memory");
+    }
+
+    void disable()
+    {
+        asm volatile ("inc qword ptr gs:24" ::: "memory");
     }
 
     void reschedule(std::size_t ms)
@@ -125,7 +140,6 @@ namespace sched::arch
         }
     }
 
-    extern "C" void sched_switch_context(cpu::registers *current, cpu::registers *next);
     void ctx_switch(thread *current, thread *next)
     {
         lib::bug_on(!current || !next);

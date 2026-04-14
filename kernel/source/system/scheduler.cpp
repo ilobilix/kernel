@@ -59,7 +59,6 @@ namespace sched
 
         lib::intrusive_list<thread, &thread::list_hook> dead_threads;
 
-        std::atomic_size_t preemption = 0;
         std::atomic_bool in_scheduler = false;
         std::atomic_bool idling = false;
     };
@@ -72,6 +71,10 @@ namespace sched
         using namespace ::arch;
 
         void init();
+
+        void enable();
+        void disable();
+
         void reschedule(std::size_t ms);
         void reschedule_other(std::size_t cpu);
 
@@ -706,7 +709,9 @@ namespace sched
     void schedule(cpu::registers *regs)
     {
         auto &pcpu = percpu.get();
-        if (pcpu.preemption.load(std::memory_order_acquire) > 0)
+        const auto current = pcpu.running_thread;
+
+        if (current && current->preemption > 0)
         {
             lib::bug_on(!regs);
             arch::reschedule(timeslice);
@@ -720,7 +725,6 @@ namespace sched
         const auto self = cpu::self();
         auto &dead = pcpu.dead_threads;
 
-        const auto current = pcpu.running_thread;
         const bool is_current_idle = (current == pcpu.idle_thread);
 
         if (current && !is_current_idle && current->status != status::killed)
@@ -912,34 +916,23 @@ namespace sched
 
     void enable()
     {
-        if (!initialised)
+        lib::bug_on(!initialised);
+
+        if (percpu->in_scheduler.load(std::memory_order_acquire))
             return;
 
-        auto &pcpu = percpu.get();
-        if (pcpu.in_scheduler.load(std::memory_order_acquire))
-            return;
-
-        std::size_t expected = pcpu.preemption.load(std::memory_order_relaxed);
-        while (expected > 0 &&
-            !pcpu.preemption.compare_exchange_weak(
-                expected, expected - 1,
-                std::memory_order_acq_rel, std::memory_order_relaxed
-            )
-        ) {
-            arch::pause();
-        }
+        lib::bug_on(this_thread()->preemption == 0);
+        arch::enable();
     }
 
     void disable()
     {
-        if (!initialised)
+        lib::bug_on(!initialised);
+
+        if (percpu->in_scheduler.load(std::memory_order_acquire))
             return;
 
-        auto &pcpu = percpu.get();
-        if (pcpu.in_scheduler.load(std::memory_order_acquire))
-            return;
-
-        pcpu.preemption.fetch_add(1, std::memory_order_release);
+        arch::disable();
     }
 
     [[noreturn]] void start()

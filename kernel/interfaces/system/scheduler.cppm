@@ -59,6 +59,7 @@ export namespace sched
         cpu::processor *running_on;
         std::uintptr_t ustack_top;
         std::uintptr_t kstack_top;
+        std::size_t preemption;
 
         std::weak_ptr<vmm::memobject> ustack_obj;
 
@@ -109,6 +110,11 @@ export namespace sched
         thread() = default;
         ~thread();
     };
+
+    static_assert(__builtin_offsetof(thread, running_on) == 0);
+    static_assert(__builtin_offsetof(thread, ustack_top) == 8);
+    static_assert(__builtin_offsetof(thread, kstack_top) == 16);
+    static_assert(__builtin_offsetof(thread, preemption) == 24);
 
     struct process
     {
