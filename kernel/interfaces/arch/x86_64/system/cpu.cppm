@@ -137,36 +137,6 @@ export namespace cpu
 
         // if one core supports smap, others do too
         bool supported = false;
-
-        struct guard
-        {
-            guard()
-            {
-                if (supported)
-                    disable();
-            }
-
-            ~guard()
-            {
-                if (supported)
-                    enable();
-            }
-        };
-
-        template<typename Func, typename ...Args>
-        auto as_user(Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
-        {
-            guard _ { };
-            return func(std::forward<Args>(args)...);
-        }
-
-        template<typename Func, typename ...Args>
-            requires (std::same_as<std::invoke_result_t<Func, Args...>, void>)
-        auto as_user(Func &&func, Args &&...args) -> void
-        {
-            guard _ { };
-            func(std::forward<Args>(args)...);
-        }
     } // namespace smap
 
     namespace mtrr

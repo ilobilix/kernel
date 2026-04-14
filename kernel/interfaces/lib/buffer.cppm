@@ -4,6 +4,7 @@ export module lib:buffer;
 
 import :bug_on;
 import :math;
+import :user;
 import cppstd;
 
 export namespace lib
@@ -65,6 +66,15 @@ export namespace lib
                 std::forward<Self>(self)._ptr,
                 std::forward<Self>(self)._count
             };
+        }
+
+        template<typename Self>
+        auto maybe_uspan(this Self &&self)
+        {
+            return lib::maybe_uspan<Type>::create(
+                std::forward<Self>(self)._ptr,
+                std::forward<Self>(self)._count
+            ).value();
         }
 
         template<typename Self>

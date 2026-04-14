@@ -14,6 +14,12 @@ export
         suseconds_t tv_usec;
     };
 
+    struct timezone
+    {
+        int	tz_minuteswest;
+        int	tz_dsttime;
+    };
+
     struct timespec
     {
         time_t tv_sec;

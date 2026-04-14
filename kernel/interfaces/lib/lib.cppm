@@ -23,6 +23,7 @@ export import :mutex;
 export import :panic;
 export import :partitions;
 export import :path;
+export import :random;
 export import :ranged;
 export import :rbtree;
 export import :rwlock;

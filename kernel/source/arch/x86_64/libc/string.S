@@ -1,22 +1,20 @@
 # Copyright (C) 2024-2025  ilobilo
 
-#if !ILOBILIX_MAX_UACPI_POINTS
-memcpy:
-    mov rcx, rdx
-    mov rax, rdi
-    rep movsb
-    ret
-.global memcpy
+# memcpy:
+#     mov rcx, rdx
+#     mov rax, rdi
+#     rep movsb
+#     ret
+# .global memcpy
 
-memset:
-    push rdi
-    mov rax, rsi
-    mov rcx, rdx
-    rep stosb
-    pop rax
-    ret
-.global memset
-#endif
+# memset:
+#     push rdi
+#     mov rax, rsi
+#     mov rcx, rdx
+#     rep stosb
+#     pop rax
+#     ret
+# .global memset
 
 memmove:
     mov rcx, rdx

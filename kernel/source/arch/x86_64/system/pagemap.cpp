@@ -176,9 +176,19 @@ namespace vmm
         return _table;
     }
 
-    bool pagemap::is_canonical(std::uintptr_t addr)
+    [[gnu::pure]] bool pagemap::is_canonical(std::uintptr_t addr)
     {
         return (addr < 0x0000800000000000) || (addr >= 0xFFFF800000000000);
+    }
+
+    [[gnu::pure]] std::pair<std::uintptr_t, std::uintptr_t> pagemap::user_range()
+    {
+        return { 0x0000000000001000, 0x0000800000000000 };
+    }
+
+    [[gnu::pure]] std::pair<std::uintptr_t, std::uintptr_t> pagemap::kernel_range()
+    {
+        return { 0xFFFF800000000000, 0xFFFFFFFFFFFFFFFF };
     }
 
     [[gnu::pure]] std::size_t pagemap::from_page_size(page_size psize)

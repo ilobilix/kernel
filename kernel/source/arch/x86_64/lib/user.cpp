@@ -5,28 +5,44 @@ module lib;
 import system.cpu;
 import cppstd;
 
-namespace lib
+namespace lib::impl
 {
+    void user_acquire()
+    {
+        cpu::smap::disable();
+    }
+
+    void user_release()
+    {
+        cpu::smap::enable();
+    }
+
     void copy_to_user(void __user *dest, const void *src, std::size_t len)
     {
-        cpu::smap::as_user([&] {
-            std::memcpy((__force void *)dest, src, len);
-        });
+        user_acquire();
+        std::memcpy((__force void *)dest, src, len);
+        user_release();
     }
 
     void copy_from_user(void *dest, const void __user *src, std::size_t len)
     {
-        cpu::smap::as_user([&] {
-            std::memcpy(dest, (__force void *)src, len);
-        });
+        user_acquire();
+        std::memcpy(dest, (__force void *)src, len);
+        user_release();
+    }
+
+    void fill_user(void __user *dest, int value, std::size_t len)
+    {
+        user_acquire();
+        std::memset((__force void *)dest, value, len);
+        user_release();
     }
 
     std::size_t strnlen_user(const char __user *str, std::size_t len)
     {
-        std::size_t ret = 0;
-        cpu::smap::as_user([&] {
-            ret = std::strnlen((__force const char *)str, len);
-        });
+        user_acquire();
+        std::size_t ret = std::strnlen((__force const char *)str, len);
+        user_release();
         return ret;
     }
-} // namespace lib
+} // namespace lib::impl

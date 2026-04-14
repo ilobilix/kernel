@@ -3,6 +3,7 @@
 module system.syscall.vfs;
 
 import system.scheduler;
+import system.memory.virt;
 import system.vfs;
 import magic_enum;
 import lib;
@@ -93,15 +94,18 @@ namespace syscall::vfs
                 return (errno = EFAULT, std::nullopt);
 
             const auto pathname_len = lib::strnlen_user(pathname, vfs::path_max);
+            if (pathname_len < 0)
+                return (errno = EFAULT, std::nullopt);
             if (pathname_len == 0)
                 return (errno = EINVAL, std::nullopt);
             if (pathname_len == vfs::path_max)
                 return (errno = ENAMETOOLONG, std::nullopt);
 
-            lib::path path { pathname_len, 0 };
-            lib::bug_on(path.str().size() != pathname_len);
+            lib::path path { static_cast<std::size_t>(pathname_len), 0 };
+            lib::bug_on(path.str().size() != static_cast<std::size_t>(pathname_len));
 
-            lib::copy_from_user(path.str().data(), pathname, pathname_len);
+            if (!lib::copy_from_user(path.str().data(), pathname, pathname_len))
+                return (errno = EFAULT, std::nullopt);
 
             path.normalise();
             return std::move(path);
@@ -291,13 +295,13 @@ namespace syscall::vfs
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
-        lib::membuffer buffer { count };
-        const auto ret = fdesc->file->read(buffer.span());
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+        if (!uspan.has_value())
+            return (errno = EFAULT, -1);
+
+        const auto ret = fdesc->file->read(uspan.value());
         if (ret < 0)
             return (errno = -ret, -1);
-
-        if (ret > 0)
-            lib::copy_to_user(buf, buffer.data(), static_cast<std::size_t>(ret));
 
         stat.update_time(stat::time::access);
         return ret;
@@ -315,10 +319,11 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        lib::membuffer buffer { count };
-        lib::copy_from_user(buffer.data(), buf, count);
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+        if (!uspan.has_value())
+            return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->write(buffer.span());
+        const auto ret = fdesc->file->write(uspan.value());
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -345,13 +350,13 @@ namespace syscall::vfs
         if (stat.type() == stat::type::s_ifdir)
             return (errno = EISDIR, -1);
 
-        lib::membuffer buffer { count };
-        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), buffer.span());
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+        if (!uspan.has_value())
+            return (errno = EFAULT, -1);
+
+        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), uspan.value());
         if (ret < 0)
             return (errno = -ret, -1);
-
-        if (ret > 0)
-            lib::copy_to_user(buf, buffer.data(), static_cast<std::size_t>(ret));
 
         stat.update_time(stat::time::access);
         return ret;
@@ -369,10 +374,11 @@ namespace syscall::vfs
         if (!is_write(file->flags))
             return (errno = EBADF, -1);
 
-        lib::membuffer buffer { count };
-        lib::copy_from_user(buffer.data(), buf, count);
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+        if (!uspan.has_value())
+            return (errno = EFAULT, -1);
 
-        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), buffer.span());
+        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), uspan.value());
         if (ret < 0)
             return (errno = -ret, -1);
 
@@ -383,7 +389,7 @@ namespace syscall::vfs
 
     struct iovec
     {
-        void *iov_base;
+        void __user *iov_base;
         std::size_t iov_len;
     };
 
@@ -403,18 +409,20 @@ namespace syscall::vfs
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
+            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+                return (errno = EFAULT, -1);
 
-            lib::membuffer buffer { local_iov.iov_len };
-            const auto ret = fdesc->file->read(buffer.span());
+            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
+            if (!uspan.has_value())
+                return (errno = EFAULT, -1);
+
+            const auto ret = fdesc->file->read(uspan.value());
             if (ret < 0)
                 return (errno = -ret, -1);
 
             if (ret == 0)
                 break;
 
-            auto uptr = (__force void __user *)local_iov.iov_base;
-            lib::copy_to_user(uptr, buffer.data(), static_cast<std::size_t>(ret));
             total_read += static_cast<std::size_t>(ret);
         }
 
@@ -440,13 +448,14 @@ namespace syscall::vfs
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
+            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+                return (errno = EFAULT, -1);
 
-            lib::membuffer buffer { local_iov.iov_len };
-            const auto uptr = (__force const void __user *)local_iov.iov_base;
-            lib::copy_from_user(buffer.data(), uptr, local_iov.iov_len);
+            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
+            if (!uspan.has_value())
+                return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->write(buffer.span());
+            const auto ret = fdesc->file->write(uspan.value());
             if (ret < 0)
                 return (errno = -ret, -1);
 
@@ -475,18 +484,20 @@ namespace syscall::vfs
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
+            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+                return (errno = EFAULT, -1);
 
-            lib::membuffer buffer { local_iov.iov_len };
-            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), buffer.span());
+            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
+            if (!uspan.has_value())
+                return (errno = EFAULT, -1);
+
+            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), uspan.value());
             if (ret < 0)
                 return (errno = -ret, -1);
 
             if (ret == 0)
                 break;
 
-            auto uptr = (__force void __user *)local_iov.iov_base;
-            lib::copy_to_user(uptr, buffer.data(), static_cast<std::size_t>(ret));
             total_read += static_cast<std::size_t>(ret);
             offset += static_cast<off_t>(ret);
         }
@@ -513,13 +524,14 @@ namespace syscall::vfs
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
-            lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec));
+            if (!lib::copy_from_user(&local_iov, &iov[i], sizeof(iovec)))
+                return (errno = EFAULT, -1);
 
-            lib::membuffer buffer { local_iov.iov_len };
-            const auto uptr = (__force const void __user *)local_iov.iov_base;
-            lib::copy_from_user(buffer.data(), uptr, local_iov.iov_len);
+            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
+            if (!uspan.has_value())
+                return (errno = EFAULT, -1);
 
-            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), buffer.span());
+            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), uspan.value());
             if (ret < 0)
                 return (errno = -ret, -1);
 
@@ -593,7 +605,8 @@ namespace syscall::vfs
         if (!target.has_value())
             return -1;
 
-        lib::copy_to_user(statbuf, &target->dentry->inode->stat, sizeof(::stat));
+        if (!lib::copy_to_user(statbuf, &target->dentry->inode->stat, sizeof(::stat)))
+            return (errno = EFAULT, -1);
         return 0;
     }
 
@@ -655,7 +668,7 @@ namespace syscall::vfs
         if (fdesc->file->path.dentry->inode->stat.type() != stat::type::s_ifchr)
             return (errno = ENOTTY, -1);
 
-        return fdesc->file->ioctl(request, lib::may_be_uptr { argp });
+        return fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
     }
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)
@@ -759,7 +772,8 @@ namespace syscall::vfs
         if (path_str.size() + 1 > size)
             return (errno = ERANGE, nullptr);
 
-        lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1);
+        if (!lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1))
+            return (errno = EFAULT, nullptr);
         return (__force char *)(buf);
     }
 } // namespace syscall::vfs
