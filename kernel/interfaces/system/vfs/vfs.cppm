@@ -143,17 +143,20 @@ export namespace vfs
 
     enum pollevents : std::uint16_t
     {
-        pollin   = 0x001, // there is data to read
-        pollpri  = 0x002, // there is urgent data to read
-        pollout  = 0x004, // writing now will not block
-        pollerr  = 0x008, // error condition
-        pollhup  = 0x010, // hung up
-        pollnval = 0x020  // invalid request
+        pollin     = 0x001,  // there is data to read
+        pollpri    = 0x002,  // there is urgent data to read
+        pollout    = 0x004,  // writing now will not block
+        pollerr    = 0x008,  // error condition
+        pollhup    = 0x010,  // hung up
+        pollnval   = 0x020,  // invalid request
+        pollmsg    = 0x400,  // linux extensions
+        pollremove = 0x1000,
+        pollrdhup =  0x2000
     };
 
     struct poll_table
     {
-        virtual void queue_wait(sched::wait_queue_t *wq) = 0;
+        virtual void add(sched::wait_queue_t &wq) = 0;
         virtual ~poll_table() = default;
     };
 

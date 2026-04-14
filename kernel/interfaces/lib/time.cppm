@@ -31,8 +31,8 @@ export
             : tv_sec { sec }, tv_nsec { nsec } { }
 
         constexpr timespec(std::uint64_t ns)
-            : tv_sec { static_cast<time_t>(ns / 1'000'000'000) },
-              tv_nsec { static_cast<long>(ns % 1'000'000'000) } { }
+            : tv_sec { static_cast<time_t>(ns / 1'000'000'000ul) },
+              tv_nsec { static_cast<long>(ns % 1'000'000'000ul) } { }
 
         constexpr timespec(const timespec &other) = default;
         constexpr timespec(timespec &&other) = default;
@@ -51,8 +51,8 @@ export
             tv_nsec += other.tv_nsec;
             if (tv_nsec >= 1'000'000'000)
             {
-                tv_sec += tv_nsec / 1'000'000'000;
-                tv_nsec = tv_nsec % 1'000'000'000;
+                tv_sec += tv_nsec / 1'000'000'000ul;
+                tv_nsec = tv_nsec % 1'000'000'000ul;
             }
             return *this;
         }
@@ -63,8 +63,8 @@ export
             tv_nsec -= other.tv_nsec;
             if (tv_nsec < 0)
             {
-                tv_sec -= 1 + (-tv_nsec) / 1'000'000'000;
-                tv_nsec = 1'000'000'000 - ((-tv_nsec) % 1'000'000'000);
+                tv_sec -= 1 + (-tv_nsec) / 1'000'000'000ul;
+                tv_nsec = 1'000'000'000ul - ((-tv_nsec) % 1'000'000'000ul);
             }
             return *this;
         }
@@ -92,12 +92,12 @@ export
 
         constexpr std::uint64_t to_ns() const
         {
-            return tv_sec * 1'000'000'000 + tv_nsec;
+            return tv_sec * 1'000'000'000ul + tv_nsec;
         }
 
         constexpr std::uint64_t to_ms() const
         {
-            return tv_sec * 1000 + tv_nsec / 1'000'000;
+            return tv_sec * 1000ul + tv_nsec / 1'000'000;
         }
 
         constexpr timeval to_timeval() const
