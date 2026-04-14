@@ -2,12 +2,13 @@
 
 export module system.sched:perm;
 
+import system.sched.cred;
+import system.vfs.caps;
 import magic_enum;
 import lib;
 import std;
 
 import :thread;
-import :cred;
 
 export namespace sched
 {
@@ -57,4 +58,9 @@ export namespace sched
     void cap_ambient_lower(cap_t cap);
 
     lib::expect<void> set_securebits(secbit_t securebits);
+
+    std::shared_ptr<cred_t> apply_exec_caps(
+        const std::shared_ptr<cred_t> &old_cred,
+        const stat &stat, std::optional<vfs::file_caps> fcaps
+    );
 } // export namespace sched

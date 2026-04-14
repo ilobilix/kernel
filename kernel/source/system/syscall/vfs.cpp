@@ -4,7 +4,6 @@ module system.syscall.vfs;
 
 import system.memory.virt;
 import system.chrono;
-import system.sched.wait_queue;
 import system.sched;
 import system.vfs;
 import system.vfs.pipe;
@@ -82,21 +81,6 @@ namespace syscall::vfs
 
             path.normalise();
             return path;
-        }
-
-        bool dirty_inode(const path &path, std::shared_ptr<inode> &inode)
-        {
-            if (path.mnt == nullptr)
-                return true;
-
-            auto fs = path.mnt->fs.lock();
-            if (fs.get() == nullptr)
-                return (errno = EIO, false);
-
-            if (const auto ret = fs->dirty_inode(inode); !ret)
-                return (errno = lib::map_error(ret.error()), false);
-
-            return true;
         }
 
         int close_fd(sched::process_t *proc, int fd, bool was_opened = true)
@@ -223,8 +207,8 @@ namespace syscall::vfs
                 else
                     stat.st_gid = proc->cred->egid;
 
-                if (!dirty_inode(*created, created->dentry->inode))
-                    return -1;
+                if (const auto ret = dirty_inode(*created); !ret)
+                    return (errno = lib::map_error(ret.error()), -1);
             }
 
             target = std::move(*created);
@@ -280,8 +264,8 @@ namespace syscall::vfs
                 const std::unique_lock _ { target.dentry->inode->lock };
                 stat.update_time(stat::time::modify | stat::time::status);
 
-                if (!dirty_inode(target, target.dentry->inode))
-                    return -1;
+                if (const auto ret = dirty_inode(target); !ret)
+                    return (errno = lib::map_error(ret.error()), -1);
             }
 
             if (flags & (o_sync | o_dsync))
@@ -341,8 +325,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -385,8 +369,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -429,8 +413,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -473,8 +457,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -536,8 +520,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -590,8 +574,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -648,8 +632,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -703,8 +687,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
-            if (!dirty_inode(file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         if (file->flags & (o_sync | o_dsync))
@@ -959,8 +943,8 @@ namespace syscall::vfs
             inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
             inode->stat.update_time(stat::time::status);
 
-            if (!dirty_inode(*target, inode))
-                return -1;
+            if (const auto ret = dirty_inode(*target); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
         return 0;
     }
@@ -1002,8 +986,8 @@ namespace syscall::vfs
 
             inode->stat.update_time(stat::time::status);
 
-            if (!dirty_inode(*target, inode))
-                return -1;
+            if (const auto ret = dirty_inode(*target); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
         return 0;
     }
@@ -1295,8 +1279,8 @@ namespace syscall::vfs
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
-            if (!dirty_inode(fdesc->file->path, dentry->inode))
-                return -1;
+            if (const auto ret = dirty_inode(fdesc->file->path); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
         }
 
         return static_cast<int>(ret.value());

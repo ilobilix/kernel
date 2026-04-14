@@ -46,6 +46,27 @@ namespace vfs
             }
             return path;
         };
+
+        bool can_read_xattr(const std::shared_ptr<sched::cred_t> &cred, std::string_view name)
+        {
+            if (name.starts_with("security.") || name.starts_with("trusted."))
+                return sched::capable(cred, sched::cap_t::sys_admin);
+            return true;
+        }
+
+        bool can_write_xattr(
+            const std::shared_ptr<sched::cred_t> &cred,
+            const stat &stat, std::string_view name
+        )
+        {
+            if (name == "security.capability")
+                return sched::capable(cred, sched::cap_t::setfcap);
+            if (name.starts_with("security.") || name.starts_with("trusted."))
+                return sched::capable(cred, sched::cap_t::sys_admin);
+            if (name.starts_with("user."))
+                return sched::check_perms(cred, stat, sched::access_mode::write);
+            return false;
+        }
     } // namespace
 
     filesystem::instance::instance() : dev_id { allocate_dev() } { }
@@ -652,6 +673,183 @@ namespace vfs
         auto wlocked = real_parent->children.lock();
         lib::bug_on(!wlocked->erase(name));
         return { };
+    }
+
+    auto dirty_inode(const path &path) -> lib::expect<void>
+    {
+        if (path.mnt == nullptr)
+            return { };
+
+        auto fs = path.mnt->fs.lock();
+        if (fs.get() == nullptr)
+            return std::unexpected { lib::err::io_error };
+
+        if (const auto ret = fs->dirty_inode(path.dentry->inode); !ret)
+            return ret;
+
+        return { };
+    }
+
+    auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>
+    {
+        if (target.mnt == nullptr)
+            return std::unexpected { lib::err::invalid_mount };
+
+        const auto proc = sched::current_process();
+        const auto &cred = proc->cred;
+
+        if (!can_read_xattr(cred, name))
+            return std::unexpected { lib::err::permission_denied };
+
+        auto &inode = target.dentry->inode;
+        const std::unique_lock _ { inode->lock };
+
+        if (auto it = inode->xattrs.find(name); it != inode->xattrs.end())
+            return it->second;
+
+        auto fs = target.mnt->fs.lock();
+        if (fs.get() == nullptr)
+            return std::unexpected { lib::err::io_error };
+
+        auto ret = fs->getxattr(inode, name);
+        if (!ret.has_value())
+            return ret;
+
+        return inode->xattrs.insert_or_assign(name, std::move(*ret)).second;
+    }
+
+    auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
+        -> lib::expect<void>
+    {
+        if (target.mnt == nullptr)
+            return std::unexpected { lib::err::invalid_mount };
+
+        const auto proc = sched::current_process();
+        const auto &cred = proc->cred;
+
+        auto &inode = target.dentry->inode;
+        const std::unique_lock _ { inode->lock };
+
+        if (!can_write_xattr(cred, inode->stat, name))
+            return std::unexpected { lib::err::permission_denied };
+
+        if (inode->xattrs.contains(name))
+        {
+            if ((flags & xattr_create) != 0)
+                return std::unexpected { lib::err::already_exists };
+        }
+        else if ((flags & xattr_replace) != 0)
+            return std::unexpected { lib::err::does_not_exist };
+
+        {
+            auto fs = target.mnt->fs.lock();
+            if (fs.get() == nullptr)
+                return std::unexpected { lib::err::io_error };
+
+            if (const auto ret = fs->setxattr(inode, name, data, flags); !ret)
+                return ret;
+        }
+
+        lib::membuffer buf { data.size() };
+        data.copy_to(buf.span());
+        inode->xattrs.insert_or_assign(name, std::move(buf));
+
+        inode->stat.update_time(stat::time::status);
+        return dirty_inode(target);
+    }
+
+    auto remxattr(const path &target, std::string_view name) -> lib::expect<void>
+    {
+        if (target.mnt == nullptr)
+            return std::unexpected { lib::err::invalid_mount };
+
+        const auto proc = sched::current_process();
+        const auto &cred = proc->cred;
+
+        auto &inode = target.dentry->inode;
+        const std::unique_lock _ { inode->lock };
+
+        if (!can_write_xattr(cred, inode->stat, name))
+            return std::unexpected { lib::err::permission_denied };
+
+        if (!inode->xattrs.contains(name))
+            return std::unexpected { lib::err::does_not_exist };
+
+        {
+            auto fs = target.mnt->fs.lock();
+            if (fs.get() == nullptr)
+                return std::unexpected { lib::err::io_error };
+
+            if (const auto ret = fs->remxattr(inode, name); !ret)
+                return ret;
+        }
+
+        inode->xattrs.erase(name);
+
+        inode->stat.update_time(stat::time::status);
+        return dirty_inode(target);
+    }
+
+    auto listxattrs(const path &target) -> lib::expect<std::vector<std::string>>
+    {
+        auto &inode = target.dentry->inode;
+        const std::unique_lock _ { inode->lock };
+
+        if (inode->xattrs.empty())
+        {
+            if (target.mnt == nullptr)
+                return std::unexpected { lib::err::invalid_mount };
+
+            auto fs = target.mnt->fs.lock();
+            if (fs.get() == nullptr)
+                return std::unexpected { lib::err::io_error };
+
+            auto ret = fs->listxattrs(inode);
+            if (!ret.has_value())
+                return ret;
+
+            for (const auto &name : *ret)
+            {
+                if (auto val = fs->getxattr(inode, name); !val.has_value())
+                    inode->xattrs[name] = std::move(*val);
+            }
+        }
+
+        return std::views::keys(inode->xattrs) |
+            std::ranges::to<std::vector<std::string>>();
+    }
+
+    auto lenxattrs(const path &target) -> lib::expect<std::size_t>
+    {
+        auto &inode = target.dentry->inode;
+        const std::unique_lock _ { inode->lock };
+
+        if (inode->xattrs.empty())
+        {
+            if (target.mnt == nullptr)
+                return std::unexpected { lib::err::invalid_mount };
+
+            auto fs = target.mnt->fs.lock();
+            if (fs.get() == nullptr)
+                return std::unexpected { lib::err::io_error };
+
+            auto ret = fs->listxattrs(inode);
+            if (!ret.has_value())
+                return std::unexpected { ret.error() };
+
+            for (const auto &name : *ret)
+            {
+                if (auto val = fs->getxattr(inode, name); !val.has_value())
+                    inode->xattrs[name] = std::move(*val);
+            }
+        }
+
+        return std::ranges::fold_left(
+            std::views::keys(inode->xattrs) |
+            std::views::transform([](const auto &name) {
+                return name.size() + 1;
+            }), 0, std::plus { }
+        );
     }
 
     bool fdtable::close(int fd)

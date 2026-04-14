@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2026  ilobilo
 
-export module system.sched:cred;
+export module system.sched.cred;
 
 import magic_enum;
 import lib;

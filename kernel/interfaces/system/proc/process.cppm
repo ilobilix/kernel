@@ -3,12 +3,12 @@
 export module system.sched:process;
 
 import system.sched.wait_queue;
+import system.sched.cred;
 import system.memory.virt;
 import system.vfs;
 import lib;
 import std;
 
-import :cred;
 import :thread;
 
 export namespace sched

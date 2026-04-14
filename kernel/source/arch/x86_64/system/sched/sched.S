@@ -29,7 +29,6 @@ sched_uthread_trampoline:
 .global sched_uthread_trampoline
 
 sched_clone_trampoline:
-    cli
     call sched_trampoline_entry
 
     popall
@@ -41,6 +40,7 @@ sched_clone_trampoline:
     pop r11
     pop rsp
 
+    cli
     swapgs
     sysretq
 .global sched_clone_trampoline

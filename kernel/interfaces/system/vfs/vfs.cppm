@@ -2,17 +2,27 @@
 
 export module system.vfs;
 
+export import system.vfs.caps;
+
 import system.sched.thread_base;
 import system.sched.wait_queue;
 import system.sched.mutex;
+import system.sched.cred;
 import system.memory.virt;
 import lib;
 import std;
 
 export namespace vfs
 {
-    inline constexpr std::size_t symloop_max = 40;
-    inline constexpr std::size_t path_max = 4096;
+    constexpr std::size_t symloop_max = 40;
+    constexpr std::size_t path_max = 4096;
+
+    constexpr std::size_t xattr_size_max = 65536;
+    constexpr std::size_t xattr_list_max = 65536;
+    constexpr std::size_t xattr_name_max = 255;
+
+    constexpr int xattr_create = 1;
+    constexpr int xattr_replace = 2;
 
     enum openflags : int
     {
@@ -254,6 +264,36 @@ export namespace vfs
             virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
             virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
+            virtual auto getxattr(std::shared_ptr<inode> &inode, std::string_view name)
+                -> lib::expect<lib::membuffer>
+            {
+                lib::unused(inode, name);
+                return std::unexpected { lib::err::not_supported };
+            }
+
+            virtual auto setxattr(
+                std::shared_ptr<inode> &inode, std::string_view name,
+                lib::maybe_uspan<std::byte> data, int flags
+            ) -> lib::expect<void>
+            {
+                lib::unused(inode, name, data, flags);
+                return std::unexpected { lib::err::not_supported };
+            }
+
+            virtual auto remxattr(std::shared_ptr<inode> &inode, std::string_view name)
+                -> lib::expect<void>
+            {
+                lib::unused(inode, name);
+                return std::unexpected { lib::err::not_supported };
+            }
+
+            virtual auto listxattrs(std::shared_ptr<inode> &inode)
+                -> lib::expect<std::vector<std::string>>
+            {
+                lib::unused(inode);
+                return std::unexpected { lib::err::not_supported };
+            }
+
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
 
@@ -281,6 +321,11 @@ export namespace vfs
         sched::mutex lock;
         stat stat;
         bool dirty = false;
+
+        lib::map::flat_hash<
+            std::string,
+            lib::membuffer
+        > xattrs;
     };
 
     struct dentry : std::enable_shared_from_this<dentry>
@@ -590,6 +635,17 @@ export namespace vfs
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> lib::expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
+
+    // called with path.dentry->inode->lock acquired
+    auto dirty_inode(const path &path) -> lib::expect<void>;
+
+    auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>;
+    auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
+        -> lib::expect<void>;
+    auto remxattr(const path &target, std::string_view name) -> lib::expect<void>;
+
+    auto listxattrs(const path &target) -> lib::expect<std::vector<std::string>>;
+    auto lenxattrs(const path &target) -> lib::expect<std::size_t>;
 
     lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

@@ -2,64 +2,69 @@
 
 export module lib:error;
 
-import :errno;
-import :panic;
 import magic_enum;
 import std;
+
+import :errno;
+import :panic;
+import :bug_on;
 
 export namespace lib
 {
     enum class err
     {
-        todo,
-        already_exists,
+        todo = ENOSYS,
+        already_exists = EEXIST,
+        does_not_exist = ENODATA,
 
-        not_found,
-        not_a_dir,
-        not_a_block,
+        not_found = ENOENT,
+        not_a_dir = ENOTDIR,
+        not_a_block = ENOTBLK,
 
-        symloop_max,
+        symloop_max = ELOOP,
 
-        target_is_a_dir,
-        target_is_busy,
+        target_is_a_dir = EISDIR,
+        target_is_busy = EBUSY,
 
-        dir_not_empty,
+        dir_not_empty = ENOTEMPTY,
 
-        different_filesystem,
+        different_filesystem = EXDEV,
 
-        invalid_filesystem,
-        no_such_device,
-        invalid_device_or_address,
-        invalid_mount,
-        invalid_path,
-        invalid_symlink,
-        invalid_flags,
-        invalid_type,
-        invalid_pml_entry,
-        invalid_length,
-        invalid_argument,
-        invalid_address,
-        invalid_fd,
+        invalid_filesystem = ENODEV,
+        no_such_device = ENODEV,
+        invalid_device_or_address = ENXIO,
+        invalid_mount = EINVAL,
+        invalid_path = EINVAL,
+        invalid_symlink = EINVAL,
+        invalid_flags = EINVAL,
+        invalid_type = EINVAL,
+        invalid_pml_entry = EINVAL,
+        invalid_length = EINVAL,
+        addr_not_aligned = EINVAL,
+        addr_out_of_bounds = EINVAL,
+        buffer_too_small = EINVAL,
 
-        buffer_too_small,
+        invalid_fd = EBADF,
 
-        no_space_left,
-        no_readers,
+        invalid_address = EFAULT,
+        not_mapped = EFAULT,
 
-        try_again,
-        interrupted,
-        inappropriate_ioctl,
-        mapping_unsupported,
-        io_error,
+        no_space_left = ENOSPC,
+        no_readers = EPIPE,
 
-        addr_not_aligned,
-        addr_out_of_bounds,
-        addr_in_use,
-        not_mapped,
-        out_of_memory,
+        try_again = EAGAIN,
+        interrupted = EINTR,
+        inappropriate_ioctl = ENOTTY,
+        mapping_unsupported = ENODEV,
+        io_error = EIO,
 
-        not_permitted,
-        permission_denied
+        addr_in_use = EADDRINUSE,
+        out_of_memory = ENOMEDIUM,
+
+        not_permitted = EPERM,
+        permission_denied = EACCES,
+
+        not_supported = ENOTSUP
     };
 
     template<typename Type>
@@ -67,74 +72,7 @@ export namespace lib
 
     constexpr errnos map_error(err err)
     {
-        switch (err)
-        {
-            case err::todo:
-                return ENOSYS;
-            case err::already_exists:
-                return EEXIST;
-            case err::not_found:
-                return ENOENT;
-            case err::not_a_dir:
-                return ENOTDIR;
-            case err::not_a_block:
-                return ENOTBLK;
-            case err::symloop_max:
-                return ELOOP;
-            case err::target_is_a_dir:
-                return EISDIR;
-            case err::target_is_busy:
-                return EBUSY;
-            case err::dir_not_empty:
-                return ENOTEMPTY;
-            case err::different_filesystem:
-                return EXDEV;
-            case err::invalid_filesystem:
-            case err::no_such_device:
-                return ENODEV;
-            case err::invalid_device_or_address:
-                return ENXIO;
-            case err::invalid_mount:
-            case err::invalid_path:
-            case err::invalid_symlink:
-            case err::invalid_flags:
-            case err::invalid_type:
-            case err::invalid_pml_entry:
-            case err::invalid_length:
-            case err::invalid_argument:
-            case err::buffer_too_small:
-            case err::addr_not_aligned:
-            case err::addr_out_of_bounds:
-                return EINVAL;
-            case err::invalid_address:
-            case err::not_mapped:
-                return EFAULT;
-            case err::invalid_fd:
-                return EBADF;
-            case err::no_space_left:
-                return ENOSPC;
-            case err::no_readers:
-                return EPIPE;
-            case err::try_again:
-                return EAGAIN;
-            case err::interrupted:
-                return EINTR;
-            case err::inappropriate_ioctl:
-                return ENOTTY;
-            case err::mapping_unsupported:
-                return ENODEV;
-            case err::io_error:
-                return EIO;
-            case err::addr_in_use:
-                return EADDRINUSE;
-            case err::out_of_memory:
-                return ENOMEM;
-            case err::not_permitted:
-                return EPERM;
-            case err::permission_denied:
-                return EACCES;
-        }
-        lib::panic("unhandled err: {}", magic_enum::enum_name(err));
-        std::unreachable();
+        lib::bug_on(!magic_enum::enum_contains(err));
+        return static_cast<errnos>(err);
     }
 } // export namespace lib
