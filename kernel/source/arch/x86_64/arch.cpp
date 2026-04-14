@@ -64,7 +64,8 @@ namespace arch
         return ret;
     }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log_level lvl)
+    // called from panic() only
+    void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log::level lvl)
     {
         lib::println(lvl, "cpu context:");
         lib::println(lvl, " - r15: 0x{:016X}, r14: 0x{:016X}", regs->r15, regs->r14);

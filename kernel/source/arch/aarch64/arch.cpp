@@ -46,7 +46,7 @@ namespace arch
         return cpu::mrs<"daif">() == 0;
     }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log_level lvl)
+    void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log::level lvl)
     {
         lib::unused(regs, lvl);
     }

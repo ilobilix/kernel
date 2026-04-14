@@ -12,7 +12,7 @@ import std;
 
 namespace lib
 {
-    void trace(lib::log_level prefix, std::uintptr_t fp, std::uintptr_t ip)
+    void trace(log::level prefix, std::uintptr_t fp, std::uintptr_t ip)
     {
         if (fp == 0 || fp & 7)
             fp = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
