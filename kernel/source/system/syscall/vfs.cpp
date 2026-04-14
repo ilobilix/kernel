@@ -1334,6 +1334,12 @@ namespace syscall::vfs
         return static_cast<int>(ret.value());
     }
 
+    int fadvise64(int fd, loff_t offset, std::size_t len, int advice)
+    {
+        lib::unused(fd, offset, len, advice);
+        return (errno = ENOSYS, -1);
+    }
+
     constexpr int FD_SETSIZE = 1024;
     struct [[aligned(alignof(long))]] fd_set
     {
@@ -1638,7 +1644,10 @@ namespace syscall::vfs
         }
     } // namespace
 
-    int ppoll(pollfd __user *fds, nfds_t nfds, timespec __user *timeout, sigset_t __user *sigmask)
+    int ppoll(
+        pollfd __user *fds, nfds_t nfds, timespec __user *timeout,
+        sigset_t __user *sigmask
+    )
     {
         if (fds == nullptr)
             return (errno = EFAULT, -1);
@@ -1719,7 +1728,10 @@ namespace syscall::vfs
         return ret;
     }
 
-    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout)
+    int select(
+        int nfds, fd_set __user *readfds, fd_set __user *writefds,
+        fd_set __user *exceptfds, timeval __user *timeout
+    )
     {
         timespec ktimeout;
         if (timeout != nullptr)
@@ -1746,7 +1758,10 @@ namespace syscall::vfs
         return ret;
     }
 
-    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const sigset_t __user *sigmask)
+    int pselect6(
+        int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
+        const timespec __user *timeout, const struct sigset_t __user *sigmask
+    )
     {
         timespec ktimeout;
         if (timeout != nullptr)

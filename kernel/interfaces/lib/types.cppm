@@ -108,6 +108,7 @@ export
     using gid_t = std::uint32_t;
     using dev_t = std::uint64_t;
     using off_t = std::int64_t;
+    using loff_t = std::int64_t;
     using blksize_t = std::int64_t;
     using blkcnt_t = std::int64_t;
 } // export
