@@ -52,19 +52,6 @@ namespace sched::arch
                     lib::panic("failed to write to set_child_tid");
                 thread->set_child_tid = 0;
             }
-
-            if (thread->clear_child_tid)
-            {
-                const pid_t zero = 0;
-                auto clear_child_tid = reinterpret_cast<pid_t __user *>(thread->clear_child_tid);
-                if (!lib::copy_to_user(clear_child_tid, &zero, sizeof(pid_t)))
-                    // TODO: kill thread instead
-                    lib::panic("failed to write to clear_child_tid");
-                thread->clear_child_tid = 0;
-
-                // TODO
-                // futex_wake(clear_child_tid, 1);
-            }
         }
     } // namespace
 
@@ -94,7 +81,28 @@ namespace sched::arch
         lib::bug_on(!thread || (thread->is_kernel() && (is_trampoline || is_clone)));
 
         auto ctx = &thread->ctx;
-        ctx->rflags = 0x202;
+        ctx->rflags = 0x002;
+
+        if (!thread->is_kernel())
+        {
+            // TODO-SCHED-REWRITE: lazy fpu
+            const auto &fpu = cpu::features::get_fpu();
+            auto &adata = thread->adata;
+            adata.fpu = lib::allocz<std::byte *>(fpu.size);
+            adata.fpu_size = fpu.size;
+
+            if (!is_clone)
+            {
+                fpu.restore(adata.fpu);
+
+                constexpr std::uint16_t default_fcw = 0b1100111111;
+                constexpr std::uint32_t default_mxcsr = 0b1111110000000;
+
+                asm volatile ("fldcw %0" :: "m"(default_fcw) : "memory");
+                asm volatile ("ldmxcsr %0" :: "m"(default_mxcsr) : "memory");
+            }
+            fpu.save(adata.fpu);
+        }
 
         if (is_clone)
         {
@@ -126,12 +134,6 @@ namespace sched::arch
             }
 
             ctx->rip = reinterpret_cast<std::uintptr_t>(sched_uthread_trampoline);
-
-            // TODO-SCHED-REWRITE: lazy fpu
-            // const auto &fpu = cpu::features::get_fpu();
-            // auto &adata = thread->adata;
-            // adata.fpu = lib::allocz<std::byte *>(fpu.size);
-            // adata.fpu_size = fpu.size;
         }
     }
 
@@ -161,10 +163,14 @@ namespace sched::arch
 
     void context_switch(thread_t *prev, thread_t *next)
     {
+        const auto &fpu = cpu::features::get_fpu();
+
         if (!prev->is_kernel())
         {
             prev->adata.fs_base = cpu::fs::read();
             prev->adata.gs_base = cpu::gs::read_kernel();
+            if (prev->adata.fpu)
+                fpu.save(prev->adata.fpu);
         }
 
         if (!next->is_kernel())
@@ -173,6 +179,8 @@ namespace sched::arch
 
             cpu::fs::write(next->adata.fs_base);
             cpu::gs::write_kernel(next->adata.gs_base);
+            if (next->adata.fpu)
+                fpu.restore(next->adata.fpu);
         }
 
         sched_context_switch(&prev->ctx, &next->ctx, next);

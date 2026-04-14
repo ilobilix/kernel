@@ -324,7 +324,7 @@ namespace sched
         rq.lock.lock();
         preempt_enable();
 
-        const auto prev = rq.current;
+        thread_t *prev = rq.current;
         thread_t *next = nullptr;
 
         const auto timer = chrono::main_timer();
@@ -356,6 +356,7 @@ namespace sched
                 if (!prev->is_idle())
                     rq.nr_running--;
 
+                prev->saved_vmspace = prev->proc->vmspace;
                 dead_threads.unsafe_get().lock()->push_back(prev);
                 need_reaper_wake.unsafe_get() = true;
                 break;
@@ -570,9 +571,9 @@ namespace sched
     {
         deallocate_kstack(kstack_base);
 
-        if (ustack_base != 0)
+        if (ustack_base != 0 && saved_vmspace)
         {
-            if (const auto ret = proc->vmspace->unmap(ustack_base, ustack_size); !ret)
+            if (const auto ret = saved_vmspace->unmap(ustack_base, ustack_size); !ret)
             {
                 lib::error(
                     "sched: could not unmap user stack: {}",

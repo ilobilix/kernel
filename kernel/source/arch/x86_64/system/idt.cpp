@@ -149,11 +149,11 @@ namespace x86_64::idt
             std::unreachable();
         }
 
+        end:
         if (sched::is_running() && !sched::is_preempt_disabled() &&
             sched::current_thread()->needs_resched())
             sched::schedule();
 
-        end:
         std::atomic_signal_fence(std::memory_order_release);
         self.in_interrupt.store(false, std::memory_order_relaxed);
     }
