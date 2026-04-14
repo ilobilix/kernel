@@ -211,7 +211,10 @@ namespace initramfs
     {
         "vfs.initramfs.extract",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { vfs::root_mounted_stage(), fs::dev::initialised_stage() },
+        lib::initgraph::require {
+            vfs::root_mounted_stage(),
+            fs::dev::registered_stage()
+        },
         lib::initgraph::entail { extracted_stage() },
         [] {
             auto module = boot::find_module("initramfs");

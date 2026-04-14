@@ -7,5 +7,5 @@ import cppstd;
 
 export namespace fs::dev::tty
 {
-    lib::initgraph::stage *initialised_stage();
+    lib::initgraph::stage *registered_stage();
 } // export namespace fs::dev::tty

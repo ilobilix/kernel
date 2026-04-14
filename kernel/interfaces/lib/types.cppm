@@ -263,27 +263,6 @@ export
             return mode(st_mode);
         }
 
-        static constexpr std::uint32_t major(dev_t dev)
-        {
-            std::uint32_t ret = ((dev & dev_t(0x00000000000FFF00U)) >> 8);
-            return ret |= ((dev & dev_t(0xFFFFF00000000000U)) >> 32);
-        }
-
-        static constexpr std::uint32_t minor(dev_t dev)
-        {
-            std::uint32_t ret = (dev & dev_t(0x00000000000000FFU));
-            return ret |= ((dev & dev_t(0x00000FFFFFF00000U)) >> 12);
-        }
-
-        static constexpr dev_t makedev(std::uint32_t maj, std::uint32_t min)
-        {
-            dev_t ret  = dev_t(maj & 0x00000FFFU) << 8;
-            ret |= dev_t(maj & 0xFFFFF000U) << 32;
-            ret |= dev_t(min & 0x000000FFU);
-            ret |= dev_t(min & 0xFFFFFF00U) << 12;
-            return ret;
-        }
-
         enum time : std::uint8_t { access = (1 << 0), modify = (1 << 1), status = (1 << 2) };
         void update_time(std::uint8_t flags);
     };

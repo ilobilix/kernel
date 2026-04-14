@@ -114,6 +114,14 @@ export namespace vfs
         at_empty_path = 0x1000
     };
 
+    enum accchecks : int
+    {
+        f_ok = 0,
+        x_ok = 1,
+        w_ok = 2,
+        r_ok = 4
+    };
+
     // stat and s_* bits are defined in lib/types.cppm
 
     template<typename Type>
@@ -141,7 +149,7 @@ export namespace vfs
         virtual int ioctl(std::shared_ptr<file> self, unsigned long request, lib::may_be_uptr argp)
         {
             lib::unused(self, request, argp);
-            return (errno = ENOSYS, -1);
+            return (errno = ENOTTY, -1);
         }
 
         virtual std::shared_ptr<vmm::object> map(std::shared_ptr<file> self, bool priv) = 0;
@@ -240,6 +248,8 @@ export namespace vfs
         path path;
         std::size_t offset;
         int flags;
+
+        std::shared_ptr<void> private_data;
 
         bool open()
         {
@@ -360,6 +370,8 @@ export namespace vfs
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> expect<void>;
+
+    bool check_access(uid_t uid, gid_t gid, const stat &stat, int mode);
 
     auto stat(std::optional<path> parent, lib::path path) -> expect<stat>;
     bool populate(path parent, std::string_view name = "");
