@@ -374,7 +374,9 @@ extern "C"
         if (sched::is_initialised())
         {
             const auto thread = sched::this_thread();
-            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(thread->tid, thread->parent->pid));
+            return reinterpret_cast<uacpi_thread_id>(lib::unique_from(
+                static_cast<std::size_t>(thread->tid), static_cast<std::size_t>(thread->parent->pid)
+            ));
         }
 
         return reinterpret_cast<uacpi_thread_id>(1);

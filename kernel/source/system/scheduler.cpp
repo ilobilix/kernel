@@ -118,24 +118,6 @@ namespace sched
             return pid;
         }
 
-        std::shared_ptr<group> create_group(process *proc)
-        {
-            auto grp = std::make_shared<group>();
-            grp->pgid = proc->pgid = proc->pid;
-            grp->members.write_lock().value()[proc->pid] = proc;
-            groups.write_lock().value()[grp->pgid] = grp;
-            return grp;
-        }
-
-        std::shared_ptr<session> create_session(std::shared_ptr<group> grp)
-        {
-            auto sess = std::make_shared<session>();
-            sess->sid = grp->pgid;
-            sess->members.write_lock().value()[grp->pgid] = grp;
-            sessions.write_lock().value()[sess->sid] = sess;
-            return sess;
-        }
-
         void save(thread *thread, cpu::registers *regs)
         {
             std::memcpy(&thread->regs, regs, sizeof(cpu::registers));
@@ -156,11 +138,72 @@ namespace sched
         }
     } // namespace
 
+    std::shared_ptr<group> create_group(process *proc)
+    {
+        auto grp = std::make_shared<group>();
+        grp->pgid = proc->pgid = proc->pid;
+        grp->members.write_lock().value()[proc->pid] = proc;
+        groups.write_lock().value()[grp->pgid] = grp;
+        return grp;
+    }
+
+    std::shared_ptr<session> create_session(std::shared_ptr<group> grp)
+    {
+        auto sess = std::make_shared<session>();
+        sess->sid = grp->pgid;
+        sess->members.write_lock().value()[grp->pgid] = grp;
+        sessions.write_lock().value()[sess->sid] = sess;
+        return sess;
+    }
+
+    bool change_group(process *proc, std::shared_ptr<group> grp)
+    {
+        const auto wlocked = grp->members.write_lock();
+        const auto [it, inserted] = wlocked->emplace(proc->pid, proc);
+        if (inserted)
+        {
+            if (auto old_group = group_for(proc->pgid))
+            {
+                const auto owlocked = old_group->members.write_lock();
+                const auto end = owlocked->end();
+                auto oit = owlocked->find(proc->pid);
+                lib::bug_on(oit == end);
+                owlocked->erase(oit);
+            }
+            proc->pgid = grp->pgid;
+            proc->sid = grp->sid;
+            return true;
+        }
+        return false;
+    }
+
+    bool change_session(std::shared_ptr<group> grp, std::shared_ptr<session> sess)
+    {
+        const auto wlocked = sess->members.write_lock();
+        const auto [it, inserted] = wlocked->emplace(grp->pgid, grp);
+        if (inserted)
+        {
+            if (auto old_session = session_for(grp->sid))
+            {
+                const auto owlocked = old_session->members.write_lock();
+                const auto end = owlocked->end();
+                auto oit = owlocked->find(grp->pgid);
+                lib::bug_on(oit == end);
+                owlocked->erase(oit);
+            }
+            grp->sid = sess->sid;
+            for (auto &[pid, proc] : grp->members.write_lock().value())
+                proc->sid = sess->sid;
+            return true;
+        }
+        return false;
+    }
+
     bool is_initialised() { return initialised; }
 
-    process *proc_for(std::size_t pid)
+    process *proc_for(pid_t pid)
     {
-        if (pid == static_cast<std::size_t>(-1))
+        if (pid == -1)
             return percpu->idle_proc;
 
         process *ret = nullptr;
@@ -174,30 +217,22 @@ namespace sched
         return ret;
     }
 
-    group *group_for(std::size_t pgid)
+    std::shared_ptr<group> group_for(pid_t pgid)
     {
-        group *ret = nullptr;
-        {
-            const auto rlocked = groups.read_lock();
-            const auto it = rlocked->find(pgid);
-            if (it == rlocked->end())
-                return nullptr;
-            ret = it->second.get();
-        }
-        return ret;
+        const auto rlocked = groups.read_lock();
+        const auto it = rlocked->find(pgid);
+        if (it == rlocked->end())
+            return nullptr;
+        return it->second;
     }
 
-    session *session_for(std::size_t sid)
+    std::shared_ptr<session> session_for(pid_t sid)
     {
-        session *ret = nullptr;
-        {
-            const auto rlocked = sessions.read_lock();
-            const auto it = rlocked->find(sid);
-            if (it == rlocked->end())
-                return nullptr;
-            ret = it->second.get();
-        }
-        return ret;
+        const auto rlocked = sessions.read_lock();
+        const auto it = rlocked->find(sid);
+        if (it == rlocked->end())
+            return nullptr;
+        return it->second;
     }
 
     void thread::update_ustack(std::uintptr_t addr)
@@ -426,12 +461,12 @@ namespace sched
         }
     }
 
-    void spawn(std::size_t pid, std::uintptr_t ip, nice_t priority)
+    void spawn(pid_t pid, std::uintptr_t ip, nice_t priority)
     {
         spawn_on(allocate_cpu(), pid, ip, priority);
     }
 
-    void spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
+    void spawn_on(std::size_t cpu, pid_t pid, std::uintptr_t ip, nice_t priority)
     {
         const auto thread = thread::create(processes.read_lock()->at(pid), ip, false);
         thread->priority = priority;
@@ -594,7 +629,7 @@ namespace sched
         const auto current = pcpu.running_thread;
         const bool is_current_idle = (current == pcpu.idle_thread);
 
-        std::optional<std::size_t> prev_pid { };
+        std::optional<pid_t> prev_pid { };
         if (current) [[likely]]
         {
             if (current->status != status::killed)
@@ -714,7 +749,7 @@ namespace sched
 
         const auto idle_proc = new process { };
         idle_proc->vmspace = idle_vmspace;
-        idle_proc->pid = static_cast<std::size_t>(-1);
+        idle_proc->pid = -1;
 
         const auto idle_thread = thread::create(idle_proc, reinterpret_cast<std::uintptr_t>(idle), false);
         idle_thread->status = status::ready;

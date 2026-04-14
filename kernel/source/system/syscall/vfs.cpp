@@ -26,7 +26,7 @@ namespace syscall::vfs
             if (dirfd < 0)
                 return (errno = EBADF, std::nullopt);
 
-            auto fd = proc->fdt.get(static_cast<std::size_t>(dirfd));
+            auto fd = proc->fdt.get(dirfd);
             if (fd == nullptr)
                 return (errno = EBADF, std::nullopt);
 
@@ -202,17 +202,17 @@ namespace syscall::vfs
             stat.update_time(stat::time::modify | stat::time::status);
         }
 
-        auto fd = fdt.allocate_fd(filedesc::create(target, flags), 0, false);
-        lib::panic_if(!fd.has_value(), "openat: failed to allocate fd");
-
-        return fd.value();
+        const auto fd = fdt.allocate_fd(filedesc::create(target, flags), 0, false);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+        return fd;
     }
 
     int close(int fd)
     {
         const auto proc = sched::this_thread()->parent;
 
-        if (fd < 0 || !proc->fdt.close(static_cast<std::size_t>(fd)))
+        if (fd < 0 || !proc->fdt.close(fd))
             return (errno = EBADF, -1);
 
         return 0;
@@ -224,7 +224,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -254,7 +254,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -282,7 +282,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -312,7 +312,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -344,7 +344,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -383,7 +383,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -420,7 +420,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -460,7 +460,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -501,14 +501,14 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
         auto &file = fdesc->file;
         auto &stat = file->path.dentry->inode->stat;
         const auto type = stat.type();
-        if (type == stat::s_ifchr || type == stat::s_ifsock || type == stat::s_ififo)
+        if (type == stat::s_ifsock || type == stat::s_ififo)
             return (errno = ESPIPE, -1);
 
         std::size_t new_offset = 0;
@@ -557,7 +557,7 @@ namespace syscall::vfs
 
             if (dirfd < 0)
                 return (errno = EBADF, -1);
-            auto fd = proc->fdt.get(static_cast<std::size_t>(dirfd));
+            auto fd = proc->fdt.get(dirfd);
             if (fd == nullptr)
                 return (errno = EBADF, -1);
 
@@ -615,7 +615,7 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
@@ -629,34 +629,23 @@ namespace syscall::vfs
 
         if (fd < 0)
             return (errno = EBADF, -1);
-        auto fdesc = proc->fdt.get(static_cast<std::size_t>(fd));
+        auto fdesc = proc->fdt.get(fd);
         if (!fdesc)
             return (errno = EBADF, -1);
 
         switch (cmd)
         {
             case 0: // F_DUPFD
-            {
-                const auto newfd = static_cast<int>(arg);
-                if (newfd < 0)
-                    return (errno = EINVAL, -1);
-                const auto newfdesc = std::make_shared<filedesc>(*fdesc);
-                const auto new_fd = proc->fdt.allocate_fd(newfdesc, newfd, false);
-                if (!new_fd.has_value())
-                    return (errno = EMFILE, -1);
-                return static_cast<int>(new_fd.value());
-            }
+                return dup(static_cast<int>(arg));
             case 1030: // F_DUPFD_CLOEXEC
             {
-                const auto newfd = static_cast<int>(arg);
+                const auto newfd = dup(static_cast<int>(arg));
                 if (newfd < 0)
-                    return (errno = EINVAL, -1);
-                const auto newfdesc = std::make_shared<filedesc>(*fdesc);
-                newfdesc->closexec = true;
-                const auto new_fd = proc->fdt.allocate_fd(newfdesc, newfd, false);
-                if (!new_fd.has_value())
-                    return (errno = EMFILE, -1);
-                return static_cast<int>(new_fd.value());
+                    return -1;
+                auto new_fdesc = proc->fdt.get(newfd);
+                lib::bug_on(new_fdesc == nullptr);
+                new_fdesc->closexec = true;
+                return newfd;
             }
             case 1: // F_GETFD
                 return fdesc->closexec ? o_closexec : 0;
@@ -675,6 +664,60 @@ namespace syscall::vfs
                 return (errno = EINVAL, -1);
         }
         return 0;
+    }
+
+    int dup(int oldfd)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (oldfd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(oldfd);
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, false);
+        const auto new_fd = proc->fdt.allocate_fd(newfdesc, 0, false);
+        if (new_fd < 0)
+            return (errno = EMFILE, -1);
+        return new_fd;
+    }
+
+    int dup2(int oldfd, int newfd)
+    {
+        const auto proc = sched::this_thread()->parent;
+
+        if (oldfd < 0 || newfd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(oldfd);
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, false);
+        const auto fd = proc->fdt.allocate_fd(newfdesc, newfd, true);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+        return fd;
+    }
+
+    int dup3(int oldfd, int newfd, int flags)
+    {
+        if (oldfd == newfd || (flags & ~o_closexec) != 0)
+            return (errno = EINVAL, -1);
+
+        const auto proc = sched::this_thread()->parent;
+
+        if (oldfd < 0 || newfd < 0)
+            return (errno = EBADF, -1);
+        auto fdesc = proc->fdt.get(oldfd);
+        if (!fdesc)
+            return (errno = EBADF, -1);
+
+        const auto newfdesc = std::make_shared<filedesc>(fdesc->file, flags & o_closexec);
+        const auto fd = proc->fdt.allocate_fd(newfdesc, newfd, true);
+        if (fd < 0)
+            return (errno = EMFILE, -1);
+        return fd;
     }
 
     char *getcwd(char __user *buf, std::size_t size)

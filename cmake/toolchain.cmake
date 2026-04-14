@@ -5,6 +5,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/arch.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/config.cmake)
 
 set(_C_CXX_ASM_FLAGS
+    "--target=${ILOBILIX_ARCH}-elf"
     "-ffreestanding"
     "-nostdinc"
     "-fno-stack-protector"
@@ -30,7 +31,6 @@ set(_CXX_FLAGS
 
 if(ILOBILIX_ARCH STREQUAL "x86_64")
     list(APPEND _C_CXX_ASM_FLAGS
-        "-target x86_64-elf"
         "-march=x86-64"
         "-mno-red-zone"
         "-mno-mmx"
@@ -42,7 +42,6 @@ if(ILOBILIX_ARCH STREQUAL "x86_64")
     )
 elseif(ILOBILIX_ARCH STREQUAL "aarch64")
     list(APPEND _C_CXX_ASM_FLAGS
-        "-target aarch64-elf"
         "-mcmodel=small"
         "-DUACPI_REDUCED_HARDWARE"
     )

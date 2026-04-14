@@ -65,6 +65,44 @@ namespace syscall::proc
         return proc->pgid;
     }
 
+    int setpgid(pid_t pid, pid_t pgid)
+    {
+        if (pgid < 0)
+            return (errno = EINVAL, -1);
+
+        const auto proc = sched::this_thread()->parent;
+        if (pid == 0)
+            pid = proc->pid;
+        if (pgid == 0)
+            pgid = pid;
+
+        const auto target = sched::proc_for(pid);
+        if (!target)
+            return (errno = ESRCH, -1);
+
+        // is leader
+        if (pid == target->sid)
+            return (errno = EPERM, -1);
+
+        if (proc->children.contains(pid))
+        {
+            if (target->has_execved)
+                return (errno = EACCES, -1);
+            if (proc->sid != target->sid)
+                return (errno = EPERM, -1);
+        }
+        else if (pid != proc->pid)
+            return (errno = ESRCH, -1);
+
+        auto target_group = sched::group_for(pgid);
+        if (!target_group || target_group->sid != target->sid)
+            return (errno = EPERM, -1);
+
+        if (!sched::change_group(target, target_group))
+            return (errno = EINVAL, -1);
+        return (errno = no_error, 0);
+    }
+
     int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact)
     {
         lib::unused(signum, act, oldact);

@@ -133,11 +133,8 @@ export namespace vfs
 
     struct filedesc
     {
-        std::shared_ptr<file> file;
-        std::atomic_bool closexec;
-
-        filedesc() : file { }, closexec { false } { }
-        filedesc(const filedesc &rhs) : file { rhs.file }, closexec { rhs.closexec.load() } { }
+        std::shared_ptr<file> file { };
+        std::atomic_bool closexec = false;
 
         static std::shared_ptr<filedesc> create(const path &path, int flags)
         {
@@ -151,38 +148,43 @@ export namespace vfs
     class fdtable
     {
         private:
-        lib::map::flat_hash<std::size_t, std::shared_ptr<filedesc>> fds;
-        std::size_t next_fd = 0;
+        lib::locker<
+            lib::map::flat_hash<
+                int, std::shared_ptr<filedesc>
+            >, lib::rwspinlock
+        > fds;
+        int next_fd = 0;
 
         public:
-        inline bool close(std::size_t fd)
+        inline bool close(int fd)
         {
-            return fds.erase(fd);
+            return fds.write_lock()->erase(fd);
         }
 
-        inline std::shared_ptr<filedesc> get(std::size_t fd)
+        inline std::shared_ptr<filedesc> get(int fd)
         {
-            auto it = fds.find(fd);
-            if (it == fds.end())
+            const auto rlocked = fds.read_lock();
+            auto it = rlocked->find(fd);
+            if (it == rlocked->end())
                 return nullptr;
             return it->second;
         }
 
-        std::optional<std::size_t> allocate_fd(std::shared_ptr<filedesc> desc, std::size_t fd, bool force)
+        int allocate_fd(std::shared_ptr<filedesc> desc, int fd, bool force)
         {
-            if (fds.contains(fd))
+            auto wlocked = fds.write_lock();
+            if (wlocked->contains(fd))
             {
                 if (!force)
                 {
                     fd = next_fd++;
-                    while (fds.contains(fd))
+                    while (wlocked->contains(fd))
                         fd++;
                 }
-                else if (!close(fd))
-                    return std::nullopt;
+                else lib::bug_on(!wlocked->erase(fd));
             }
 
-            fds[fd] = desc;
+            wlocked.value()[fd] = desc;
             return fd;
         }
 
