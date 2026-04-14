@@ -17,7 +17,7 @@ namespace sched
 {
     struct percpu
     {
-        struct compare
+        struct by_vruntime
         {
             constexpr bool operator()(const std::shared_ptr<thread> &lhs, const std::shared_ptr<thread> &rhs) const
             {
@@ -25,13 +25,28 @@ namespace sched
             }
         };
 
+        struct by_timeout
+        {
+            constexpr bool operator()(const std::shared_ptr<thread> &lhs, const std::shared_ptr<thread> &rhs) const
+            {
+                return lhs->sleep_until < rhs->sleep_until;
+            }
+        };
+
         lib::locker<
             lib::btree::multiset<
                 std::shared_ptr<thread>,
-                compare
+                by_vruntime
             >, lib::rwspinlock_preempt
         > queue;
         std::shared_ptr<thread> running_thread;
+
+        lib::locker<
+            lib::btree::multiset<
+                std::shared_ptr<thread>,
+                by_timeout
+            >, lib::rwspinlock_preempt
+        > sleep_queue;
 
         std::shared_ptr<process> idle_proc;
         std::shared_ptr<thread> idle_thread;
@@ -282,11 +297,9 @@ namespace sched
 
     void enqueue(const std::shared_ptr<thread> &thread, std::size_t cpu_idx)
     {
+        auto &obj = percpu.get(cpu::nth_base(cpu_idx));
         switch (thread->status)
         {
-            [[likely]] case status::running:
-                thread->status = status::ready;
-                break;
             [[unlikely]] case status::killed:
             [[unlikely]] case status::not_ready:
                 lib::panic(
@@ -295,12 +308,17 @@ namespace sched
                 );
                 std::unreachable();
             case status::sleeping:
-            case status::ready:
+                obj.sleep_queue.write_lock()->insert(thread);
                 break;
+            [[likely]] case status::running:
+                thread->status = status::ready;
+                [[fallthrough]];
+            case status::ready:
+                obj.queue.write_lock()->insert(thread);
+                break;
+            default:
+                std::unreachable();
         }
-
-        auto &obj = percpu.get(cpu::nth_base(cpu_idx));
-        obj.queue.write_lock()->insert(thread);
     }
 
     void friends::spawn_on(std::size_t cpu, std::size_t pid, std::uintptr_t ip, nice_t priority)
@@ -348,6 +366,71 @@ namespace sched
         std::unreachable();
     }
 
+    void sleeper()
+    {
+        while (true)
+        {
+            if (percpu->sleep_queue.read_lock()->empty())
+                yield();
+
+            const auto clock = time::main_clock();
+            const auto time = clock->ns();
+
+            bool found_dead = false;
+
+            auto locked = percpu->sleep_queue.write_lock();
+            for (auto it = locked->begin(); it != locked->end(); )
+            {
+                auto &thread = *it;
+                if (!thread->sleep_until.has_value())
+                {
+                    switch (thread->status)
+                    {
+                        case status::ready:
+                            percpu->queue.write_lock()->insert(thread);
+                            break;
+                        case status::killed:
+                            percpu->dead_threads.lock()->push_back(thread);
+                            found_dead = true;
+                            break;
+                        case status::not_ready:
+                        case status::sleeping:
+                            goto next;
+                        case status::running:
+                            lib::panic("found a running thread in sleep queue");
+                            std::unreachable();
+                        default:
+                            std::unreachable();
+                    }
+                }
+                else
+                {
+                    if (time < thread->sleep_until.value())
+                        break;
+
+                    thread->status = status::ready;
+                    thread->wake_reason = wake_reason::success;
+                    {
+                        // do not starve out other threads
+                        // if the woken one has been sleeping for too long
+                        auto wlocked = percpu->queue.write_lock();
+                        thread->vruntime = (*wlocked->begin())->vruntime;
+                        wlocked->insert(thread);
+                    }
+                }
+
+                it = locked->erase(it);
+                continue;
+
+                next: it++;
+            }
+            if (found_dead)
+                percpu->reap.signal();
+            yield();
+        }
+        std::unreachable();
+    }
+
     void schedule(cpu::registers *regs)
     {
         if (!preemption.get())
@@ -368,34 +451,31 @@ namespace sched
         std::shared_ptr<thread> next;
         {
             auto locked = percpu->queue.write_lock();
-            for (auto it = locked->begin(); it != locked->end(); it++)
+            for (auto it = locked->begin(); it != locked->end(); )
             {
                 auto &thread = *it;
                 switch (thread->status)
                 {
-                    case status::sleeping:
-                        // TODO: handle wake up on a worker thread
-                        if (!thread->sleep_until.has_value() || time < thread->sleep_until.value())
-                            break;
-                        thread->status = status::ready;
-                        thread->wake_reason = wake_reason::success;
-                        // do not starve out other threads
-                        // if the woken one has been sleeping for too long
-                        thread->vruntime = (*locked->begin())->vruntime;
-                        [[fallthrough]];
                     case status::ready:
                         next = std::move(locked->extract(it).value());
                         goto found;
+                    [[unlikely]] case status::sleeping:
                     [[unlikely]] case status::running:
-                        lib::panic("found a running thread in scheduler queue");
+                        lib::panic(
+                            "found a {} thread in scheduler queue",
+                            magic_enum::enum_name(thread->status)
+                        );
                         std::unreachable();
                     case status::killed:
                         percpu->dead_threads.lock()->push_back(thread);
-                        locked->erase(it);
+                        it = locked->erase(it);
                         found_dead = true;
                         break;
                     [[unlikely]] case status::not_ready:
+                        it++;
                         break;
+                    default:
+                        std::unreachable();
                 }
             }
             found:
@@ -532,7 +612,10 @@ namespace sched
         if (self->idx == cpu::bsp_idx())
         {
             for (std::size_t idx = 0; idx < cpu::cpu_count(); idx++)
+            {
                 sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(reaper), nice_t::max);
+                sched::spawn_on(idx, 0, reinterpret_cast<std::uintptr_t>(sleeper), -5);
+            }
 
             initialised = true;
             should_start = true;
