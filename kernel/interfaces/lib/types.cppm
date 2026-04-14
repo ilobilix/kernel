@@ -112,14 +112,35 @@ export
         timespec st_mtim;
         timespec st_ctim;
 
-        inline constexpr type type() const
+        constexpr type type() const
         {
             return static_cast<enum type>(st_mode & static_cast<mode_t>(type::s_ifmt));
         }
 
-        inline constexpr mode_t mode() const
+        constexpr mode_t mode() const
         {
             return st_mode & ~static_cast<mode_t>(type::s_ifmt);
+        }
+
+        static constexpr std::uint32_t major(dev_t dev)
+        {
+            std::uint32_t ret = ((dev & dev_t(0x00000000000FFF00U)) >> 8);
+            return ret |= ((dev & dev_t(0xFFFFF00000000000U)) >> 32);
+        }
+
+        static constexpr std::uint32_t minor(dev_t dev)
+        {
+            std::uint32_t ret = (dev & dev_t(0x00000000000000FFU));
+            return ret |= ((dev & dev_t(0x00000FFFFFF00000U)) >> 12);
+        }
+
+        static constexpr dev_t makedev(std::uint32_t maj, std::uint32_t min)
+        {
+            dev_t ret  = dev_t(maj & 0x00000FFFU) << 8;
+            ret |= dev_t(maj & 0xFFFFF000U) << 32;
+            ret |= dev_t(min & 0x000000FFU);
+            ret |= dev_t(min & 0xFFFFFF00U) << 12;
+            return ret;
         }
     };
 

@@ -132,7 +132,8 @@ namespace vfs
             lib::ensure(current_me->fs.get() != nullptr);
 
             try_again:
-            if (auto it = current_me->children.find(segment); it != current_me->children.end())
+            auto &children = current_me->get_children();
+            if (auto it = children.find(segment); it != children.end())
             {
                 auto node = it->second->reduce(0);
                 if (!node)
@@ -226,7 +227,7 @@ namespace vfs
             node->fs = parent_node->fs;
 
             std::unique_lock _ { parent_node->lock };
-            parent_node->children[node->name] = node;
+            parent_node->get_children()[node->name] = node;
             return node;
         }
         return std::unexpected(ret.error());
@@ -250,7 +251,7 @@ namespace vfs
         {
             auto node = ret.value();
             std::unique_lock _ { parent_node->lock };
-            parent_node->children[node->name] = node;
+            parent_node->get_children()[node->name] = node;
             return node;
         }
         return std::unexpected(ret.error());

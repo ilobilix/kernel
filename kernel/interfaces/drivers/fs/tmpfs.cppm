@@ -9,3 +9,8 @@ export namespace fs::tmpfs
 {
     std::unique_ptr<vfs::filesystem> init();
 } // export namespace fs::tmpfs
+
+export namespace fs::devtmpfs
+{
+    std::unique_ptr<vfs::filesystem> init();
+} // export namespace fs::devtmpfs
