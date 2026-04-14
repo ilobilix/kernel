@@ -117,8 +117,6 @@ export namespace vmm
         > cache;
 
         protected:
-        page::flag type;
-
         virtual lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) = 0;
         virtual lib::expect<void> write_pages(std::size_t idx, std::span<page *> pages) = 0;
 
@@ -134,8 +132,8 @@ export namespace vmm
         std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
-        object(page::flag type) : type { type } { };
-        virtual ~object() { }
+        object() = default;
+        virtual ~object();
 
         using ptr = lib::intrusive_ptr<object, &object::hook>;
     };
@@ -154,9 +152,6 @@ export namespace vmm
             lib::unused(idx, pages);
             return { };
         }
-
-        public:
-        memobject() : object { page::flag::anonymous } { }
     };
 
     struct entry
@@ -217,7 +212,7 @@ export namespace vmm
         {
             lib::panic_if(pmap.use_count() != 1);
             tree.write_lock()->clear([](entry *x) {
-                // TODO
+                // object and anon free their pages
                 delete x;
             });
         }

@@ -89,9 +89,7 @@ namespace vmm
         return idx * pmm::page_size;
     }
 
-    lib::expect<void> object::read_pages(
-        std::uint64_t offp, std::span<page *> pages, std::size_t idx
-    )
+    lib::expect<void> object::read_pages(std::uint64_t offp, std::span<page *> pages, std::size_t idx)
     {
         lib::bug_on(pages.size() > max_readahead);
 
@@ -175,7 +173,7 @@ namespace vmm
                 pg->refcount.store(2, std::memory_order_relaxed);
                 pg->obj_ptr = this;
                 pg->offp = start_idx + i;
-                pg->flags.store(type | page::flag::busy, std::memory_order_relaxed);
+                pg->flags.store(page::flag::file | page::flag::busy, std::memory_order_relaxed);
 
                 locked->insert({ start_idx + i, pg });
                 pages[i] = pg;
@@ -488,6 +486,18 @@ namespace vmm
                 return true;
             }
         );
+    }
+
+    object::~object()
+    {
+        const auto psize = default_page_size();
+        const auto num_alloc_pages = psize / pmm::page_size;
+
+        for (auto &[_, page] : *cache.lock())
+        {
+            if (page && page->unref())
+                pmm::free(paddr_from(page), num_alloc_pages);
+        }
     }
 
     lib::expect<std::uintptr_t> vmspace::map(
@@ -863,36 +873,41 @@ namespace vmm
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
     {
+        const auto psize = default_page_size();
+        const auto plen = lib::div_roundup(length, psize);
+        const auto pmin = mmap_min / psize;
+        const auto pmax = mmap_max / psize;
+
         if (locked->empty())
         {
-            if (length > mmap_max - mmap_min)
+            if (plen > pmax - pmin)
                 return std::unexpected { lib::err::out_of_memory };
 
-            return mmap_max - length;
+            return (pmax - length) * psize;
         }
 
         const auto root = locked->root();
 
         const auto max_gap = root->interval.subtree_max_gap;
-        const auto high_gap = mmap_max - root->interval.subtree_max;
-        const auto low_gap = root->interval.subtree_min - mmap_min;
+        const auto high_gap = pmax - root->interval.subtree_max;
+        const auto low_gap = root->interval.subtree_min - pmin;
 
-        if (max_gap < length && high_gap < length && low_gap < length)
+        if (max_gap < plen && high_gap < plen && low_gap < plen)
             return std::unexpected { lib::err::out_of_memory };
 
-        if (high_gap >= length)
-            return mmap_max - length;
+        if (high_gap >= plen)
+            return (pmax - plen) * psize;
 
         const auto nil = locked->nil();
         auto node = locked->root();
 
-        std::uintptr_t floor = mmap_min;
+        std::uintptr_t floor = pmin;
         while (node)
         {
             const auto left = node->hook.left;
             const auto right = node->hook.right;
 
-            if (right != nil && right->interval.subtree_max_gap >= length)
+            if (right != nil && right->interval.subtree_max_gap >= plen)
             {
                 auto current_max = node->endp;
                 if (left != nil && left->interval.subtree_max > current_max)
@@ -906,8 +921,8 @@ namespace vmm
             }
 
             const auto prev_endp = (left != nil ? left->interval.subtree_max : floor);
-            if (node->startp > prev_endp && (node->startp - prev_endp) >= length)
-                return node->startp - length;
+            if (node->startp > prev_endp && (node->startp - prev_endp) >= plen)
+                return (node->startp - plen) * psize;
 
             if (left == nil)
                 break;
@@ -916,8 +931,8 @@ namespace vmm
         }
 
         const auto first = locked->first();
-        if (first->startp - mmap_min >= length)
-            return first->startp - length;
+        if (first->startp - pmin >= plen)
+            return (first->startp - plen) * psize;
 
         return std::unexpected { lib::err::out_of_memory };
     }
@@ -1056,7 +1071,7 @@ namespace vmm
                             if (opg->unref())
                                 pmm::free(paddr_from(opg), num_alloc_pages);
 
-                            slot = new anon {
+                            slot = pg->anon_ptr = new anon {
                                 .pg = pg,
                                 .hook { }
                             };
@@ -1079,7 +1094,7 @@ namespace vmm
                     pg->refcount.store(1, std::memory_order_relaxed);
                     pg->flags.store(page::flag::anonymous, std::memory_order_relaxed);
 
-                    amap->slots[anon_idx + offp] = new anon {
+                    amap->slots[anon_idx + offp] = pg->anon_ptr = new anon {
                         .pg = pg,
                         .hook { }
                     };
@@ -1175,7 +1190,7 @@ namespace vmm
                     if (opg->unref())
                         pmm::free(paddr_from(opg), num_alloc_pages);
 
-                    amap->slots[anon_idx + offp] = new anon {
+                    amap->slots[anon_idx + offp] = pg->anon_ptr = new anon {
                         .pg = pg,
                         .hook { }
                     };

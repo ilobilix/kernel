@@ -242,7 +242,7 @@ namespace bin::elf::exec
             const auto addr_top = thread->ustack_top;
             const auto addr_bottom = addr_top - stack_size;
 
-            auto execfn_path = req.pathname.empty()
+            const auto execfn_path = req.pathname.empty()
                 ? vfs::pathname_from(req.file->path)
                 : req.pathname;
 
