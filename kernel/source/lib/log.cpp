@@ -818,9 +818,9 @@ namespace lib::log
             sched::pid0_created_stage()
         },
         [] {
-#if !ILOBILIX_SYSCALL_LOG
+// #if !ILOBILIX_SYSCALL_LOG
             sched::spawn(consumer);
-#endif
+// #endif
         }
     };
 

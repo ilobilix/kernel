@@ -26,6 +26,8 @@ namespace output::term
             0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF
         };
 
+        std::uint32_t default_fg = 0x00FFFFFF;
+
         signed char font[] {
             #embed "../../../embed/font.bin"
         };
@@ -79,7 +81,7 @@ namespace output::term
             frm->green_mask_size, frm->green_mask_shift,
             frm->blue_mask_size, frm->blue_mask_shift,
             nullptr, ansi_colours, ansi_bright_colours,
-            nullptr, nullptr, nullptr, nullptr,
+            nullptr, &default_fg, nullptr, &default_fg,
             font, 8, 16, 1,
             0, 0, 0, FLANTERM_FB_ROTATE_0
         );

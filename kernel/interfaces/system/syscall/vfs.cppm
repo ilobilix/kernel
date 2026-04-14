@@ -77,6 +77,8 @@ export namespace syscall::vfs
 
     int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
 
+    int fadvise64(int fd, loff_t offset, std::size_t len, int advice);
+
     struct pollfd
     {
         int fd;
@@ -84,10 +86,19 @@ export namespace syscall::vfs
         short revents;
     };
 
-    int ppoll(pollfd __user *fds, nfds_t nfds, timespec __user *timeout, struct sigset_t __user *sigmask);
+    int ppoll(
+        pollfd __user *fds, nfds_t nfds, timespec __user *timeout,
+        struct sigset_t __user *sigmask
+    );
     int poll(pollfd __user *fds, nfds_t nfds, int timeout);
 
     struct fd_set;
-    int select(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timeval __user *timeout);
-    int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, const timespec __user *timeout, const struct sigset_t __user *sigmask);
+    int select(
+        int nfds, fd_set __user *readfds, fd_set __user *writefds,
+        fd_set __user *exceptfds, timeval __user *timeout
+    );
+    int pselect6(
+        int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
+        const timespec __user *timeout, const struct sigset_t __user *sigmask
+    );
 } // export namespace syscall::vfs
