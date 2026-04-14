@@ -3,6 +3,7 @@
 module system.sched;
 
 import drivers.timers;
+import system.bin.exec;
 import system.chrono;
 import system.cpu;
 import arch;
@@ -198,6 +199,54 @@ namespace sched
         //     return nullptr;
         // }
 
+        void kill_other_threads()
+        {
+            auto current = current_thread();
+            auto process = current->proc;
+
+            preempt_disable();
+            auto locked = process->threads.lock();
+
+            dead_threads_t::value_type to_kill;
+            for (auto &[tid, thread] : *locked)
+            {
+                if (thread == current)
+                    continue;
+                to_kill.push_back(thread);
+            }
+
+            while (!to_kill.empty())
+            {
+                auto thread = to_kill.pop_back();
+                locked->erase(thread->tid);
+
+                switch (thread->state)
+                {
+                    case thread_state::sleeping:
+                        thread->flags |= thread_flags::interrupted;
+                        [[fallthrough]];
+                    case thread_state::blocked:
+                    case thread_state::stopped:
+                        // TODO: remove from wait queues
+                        thread->state = thread_state::dead;
+                        break;
+                    case thread_state::running:
+                        thread->state = thread_state::dead;
+                        thread->flags |= thread_flags::needs_resched;
+                        break;
+                    case thread_state::runnable:
+                        thread->state = thread_state::dead;
+                        break;
+                    case thread_state::dead:
+                        break;
+                }
+
+                if (thread->running_on)
+                    arch::wake_up_other(thread->running_on->idx);
+            }
+            preempt_enable();
+        }
+
         [[noreturn]] void reap()
         {
             constexpr std::size_t wait_timeout_ns = 1'000'000'000;
@@ -356,7 +405,8 @@ namespace sched
                 if (!prev->is_idle())
                     rq.nr_running--;
 
-                prev->saved_vmspace = prev->proc->vmspace;
+                if (!prev->saved_vmspace)
+                    prev->saved_vmspace = prev->proc->vmspace;
                 dead_threads.unsafe_get().lock()->push_back(prev);
                 need_reaper_wake.unsafe_get() = true;
                 break;
@@ -508,6 +558,7 @@ namespace sched
     )
     {
         lib::bug_on(!proc);
+        const std::unique_lock _ { proc->lock };
 
         auto thread = new thread_t { };
         thread->self = thread;
@@ -679,7 +730,6 @@ namespace sched
         auto thread = current_thread();
         auto proc = thread->proc;
 
-        thread->exit_code = exit_code;
         thread->state = thread_state::dead;
 
         if (thread->clear_child_tid)
@@ -692,9 +742,7 @@ namespace sched
         }
 
         proc->threads.lock()->erase(thread->tid);
-        const bool was_last = proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel) == 1;
-
-        if (was_last)
+        if (proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
             lib::panic_if(proc->pid == 0, "attempted to kill kernel process");
             lib::panic_if(proc->pid == 1, "attempted to kill init");
@@ -750,45 +798,9 @@ namespace sched
 
     [[noreturn]] void process_exit(int exit_code)
     {
-        preempt_disable();
-
-        auto current = current_thread();
-        auto proc = current->proc;
-
-        {
-            auto locked = proc->threads.lock();
-            for (auto &[tid, thread] : *locked)
-            {
-                if (thread == current)
-                    continue;
-
-                thread->exit_code = exit_code;
-
-                switch (thread->state)
-                {
-                    case thread_state::sleeping:
-                        thread->flags |= thread_flags::interrupted;
-                        [[fallthrough]];
-                    case thread_state::blocked:
-                    case thread_state::stopped:
-                        // TODO: remove from wait queues
-                        thread->state = thread_state::dead;
-                        break;
-                    case thread_state::running:
-                        thread->state = thread_state::dead;
-                        thread->flags |= thread_flags::needs_resched;
-                        break;
-                    case thread_state::runnable:
-                        thread->state = thread_state::dead;
-                        break;
-                    case thread_state::dead:
-                        break;
-                }
-
-                if (thread->running_on)
-                    arch::wake_up_other(thread->running_on->idx);
-            }
-        }
+        auto proc = current_process();
+        proc->lock.lock();
+        kill_other_threads();
 
         preempt_enable();
         while (proc->alive_threads.load(std::memory_order_acquire) > 1)
@@ -1321,10 +1333,100 @@ namespace sched
         return target_thread->tid;
     }
 
-    int exec(const vfs::path &path, std::vector<std::string> argv, std::vector<std::string> envp)
+    int exec(
+        const vfs::path &path, std::vector<std::string> argv,
+        std::vector<std::string> envp, std::string pathname
+    )
     {
-        // TODO
-        return -1;
+        {
+            auto old_thread = current_thread();
+            auto process = old_thread->proc;
+
+            const auto xattr_caps = vfs::getxattr(path, vfs::xattr_caps_name);
+            if (has_secbit(process->cred->securebits, secbit_t::exec_restrict_file) &&
+                process->cred->euid != 0 && !xattr_caps)
+                return (errno = EACCES, -1);
+
+            // TODO
+            // if (has_secbit(cred->securebits, secbit_t::exec_deny_interactive) && opened file is interactive?)
+            //     return (errno = EACCES, -1);
+
+            {
+                auto &inode = path.dentry->inode;
+                const std::unique_lock _ { inode->lock };
+
+                if (!check_perms(process->cred, inode->stat, access_mode::exec))
+                    return (errno = EACCES, -1);
+
+                std::optional<vfs::file_caps> fcaps;
+                if (xattr_caps)
+                    fcaps = vfs::parse_file_caps(xattr_caps->span());
+
+                apply_exec_caps(process, inode->stat, fcaps);
+            }
+
+            auto file = vfs::file::create(path, 0, 0, 0);
+            if (!file)
+                return (errno = EACCES, -1);
+
+            auto format = bin::exec::identify(std::move(file));
+            if (!format)
+                return (errno = ENOEXEC, -1);
+
+            const std::unique_lock _ { process->lock };
+            kill_other_threads();
+
+            while (process->alive_threads.load(std::memory_order_acquire) > 1)
+                yield();
+
+            auto new_pmap = std::make_shared<vmm::pagemap>();
+            if (!new_pmap)
+                return (errno = ENOMEM, -1);
+
+            auto new_vmspace = std::make_shared<vmm::vmspace>(std::move(new_pmap));
+            if (!new_vmspace)
+                return (errno = ENOMEM, -1);
+
+            preempt_disable();
+
+            process->threads.lock()->erase(old_thread->tid);
+            process->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
+
+            auto old_vmspace = process->vmspace;
+            process->vmspace = std::move(new_vmspace);
+
+            auto new_thread = format->load({
+                .pathname = std::move(pathname),
+                .file = file,
+                .interp = { },
+                .argv = std::move(argv),
+                .envp = std::move(envp),
+            }, process);
+
+            if (!new_thread)
+            {
+                process->alive_threads.fetch_add(1, std::memory_order_relaxed);
+                (*process->threads.lock())[old_thread->tid] = old_thread;
+
+                process->vmspace = std::move(old_vmspace);
+                return (errno = ENOEXEC, -1);
+            }
+            lib::bug_on(new_thread->tid != process->pid);
+
+            old_thread->state = thread_state::dead;
+            old_thread->saved_vmspace = std::move(old_vmspace);
+
+            if (process->fdt.use_count() > 1)
+                process->fdt = process->fdt->clone();
+            process->fdt->close_on_exec();
+            process->has_execved = true;
+
+            sched::enqueue_new(new_thread);
+        }
+        preempt_enable();
+
+        sched::yield();
+        std::unreachable();
     }
 
     pid_t waitpid(pid_t wait_pid, int options, int *status)

@@ -241,14 +241,14 @@ namespace cpu
 
                 bool xopt = cpu::id(0x0D, 1).value_or(cpu::id_res { }).a & (1 << 0);
 
-                if (fpu_set.exchange(true, std::memory_order_acq_rel))
+                if (!fpu_set.exchange(true, std::memory_order_acq_rel))
                 {
                     shared_fpu.size = res13.c;
                     shared_fpu.save = xopt ? xsaveopt : xsave;
                     shared_fpu.restore = xrstor;
                 }
             }
-            else if (fpu_set.exchange(true, std::memory_order_acq_rel))
+            else if (!fpu_set.exchange(true, std::memory_order_acq_rel))
             {
                 shared_fpu.size = 512;
                 shared_fpu.save = fxsave;

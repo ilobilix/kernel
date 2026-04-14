@@ -199,7 +199,10 @@ export namespace sched
     };
 
     pid_t clone(const kclone_args_t &args);
-    int exec(const vfs::path &path, std::vector<std::string> argv, std::vector<std::string> envp);
+    int exec(
+        const vfs::path &path, std::vector<std::string> argv,
+        std::vector<std::string> envp, std::string pathname
+    );
 
     enum wait_flags
     {

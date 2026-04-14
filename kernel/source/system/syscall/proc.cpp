@@ -8,7 +8,6 @@ import system.sched;
 import system.memory.virt;
 import system.cpu.regs;
 import system.cpu.arch;
-import system.bin.exec;
 import arch;
 import lib;
 import std;
@@ -391,175 +390,66 @@ namespace syscall::proc
         const char __user *const __user *envp, int flags
     )
     {
-        // TODO-SCHED-REWRITE
-        return (errno = ENOSYS, -1);
-        // using namespace vfs;
+        using namespace vfs;
 
-        // if (flags & ~(at_symlink_nofollow | at_empty_path))
-        //     return (errno = EINVAL, -1);
+        if (flags & ~(at_symlink_nofollow | at_empty_path))
+            return (errno = EINVAL, -1);
 
-        // const auto thread = sched::this_thread();
-        // const auto proc = thread->parent;
+        const auto proc = sched::current_process();
 
-        // const bool follow_links = (flags & at_symlink_nofollow) == 0;
-        // const bool empty_path = (flags & at_empty_path) != 0;
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
 
-        // const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
-        // if (!target.has_value())
-        //     return -1;
+        auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
+        if (!target.has_value())
+            return -1;
 
-        // const auto get_array = [](auto &vec, auto *uarray)
-        // {
-        //     if (!uarray)
-        //         return true;
+        const auto get_array = [](auto &vec, auto *uarray) {
+            if (!uarray)
+                return true;
 
-        //     std::size_t idx = 0;
-        //     while (true)
-        //     {
-        //         std::uintptr_t addr;
-        //         if (!lib::copy_from_user(&addr, uarray + idx, sizeof(addr)))
-        //             return false;
+            std::size_t idx = 0;
+            while (true)
+            {
+                std::uintptr_t addr;
+                if (!lib::copy_from_user(&addr, uarray + idx, sizeof(addr)))
+                    return false;
 
-        //         if (addr == 0)
-        //             break;
+                if (addr == 0)
+                    break;
 
-        //         const auto ptr = reinterpret_cast<const char __user *>(addr);
-        //         auto str = lib::user_string::get(ptr);
-        //         if (!str.has_value())
-        //             return false;
-        //         vec.emplace_back(std::move(*str));
-        //         idx++;
-        //     }
-        //     return true;
-        // };
+                const auto ptr = reinterpret_cast<const char __user *>(addr);
+                auto str = lib::user_string::get(ptr);
+                if (!str.has_value())
+                    return false;
+                vec.emplace_back(std::move(*str));
+                idx++;
+            }
+            return true;
+        };
 
-        // std::vector<std::string> kargv;
-        // if (!get_array(kargv, argv))
-        //     return (errno = EFAULT, -1);
+        std::vector<std::string> kargv;
+        if (!get_array(kargv, argv))
+            return (errno = EFAULT, -1);
 
-        // std::vector<std::string> kenvp;
-        // if (!get_array(kenvp, envp))
-        //     return (errno = EFAULT, -1);
+        std::vector<std::string> kenvp;
+        if (!get_array(kenvp, envp))
+            return (errno = EFAULT, -1);
 
-        // const auto stat = target->dentry->inode->stat;
-        // const auto is_suid = (stat.st_mode & s_isuid) != 0;
-        // const auto is_sgid = (stat.st_mode & s_isgid) != 0;
+        std::string kpathname;
+        if (pathname)
+        {
+            auto ret = lib::user_string::get(pathname);
+            if (!ret.has_value())
+                return (errno = EFAULT, -1);
+            kpathname = std::move(*ret);
+        }
 
-        // auto file = vfs::file::create(target.value(), 0, 0, 0);
-        // if (!file)
-        //     return (errno = EACCES, -1);
-
-        // auto format = bin::exec::identify(file);
-        // if (!format)
-        //     return (errno = ENOEXEC, -1);
-
-        // std::string kpathname;
-        // if (pathname)
-        // {
-        //     auto ret = lib::user_string::get(pathname);
-        //     if (!ret.has_value())
-        //         return (errno = EFAULT, -1);
-        //     kpathname = std::move(*ret);
-        // }
-
-        // {
-        //     const std::unique_lock _ { proc->lock };
-        //     for (auto &[tid, thrd] : proc->threads)
-        //     {
-        //         if (thrd == thread)
-        //             continue;
-
-        //         thrd->og_ustack_top = 0;
-        //         thrd->kill();
-        //     }
-        // }
-
-        // while (true)
-        // {
-        //     bool alone = false;
-        //     {
-        //         const std::unique_lock _ { proc->lock };
-        //         alone = true;
-        //         for (auto &[tid, thrd] : proc->threads)
-        //         {
-        //             if (thrd == thread)
-        //                 continue;
-
-        //             if (thrd->status != sched::status::killed)
-        //             {
-        //                 alone = false;
-        //                 break;
-        //             }
-        //         }
-        //     }
-        //     if (alone)
-        //     {
-        //         sched::yield();
-        //         break;
-        //     }
-        //     sched::yield();
-        // }
-
-        // auto pmap = std::make_shared<vmm::pagemap>();
-        // if (!pmap)
-        //     return (errno = ENOMEM, -1);
-
-        // auto new_vmspace = std::make_shared<vmm::vmspace>(std::move(pmap));
-        // if (!new_vmspace)
-        //     return (errno = ENOMEM, -1);
-
-        // auto old_vmspace = proc->vmspace;
-        // auto old_stack_top = proc->next_stack_top;
-
-        // proc->vmspace = new_vmspace;
-        // proc->next_stack_top = vmm::vmspace::vspace_top;
-
-        // auto new_thread = format->load({
-        //     .pathname = std::move(kpathname),
-        //     .file = file,
-        //     .interp = { },
-        //     .argv = std::move(kargv),
-        //     .envp = std::move(kenvp),
-        // }, proc);
-
-        // if (!new_thread)
-        // {
-        //     proc->vmspace = old_vmspace;
-        //     proc->next_stack_top = old_stack_top;
-        //     return (errno = ENOEXEC, -1);
-        // }
-
-        // arch::int_switch(false);
-        // {
-        //     const std::unique_lock _ { proc->lock };
-
-        //     proc->threads.erase(new_thread->tid);
-        //     proc->threads.erase(thread->tid);
-
-        //     new_thread->tid = proc->pid;
-        //     proc->threads[new_thread->tid] = new_thread;
-        // }
-
-        // if (is_suid)
-        //     proc->euid = stat.st_uid;
-        // if (is_sgid)
-        //     proc->egid = stat.st_gid;
-
-        // auto new_fdt = std::make_shared<sched::process::fdtable>(*proc->fdt);
-        // proc->fdt = new_fdt;
-        // proc->fdt->close_on_exec();
-
-        // proc->has_execved = true;
-
-        // new_thread->status = sched::status::ready;
-        // sched::enqueue(new_thread, thread->running_on->idx);
-
-        // thread->og_ustack_top = 0;
-        // thread->tid = -1;
-        // thread->status = sched::status::killed;
-
-        // sched::yield();
-        // std::unreachable();
+        return sched::exec(
+            std::move(*target),
+            std::move(kargv), std::move(kenvp),
+            std::move(kpathname)
+        );
     }
 
     int execve(
@@ -593,45 +483,7 @@ namespace syscall::proc
     // TODO: stub
     int tgkill(pid_t tgid, pid_t tid, int sig)
     {
-        // TODO-SCHED-REWRITE
+        lib::unused(tgid, tid, sig);
         return (errno = ENOSYS, -1);
-        // if (tgid <= 0 || tid <= 0)
-        //     return (errno = EINVAL, -1);
-
-        // const auto proc = sched::proc_for(tgid);
-        // if (!proc)
-        //     return (errno = ESRCH, -1);
-
-        // const auto current = sched::this_thread();
-
-        // constexpr auto is_fatal = [](int sig)
-        // {
-        //     switch (sig)
-        //     {
-        //         case 1: case 2: case 3: case 4: case 6:
-        //         case 8: case 9: case 11: case 13: case 14: case 15:
-        //             return true;
-        //         default:
-        //             return false;
-        //     }
-        // };
-
-        // if (sig == 0)
-        //     return 0;
-
-        // {
-        //     const std::unique_lock _ { proc->lock };
-        //     if (!proc->threads.contains(tid))
-        //         return (errno = ESRCH, -1);
-        // }
-
-        // if (is_fatal(sig) && tgid == current->parent->pid && tid == current->tid)
-        // {
-        //     sched::exit(128 + sig);
-        //     std::unreachable();
-        // }
-
-        // // TODO: queue signals
-        // return (errno = ENOSYS, -1);
     }
 } // namespace syscall::proc

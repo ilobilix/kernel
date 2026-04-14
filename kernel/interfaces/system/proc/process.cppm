@@ -3,6 +3,7 @@
 export module system.sched:process;
 
 import system.sched.wait_queue;
+import system.sched.mutex;
 import system.sched.cred;
 import system.memory.virt;
 import system.vfs;
@@ -94,7 +95,7 @@ export namespace sched
 
         wait_queue_t wait_child;
 
-        lib::spinlock lock;
+        recursive_mutex lock;
 
         ~process_t();
     };

@@ -31,6 +31,7 @@ sched_uthread_trampoline:
 sched_clone_trampoline:
     call sched_trampoline_entry
 
+    cli
     popall
 
     add rsp, 16
@@ -40,7 +41,6 @@ sched_clone_trampoline:
     pop r11
     pop rsp
 
-    cli
     swapgs
     sysretq
 .global sched_clone_trampoline
@@ -84,7 +84,7 @@ sched_context_switch:
 sched_return_to_user:
     push 0x23 # ss
     push rsi # rsp
-    pushfq # rflags
+    push 0x202 # rflags
     push 0x2B # cs
     push rdi # rip
 
