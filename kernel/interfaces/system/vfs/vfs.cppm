@@ -228,6 +228,7 @@ export namespace vfs
             virtual auto populate(std::shared_ptr<inode> &inode, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> = 0;
 
             virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
+            virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
@@ -498,7 +499,6 @@ export namespace vfs
             {
                 if (auto ret = path.mnt->fs.lock()->write_inode(inode); !ret)
                     return ret;
-                inode->dirty = false;
             }
             return { };
         }

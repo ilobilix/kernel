@@ -42,7 +42,10 @@ export namespace fs::tmpfs
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override;
 
             auto populate(std::shared_ptr<vfs::inode> &node, std::string_view name = "") -> lib::expect<lib::list<std::pair<std::string, std::shared_ptr<vfs::inode>>>> override;
+
             auto write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;
+            auto dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;
+
             bool sync() override;
 
             bool unmount(std::shared_ptr<struct vfs::mount>) override;

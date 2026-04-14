@@ -182,7 +182,13 @@ namespace fs::tmpfs
 
     auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
     {
-        lib::unused(inode);
+        inode->dirty = false;
+        return { };
+    }
+
+    auto fs::instance::dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
+    {
+        inode->dirty = true;
         return { };
     }
 
