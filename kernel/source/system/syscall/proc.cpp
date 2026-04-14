@@ -102,15 +102,37 @@ namespace syscall::proc
 
     pid_t getpgid(pid_t pid)
     {
-        const auto proc = sched::get_process(pid);
-        if (!proc)
+        if (pid < 0)
+            return (errno = EINVAL, -1);
+
+        if (pid == 0)
+            return sched::current_process()->group->pgid;
+
+        const auto target = sched::get_process(pid);
+        if (!target)
             return (errno = ESRCH, -1);
-        return proc->group->pgid;
+
+        return target->group->pgid;
     }
 
     int setpgid(pid_t pid, pid_t pgid)
     {
         return sched::setpgid(pid, pgid);
+    }
+
+    pid_t getsid(pid_t pid)
+    {
+        if (pid < 0)
+            return (errno = EINVAL, -1);
+
+        if (pid == 0)
+            return sched::current_process()->session->sid;
+
+        const auto target = sched::get_process(pid);
+        if (!target)
+            return (errno = ESRCH, -1);
+
+        return target->session->sid;
     }
 
     pid_t setsid()

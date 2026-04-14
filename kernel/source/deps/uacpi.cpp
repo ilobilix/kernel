@@ -342,7 +342,8 @@ extern "C"
                 if (value == 0)
                     return false;
 
-                if (counter.compare_exchange_strong(value, value - 1, std::memory_order_acq_rel, std::memory_order_acquire))
+                if (counter.compare_exchange_strong(value, value - 1,
+                    std::memory_order_acq_rel, std::memory_order_acquire))
                     return true;
             }
         }

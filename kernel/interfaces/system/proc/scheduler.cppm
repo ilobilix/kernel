@@ -9,6 +9,7 @@ export import :perm;
 export import :nice;
 export import :process;
 export import :thread;
+export import :sleep;
 export import :run_queue;
 export import :work_queue;
 
@@ -36,7 +37,7 @@ namespace sched::arch
 
 namespace sched
 {
-    bool running = false;
+    bool _running = false;
 } // namespace sched
 
 export namespace sched
@@ -46,15 +47,6 @@ export namespace sched
 
     constexpr std::size_t kstack_size = boot::kstack_size;
     constexpr std::size_t ustack_size = boot::ustack_size;
-
-    struct sleep_entry_t
-    {
-        thread_t *thread;
-        std::uint64_t deadline_ns;
-        bool expired;
-
-        lib::rbtree_hook<sleep_entry_t> hook;
-    };
 
     lib::initgraph::stage *pid0_created_stage();
 
@@ -78,26 +70,26 @@ export namespace sched
 
     inline void preempt_disable()
     {
-        if (!running) [[unlikely]]
+        if (!_running) [[unlikely]]
             return;
         current_thread()->preempt_count.fetch_add(1, std::memory_order_acquire);
     }
 
     inline bool preempt_enable()
     {
-        if (!running) [[unlikely]]
+        if (!_running) [[unlikely]]
             return false;
         return current_thread()->preempt_count.fetch_sub(1, std::memory_order_release) == 1;
     }
 
     inline bool is_preempt_disabled()
     {
-        return running && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
+        return _running && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
     }
 
     inline bool is_running()
     {
-        return running;
+        return _running;
     }
 
     // pick next thread and switch to it
@@ -121,28 +113,13 @@ export namespace sched
     // create a new kernel thread and enqueue it
     thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice);
 
-    template<std::invocable Func>
+    template<typename Func>
     inline thread_t *spawn(Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice)
     {
         return spawn(reinterpret_cast<std::uintptr_t>(func), arg, nice);
     }
 
     bool wake_up(thread_t *thread, bool preempt = true);
-
-    // put the current thread to sleep
-    void sleep();
-
-    // put the current thread to uninterruptible sleep
-    void block();
-
-    // puts entry in sleep list
-    void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns);
-
-    // if expired, returns false and removes entry
-    bool cancel_thread_timeout(sleep_entry_t *entry);
-
-    // sleep for nanoseconds. return remaining time if interrupted
-    std::uint64_t sleep_for_ns(std::uint64_t ns);
 
     bool yield();
 
@@ -165,10 +142,7 @@ export namespace sched
     lib::bitmap get_affinity(pid_t pid);
 
     int setpgid(pid_t pid, pid_t pgid);
-    pid_t getpgid(pid_t pid);
-
     pid_t setsid();
-    pid_t getsid(pid_t pid);
 
     struct kclone_args
     {

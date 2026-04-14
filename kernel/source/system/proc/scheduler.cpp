@@ -192,15 +192,17 @@ namespace sched
         return &stage;
     }
 
-    lib::initgraph::task init_task
+    lib::initgraph::task pid0_task
     {
-        "log.create-thread",
+        "sched.pid0-create",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
             arch::bsp_initialised_stage(),
             timers::initialised_stage()
         },
-        lib::initgraph::entail { pid0_created_stage() },
+        lib::initgraph::entail {
+            pid0_created_stage()
+        },
         [] {
             auto proc = new process_t { };
 
@@ -245,7 +247,7 @@ namespace sched
 
         if (rq.cpu_idx == cpu::bsp_idx())
         {
-            running = true;
+            _running = true;
             should_start.store(true, std::memory_order_release);
         }
         else
@@ -547,74 +549,6 @@ namespace sched
             schedule();
 
         return true;
-    }
-
-    void sleep()
-    {
-        auto thread = current_thread();
-        thread->state = thread_state::sleeping;
-        schedule();
-    }
-
-    void block()
-    {
-        auto thread = current_thread();
-        thread->state = thread_state::blocked;
-        schedule();
-    }
-
-    void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns)
-    {
-        const auto timer = chrono::main_timer();
-        entry->deadline_ns = timer->ns() + ns;
-        entry->expired = false;
-
-        auto locked = sleep_list.lock();
-        locked->insert(entry);
-    }
-
-    bool cancel_thread_timeout(sleep_entry_t *entry)
-    {
-        auto locked = sleep_list.lock();
-        if (entry->expired)
-            return false;
-
-        locked->remove(entry);
-        return true;
-    }
-
-    std::uint64_t sleep_for_ns(std::uint64_t ns)
-    {
-        if (ns == 0)
-            return 0;
-
-        const auto timer = chrono::main_timer();
-        const auto deadline = timer->ns() + ns;
-
-        auto thread = current_thread();
-        sleep_entry_t entry {
-            .thread = thread,
-            .deadline_ns = deadline,
-            .expired = false,
-            .hook = { }
-        };
-
-        {
-            auto locked = sleep_list.lock();
-            locked->insert(&entry);
-            thread->state = thread_state::sleeping;
-        }
-
-        schedule();
-
-        if (!entry.expired)
-        {
-            auto locked = sleep_list.lock();
-            locked->remove(&entry);
-        }
-
-        const auto now = timer->ns();
-        return now >= deadline ? 0 : deadline - now;
     }
 
     bool yield()
@@ -940,13 +874,13 @@ namespace sched
         if (pgid < 0)
             return (errno = EINVAL, -1);
 
-        const auto proc = sched::current_process();
+        const auto proc = current_process();
         if (pid == 0)
             pid = proc->pid;
         if (pgid == 0)
             pgid = pid;
 
-        const auto target = sched::get_process(pid);
+        const auto target = get_process(pid);
         if (!target)
             return (errno = ESRCH, -1);
 
@@ -1026,15 +960,9 @@ namespace sched
         return 0;
     }
 
-    pid_t getpgid(pid_t pid)
-    {
-        // TODO-SCHED-REWRITE
-        return -1;
-    }
-
     pid_t setsid()
     {
-        const auto proc = sched::current_process();
+        const auto proc = current_process();
         if (proc->pid == proc->group->pgid)
             return (errno = EPERM, -1);
 
@@ -1065,12 +993,6 @@ namespace sched
         proc->group = std::move(group);
         proc->session = std::move(session);
         return proc->session->sid;
-    }
-
-    pid_t getsid(pid_t pid)
-    {
-        // TODO-SCHED-REWRITE
-        return -1;
     }
 
     pid_t clone(const kclone_args &args)
