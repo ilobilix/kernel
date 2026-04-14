@@ -55,6 +55,7 @@ smp_trampoline_start:
     test edx, 1 << 16
     jz .no_pat
     mov ecx, 0x277
+    # x86_64/system/cpu.cppm: cpu::pat::boot_state
     mov eax, 0x00070406
     mov edx, 0x00000105
     wrmsr

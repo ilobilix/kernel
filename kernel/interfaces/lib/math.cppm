@@ -51,18 +51,18 @@ export namespace lib
         return !ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) - get_hhdm_offset());
     }
 
-    inline constexpr auto align_down(std::unsigned_integral auto n, std::unsigned_integral auto a)
+    inline constexpr auto align_down(std::unsigned_integral auto n, std::size_t a)
     {
         constexpr auto align_down_internal = [&](auto n, auto a) { return (n & ~(a - 1)); };
         return align_down_internal(std::uint64_t(n), std::uint64_t(a));
     }
 
-    inline constexpr auto align_up(std::unsigned_integral auto n, std::unsigned_integral auto a)
+    inline constexpr auto align_up(std::unsigned_integral auto n, std::size_t a)
     {
         return align_down(n + a - 1, a);
     }
 
-    inline constexpr auto div_roundup(std::unsigned_integral auto n, std::unsigned_integral auto a)
+    inline constexpr auto div_roundup(std::unsigned_integral auto n, std::size_t a)
     {
         return align_down(n + a - 1, a) / a;
     }

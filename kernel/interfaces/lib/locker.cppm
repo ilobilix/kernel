@@ -263,6 +263,9 @@ export namespace lib
         Type *valueptr() { return std::launder(reinterpret_cast<Type *>(_buffer)); }
 
         public:
+        using value_type = Type;
+        using lock_type = Lock;
+
         template<typename ...Args>
         constexpr locker(Args &&...args) : _lock { }
         {

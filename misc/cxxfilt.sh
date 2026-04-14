@@ -1,2 +1,2 @@
 #!/bin/sh
-"$@" | llvm-cxxfilt
+"$@" | llvm-cxxfilt --no-params

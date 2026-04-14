@@ -100,6 +100,8 @@ namespace sched::arch
         x86_64::gdt::tss::self().ist[0] = thread->pfstack_top;
         x86_64::gdt::tss::self().rsp[0] = thread->kstack_top;
 
+        cpu::gs::write_user(reinterpret_cast<std::uintptr_t>(thread.get()));
+
         if (thread->is_user)
         {
             cpu::gs::write_kernel(thread->gs_base);
