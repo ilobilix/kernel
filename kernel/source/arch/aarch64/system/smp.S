@@ -18,7 +18,7 @@ mp_entry:
     udf 0xDEAD
 
 #else
-#  error mp without limine is not supported
+#  warning mp without limine is not supported
 #endif
 
 .section ".note.GNU-stack", "", @progbits
