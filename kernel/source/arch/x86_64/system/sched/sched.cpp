@@ -18,6 +18,7 @@ namespace sched::arch
 
         extern "C" void sched_kthread_trampoline();
         extern "C" void sched_uthread_trampoline();
+        extern "C" void sched_clone_trampoline();
 
         extern "C" void sched_context_switch(context *prev, context *next, thread_t *self);
 
@@ -36,10 +37,33 @@ namespace sched::arch
                 thread->needs_unlock->unlock();
                 thread->needs_unlock = nullptr;
             }
+
             if (thread->was_in_interrupt)
             {
                 thread->was_in_interrupt->store(false, std::memory_order_release);
                 thread->was_in_interrupt = nullptr;
+            }
+
+            if (thread->set_child_tid)
+            {
+                auto set_child_tid = reinterpret_cast<pid_t __user *>(thread->set_child_tid);
+                if (!lib::copy_to_user(set_child_tid, &thread->tid, sizeof(pid_t)))
+                    // TODO: kill thread instead
+                    lib::panic("failed to write to set_child_tid");
+                thread->set_child_tid = 0;
+            }
+
+            if (thread->clear_child_tid)
+            {
+                const pid_t zero = 0;
+                auto clear_child_tid = reinterpret_cast<pid_t __user *>(thread->clear_child_tid);
+                if (!lib::copy_to_user(clear_child_tid, &zero, sizeof(pid_t)))
+                    // TODO: kill thread instead
+                    lib::panic("failed to write to clear_child_tid");
+                thread->clear_child_tid = 0;
+
+                // TODO
+                // futex_wake(clear_child_tid, 1);
             }
         }
     } // namespace
@@ -62,15 +86,25 @@ namespace sched::arch
         handler.set([](auto) { tick(); });
     }
 
-    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline)
+    void init_thread(
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_trampoline, bool is_clone
+    )
     {
+        lib::bug_on(!thread || (thread->is_kernel() && (is_trampoline || is_clone)));
+
         auto ctx = &thread->ctx;
-
         ctx->rflags = 0x202;
-        constexpr std::uintptr_t trampoline_rsp_reserve = 256;
-        ctx->rsp = (thread->kstack_top - trampoline_rsp_reserve) & ~0xFul;
 
-        auto &adata = thread->adata;
+        if (is_clone)
+        {
+            ctx->rip = reinterpret_cast<std::uintptr_t>(sched_clone_trampoline);
+            return;
+        }
+
+        constexpr std::uintptr_t trampoline_rsp_reserve = 256;
+        ctx->rsp = thread->kstack_top - trampoline_rsp_reserve;
+
         if (thread->is_kernel())
         {
             ctx->r12 = ip;
@@ -93,12 +127,18 @@ namespace sched::arch
 
             ctx->rip = reinterpret_cast<std::uintptr_t>(sched_uthread_trampoline);
 
-            const auto &fpu = cpu::features::get_fpu();
-            adata.fpu = lib::allocz<std::byte *>(fpu.size);
-            adata.fpu_size = fpu.size;
-
             // TODO-SCHED-REWRITE: lazy fpu
+            // const auto &fpu = cpu::features::get_fpu();
+            // auto &adata = thread->adata;
+            // adata.fpu = lib::allocz<std::byte *>(fpu.size);
+            // adata.fpu_size = fpu.size;
         }
+    }
+
+    void deinit_thread(thread_t *thread)
+    {
+        if (thread->adata.fpu)
+            lib::free(thread->adata.fpu);
     }
 
     void arm_timer_ns(std::uint64_t ns)

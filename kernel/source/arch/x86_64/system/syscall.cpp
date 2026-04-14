@@ -8,6 +8,7 @@ import x86_64.system.gdt;
 import system.syscall;
 import system.cpu.local;
 import system.cpu;
+import system.sched;
 import arch;
 import lib;
 import std;
@@ -135,6 +136,7 @@ namespace x86_64::syscall
             lib::panic("invalid syscall: {}", idx);
 
         in_syscall.write(true);
+        sched::current_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
         in_syscall.write(false);
     }

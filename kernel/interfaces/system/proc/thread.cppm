@@ -5,6 +5,7 @@ export module system.sched:thread;
 import system.sched.thread_base;
 
 import system.cpu.local;
+import system.cpu.regs;
 import magic_enum;
 import lib;
 import std;
@@ -21,7 +22,6 @@ export namespace sched
         sleeping,
         blocked, // uninterruptible sleep
         stopped,
-        zombie,
         dead
     };
 
@@ -71,11 +71,15 @@ export namespace sched
         bool in_rq = false;
         lib::rbtree_hook<thread_t> hook;
 
+        lib::intrusive_list_hook<thread_t> dead_hook;
+
         std::atomic_bool *was_in_interrupt = nullptr;
         lib::spinlock_irq *needs_unlock = nullptr;
 
         arch::context ctx;
         arch::data adata;
+
+        cpu::registers *saved_regs;
 
         lib::bitmap affinity;
 
@@ -98,5 +102,7 @@ export namespace sched
         {
             return (flags & thread_flags::needs_resched) != thread_flags::none;
         }
+
+        ~thread_t();
     };
 } // export namespace sched

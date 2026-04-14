@@ -29,6 +29,7 @@ export namespace vmm
         private_ = 0x02,
         fixed = 0x10,
         anonymous = 0x20,
+        stack = 0x20000, // TODO
         fixed_noreplace = 0x100000,
 
         // custom
@@ -198,12 +199,6 @@ export namespace vmm
         > tree;
 
         std::uintptr_t current_brk;
-
-        std::atomic<std::uintptr_t> next_stack_top = vspace_top;
-        inline std::uintptr_t alloc_stack_top(std::size_t size)
-        {
-            return next_stack_top.fetch_sub(size, std::memory_order_relaxed);
-        }
 
         lib::expect<std::uintptr_t> map(
             std::uintptr_t hint, std::size_t length,

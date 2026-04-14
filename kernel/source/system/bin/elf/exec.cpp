@@ -495,8 +495,7 @@ namespace bin::elf::exec
                 proc,
                 reinterpret_cast<std::uintptr_t>(trampoline),
                 reinterpret_cast<std::uintptr_t>(arg),
-                true, // is_trampoline
-                0 // stack will be allocated by create_uthread
+                true, false, 0
             );
         }
     };

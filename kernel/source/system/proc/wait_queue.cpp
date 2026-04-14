@@ -35,8 +35,15 @@ namespace sched
         wait_queue_entry_t entry { };
 
         lock.lock();
-        auto thread = static_cast<thread_t *>(entry.thread);
+        if (pending.load(std::memory_order_acquire) > 0)
+        {
+            pending.fetch_sub(1, std::memory_order_release);
+            lock.unlock();
+            return true;
+        }
+
         entries.push_back(&entry);
+        auto thread = static_cast<thread_t *>(entry.thread);
         thread->state = thread_state::sleeping;
 
         if (ns == 0)
@@ -58,7 +65,8 @@ namespace sched
         if (timeout.expired)
         {
             lock.lock();
-            entries.remove(&entry);
+            if (entries.find(&entry) != entries.end())
+                entries.remove(&entry);
             lock.unlock();
         }
         else cancel_thread_timeout(&timeout);
@@ -77,8 +85,16 @@ namespace sched
         wait_queue_entry_t entry { };
 
         lock.lock();
+        if (pending.load(std::memory_order_acquire) > 0)
+        {
+            pending.fetch_sub(1, std::memory_order_release);
+            lock.unlock();
+            return;
+        }
+
         entries.push_back(&entry);
-        static_cast<thread_t *>(entry.thread)->state = thread_state::blocked;
+        auto thread = static_cast<thread_t *>(entry.thread);
+        thread->state = thread_state::sleeping;
 
         if (ns == 0)
         {
@@ -101,7 +117,8 @@ namespace sched
         if (timeout.expired)
         {
             lock.lock();
-            entries.remove(&entry);
+            if (entries.find(&entry) != entries.end())
+                entries.remove(&entry);
             lock.unlock();
         }
         else cancel_thread_timeout(&timeout);
@@ -125,11 +142,15 @@ namespace sched
     void wait_queue_t::wake_all()
     {
         lock.lock();
-        while (!entries.empty())
+        if (!entries.empty())
         {
-            auto entry = entries.pop_front();
-            wake_up(static_cast<thread_t *>(entry->thread), false);
+            while (!entries.empty())
+            {
+                auto entry = entries.pop_front();
+                wake_up(static_cast<thread_t *>(entry->thread), false);
+            }
         }
+        else pending.fetch_add(1, std::memory_order_release);
         lock.unlock();
     }
 } // namespace sched

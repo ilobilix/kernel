@@ -22,7 +22,11 @@ export namespace sched::arch
     thread_t *current_thread();
 
     void init_core(thread_t *initial);
-    void init_thread(thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline);
+    void init_thread(
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
+        bool is_trampoline, bool is_clone
+    );
+    void deinit_thread(thread_t *thread);
 
     void arm_timer_ns(std::uint64_t ns);
     void wake_up_other(std::size_t cpu_idx);

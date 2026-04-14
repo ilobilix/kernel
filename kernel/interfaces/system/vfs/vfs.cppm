@@ -558,6 +558,8 @@ export namespace vfs
 
         void close_on_exec();
 
+        std::shared_ptr<fdtable> clone();
+
         fdtable() = default;
         fdtable(fdtable &other);
         ~fdtable();
