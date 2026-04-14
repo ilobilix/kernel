@@ -68,22 +68,35 @@ namespace bin::elf::exec
                         const auto misalign = phdr.p_vaddr & (psize - 1);
 
                         const auto address = addr + phdr.p_vaddr - misalign;
-                        const auto fsize = lib::align_up(phdr.p_filesz + misalign, psize);
-                        const auto msize = lib::align_up(phdr.p_memsz + misalign, psize);
+
+                        auto obj = std::make_shared<vmm::memobject>();
+
+                        lib::membuffer file_buffer { phdr.p_filesz };
+                        lib::bug_on(inode->read(
+                            phdr.p_offset, file_buffer.span()
+                        ) != static_cast<std::ssize_t>(phdr.p_filesz));
+
+                        lib::bug_on(obj->write(
+                            misalign, file_buffer.span()
+                        ) != phdr.p_filesz);
+
+                        if (phdr.p_memsz > phdr.p_filesz)
+                        {
+                            const auto zeroes_len = phdr.p_memsz - phdr.p_filesz;
+                            lib::membuffer zeroes { zeroes_len };
+                            std::memset(zeroes.data(), 0, zeroes.size());
+
+                            lib::bug_on(obj->write(
+                                misalign + phdr.p_filesz, zeroes.span()
+                            ) != zeroes_len);
+                        }
 
                         lib::bug_on(!vmspace->map(
-                            address, fsize, prot, vmm::flag::private_,
-                            inode->map(true), phdr.p_offset - misalign
+                            address, phdr.p_memsz + misalign,
+                            prot, vmm::flag::private_,
+                            obj, 0
                         ));
 
-                        if (msize > fsize)
-                        {
-                            lib::bug_on(!vmspace->map(
-                                address + fsize, msize - fsize,
-                                prot, vmm::flag::private_,
-                                std::make_shared<vmm::memobject>(), 0
-                            ));
-                        }
                         break;
                     }
                     case PT_PHDR:
@@ -100,6 +113,8 @@ namespace bin::elf::exec
                             reinterpret_cast<const char *>(buffer.data()),
                             phdr.p_filesz - 1
                         };
+
+                        log::debug("elf: interpreter: {}", path);
 
                         auto ret = vfs::resolve(file, path);
                         if (!ret.has_value())
@@ -123,7 +138,7 @@ namespace bin::elf::exec
         public:
         format() : bin::exec::format { "elf" } { }
 
-        bool identify(const std::shared_ptr<vfs::dentry> &file) override
+        bool identify(const std::shared_ptr<vfs::dentry> &file) const override
         {
             lib::bug_on(!file || !file->inode);
             auto &inode = file->inode;
@@ -141,7 +156,7 @@ namespace bin::elf::exec
                 ehdr.e_machine == EM_CURRENT;
         }
 
-        sched::thread *load(bin::exec::request &req,  sched::process *proc) override
+        sched::thread *load(bin::exec::request &req,  sched::process *proc) const override
         {
             lib::bug_on(!proc);
 
@@ -167,50 +182,73 @@ namespace bin::elf::exec
             auto thread = sched::thread::create(proc, entry, true);
 
             const auto addr = thread->modify_ustack();
-            auto stack = reinterpret_cast<std::uintptr_t *>(addr);
-            const auto val = [&stack] { return reinterpret_cast<std::uintptr_t>(stack); };
+            auto stack = addr;
+            const auto sptr = [&stack] { return reinterpret_cast<std::uintptr_t *>(stack); };
 
+            std::vector<std::uintptr_t> envp_addrs { };
+            envp_addrs.reserve(req.envp.size());
             for (const auto &env : req.envp)
             {
-                stack = stack - env.length() - 1;
-                std::memcpy(stack, env.c_str(), env.length());
+                stack -= env.length() + 1;
+                std::memcpy(sptr(), env.c_str(), env.length() + 1);
+                envp_addrs.push_back(stack);
             }
 
+            std::vector<std::uintptr_t> argv_addrs { };
+            argv_addrs.reserve(req.argv.size());
             for (const auto &arg : req.argv)
             {
-                stack = stack - arg.length() - 1;
-                std::memcpy(stack, arg.c_str(), arg.length());
+                stack -= arg.length() + 1;
+                std::memcpy(sptr(), arg.c_str(), arg.length() + 1);
+                argv_addrs.push_back(stack);
             }
 
-            stack = reinterpret_cast<std::uintptr_t *>(lib::align_down(val(), 16));
+            stack = lib::align_down(stack, 16);
             if ((req.argv.size() + req.envp.size() + 1) & 1)
-                stack--;
-
-            *(--stack) = 0; *(--stack) = 0;
-            stack -= 2; stack[0] = AT_ENTRY, stack[1] = auxv.at_entry;
-            stack -= 2; stack[0] = AT_PHDR,  stack[1] = auxv.at_phdr;
-            stack -= 2; stack[0] = AT_PHENT, stack[1] = auxv.at_phent;
-            stack -= 2; stack[0] = AT_PHNUM, stack[1] = auxv.at_phnum;
-
-            auto tmp = addr;
-
-            *(--stack) = 0;
-            stack -= req.envp.size();
-            for (std::size_t i = 0; const auto &env : req.envp)
             {
-                tmp -= env.length() + 1;
-                stack[i++] = tmp;
+                stack -= 8;
+                *sptr() = 0;
             }
 
-            *(--stack) = 0;
-            stack -= req.argv.size();
-            for (std::size_t i = 0; const auto &arg : req.argv)
+            const auto write_auxv = [&stack, &sptr](int type, std::uint64_t value)
             {
-                tmp -= arg.length() + 1;
-                stack[i++] = tmp;
+                stack -= 8;
+                *sptr() = value;
+                stack -= 8;
+                *sptr() = type;
+            };
+
+            write_auxv(AT_NULL, 0);
+            write_auxv(AT_PHDR, auxv.at_phdr);
+            write_auxv(AT_PHENT, auxv.at_phent);
+            write_auxv(AT_PHNUM, auxv.at_phnum);
+            write_auxv(AT_ENTRY, auxv.at_entry);
+            // write_auxv(AT_EXECFN, 0);
+            // write_auxv(AT_RANDOM, 0);
+            write_auxv(AT_SECURE, 0);
+
+            stack -= 8;
+            *sptr() = 0;
+
+            for (auto it = envp_addrs.rbegin(); it != envp_addrs.rend(); it++)
+            {
+                stack -= 8;
+                *sptr() = *it;
             }
 
-            *(--stack) = req.argv.size();
+            stack -= 8;
+            *sptr() = 0;
+
+            for (auto it = argv_addrs.rbegin(); it != argv_addrs.rend(); it++)
+            {
+                stack -= 8;
+                *sptr() = *it;
+            }
+
+            stack -= 8;
+            *sptr() = req.argv.size();
+
+            lib::bug_on(stack % 16 != 0);
 
             thread->update_ustack(reinterpret_cast<std::uintptr_t>(stack));
             return thread;

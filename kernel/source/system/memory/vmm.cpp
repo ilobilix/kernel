@@ -143,7 +143,7 @@ namespace vmm
 
         const auto offsetp = offset / psize;
 
-        const auto startp = lib::div_rounddown(address, psize);
+        const auto startp = address / psize;
         const auto endp = lib::div_roundup(address + length, psize);
 
         const auto locked = tree.write_lock();
