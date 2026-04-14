@@ -178,7 +178,7 @@ extern "C"
         const auto paddr = lib::align_down(addr, npsize);
         const auto size = lib::align_up((addr - paddr) + len, npsize);
 
-        const auto vaddr = lib::fromhh(vmm::alloc_vspace(vmm::vspace::acpi, size, npsize));
+        const auto vaddr = lib::fromhh(vmm::alloc_vpages(vmm::vspace::acpi, lib::div_roundup(size, pmm::page_size)));
 
         if (!pmap->map(vaddr, paddr, size, vmm::flag::rw, psize, vmm::caching::mmio))
             lib::panic("Could not map acpi memory");
@@ -276,12 +276,12 @@ extern "C"
     }
 #endif
 
-    uacpi_u64 uacpi_kernel_get_ticks()
+    uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot()
     {
         auto clock = time::main_clock();
         if (clock == nullptr)
             return 0;
-        return clock->ns() / 100;
+        return clock->ns();
     }
 
     void uacpi_kernel_stall(uacpi_u8 usec)
@@ -317,16 +317,22 @@ extern "C"
     // TODO
     uacpi_thread_id uacpi_kernel_get_thread_id() { return reinterpret_cast<uacpi_thread_id>(1); }
 
-    uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
+    uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
         auto *mutex = reinterpret_cast<std::mutex *>(handle);
+        bool locked = false;
+
         if (timeout == 0xFFFF)
         {
             mutex->lock();
-            return UACPI_TRUE;
+            return UACPI_STATUS_OK;
         }
-        auto ret = mutex->try_lock_until(timeout * 1'000'000);
-        return ret;
+        else if (timeout == 0x0000)
+            locked = mutex->try_lock();
+        else
+            locked = mutex->try_lock_until(timeout * 1'000'000);
+
+        return locked ? UACPI_STATUS_OK : UACPI_STATUS_TIMEOUT;
     }
 
     void uacpi_kernel_release_mutex(uacpi_handle handle)

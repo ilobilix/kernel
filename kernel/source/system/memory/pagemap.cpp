@@ -194,19 +194,18 @@ namespace vmm
             entry = vspace_base + (lib::gib(1) * (i++));
     }
 
-    std::uintptr_t alloc_vspace(vspace type, std::size_t increment, std::uint16_t alignment)
+    std::uintptr_t alloc_vpages(vspace type, std::size_t pages)
     {
-        lib::ensure(alignment <= pmm::page_size, "alloc_vspace: alignment cannot be higher than {}", pmm::page_size);
-
         auto index = std::to_underlying(type);
         auto entry = &vspaces[index];
 
-        if (type != vspace::other && increment > 0 && *entry + increment > (vspace_base + (lib::gib(1) * (index + 1))))
+        auto increment = pages * pmm::page_size;
+
+        if (type != vspace::other && increment && *entry + increment > (vspace_base + (lib::gib(1) * (index + 1))))
             entry = &vspaces[std::to_underlying(vspace::other)];
 
-        auto ret = alignment ? lib::align_up(*entry, alignment) : *entry;
-        *entry += increment += (ret - *entry);
-
+        auto ret = *entry;
+        *entry += increment;
         return ret;
     }
 } // namespace vmm

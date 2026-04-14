@@ -16,7 +16,7 @@ export namespace timers::arch
 
         // rtc::init();
         pit::init();
-        // hpet::init();
+        hpet::init();
         kvm::init();
         tsc::init();
     }
