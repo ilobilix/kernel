@@ -6,10 +6,6 @@
 	path = dependencies/cwalk/cwalk
 	url = https://github.com/likle/cwalk
 	shallow = true
-[submodule "dependencies/demangler/demangler"]
-	path = dependencies/demangler/demangler
-	url = https://github.com/ilobilo/demangler
-	shallow = true
 [submodule "dependencies/flanterm/flanterm"]
 	path = dependencies/flanterm/flanterm
 	url = https://codeberg.org/mintsuki/flanterm

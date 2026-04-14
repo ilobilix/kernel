@@ -6,7 +6,7 @@ __attribute__((constructor))
 void func() { log::info("YAYAYAYAYAYAYAYAYYAYAYAY!"); }
 
 bool init() { log::info("Hello, World!"); return true; }
-bool fini() { log::info("Goodbye, World!");return true; }
+bool fini() { log::info("Goodbye, World!"); return true; }
 
 declare_module(example) {
     "example", "an example module demonstrating blah blah blah description goes here",

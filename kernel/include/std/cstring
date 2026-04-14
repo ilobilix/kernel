@@ -13,6 +13,7 @@ namespace std
     using ::memchr;
 
     using ::strlen;
+    using ::strnlen;
     using ::strdup;
 
     using ::strcat;

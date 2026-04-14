@@ -108,7 +108,7 @@ local function multi_insert(list, ...)
 end
 
 local function get_targetfile(tdir, prefix, ext)
-    local ret = path.join(tdir, prefix .. "-" .. get_config("arch") .. ext)
+    local ret = path.join(tdir, prefix .. ext)
     return ret
 end
 
@@ -130,7 +130,7 @@ local qemu_accel_args = {
 local qemu_dbg_args = {
     "-no-reboot", "-no-shutdown",
     "-d", "int", "-D", logfile,
-    -- "-monitor", "telnet:127.0.0.1:12345,server,nowait"
+    "-monitor", "telnet:127.0.0.1:12345,server,nowait"
 }
 
 local bios = false
@@ -175,7 +175,6 @@ toolchain("ilobilix-clang")
         local cx_args = {
             "-ffreestanding",
             "-fno-stack-protector",
-            "-fno-omit-frame-pointer",
             "-fno-strict-aliasing",
             "-fstrict-vtable-pointers",
 
@@ -209,11 +208,16 @@ toolchain("ilobilix-clang")
             "-zmax-page-size=0x1000"
         }
         local sh_args = {
+            "-nostdlib",
             "-fuse-ld=lld",
             "-Wl,-shared"
         }
 
         local target = ""
+
+        if not get_config("max_uacpi_points") then
+            table.insert(cx_args, "-fno-omit-frame-pointer")
+        end
 
         if is_mode("releasesmall") or is_mode("release") then
             if get_config("max_uacpi_points") then
@@ -229,6 +233,7 @@ toolchain("ilobilix-clang")
                     "-Wl,--lto=full"
                 )
             end
+            table.insert(ld_args, "--strip-debug")
             toolchain:add("defines", "ILOBILIX_DEBUG=0");
         else
             toolchain:add("defines", "ILOBILIX_DEBUG=1");
