@@ -1081,6 +1081,9 @@ namespace vmm::uvm
 
             for (auto ent : overlapping)
             {
+                if (ent->flags & flag::untouchable)
+                    return std::unexpected { lib::err::permission_denied };
+
                 const auto overlap_start = std::max(startp, ent->startp);
                 const auto overlap_end = std::min(endp, ent->endp);
 

@@ -54,7 +54,9 @@ export namespace lib
         addr_out_of_bounds,
         addr_in_use,
         not_mapped,
-        out_of_memory
+        out_of_memory,
+
+        permission_denied
     };
 
     template<typename Type>
@@ -122,6 +124,8 @@ export namespace lib
                 return EADDRINUSE;
             case err::out_of_memory:
                 return ENOMEM;
+            case err::permission_denied:
+                return EPERM;
         }
         lib::panic("unhandled err: {}", magic_enum::enum_name(err));
         std::unreachable();
