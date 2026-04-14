@@ -842,7 +842,10 @@ namespace vmm
         }
 
         if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot), psize); !ret)
-            return std::unexpected { ret.error() };
+        {
+            if (ret.error() != lib::err::not_mapped)
+                return std::unexpected { ret.error() };
+        }
 
         return { };
     }

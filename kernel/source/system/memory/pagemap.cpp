@@ -196,7 +196,12 @@ namespace vmm
 
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
-                return std::unexpected { ret.error() };
+            {
+                // return std::unexpected { lib::err::not_mapped };
+                current_vaddr += npsize;
+                remaining -= npsize;
+                continue;
+            }
 
             auto &pte = ret->get();
             auto accessor = pte.access();
@@ -233,7 +238,7 @@ namespace vmm
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
             {
-                // return std::unexpected { ret.error() };
+                // return std::unexpected { lib::err::not_mapped };
                 current_vaddr += npsize;
                 remaining -= npsize;
                 continue;
