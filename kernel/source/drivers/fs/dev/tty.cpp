@@ -29,7 +29,8 @@ namespace fs::dev::tty
             const auto min = minor(rdev);
 
             if (const auto it = drivers.find_if([&](const auto &drv) {
-                return drv.major == maj && drv.minor_start <= min && min <= drv.minor_end;
+                const auto minor_end = drv.minor_start + drv.num_devices;
+                return drv.major == maj && drv.minor_start <= min && min < minor_end;
             }); it != drivers.end())
                 return it.value();
 
@@ -47,7 +48,12 @@ namespace fs::dev::tty
             const auto proc = sched::proc_for(self->pid);
             lib::bug_on(!proc);
 
-            if (!(flags & vfs::o_noctty) && (proc->pid == proc->sid)) // is leader
+            const bool noctty = !(flags & vfs::o_noctty) ||
+                (inst->drv->major == 5 && inst->minor == 0) || // tty
+                (inst->drv->major == 5 && inst->minor == 1) || // console
+                (inst->drv->typ == type::pty && inst->drv->subtyp == subtype::pty_master);
+
+            if (noctty && (proc->pid == proc->sid)) // is leader
             {
                 auto locked = inst->ctrl.lock();
                 if (locked->sid == 0)
@@ -541,8 +547,6 @@ namespace fs::dev::tty
         // vtime resolution is 100ms
         const auto ms = time * 100;
 
-        // TODO: handle terminal disconnecting/closing
-
         if (nonblock)
         {
             // if nonblock is set, return immediately
@@ -782,6 +786,21 @@ namespace fs::dev::tty
         return drv->ioctl(this, request, argp);
     }
 
+    void instance::hangup()
+    {
+        if constexpr (debug)
+            lib::debug("tty: hangup in ({}, {})", drv->major, minor);
+
+        if (hung_up.exchange(true))
+            return;
+
+        // auto ctrl_locked = ctrl.lock();
+        // TODO: send sighup to session leader (and sigcont)
+
+        auto ldisc_locked = ldisc.read_lock();
+        ldisc_locked.value()->hangup();
+    }
+
     lib::expect<void> ops::open(std::shared_ptr<vfs::file> self, int flags)
     {
         lib::bug_on(!self || self->private_data != nullptr);
@@ -933,9 +952,52 @@ namespace fs::dev::tty
     void register_driver(driver *drv)
     {
         lib::bug_on(!drv);
-        lib::debug("tty: registering driver '{}'", drv->name);
+        lib::debug("tty: registering driver '{}'", drv->driver_name);
         drivers.push_back(drv);
+
+        const auto add_one = [&](std::size_t idx, std::uint32_t minor)
+        {
+            using namespace vfs::dev;
+            register_dev_ops(makedev(drv->major, minor), tty::ops::singleton());
+
+            std::string name;
+            if (drv->typ == type::pty)
+            {
+                lib::bug_on(drv->name_base < 0);
+                static const char ptychar[] = "pqrstuvwxyzabcde";
+                const auto i = idx + drv->name_base;
+                name = fmt::format("{}{}{}",
+                    drv->subtyp == subtype::pty_slave ? "tty" : drv->name,
+                    ptychar[i >> 4 & 0xF], i & 0xF
+                );
+            }
+            else if (drv->name_base >= 0)
+                name = fmt::format("{}{}", drv->name, idx + drv->name_base);
+            else
+                name = drv->name;
+
+            auto ret = vfs::create(
+                std::nullopt, "/dev/" + name, stat::s_ifchr | 0666,
+                makedev(drv->major, minor)
+            );
+
+            if (!ret.has_value())
+            {
+                lib::error(
+                    "tty: could not create '{}': {}",
+                    name, magic_enum::enum_name(ret.error())
+                );
+            }
+
+            if constexpr (debug)
+                lib::debug("tty: created ({}, {}) as '{}'", drv->major, minor, name);
+        };
+
+        for (std::size_t i = 0; i < drv->num_devices; i++)
+            add_one(i, drv->minor_start + i);
     }
+
+    // TODO: /dev/console
 
     lib::initgraph::task tty_task
     {
@@ -943,6 +1005,7 @@ namespace fs::dev::tty
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::mounted_stage() },
         [] {
+            // TODO: /dev/tty driver instead of just ops?
             register_dev_ops(makedev(5, 0), current_ops::singleton());
 
             if (const auto ret = vfs::create(std::nullopt, "/dev/tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
