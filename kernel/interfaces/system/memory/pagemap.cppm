@@ -60,9 +60,6 @@ export namespace vmm
     {
         friend class vspace;
 
-        public:
-        struct table;
-
         private:
         static std::uintptr_t pa_mask;
 
@@ -105,6 +102,11 @@ export namespace vmm
             }
         };
 
+        struct [[gnu::packed]] table
+        {
+            entry entries[512];
+        };
+
         table *_table;
         lib::spinlock_ints _lock;
 
@@ -116,12 +118,12 @@ export namespace vmm
         static std::uintptr_t to_arch(flag flags, caching cache, page_size psize);
         static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<flag, caching>;
 
-        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>;
-
         static auto getlvl(entry &entry, bool allocate) -> table *;
 
+        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>;
+
         public:
-        inline auto get_arch_table() const { return _table; }
+        auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
 
         static std::size_t from_page_size(page_size psize);
         static page_size max_page_size(std::size_t size);

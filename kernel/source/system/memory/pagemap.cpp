@@ -39,6 +39,33 @@ namespace vmm
         return lib::tohh(ret);
     }
 
+    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>
+    {
+        static constexpr std::uintptr_t bits = 0b111111111;
+        static constexpr std::size_t levels = 4;
+        static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
+
+        auto pml = lib::tohh(get_arch_table(vaddr));
+
+        const auto retidx = levels - static_cast<std::size_t>(psize) - 1;
+        auto shift = shift_start;
+
+        for (std::size_t i = 0; i < levels; i++)
+        {
+            auto &entry = pml->entries[(vaddr >> shift) & bits];
+
+            if (i == retidx)
+                return std::ref(entry);
+
+            pml = getlvl(entry, allocate);
+            if (pml == nullptr)
+                return std::unexpected { error::invalid_entry };
+
+            shift -= 9;
+        }
+        std::unreachable();
+    }
+
     std::expected<void, error> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, flag flags, page_size psize, caching cache)
     {
         lib::ensure(magic_enum::enum_contains(psize));

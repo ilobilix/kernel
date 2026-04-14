@@ -55,15 +55,11 @@ namespace vmm
     const std::uintptr_t pagemap::valid_table_flags = arch::valid | arch::table;
     const std::uintptr_t pagemap::new_table_flags = arch::valid | arch::table;
 
-    struct [[gnu::packed]] pagemap::table
-    {
-        entry entries[512];
-    };
     pagemap::table *ttbr1;
 
     auto pagemap::new_table() -> table *
     {
-        static_assert(sizeof(pagemap::table) == pmm::page_size);
+        static_assert(sizeof(table) == pmm::page_size);
         return pmm::alloc<table *>(1, true);
     }
 
@@ -136,6 +132,11 @@ namespace vmm
         return { ret, cache };
     }
 
+    auto pagemap::get_arch_table(std::uintptr_t addr) const -> table *
+    {
+        return (vaddr & (1ul << 63)) ? ttbr1 : _table;
+    }
+
     std::size_t pagemap::from_page_size(page_size psize)
     {
         lib::ensure(magic_enum::enum_contains(psize));
@@ -150,33 +151,6 @@ namespace vmm
             return page_size::medium;
 
         return page_size::small;
-    }
-
-    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate) -> std::expected<std::reference_wrapper<entry>, error>
-    {
-        static constexpr std::uintptr_t bits = 0b111111111;
-        static constexpr std::size_t levels = 4;
-        static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
-
-        auto pml = lib::tohh((vaddr & (1ul << 63)) ? ttbr1 : _table);
-
-        const auto retidx = levels - static_cast<std::size_t>(psize) - 1;
-        auto shift = shift_start;
-
-        for (std::size_t i = 0; i < levels; i++)
-        {
-            auto &entry = pml->entries[(vaddr >> shift) & bits];
-
-            if (i == retidx)
-                return std::ref(entry);
-
-            pml = getlvl(entry, allocate);
-            if (pml == nullptr)
-                return std::unexpected { error::invalid_entry };
-
-            shift -= 9;
-        }
-        std::unreachable();
     }
 
     static std::size_t n = 0;
