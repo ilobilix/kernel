@@ -3,6 +3,7 @@
 export module lib:user;
 
 import :bug_on;
+import :types;
 import cppstd;
 
 namespace lib::impl
@@ -63,6 +64,18 @@ export namespace lib
         return reinterpret_cast<Type __user *>(reinterpret_cast<std::uintptr_t>(ptr) - offset);
     }
 
+    template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
+    inline Type *remove_user_cast(Arg __user *ptr)
+    {
+        return (__force Type *)(ptr);
+    }
+
+    template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
+    inline Type __user *add_user_cast(Arg *ptr)
+    {
+        return (__force Type __user *)(ptr);
+    }
+
     template<typename Type>
     class maybe_uspan
     {
@@ -79,7 +92,7 @@ export namespace lib
             const auto space = classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
             if (space != address_space::user)
                 return std::nullopt;
-            return maybe_uspan<Type> { true, std::span<Type>((__force Type *)(ptr), len) };
+            return maybe_uspan<Type> { true, std::span<Type>(remove_user_cast<Type>(ptr), len) };
         }
 
         static std::optional<maybe_uspan<Type>> create(Type *ptr, std::size_t len)
@@ -114,7 +127,7 @@ export namespace lib
             {
                 impl::copy_from_user(
                     dest.data(),
-                    (__force void __user *)(_span.data()),
+                    add_user_cast<void>(_span.data()),
                     dest.size_bytes()
                 );
                 return true;
@@ -136,7 +149,7 @@ export namespace lib
             if (_is_user)
             {
                 impl::copy_to_user(
-                    (__force void __user *)(_span.data()),
+                    add_user_cast<void>(_span.data()),
                     src.data(),
                     src.size_bytes()
                 );
@@ -160,7 +173,7 @@ export namespace lib
             if (_is_user)
             {
                 impl::fill_user(
-                    (__force void __user *)(_span.data()),
+                    add_user_cast<void>(_span.data()),
                     static_cast<int>(value),
                     count * sizeof(Type)
                 );
@@ -200,14 +213,14 @@ export namespace lib
         Type read() const
         {
             Type val;
-            lib::maybe_copy_from_user(&val, (__force void *)ptr, sizeof(Type));
+            lib::maybe_copy_from_user(&val, remove_user_cast<void>(ptr), sizeof(Type));
             return val;
         }
 
         template<typename Type> requires std::is_trivially_copyable_v<Type>
         void write(const Type &val) const
         {
-            lib::maybe_copy_to_user((__force void *)ptr, &val, sizeof(Type));
+            lib::maybe_copy_to_user(remove_user_cast<void>(ptr), &val, sizeof(Type));
         }
     };
 } // export namespace lib

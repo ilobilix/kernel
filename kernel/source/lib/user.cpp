@@ -59,7 +59,7 @@ namespace lib
         switch (space)
         {
             case address_space::user:
-                impl::copy_to_user((__force void __user *)(dest), src, len);
+                impl::copy_to_user(add_user_cast<void>(dest), src, len);
                 return true;
             case address_space::kernel:
                 std::memcpy(dest, src, len);
@@ -76,7 +76,7 @@ namespace lib
         switch (space)
         {
             case address_space::user:
-                impl::copy_from_user(dest, (__force const void __user *)(src), len);
+                impl::copy_from_user(dest, add_user_cast<const void>(src), len);
                 return true;
             case address_space::kernel:
                 std::memcpy(dest, src, len);
@@ -93,7 +93,7 @@ namespace lib
         switch (space)
         {
             case address_space::user:
-                impl::fill_user((__force void __user *)(dest), value, len);
+                impl::fill_user(add_user_cast<void>(dest), value, len);
                 return true;
             case address_space::kernel:
                 std::memset(dest, value, len);
