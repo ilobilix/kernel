@@ -12,7 +12,7 @@
 	shallow = true
 [submodule "dependencies/flanterm/flanterm"]
 	path = dependencies/flanterm/flanterm
-	url = https://github.com/mintsuki/flanterm
+	url = https://codeberg.org/mintsuki/flanterm
 	shallow = true
 [submodule "dependencies/fmt/fmt"]
 	path = dependencies/fmt/fmt
@@ -20,11 +20,11 @@
 	shallow = true
 [submodule "dependencies/freestnd-c-hdrs/freestnd-c-hdrs"]
 	path = dependencies/freestnd-c-hdrs/freestnd-c-hdrs
-	url = https://github.com/osdev0/freestnd-c-hdrs
+	url = https://codeberg.org/osdev/freestnd-c-hdrs
 	shallow = true
 [submodule "dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs"]
 	path = dependencies/freestnd-cxx-hdrs/freestnd-cxx-hdrs
-	url = https://github.com/osdev0/freestnd-cxx-hdrs
+	url = https://codeberg.org/osdev/freestnd-cxx-hdrs
 	shallow = true
 [submodule "dependencies/frigg/frigg"]
 	path = dependencies/frigg/frigg
