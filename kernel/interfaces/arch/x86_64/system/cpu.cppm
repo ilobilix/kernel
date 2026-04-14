@@ -68,31 +68,44 @@ export namespace cpu
         return id(leaf, subleaf, res, check_max) ? std::optional<id_res> { res } : std::nullopt;
     }
 
-    bool in_hypervisor()
+    enum class hypervisor : std::uint32_t
     {
-        static const auto cached = [] -> bool
+        none,
+        kvm,
+        qtcg,
+        hyperv,
+        virtualbox,
+        vmware,
+        xen
+    };
+
+    std::pair<hypervisor, std::uint32_t> in_hypervisor()
+    {
+        static const auto cached = [] -> std::pair<hypervisor, std::uint32_t>
         {
             id_res res;
-            return cpu::id(1, 0, res) && (res.c & (1 << 31));
-        } ();
-        return cached;
-    }
+            const bool is_hypervisor = cpu::id(1, 0, res) && (res.c & (1 << 31));
+            if (!is_hypervisor)
+                return { hypervisor::none, 0 };
 
-    std::uint32_t kvm_base()
-    {
-        static const auto cached = []
-        {
-            if (in_hypervisor())
+            std::uint32_t eax = 0, signature[3] { };
+            for (std::uint32_t base = 0x40000000; base < 0x40010000; base += 0x100)
             {
-                std::uint32_t eax = 0, signature[3] { };
-                for (std::uint32_t base = 0x40000000; base < 0x40010000; base += 0x100)
-                {
-                    cpu::id(base, 0, eax, signature[0], signature[1], signature[2], false);
-                    if (!std::memcmp("KVMKVMKVM\0\0\0", signature, 12))
-                        return base;
-                }
+                cpu::id(base, 0, eax, signature[0], signature[1], signature[2], false);
+                if (!std::memcmp("KVMKVMKVM\0\0\0", signature, 12))
+                    return { hypervisor::kvm, base };
+                else if (!std::memcmp("TCGTCGTCGTCG", signature, 12))
+                    return { hypervisor::qtcg, base };
+                else if (!std::memcmp("Microsoft Hv", signature, 12))
+                    return { hypervisor::hyperv, base };
+                else if (!std::memcmp("VBoxVBoxVBox", signature, 12))
+                    return { hypervisor::virtualbox, base };
+                else if (!std::memcmp("VMwareVMware", signature, 12))
+                    return { hypervisor::vmware, base };
+                else if (!std::memcmp("XenVMMXenVMM", signature, 12))
+                    return { hypervisor::xen, base };
             }
-            return 0u;
+            return { hypervisor::none, 0 };
         } ();
         return cached;
     }

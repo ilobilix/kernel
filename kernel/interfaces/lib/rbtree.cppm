@@ -86,39 +86,39 @@ export namespace lib
         std::size_t _size;
 
         static inline constexpr Type *nil() { return nullptr; }
-        inline constexpr rbtree_hook<Type> *hook(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr rbtree_hook<Type> *hook(rbtree_hook<Type> *nh, Type *item) const
         {
             if (item == nil())
                 return nh;
             return &(item->*Member);
         }
 
-        inline constexpr Type *parent(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr Type *parent(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->parent;
         }
 
-        inline constexpr Type *left(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr Type *left(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->left;
         }
 
-        inline constexpr Type *right(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr Type *right(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->right;
         }
 
-        inline constexpr Type *successor(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr Type *successor(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->successor;
         }
 
-        inline constexpr Type *predecessor(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr Type *predecessor(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->predecessor;
         }
 
-        inline constexpr colour colour_of(rbtree_hook<Type> *nh, Type *item)
+        inline constexpr colour colour_of(rbtree_hook<Type> *nh, Type *item) const
         {
             return hook(nh, item)->colour;
         }
@@ -126,7 +126,7 @@ export namespace lib
         inline constexpr Type *root() const { return static_cast<Type *>(_root); }
         inline constexpr Type *head() const { return static_cast<Type *>(_head); }
 
-        inline constexpr bool augment(Type *x)
+        static inline constexpr bool augment(Type *x)
         {
             if (x != nil())
                 return Aug::operator()(x);
@@ -295,7 +295,7 @@ export namespace lib
             hook(nh, v)->parent = parent(nh, u);
         }
 
-        constexpr Type *minimum(rbtree_hook<Type> *nh, Type *x)
+        constexpr Type *minimum(rbtree_hook<Type> *nh, Type *x) const
         {
             bug_on(x == nil());
             while (left(nh, x) != nil())
@@ -303,7 +303,7 @@ export namespace lib
             return x;
         }
 
-        constexpr Type *maximum(rbtree_hook<Type> *nh, Type *x)
+        constexpr Type *maximum(rbtree_hook<Type> *nh, Type *x) const
         {
             bug_on(x == nil());
             while (right(nh, x) != nil())
@@ -622,14 +622,14 @@ export namespace lib
         constexpr const_reverse_iterator rcbegin() const { return const_reverse_iterator { end() }; }
         constexpr const_reverse_iterator rcend() const { return const_reverse_iterator { begin() }; }
 
-        constexpr Type *first()
+        constexpr Type *first() const
         {
             if (head() == nil())
                 return nullptr;
             return head();
         }
 
-        constexpr Type *last()
+        constexpr Type *last() const
         {
             if (root() == nil())
                 return nullptr;
