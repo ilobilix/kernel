@@ -11,9 +11,13 @@ Make sure you have recent versions of the following programs installed:
 * llvm
 * sed
 * tar
-* mtools
-* sgdisk
-* xorriso (if you want to build an iso)
+* For creating a disk image
+  * mtools (``mformat``, ``mmd`` and ``mcopy``)
+  * parted
+  * coreutils (``truncate`` and ``dd``)
+  * e2fsprogs (``mkfs.ext4``)
+* For creating an iso image
+  * xorriso
 * qemu (x86_64 and aarch64)
 
 ## Building and Running
