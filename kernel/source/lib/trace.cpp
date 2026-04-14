@@ -38,8 +38,7 @@ namespace lib
             if (!is_empty)
             {
                 int status = -1;
-                ptr = abi::__cxa_demangle(namebuf.data(), nullptr, nullptr, &status);
-                log::println("{} {}", status, namebuf.data());
+                // ptr = abi::__cxa_demangle(namebuf.data(), nullptr, nullptr, &status);
                 if (!ptr || status != 0)
                 {
                     ptr = nullptr;
