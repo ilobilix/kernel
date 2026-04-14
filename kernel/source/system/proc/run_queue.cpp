@@ -53,7 +53,7 @@ namespace sched
         {
             // new threads start at min_vruntime + half a latency period
             // so they don't immediately preempt everything
-            vruntime = period(queue.size() + 1) / 2;
+            vruntime += period(queue.size() + 1) / 2;
         }
         else
         {

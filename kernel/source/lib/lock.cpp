@@ -19,9 +19,8 @@ namespace lib::lock
     void acquire_irq()
     {
         const auto ret = arch::int_status();
-
         acquire_preempt();
-        irq_status.unsafe_get() = ret;
+
         if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
         {
             release_preempt();
@@ -29,7 +28,10 @@ namespace lib::lock
         }
 
         if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
+        {
+            irq_status.unsafe_get() = ret;
             arch::int_switch(false);
+        }
 
         release_preempt();
         return;
@@ -38,6 +40,7 @@ namespace lib::lock
     void release_irq()
     {
         acquire_preempt();
+
         if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_acquire))
         {
             release_preempt();

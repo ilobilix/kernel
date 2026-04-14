@@ -2,14 +2,20 @@
 
 .include "arch/x86_64/system/cpu.S"
 
+.extern sched_trampoline_entry
 .extern sched_kthread_exit
+
 sched_kthread_trampoline:
+    call sched_trampoline_entry
+
     mov rdi, r13
     call r12
     jmp sched_kthread_exit
 .global sched_kthread_trampoline
 
 sched_uthread_trampoline:
+    call sched_trampoline_entry
+
     test r12, r12
     jz .no_trampoline
 

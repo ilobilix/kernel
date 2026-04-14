@@ -29,6 +29,12 @@ namespace sched::arch
         lib::unused(ns);
     }
 
+    void wake_up_other(std::size_t cpu_idx)
+    {
+        // TODO
+        lib::unused(cpu_idx);
+    }
+
     void context_switch(thread_t *prev, thread_t *next)
     {
         lib::unused(prev, next);

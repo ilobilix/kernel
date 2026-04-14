@@ -27,6 +27,16 @@ namespace sched::arch
         {
             thread_exit(0);
         }
+
+        extern "C" void sched_trampoline_entry()
+        {
+            auto thread = current_thread();
+            if (thread->was_in_interrupt)
+            {
+                cpu::self().unsafe_get().in_interrupt.store(false, std::memory_order_release);
+                thread->was_in_interrupt = false;
+            }
+        }
     } // namespace
 
     thread_t *current_thread()
@@ -37,8 +47,6 @@ namespace sched::arch
     void init_core(thread_t *initial)
     {
         cpu::gs::write(reinterpret_cast<std::uintptr_t>(initial));
-
-        idt::table()[sched_vector].ist = 3;
 
         auto ret = interrupts::allocate(cpu::self().unsafe_get().idx, sched_vector);
         lib::bug_on(!ret.has_value());
@@ -97,6 +105,16 @@ namespace sched::arch
             apic::ipi(apic::shorthand::self, apic::delivery::fixed, sched_vector);
         else
             apic::arm(ns, sched_vector);
+    }
+
+    void wake_up_other(std::size_t cpu_idx)
+    {
+        apic::ipi(
+            cpu::local::nth(cpu_idx)->arch_id,
+            apic::destination::physical,
+            apic::delivery::fixed,
+            sched_vector
+        );
     }
 
     void context_switch(thread_t *prev, thread_t *next)

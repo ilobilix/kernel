@@ -180,6 +180,7 @@ namespace x86_64::timers::hpet
         "timers.arch.hpet.create-thread",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
+            sched::pid0_created_stage(),
             initialised_stage()
         },
         [] {

@@ -812,6 +812,9 @@ namespace lib::log
     {
         "log.create-thread",
         lib::initgraph::presched_init_engine,
+        lib::initgraph::require {
+            sched::pid0_created_stage()
+        },
         [] {
 #if !ILOBILIX_SYSCALL_LOG
             sched::spawn(consumer);

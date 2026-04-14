@@ -2,12 +2,18 @@
 
 module system.sched;
 
+import drivers.timers;
 import system.chrono;
 import system.cpu;
 import arch;
 
 namespace sched
 {
+    namespace arch
+    {
+        using namespace ::arch;
+    } // namespace arch
+
     namespace
     {
         cpu_local(run_queue_t, run_queue);
@@ -43,10 +49,70 @@ namespace sched
             return thread->affinity.get(cpu);
         }
 
-        void migrate_thread(thread_t *thread, std::size_t target_cpu)
+        std::size_t find_least_loaded(const thread_t *thread)
         {
-            // TODO
-            lib::unused(thread, target_cpu);
+            auto &self = cpu::self().unsafe_get();
+            auto best_cpu = self.idx;
+            auto best_load = std::numeric_limits<std::size_t>::max();
+
+            for (std::size_t i = 0; i < cpu::count(); i++)
+            {
+                if (!can_run_on(thread, i))
+                    continue;
+
+                auto &rq = run_queue.unsafe_get(cpu::local::nth_base(i));
+                if (rq.nr_running == 0)
+                {
+                    if (best_load != 0 || i == self.idx)
+                    {
+                        best_cpu = i;
+                        best_load = 0;
+                    }
+                    continue;
+                }
+
+                std::uint64_t load = rq.total_weight;
+                if (rq.current && !rq.current->is_idle())
+                    load += rq.current->weight;
+
+                if (load < best_load)
+                {
+                    best_load = load;
+                    best_cpu = i;
+                }
+            }
+
+            return best_cpu;
+        }
+
+        void enqueue_on(thread_t *thread, std::size_t cpu_idx, bool initial)
+        {
+            auto &self = cpu::self().unsafe_get();
+            auto &rq = (cpu_idx == self.idx)
+                ? run_queue.unsafe_get()
+                : run_queue.unsafe_get(cpu::local::nth_base(cpu_idx));
+
+            const std::unique_lock _ { rq.lock };
+
+            rq.adjust(thread, initial);
+            rq.enqueue(thread);
+            rq.nr_running++;
+
+            bool should_resched = false;
+            if (rq.current)
+            {
+                if (rq.current->is_idle())
+                    should_resched = true;
+                else if (rq.check_preempt_wakeup(thread))
+                    should_resched = true;
+            }
+
+            if (should_resched)
+            {
+                rq.current->flags |= thread_flags::needs_resched;
+                if (cpu_idx != self.idx)
+                    arch::wake_up_other(cpu_idx);
+            }
         }
 
         std::uintptr_t allocate_kstack()
@@ -62,28 +128,47 @@ namespace sched
         }
     } // namespace
 
-    void init()
+    lib::initgraph::stage *pid0_created_stage()
     {
-        auto proc = new process_t { };
-
-        proc->pid = 0;
-        proc->parent = nullptr;
-        proc->group = nullptr;
-        proc->session = nullptr;
-
-        proc->vmspace = std::make_shared<vmm::vmspace>(
-            std::make_shared<vmm::pagemap>(
-                vmm::kernel_pagemap.get()
-            )
-        );
-
-        proc->vfs = nullptr;
-        proc->fdt = nullptr;
-        proc->cred = nullptr;
-        proc->sigactions = nullptr;
-
-        (*processes.lock())[proc->pid] = proc;
+        static lib::initgraph::stage stage
+        {
+            "sched.pid0.created",
+            lib::initgraph::presched_init_engine
+        };
+        return &stage;
     }
+
+    lib::initgraph::task init_task
+    {
+        "log.create-thread",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require {
+            arch::bsp_initialised_stage(),
+            timers::initialised_stage()
+        },
+        lib::initgraph::entail { pid0_created_stage() },
+        [] {
+            auto proc = new process_t { };
+
+            proc->pid = 0;
+            proc->parent = nullptr;
+            proc->group = nullptr;
+            proc->session = nullptr;
+
+            proc->vmspace = std::make_shared<vmm::vmspace>(
+                std::make_shared<vmm::pagemap>(
+                    vmm::kernel_pagemap.get()
+                )
+            );
+
+            proc->vfs = nullptr;
+            proc->fdt = nullptr;
+            proc->cred = nullptr;
+            proc->sigactions = nullptr;
+
+            (*processes.lock())[proc->pid] = proc;
+        }
+    };
 
     [[noreturn]] void start()
     {
@@ -91,15 +176,9 @@ namespace sched
         auto &rq = run_queue.unsafe_get();
 
         rq.cpu_idx = self.idx;
-        rq.total_weight = 0;
-        rq._min_vruntime = 0;
-        rq.nr_running = 0;
-        rq.nr_switches = 0;
+        rq.load_update = (self.idx * balance_interval_ns) / cpu::count();
 
-        rq.load_update = 0;
-        rq.load_active = 0;
-
-        rq.idle = create_kthread(reinterpret_cast<std::uintptr_t>(::arch::halt), true);
+        rq.idle = create_kthread(reinterpret_cast<std::uintptr_t>(arch::halt), true);
         rq.idle->flags |= thread_flags::idle;
         rq.idle->affinity.clear(0);
         rq.idle->affinity.set(rq.cpu_idx, true);
@@ -118,12 +197,12 @@ namespace sched
         else
         {
             while (!should_start.load(std::memory_order_acquire))
-                ::arch::pause();
+                arch::pause();
         }
 
+        arch::int_switch(true);
         arch::arm_timer_ns(0);
-
-        ::arch::halt(true);
+        arch::halt(true);
     }
 
     void schedule()
@@ -132,6 +211,7 @@ namespace sched
         auto &self = cpu::self().unsafe_get();
         auto &rq = run_queue.unsafe_get();
         rq.lock.lock();
+        preempt_enable();
 
         const auto prev = rq.current;
         thread_t *next = nullptr;
@@ -173,6 +253,14 @@ namespace sched
 
         next = rq.pick_next();
         if (next == nullptr)
+        {
+            rq.lock.unlock();
+            load_balance();
+            rq.lock.lock();
+            next = rq.pick_next();
+        }
+
+        if (next == nullptr)
             next = rq.idle;
         else
             rq.dequeue(next);
@@ -193,17 +281,16 @@ namespace sched
         {
             arch::arm_timer_ns(timeslice);
             rq.lock.unlock();
-            preempt_enable();
             return;
         }
         else if (next->proc != prev->proc)
             next->proc->vmspace->pmap->load();
 
-        arch::arm_timer_ns(timeslice);
+        next->was_in_interrupt = self.in_interrupt.load(std::memory_order_acquire);
 
+        arch::arm_timer_ns(timeslice);
         rq.lock.unlock();
         arch::context_switch(prev, next);
-        preempt_enable();
     }
 
     thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
@@ -295,17 +382,15 @@ namespace sched
 
     void enqueue_new(thread_t *thread)
     {
-        // TODO-SCHED-REWRITE: allocate core
         preempt_disable();
-        auto &rq = run_queue.unsafe_get();
-        const std::unique_lock _ { rq.lock };
+        std::size_t target;
+        if (should_start.load(std::memory_order_relaxed))
+            target = find_least_loaded(thread);
+        else
+            target = cpu::self().unsafe_get().idx;
+        lib::bug_on(!can_run_on(thread, target));
+        enqueue_on(thread, target, true);
         preempt_enable();
-
-        lib::bug_on(!can_run_on(thread, rq.cpu_idx));
-
-        rq.adjust(thread, true);
-        rq.enqueue(thread);
-        rq.nr_running++;
     }
 
     thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
@@ -334,7 +419,6 @@ namespace sched
             thread->state != thread_state::stopped)
             return false;
 
-        // TODO-SCHED-REWRITE: allocate core
         preempt_disable();
         {
             auto &rq = run_queue.unsafe_get();
@@ -365,7 +449,7 @@ namespace sched
     void block()
     {
         auto thread = current_thread();
-        thread->state = thread_state::sleeping;
+        thread->state = thread_state::blocked;
         schedule();
     }
 
@@ -377,11 +461,10 @@ namespace sched
 
     void yield()
     {
+        preempt_disable();
         {
-            preempt_disable();
             auto &rq = run_queue.unsafe_get();
             const std::unique_lock _ { rq.lock };
-            preempt_enable();
 
             auto curr = rq.current;
             lib::bug_on(curr != current_thread());
@@ -390,6 +473,7 @@ namespace sched
                 curr->vruntime = std::max(curr->vruntime, rq.queue.last()->vruntime);
             curr->flags |= thread_flags::needs_resched;
         }
+        preempt_enable();
         schedule();
     }
 
@@ -409,22 +493,144 @@ namespace sched
 
     void tick()
     {
-        auto &rq = run_queue.unsafe_get();
-        const std::unique_lock _ { rq.lock };
-
-        auto curr = rq.current;
-        if (!curr->is_idle())
         {
-            const auto timer = chrono::main_timer();
-            rq.update_current(timer->ns());
-        }
+            auto &rq = run_queue.unsafe_get();
+            const std::unique_lock _ { rq.lock };
 
-        curr->flags |= thread_flags::needs_resched;
+            auto curr = rq.current;
+            if (!curr->is_idle())
+            {
+                const auto timer = chrono::main_timer();
+                rq.update_current(timer->ns());
+            }
+            curr->flags |= thread_flags::needs_resched;
+
+            if (is_preempt_disabled())
+            {
+                const auto timeslice = rq.calc_timeslice(rq.current->weight);
+                arch::arm_timer_ns(timeslice);
+            }
+        }
+        load_balance();
     }
 
     void load_balance()
     {
-        // TODO-SCHED-REWRITE
+        if (cpu::count() == 1)
+            return;
+
+        preempt_disable();
+        auto &my_rq = run_queue.unsafe_get();
+
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        if (now - my_rq.load_update < balance_interval_ns)
+        {
+            preempt_enable();
+            return;
+        }
+        my_rq.load_update = now;
+
+        auto busiest_cpu = my_rq.cpu_idx;
+        std::uint64_t most_load = 0;
+        std::size_t most_nr = 0;
+
+        for (std::size_t i = 0; i < cpu::count(); i++)
+        {
+            if (i == my_rq.cpu_idx)
+                continue;
+
+            auto &rq = run_queue.unsafe_get(cpu::local::nth_base(i));
+
+            const auto load = rq.total_weight;
+            const auto nr = rq.nr_running;
+
+            if (load > most_load)
+            {
+                most_load = load;
+                most_nr = nr;
+                busiest_cpu = i;
+            }
+        }
+
+        const auto my_load = my_rq.total_weight;
+        if (busiest_cpu == my_rq.cpu_idx || most_load < my_load || most_nr <= 1)
+        {
+            preempt_enable();
+            return;
+        }
+
+        const auto imbalance = most_load - my_load;
+        if (imbalance < most_load / 4)
+        {
+            preempt_enable();
+            return;
+        }
+
+        auto &src_rq = run_queue.unsafe_get(cpu::local::nth_base(busiest_cpu));
+        auto first = &my_rq;
+        auto second = &src_rq;
+        if (my_rq.cpu_idx > src_rq.cpu_idx)
+            std::swap(first, second);
+
+        first->lock.lock();
+        second->lock.lock();
+
+        if (src_rq.total_weight <= my_rq.total_weight || src_rq.nr_running <= 1)
+        {
+            second->lock.unlock();
+            first->lock.unlock();
+            preempt_enable();
+            return;
+        }
+
+        const auto locked_imbalance = src_rq.total_weight - my_rq.total_weight;
+        if (locked_imbalance < src_rq.total_weight / 4)
+        {
+            second->lock.unlock();
+            first->lock.unlock();
+            preempt_enable();
+            return;
+        }
+
+        const auto target = locked_imbalance / 2;
+        std::uint64_t migrated_weight = 0;
+        std::size_t migrations = 0;
+
+        auto *thread = src_rq.queue.last();
+        while (thread && migrations < balance_max_nr && migrated_weight < target)
+        {
+            auto prev = thread->hook.predecessor;
+
+            if (thread == src_rq.current || !can_run_on(thread, my_rq.cpu_idx) ||
+                migrated_weight + thread->weight > target + target / 2)
+            {
+                thread = prev;
+                continue;
+            }
+
+            src_rq.dequeue(thread);
+            src_rq.nr_running--;
+
+            const auto delta = static_cast<std::int64_t>(
+                thread->vruntime - src_rq._min_vruntime
+            );
+            thread->vruntime = my_rq._min_vruntime + std::max(0l, delta);
+
+            my_rq.enqueue(thread);
+            my_rq.nr_running++;
+
+            migrated_weight += thread->weight;
+            migrations++;
+
+            thread = prev;
+        }
+
+        second->lock.unlock();
+        first->lock.unlock();
+
+        preempt_enable();
     }
 
     void set_affinity(pid_t pid, lib::bitmap mask)

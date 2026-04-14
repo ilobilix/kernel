@@ -152,6 +152,7 @@ namespace timers::acpipm
         "timers.acpipm.create-thread",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
+            sched::pid0_created_stage(),
             initialised_stage()
         },
         [] {

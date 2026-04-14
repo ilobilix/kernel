@@ -56,8 +56,6 @@ namespace x86_64::gdt
         tlocal.ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
         // page fault
         tlocal.ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
-        // scheduler
-        tlocal.ist[2] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
 
         tlocal.iopboffset = sizeof(tss::reg);
 
