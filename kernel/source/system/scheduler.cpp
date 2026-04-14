@@ -420,7 +420,7 @@ namespace sched
             else lib::bug_on(!wlocked->erase(fd));
         }
 
-        wlocked.value()[fd] = desc;
+        wlocked.value()[fd] = std::move(desc);
         return fd;
     }
 
@@ -432,8 +432,8 @@ namespace sched
         if (!fdesc)
             return (errno = EBADF, -1);
 
-        const auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
-        const auto fd = allocate_fd(newfdesc, newfd, force);
+        auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
+        const auto fd = allocate_fd(std::move(newfdesc), newfd, force);
         if (fd < 0)
             return (errno = EMFILE, -1);
         fdesc->file->ref.fetch_add(1);
