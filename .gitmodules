@@ -66,3 +66,8 @@
 	path = dependencies/veque/veque
 	url = https://github.com/ilobilo/veque
 	shallow = true
+[submodule "dependencies/limine/limine"]
+	path = dependencies/limine/limine
+	url = https://github.com/limine-bootloader/limine
+	shallow = true
+	branch = v8.x-binary
