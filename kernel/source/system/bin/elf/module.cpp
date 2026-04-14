@@ -46,6 +46,7 @@ namespace bin::elf::mod
 
     namespace
     {
+        lib::map::flat_hash<std::string_view, entry> modules;
         lib::mutex lock;
 
         void log_entry(auto &entry)
@@ -99,7 +100,10 @@ namespace bin::elf::mod
                 const auto ndeps = ptr->dependencies.ndeps;
                 const auto deps = reinterpret_cast<const char *const *>(ptr->dependencies.list);
 
+                lock.lock();
                 auto &entry = modules[ptr->name];
+                lock.unlock();
+
                 entry.internal = internal;
                 entry.header = ptr;
 
@@ -130,16 +134,15 @@ namespace bin::elf::mod
 
         bool load(std::shared_ptr<vfs::dentry> node)
         {
-            const std::unique_lock _ { lock };
-
             log::info("elf: module: loading '{}'", node->name);
             auto &back = node->inode;
 
-            const auto ehdr = std::make_unique<Elf64_Ehdr>();
+            const auto file = std::make_unique<std::byte[]>(back->stat.st_size);
             lib::ensure(back->read(0, std::span {
-                reinterpret_cast<std::byte *>(ehdr.get()),
-                sizeof(Elf64_Ehdr)
-            }) == sizeof(Elf64_Ehdr));
+                file.get(), static_cast<std::size_t>(back->stat.st_size)
+            }) == back->stat.st_size);
+
+            const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(file.get());
 
             if (std::memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
             {
@@ -167,16 +170,15 @@ namespace bin::elf::mod
                 return false;
             }
 
-            const auto phdrs = std::make_unique<std::uint8_t[]>(ehdr->e_phnum * ehdr->e_phentsize);
-            lib::ensure(back->read(ehdr->e_phoff, std::span {
-                reinterpret_cast<std::byte *>(phdrs.get()),
+            const std::span<std::uint8_t> phdrs {
+                reinterpret_cast<std::uint8_t *>(file.get() + ehdr->e_phoff),
                 static_cast<std::size_t>(ehdr->e_phnum * ehdr->e_phentsize)
-            }) == ehdr->e_phnum * ehdr->e_phentsize);
+            };
 
             std::uint64_t max_size = 0;
             for (std::size_t i = 0; i < ehdr->e_phnum; i++)
             {
-                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.get() + ehdr->e_phentsize * i);
+                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.data() + ehdr->e_phentsize * i);
                 if (phdr->p_type != PT_LOAD)
                     continue;
 
@@ -236,7 +238,7 @@ namespace bin::elf::mod
 
             for (std::size_t i = 0; i < ehdr->e_phnum; i++)
             {
-                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.get() + ehdr->e_phentsize * i);
+                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.data() + ehdr->e_phentsize * i);
                 switch (const auto type = phdr->p_type)
                 {
                     // .modules
@@ -250,19 +252,19 @@ namespace bin::elf::mod
                             reinterpret_cast<void *>(loaded_at + phdr->p_vaddr + phdr->p_filesz),
                             0, phdr->p_memsz - phdr->p_filesz
                         );
-                        lib::ensure(back->read(phdr->p_offset, std::span {
-                            reinterpret_cast<std::byte *>(loaded_at + phdr->p_vaddr),
+                        std::memcpy(
+                            reinterpret_cast<void *>(loaded_at + phdr->p_vaddr),
+                            file.get() + phdr->p_offset,
                             phdr->p_filesz
-                        }) == static_cast<std::ssize_t>(phdr->p_filesz));
+                        );
                         break;
                     }
                     case PT_DYNAMIC:
                     {
-                        const auto dyntable = std::make_unique<Elf64_Dyn[]>(phdr->p_filesz / sizeof(Elf64_Dyn));
-                        lib::ensure(back->read(phdr->p_offset, std::span {
-                            reinterpret_cast<std::byte *>(dyntable.get()),
-                            phdr->p_filesz
-                        }) == static_cast<std::ssize_t>(phdr->p_filesz));
+                        const std::span<Elf64_Dyn> dyntable {
+                            reinterpret_cast<Elf64_Dyn *>(file.get() + phdr->p_offset),
+                            phdr->p_filesz / sizeof(Elf64_Dyn)
+                        };
 
                         for (std::size_t ii = 0; ii < phdr->p_filesz / sizeof(Elf64_Dyn); ii++)
                         {
@@ -378,7 +380,7 @@ namespace bin::elf::mod
 
             for (std::ssize_t i = ehdr->e_phnum - 1; i >= 0; i--)
             {
-                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.get() + ehdr->e_phentsize * i);
+                auto phdr = reinterpret_cast<Elf64_Phdr *>(phdrs.data() + ehdr->e_phentsize * i);
                 if (phdr->p_type != PT_LOAD)
                     continue;
 
@@ -437,6 +439,11 @@ namespace bin::elf::mod
             }
         }
     } // namespace
+
+    auto get_modules() -> const lib::map::flat_hash<std::string_view, entry> &
+    {
+        return modules;
+    }
 
     initgraph::stage *modules_loaded_stage()
     {

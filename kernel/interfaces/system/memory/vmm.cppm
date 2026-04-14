@@ -17,6 +17,7 @@ export namespace vmm
 
     enum class space_type : std::size_t
     {
+        stack,
         modules,
         acpi, pci,
         other

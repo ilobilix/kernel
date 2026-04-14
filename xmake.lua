@@ -160,7 +160,7 @@ toolchain("ilobilix-clang")
     add_defines("LIMINE_API_REVISION=2")
     -- add_defines("FLANTERM_FB_DISABLE_BUMP_ALLOC")
 
-    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
+    add_defines("UACPI_OVERRIDE_LIBC", "UACPI_OVERRIDE_ARCH_HELPERS")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
     add_defines("FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
@@ -186,13 +186,8 @@ toolchain("ilobilix-clang")
             -- using set_warnings causes some argument ordering issues
             "-Wall", "-Wextra",
 
-            "-Wno-error=#warnings",
             "-Wno-c23-extensions",
-            -- "-Wno-builtin-macro-redefined",
-            -- "-Wno-macro-redefined",
-            -- "-Wno-deprecated-declarations",
-            -- "-Wno-nan-infinity-disabled",
-            -- "-Wno-frame-address"
+            "-Wno-c99-designator"
         }
         local c_args = { }
         local cxx_args = {
@@ -235,6 +230,7 @@ toolchain("ilobilix-clang")
                 )
             end
             table.insert(ld_args, "--strip-debug")
+            toolchain:add("defines", "NDEBUG=1");
             toolchain:add("defines", "ILOBILIX_DEBUG=0");
         else
             toolchain:add("defines", "ILOBILIX_DEBUG=1");

@@ -30,13 +30,14 @@ export namespace lib
             _lock.lock();
         }
 
-        void unlock()
+        bool unlock()
         {
             if (is_locked() == false)
-                return;
+                return false;
 
             _lock.unlock();
             _sem.signal();
+            return true;
         }
 
         bool is_locked() const

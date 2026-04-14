@@ -284,9 +284,10 @@ extern "C"
     void uacpi_kernel_free(void *mem, uacpi_size) { std::free(mem); }
 #endif
 
-#ifndef UACPI_FORMATTED_LOGGING
-    void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *str)
+    void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *buf)
     {
+        // remove \n
+        std::string_view str { buf, std::strlen(buf) - 1 };
         switch (lvl)
         {
             case UACPI_LOG_DEBUG:
@@ -306,49 +307,6 @@ extern "C"
                 std::unreachable();
         }
     }
-#else
-    UACPI_PRINTF_DECL(2, 3)
-    void uacpi_kernel_log(uacpi_log_level lvl, const uacpi_char *str, ...)
-    {
-        va_list va;
-        va_start(va, str);
-        uacpi_kernel_vlog(lvl, str, va);
-        va_end(va);
-    }
-
-    void uacpi_kernel_vlog(uacpi_log_level lvl, const uacpi_char *_str, uacpi_va_list va)
-    {
-        auto str = const_cast<uacpi_char *>(_str);
-        const auto len = std::strlen(str);
-
-        if (str[len - 1] == '\n')
-            str[len - 1] = 0;
-        // if (std::isalpha(str[0]))
-        //     str[0] = std::toupper(str[0]);
-
-        char *buffer;
-        std::vasprintf(&buffer, str, va);
-        switch (lvl)
-        {
-            case UACPI_LOG_DEBUG:
-            case UACPI_LOG_TRACE:
-                log::debug("uacpi: {}", buffer);
-                break;
-            case UACPI_LOG_INFO:
-                log::info("uacpi: {}", buffer);
-                break;
-            case UACPI_LOG_WARN:
-                log::warn("uacpi: {}", buffer);
-                break;
-            case UACPI_LOG_ERROR:
-                log::error("uacpi: {}", buffer);
-                break;
-            default:
-                std::unreachable();
-        }
-        std::free(buffer);
-    }
-#endif
 
     uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot()
     {

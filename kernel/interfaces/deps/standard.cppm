@@ -582,16 +582,16 @@ export namespace std
     using std::fputc;
     using std::fputs;
     using std::fwrite;
-    using std::printf;
     using std::remove;
     using std::size_t;
-    using std::snprintf;
-    using std::sprintf;
-    using std::vprintf;
-    using std::vsnprintf;
-    using std::vsprintf;
-    using std::asprintf;
-    using std::vasprintf;
+    // using std::printf;
+    // using std::vprintf;
+    // using std::sprintf;
+    // using std::vsprintf;
+    // using std::snprintf;
+    // using std::vsnprintf;
+    // using std::asprintf;
+    // using std::vasprintf;
 
     using std::abort;
     using std::atexit;

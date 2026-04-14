@@ -42,10 +42,6 @@
 	path = dependencies/parallel-hashmap/parallel-hashmap
 	url = https://github.com/greg7mdp/parallel-hashmap
 	shallow = true
-[submodule "dependencies/printf/printf"]
-	path = dependencies/printf/printf
-	url = https://github.com/eyalroz/printf
-	shallow = true
 [submodule "dependencies/hosted-libstdcxx/hosted-libstdcxx"]
 	path = dependencies/hosted-libstdcxx/hosted-libstdcxx
 	url = https://github.com/ilobilo/hosted-libstdcxx

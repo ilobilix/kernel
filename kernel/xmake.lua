@@ -39,7 +39,7 @@ target("ilobilix.dependencies")
     add_deps(
         "compiler-rt-builtins", "cwalk",
         "demangler", "flanterm", "fmt",
-        "printf", "limine", "uacpi"
+        "limine", "uacpi"
     )
 
 target("ilobilix.dependencies.nolink")
@@ -49,8 +49,7 @@ target("ilobilix.dependencies.nolink")
     add_deps(
         "cwalk-headers", "demangler-headers",
         "flanterm-headers", "fmt-headers",
-        "printf-headers", "limine-headers",
-        "uacpi-headers"
+        "limine-headers", "uacpi-headers"
     )
 
 target("ilobilix.modules")

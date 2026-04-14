@@ -47,6 +47,9 @@ namespace x86_64::output::com
     void init()
     {
         init_port(COM1);
-        ::output::serial::register_printer(printc);
+
+        using namespace ::output::serial;
+        static constinit printer printer { printc };
+        register_printer(printer);
     }
 } // namespace x86_64::output::com

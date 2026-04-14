@@ -26,10 +26,12 @@ export namespace mod
         const std::size_t ndeps = NDeps;
         const char *list[NDeps];
 
-        constexpr deps(const deps &) = default;
+        consteval deps(const deps &) = default;
+
+        consteval deps() requires (NDeps == 0) : list { } { }
 
         template<typename ...Args> requires (!(... && std::same_as<std::decay_t<Args>, deps>))
-        constexpr deps(Args &&...deps) : list { deps... } { }
+        consteval deps(Args &&...deps) : list { deps... } { }
     };
 
     template<std::size_t NDeps>
@@ -47,7 +49,7 @@ export namespace mod
         > interface;
         const deps<NDeps> dependencies;
 
-        constexpr declare(const char *name, const char *description, auto interface, auto &&...args)
+        consteval declare(const char *name, const char *description, auto interface, auto &&...args)
             : name { name }, description { description }, interface { interface }, dependencies { args... } { }
     };
 
@@ -56,4 +58,7 @@ export namespace mod
 
     template<typename Type, typename Deps>
     declare(const char *, const char *, Type, Deps) -> declare<Deps::count>;
+
+    template<typename Type>
+    declare(const char *, const char *, Type) -> declare<0>;
 } // export namespace mod
