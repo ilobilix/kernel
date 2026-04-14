@@ -1,4 +1,4 @@
-// Copyright (C) 2024  ilobilo
+// Copyright (C) 2024-2025  ilobilo
 
 export module x86_64.system.cpu.self;
 

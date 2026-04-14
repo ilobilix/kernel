@@ -1,4 +1,4 @@
--- Copyright (C) 2024  ilobilo
+-- Copyright (C) 2024-2025  ilobilo
 
 package("veque")
     add_urls("https://github.com/ilobilo/veque.git")

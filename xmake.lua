@@ -1,9 +1,9 @@
--- Copyright (C) 2024  ilobilo
+-- Copyright (C) 2024-2025  ilobilo
 
 set_project("Ilobilix")
 set_version("v0.2")
 
-set_license("GPL-3.0")
+set_license("EUPL-1.2")
 
 add_rules("plugin.compile_commands.autoupdate", { outputdir = ".vscode" })
 
@@ -157,7 +157,7 @@ toolchain("ilobilix-clang")
 
     add_defines("ILOBILIX_PHD_MEM=1")
 
-    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_KERNEL_INITIALIZATION", "UACPI_OVERRIDE_LIBC")
+    add_defines("UACPI_FORMATTED_LOGGING", "UACPI_OVERRIDE_LIBC")
     add_defines("MAGIC_ENUM_NO_STREAMS=1")
 
     add_defines("FMT_STATIC_THOUSANDS_SEPARATOR=\"'\"", "FMT_USE_LOCALE=0", "FMT_THROW(x)=abort()")
@@ -172,7 +172,7 @@ toolchain("ilobilix-clang")
         local cx_args = {
             "-ffreestanding",
             "-fno-stack-protector",
-            "-fno-omit-frame-pointer",
+            -- "-fno-omit-frame-pointer",
 
             "-nostdinc",
 
@@ -180,11 +180,11 @@ toolchain("ilobilix-clang")
             "-Wall", "-Wextra",
 
             "-Wno-error=#warnings",
-            "-Wno-builtin-macro-redefined",
-            "-Wno-macro-redefined",
-            "-Wno-deprecated-declarations",
-            "-Wno-nan-infinity-disabled",
-            "-Wno-frame-address"
+            -- "-Wno-builtin-macro-redefined",
+            -- "-Wno-macro-redefined",
+            -- "-Wno-deprecated-declarations",
+            -- "-Wno-nan-infinity-disabled",
+            -- "-Wno-frame-address"
         }
         local c_args = { }
         local cxx_args = {
@@ -211,13 +211,13 @@ toolchain("ilobilix-clang")
         if is_arch("x86_64") then
             target = "x86_64-elf"
 
-            table.insert(cx_args, "-march=x86-64")
-            table.insert(cx_args, "-mno-red-zone")
-            -- in kernel/xmake.lua
-            -- table.insert(cx_args, "-mno-80387")
-            table.insert(cx_args, "-mno-mmx")
-            table.insert(cx_args, "-mno-sse")
-            table.insert(cx_args, "-mno-sse2")
+            multi_insert(cx_args,
+                "-march=x86-64",
+                "-mno-red-zone",
+                "-mno-mmx",
+                "-mno-sse",
+                "-mno-sse2"
+            )
         elseif is_arch("aarch64") then
             target = "aarch64-elf"
 
@@ -490,7 +490,7 @@ task("qemu")
             bios = true
 
             multi_insert(qemu_args,
-                "-cpu", "host,migratable=off,+hypervisor,+invtsc,+tsc-deadline", "-M", "q35,smm=off"
+                "-cpu", "max,migratable=off,+invtsc,+tsc-deadline", "-M", "q35,smm=off"
                 -- "-audiodev", "id=audio,driver=alsa", "-machine", "pcspk-audiodev=audio"
             )
 
