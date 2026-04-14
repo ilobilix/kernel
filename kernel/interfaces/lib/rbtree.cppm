@@ -28,74 +28,65 @@ export namespace lib
         void *predecessor;
         colour colour;
 
-        public:
-        constexpr rbtree_hook() : parent { nullptr },
-            left { nullptr }, right { nullptr },
-            successor { nullptr }, predecessor { nullptr },
+        constexpr rbtree_hook(auto ptr) : parent { ptr },
+            left { ptr }, right { ptr },
+            successor { ptr }, predecessor { ptr },
             colour { colour::black } { }
+
+        public:
+        constexpr rbtree_hook() : rbtree_hook { nullptr } { }
     };
 
     template<typename Type, rbtree_hook Type::*Member, typename Less>
     class rbtree
     {
         private:
+        rbtree_hook _nil;
         void *_root;
         void *_head;
         std::size_t _size;
         Less _less;
 
-        static rbtree_hook *hook(Type *item)
+        static inline Type *nil() { return nullptr; }
+        inline rbtree_hook *hook(Type *item)
         {
+            if (item == nil())
+                return &_nil;
             return &(item->*Member);
         }
 
-        static Type *parent(Type *item)
+        inline Type *parent(Type *item)
         {
             return static_cast<Type *>(hook(item)->parent);
         }
 
-        static Type *left(Type *item)
+        inline Type *left(Type *item)
         {
             return static_cast<Type *>(hook(item)->left);
         }
 
-        static Type *right(Type *item)
+        inline Type *right(Type *item)
         {
             return static_cast<Type *>(hook(item)->right);
         }
 
-        static Type *successor(Type *item)
+        inline Type *successor(Type *item)
         {
             return static_cast<Type *>(hook(item)->successor);
         }
 
-        static Type *predecessor(Type *item)
+        inline Type *predecessor(Type *item)
         {
             return static_cast<Type *>(hook(item)->predecessor);
         }
 
-        static Type *nil()
+        inline colour colour_of(Type *item)
         {
-            alignas(alignof(Type)) static std::byte buffer[sizeof(Type)];
-            static auto *ptr = std::launder(reinterpret_cast<Type *>(buffer));
-            [[maybe_unused]]
-            static bool once = [&] {
-                auto h = hook(ptr);
-                std::construct_at(h);
-                h->parent = ptr;
-                h->left = ptr;
-                h->right = ptr;
-                h->successor = ptr;
-                h->predecessor = ptr;
-                h->colour = colour::black;
-                return true;
-            } ();
-            bug_on(hook(ptr)->colour != colour::black);
-            return ptr;
+            return hook(item)->colour;
         }
 
-        Type *root() const { return static_cast<Type *>(_root); }
-        Type *head() const { return static_cast<Type *>(_head); }
+        inline Type *root() const { return static_cast<Type *>(_root); }
+        inline Type *head() const { return static_cast<Type *>(_head); }
 
         void rotate_left(Type *x)
         {
@@ -113,31 +104,30 @@ export namespace lib
             hook(x)->parent = y;
         }
 
-        void rotate_right(Type *y)
+        void rotate_right(Type *x)
         {
-            bug_on(left(y) == nil() || parent(root()) != nil());
-            auto x = left(y);
-            bug_on(x == nullptr);
-            if ((hook(y)->left = right(x)) != nil())
-                hook(right(x))->parent = y;
-            if ((hook(x)->parent = parent(y)) == nil())
-                _root = x;
-            else if (y == left(parent(y)))
-                hook(parent(y))->left = x;
+            bug_on(left(x) == nil() || parent(root()) != nil());
+            auto y = left(x);
+            if ((hook(x)->left = right(y)) != nil())
+                hook(right(y))->parent = x;
+            if ((hook(y)->parent = parent(x)) == nil())
+                _root = y;
+            else if (x == right(parent(x)))
+                hook(parent(x))->right = y;
             else
-                hook(parent(y))->right = x;
-            hook(x)->right = y;
-            hook(y)->parent = x;
+                hook(parent(x))->left = y;
+            hook(y)->right = x;
+            hook(x)->parent = y;
         }
 
         void insert_fixup(Type *z)
         {
-            while (hook(parent(z))->colour == colour::red)
+            while (colour_of(parent(z)) == colour::red)
             {
                 if (parent(z) == left(parent(parent(z))))
                 {
-                    auto y = right((parent(parent(z))));
-                    if (hook(y)->colour == colour::red)
+                    auto y = right(parent(parent(z)));
+                    if (colour_of(y) == colour::red)
                     {
                         hook(parent(z))->colour = colour::black;
                         hook(y)->colour = colour::black;
@@ -158,8 +148,8 @@ export namespace lib
                 }
                 else
                 {
-                    auto y = left((parent(parent(z))));
-                    if (hook(y)->colour == colour::red)
+                    auto y = left(parent(parent(z)));
+                    if (colour_of(y) == colour::red)
                     {
                         hook(parent(z))->colour = colour::black;
                         hook(y)->colour = colour::black;
@@ -263,7 +253,7 @@ export namespace lib
 
         void _remove_fixup(Type *x)
         {
-            while (x != root() && hook(x)->colour == colour::black)
+            while (x != root() && colour_of(x) == colour::black)
             {
                 if (x == left(parent(x)))
                 {
@@ -275,14 +265,14 @@ export namespace lib
                         rotate_left(parent(x));
                         w = right(parent(x));
                     }
-                    if (hook(left(w))->colour == colour::black && hook(right(w))->colour == colour::black)
+                    if (colour_of(left(w)) == colour::black && colour_of(right(w)) == colour::black)
                     {
                         hook(w)->colour = colour::red;
                         x = parent(x);
                     }
                     else
                     {
-                        if (hook(right(w))->colour == colour::black)
+                        if (colour_of(right(w)) == colour::black)
                         {
                             hook(left(w))->colour = colour::black;
                             hook(w)->colour = colour::red;
@@ -299,21 +289,21 @@ export namespace lib
                 else
                 {
                     auto w = left(parent(x));
-                    if (hook(w)->colour == colour::red)
+                    if (colour_of(w) == colour::red)
                     {
                         hook(w)->colour = colour::black;
                         hook(parent(x))->colour = colour::red;
                         rotate_right(parent(x));
                         w = left(parent(x));
                     }
-                    if (hook(right(w))->colour == colour::black && hook(left(w))->colour == colour::black)
+                    if (colour_of(right(w)) == colour::black && colour_of(left(w)) == colour::black)
                     {
                         hook(w)->colour = colour::red;
                         x = parent(x);
                     }
                     else
                     {
-                        if (hook(left(w))->colour == colour::black)
+                        if (colour_of(left(w)) == colour::black)
                         {
                             hook(right(w))->colour = colour::black;
                             hook(w)->colour = colour::red;
@@ -357,7 +347,7 @@ export namespace lib
 
             auto x = nil();
             auto y = z;
-            auto yoc = hook(y)->colour;
+            auto yoc = colour_of(y);
 
             if (left(z) == nil())
             {
@@ -372,7 +362,7 @@ export namespace lib
             else
             {
                 y = minimum(right(z));
-                yoc = hook(y)->colour;
+                yoc = colour_of(y);
                 x = right(y);
 
                 if (y != right(z))
@@ -403,8 +393,9 @@ export namespace lib
             friend class rbtree;
 
             private:
+            rbtree *_tree;
             Type *_current;
-            iterator(Type *data) : _current { data } { }
+            iterator(rbtree *tree, Type *data) : _tree { tree }, _current { data } { }
 
             public:
             Type &operator*() const { return *_current; }
@@ -413,7 +404,7 @@ export namespace lib
 
             iterator &operator++()
             {
-                _current = successor(_current);
+                _current = _tree->successor(_current);
                 return *this;
             }
 
@@ -426,7 +417,7 @@ export namespace lib
 
             iterator &operator--()
             {
-                _current = predecessor(_current);
+                _current = _tree->predecessor(_current);
                 return *this;
             }
 
@@ -439,7 +430,7 @@ export namespace lib
 
             friend bool operator==(const iterator &lhs, const iterator &rhs)
             {
-                return lhs._current == rhs._current;
+                return lhs._tree == rhs._tree && lhs._current == rhs._current;
             }
 
             friend bool operator!=(const iterator &lhs, const iterator &rhs)
@@ -449,7 +440,7 @@ export namespace lib
         };
 
         public:
-        rbtree() : _root { nil() }, _head { nil() }, _size { 0 }, _less { } { }
+        rbtree() : _nil { }, _root { nil() }, _head { nil() }, _size { 0 }, _less { } { }
 
         rbtree(const rbtree &) = delete;
         rbtree(rbtree &&rhs)
@@ -480,16 +471,13 @@ export namespace lib
 
         void insert(Type *z)
         {
-            auto h = hook(z);
-            h->parent = h->left = h->right = nil();
-            h->predecessor = h->successor = nil();
+            bug_on(!z);
+            *hook(z) = rbtree_hook { nil() };
 
             if (_root == nil())
             {
                 _root = z;
                 _head = _root;
-                hook(root())->parent = nil();
-                hook(root())->colour = colour::black;
             }
             else _insert(z);
 
@@ -498,25 +486,16 @@ export namespace lib
 
         void remove(Type *x)
         {
-            bug_on(!x || x == nil());
-            auto h = hook(x);
-            bug_on(
-                !h->parent || !h->left || !h->right ||
-                !h->predecessor || !h->successor
-            );
+            bug_on(!x);
             _remove(x);
-
-            h->parent = h->left = h->right = nil();
-            h->predecessor = h->successor = nil();
-
             bug_on(_size == 0);
             _size--;
         }
 
         void remove(iterator x) { remove(x.value()); }
 
-        iterator begin() { return head(); }
-        iterator end() { return nil(); }
+        iterator begin() { return { this, head() }; }
+        iterator end() { return { this, nil() }; }
 
         Type *first()
         {
