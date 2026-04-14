@@ -16,20 +16,20 @@ function get_latest_release
 
 function http_get
 (
-    http_get_url="${1}"
-    http_get_filepath="${2:-"$(basename "${http_get_url}")"}"
+    HTTP_GET_URL="${1}"
+    HTTP_GET_FILEPATH="${2:-"$(basename "${HTTP_GET_URL}")"}"
 
-    if [ -z "${http_get_url}" ]; then
+    if [ -z "${HTTP_GET_URL}" ]; then
         echo >&2 "usage: http_get <url> [filepath]"
         return 1
     fi
 
-    if ! curl -fSL "${http_get_url}" -o "${http_get_filepath}.part"; then
-        echo >&2 "failed to download ${http_get_url} to ${http_get_filepath}.part"
+    if ! curl -fSL "${HTTP_GET_URL}" -o "${HTTP_GET_FILEPATH}.part"; then
+        echo >&2 "failed to download ${HTTP_GET_URL} to ${HTTP_GET_FILEPATH}.part"
         return 1
     fi
 
-    mv "${http_get_filepath}.part" "${http_get_filepath}"
+    mv "${HTTP_GET_FILEPATH}.part" "${HTTP_GET_FILEPATH}"
 )
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
