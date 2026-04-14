@@ -37,9 +37,9 @@ export namespace fs::dev::tty
     {
         instance *inst;
 
-        line_discipline(instance *inst) : inst { inst } { }
+        line_discipline(instance *inst) : inst { inst } { open(); }
 
-        virtual ~line_discipline() = default;
+        virtual ~line_discipline() { close(); }
 
         virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer) = 0;
         virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer) = 0;
