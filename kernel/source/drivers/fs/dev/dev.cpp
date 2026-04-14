@@ -7,11 +7,11 @@ import lib;
 
 namespace fs::dev
 {
-    lib::initgraph::stage *populated_stage()
+    lib::initgraph::stage *initialised_stage()
     {
         static lib::initgraph::stage stage
         {
-            "vfs.dev.populated",
+            "vfs.dev.initialised",
             lib::initgraph::postsched_init_engine
         };
         return &stage;
@@ -19,10 +19,10 @@ namespace fs::dev
 
     lib::initgraph::task dev_task
     {
-        "vfs.dev.populated",
+        "vfs.dev.initialised",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { mem::initialised_stage(), tty::initialised_stage() },
-        lib::initgraph::entail { populated_stage() },
+        lib::initgraph::entail { initialised_stage() },
         [] { }
     };
 } // namespace fs::dev

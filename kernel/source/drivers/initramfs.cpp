@@ -2,6 +2,8 @@
 
 module drivers.initramfs;
 
+import drivers.fs.dev;
+import system.dev;
 import system.vfs;
 import magic_enum;
 import boot;
@@ -52,18 +54,21 @@ namespace initramfs
 
         bool load(void *ptr)
         {
+            log::info("ustar: extracting initramfs");
+
             auto current = static_cast<header *>(ptr);
             while (magic == std::string_view { current->magic, 6 })
             {
-                std::string_view name { current->name };
-                std::string_view linkname { current->linkname };
+                const std::string_view name { current->name };
+                const std::string_view linkname { current->linkname };
 
-                auto mode = lib::oct2int<mode_t>(current->mode);
-                auto size = lib::oct2int<std::size_t>(current->size);
-                auto mtim = lib::oct2int<time_t>(current->mtime);
+                const auto mode = lib::oct2int<mode_t>(current->mode);
+                const auto size = lib::oct2int<std::size_t>(current->size);
+                const auto mtim = lib::oct2int<time_t>(current->mtime);
 
-                // auto devmajor = lib::oct2int<time_t>(current->devmajor);
-                // auto devminor = lib::oct2int<time_t>(current->devminor);
+                const auto devmajor = lib::oct2int<time_t>(current->devmajor);
+                const auto devminor = lib::oct2int<time_t>(current->devminor);
+                const dev_t dev = dev::makedev(devmajor, devminor);
 
                 std::shared_ptr<vfs::inode> inode;
 
@@ -85,13 +90,21 @@ namespace initramfs
                             break;
                         }
 
-                        inode = ret.value().dentry->inode;
+                        auto &inode_ = ret.value().dentry->inode;
                         const std::span data { reinterpret_cast<std::byte *>(reinterpret_cast<std::uintptr_t>(current) + 512), size };
-                        if (inode->write(0, data) != std::ssize_t(size))
+                        if (inode_->write(0, data) != std::ssize_t(size))
                         {
                             log::error("ustar: could not write to a regular file '{}'", name);
-                            // TODO: remove node
+                            if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
+                            {
+                                log::error(
+                                    "ustar: could not unlink incomplete regular file '{}': {}",
+                                    name, magic_enum::enum_name(ret.error())
+                                );
+                            }
+                            break;
                         }
+                        inode = inode_;
                         break;
                     }
                     case types::hardlink:
@@ -123,11 +136,33 @@ namespace initramfs
                         break;
                     }
                     case types::chardev:
-                        lib::panic("ustar: TODO: chardev");
+                    {
+                        auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifchr, dev);
+                        if (!ret)
+                        {
+                            log::error(
+                                "ustar: could not create a character device file '{}': {}",
+                                name, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret.value().dentry->inode;
                         break;
+                    }
                     case types::blockdev:
-                        lib::panic("ustar: TODO: blockdev");
+                    {
+                        auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifblk, dev);
+                        if (!ret)
+                        {
+                            log::error(
+                                "ustar: could not create a block device file '{}': {}",
+                                name, magic_enum::enum_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret.value().dentry->inode;
                         break;
+                    }
                     case types::directory:
                     {
                         auto ret = vfs::create(std::nullopt, name, mode | stat::type::s_ifdir);
@@ -171,7 +206,7 @@ namespace initramfs
     {
         "vfs.initramfs.extract",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { vfs::root_mounted_stage() },
+        lib::initgraph::require { vfs::root_mounted_stage(), fs::dev::initialised_stage() },
         lib::initgraph::entail { extracted_stage() },
         [] {
             auto module = boot::find_module("initramfs");

@@ -4,6 +4,7 @@ module drivers.fs.devtmpfs;
 
 import drivers.fs.tmpfs;
 import system.vfs;
+import magic_enum;
 import lib;
 import cppstd;
 
@@ -86,9 +87,13 @@ namespace fs::devtmpfs
         lib::initgraph::require { vfs::root_mounted_stage(), registered_stage() },
         lib::initgraph::entail { mounted_stage() },
         [] {
-            auto err = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);
-            lib::bug_on(!err.has_value() && err.error() != vfs::error::already_exists);
-            lib::bug_on(!vfs::mount("", "/dev", "devtmpfs", 0));
+            const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);
+            lib::panic_if(
+                !cerr && cerr.error() != vfs::error::already_exists,
+                "devtmpfs: failed to create directory '/dev': {}", magic_enum::enum_name(cerr.error())
+            );
+            const auto merr = vfs::mount("", "/dev", "devtmpfs", 0);
+            lib::panic_if(!merr, "devtmpfs: failed to mount devtmpfs at '/dev': {}", magic_enum::enum_name(merr.error()));
         }
     };
 } // namespace fs::devtmpfs
