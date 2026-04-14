@@ -34,11 +34,6 @@
 	path = dependencies/frozen/frozen
 	url = https://github.com/serge-sans-paille/frozen
 	shallow = true
-[submodule "dependencies/limine/limine"]
-	path = dependencies/limine/limine
-	url = https://github.com/limine-bootloader/limine
-	shallow = true
-	branch = v8.x-binary
 [submodule "dependencies/magic_enum/magic_enum"]
 	path = dependencies/magic_enum/magic_enum
 	url = https://github.com/Neargye/magic_enum
