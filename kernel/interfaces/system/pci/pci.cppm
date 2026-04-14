@@ -72,10 +72,10 @@ export namespace pci
             std::uint8_t flags;
         };
 
-        std::shared_ptr<router> parent;
-        std::shared_ptr<bus> mybus;
+        std::weak_ptr<router> parent;
+        std::weak_ptr<bus> mybus;
 
-        router(std::shared_ptr<router> parent, std::shared_ptr<bus> mybus)
+        router(std::weak_ptr<router> parent, std::weak_ptr<bus> mybus)
             : parent { parent }, mybus { mybus } { }
 
         virtual std::shared_ptr<router> downstream(std::shared_ptr<bus> &bus) = 0;
@@ -94,25 +94,25 @@ export namespace pci
         std::uint16_t seg;
         std::uint8_t id;
 
-        std::shared_ptr<configio> io;
-        std::shared_ptr<bridge> bridge;
-        std::shared_ptr<router> router;
+        std::weak_ptr<configio> io { };
+        std::weak_ptr<bridge> associated_bridge { };
+        std::shared_ptr<router> router { };
 
-        std::vector<std::shared_ptr<device>> devices { };
-        std::vector<std::shared_ptr<pci::bridge>> bridges { };
+        std::vector<std::weak_ptr<device>> devices { };
+        std::vector<std::weak_ptr<pci::bridge>> bridges { };
 
         template<typename Type>
         Type read(std::uint8_t dev, std::uint8_t func, auto offset) const
         {
-            lib::ensure(static_cast<bool>(io));
-            return io->read<Type>(seg, id, dev, func, offset);
+            lib::ensure(!io.expired());
+            return io.lock()->read<Type>(seg, id, dev, func, offset);
         }
 
         template<typename Type>
         void write(std::uint8_t dev, std::uint8_t func, auto offset, auto value) const
         {
-            lib::ensure(static_cast<bool>(io));
-            io->write<Type>(seg, id, dev, func, offset, value);
+            lib::ensure(!io.expired());
+            io.lock()->write<Type>(seg, id, dev, func, offset, value);
         }
 
         template<std::size_t N>
@@ -143,26 +143,26 @@ export namespace pci
     struct entity
     {
         std::uint8_t dev, func;
-        std::shared_ptr<pci::bus> parent;
+        std::weak_ptr<pci::bus> parent;
         std::vector<std::pair<std::uint8_t, std::uint16_t>> caps;
 
         bool is_pcie;
         bool is_secondary;
 
-        entity(std::shared_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func);
+        entity(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func);
 
         template<typename Type>
         Type read(auto offset) const
         {
-            lib::ensure(static_cast<bool>(parent));
-            return parent->read<Type>(dev, func, offset);
+            lib::ensure(!parent.expired());
+            return parent.lock()->read<Type>(dev, func, offset);
         }
 
         template<typename Type>
         void write(auto offset, auto value) const
         {
-            lib::ensure(static_cast<bool>(parent));
-            parent->write<Type>(dev, func, offset, value);
+            lib::ensure(!parent.expired());
+            parent.lock()->write<Type>(dev, func, offset, value);
         }
 
         template<std::size_t N>
@@ -188,9 +188,11 @@ export namespace pci
         std::uint8_t secondary_bus;
         std::uint8_t subordinate_bus;
 
+        std::shared_ptr<bus> associated_bus;
+
         std::array<bar, 2> bars;
 
-        bridge(std::shared_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
+        bridge(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
             : entity { bus, dev, func } { read_bars(2); }
 
         std::span<bar> get_bars() override { return bars; }
@@ -208,7 +210,7 @@ export namespace pci
             std::size_t idx;
         } irq;
 
-        device(std::shared_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
+        device(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
             : entity { bus, dev, func } { read_bars(6); }
 
         std::span<bar> get_bars() override { return bars; }
@@ -226,7 +228,8 @@ export namespace pci
     std::uint32_t devidx(const auto &dev)
     {
         lib::ensure(static_cast<bool>(dev));
-        return devidx(dev->parent->seg, dev->parent->id, dev->dev, dev->func);
+        const auto parent = dev->parent.lock();
+        return devidx(parent->seg, parent->id, dev->dev, dev->func);
     }
 
     const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges();
