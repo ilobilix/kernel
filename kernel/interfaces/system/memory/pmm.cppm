@@ -48,10 +48,12 @@ export namespace pmm
         return page_for(reinterpret_cast<std::uintptr_t>(ptr));
     }
 
+    [[nodiscard]]
     void *alloc(std::size_t count = 1, bool clear = false, bool low_mem = false);
     void free(void *ptr, std::size_t count = 1);
 
     template<typename Type = void *>
+    [[nodiscard]]
     inline Type alloc(std::size_t count = 1, bool clear = false, bool low_mem = false)
     {
         return reinterpret_cast<Type>(alloc(count, clear, low_mem));

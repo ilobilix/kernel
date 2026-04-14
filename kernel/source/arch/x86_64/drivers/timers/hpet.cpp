@@ -132,7 +132,7 @@ namespace x86_64::timers::hpet
         log::info("hpet: supported: {}", supported());
 
         vaddr = vmm::alloc_vpages(vmm::space_type::other, 1);
-        log::debug("hpet: mapping to 0x{:X}", vaddr);
+        log::debug("hpet: mapping mmio: 0x{:X} -> 0x{:X}", paddr, vaddr);
 
         const auto psize = vmm::page_size::small;
         const auto npsize = vmm::pagemap::from_page_size(psize);
