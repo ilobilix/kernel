@@ -10,6 +10,7 @@ import system.bin.exec;
 import system.scheduler;
 import system.memory;
 import system.vfs;
+import boot;
 import lib;
 import cppstd;
 
@@ -41,14 +42,21 @@ namespace bin::elf::exec
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
 
-            auxval aux { };
+            auxval aux
+            {
+                .at_entry = addr + ehdr.e_entry,
+                .at_phdr = addr + ehdr.e_phoff,
+                .at_phent = ehdr.e_phentsize,
+                .at_phnum = ehdr.e_phnum
+            };
+
             std::optional<vfs::path> interp { };
 
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
                 Elf64_Phdr phdr;
                 lib::panic_if(inode->read(
-                    ehdr.e_phoff + i * sizeof(Elf64_Phdr),
+                    ehdr.e_phoff + i * ehdr.e_phentsize,
                     std::span { reinterpret_cast<std::byte *>(&phdr), sizeof(phdr) }
                 ) != sizeof(phdr));
 
@@ -126,10 +134,6 @@ namespace bin::elf::exec
                 }
             }
 
-            aux.at_entry = addr + ehdr.e_entry;
-            aux.at_phent = ehdr.e_phentsize;
-            aux.at_phnum = ehdr.e_phnum;
-
             return std::make_pair(aux, interp);
         }
 
@@ -179,40 +183,78 @@ namespace bin::elf::exec
 
             auto thread = sched::thread::create(proc, entry, true);
 
-            const auto addr = thread->modify_ustack();
-            auto stack = addr;
-            const auto sptr = [&stack] { return reinterpret_cast<std::uintptr_t *>(stack); };
+            lib::bug_on(thread->ustack_obj.expired());
+            const auto obj = thread->ustack_obj.lock();
 
-            std::vector<std::uintptr_t> envp_addrs { };
-            envp_addrs.reserve(req.envp.size());
+            const auto stack_size = boot::ustack_size;
+            const auto addr_bottom = thread->ustack_top - stack_size;
+
+            constexpr std::size_t num_auxvals = 6;
+
+            const bool one_more = (req.argv.size() + req.envp.size() + 1) & 1;
+            const auto required_size =
+                lib::align_up(
+                    std::accumulate(
+                        req.envp.begin(), req.envp.end(), std::size_t { 0 },
+                        [](std::size_t acc, const std::string &env) {
+                            return acc + env.length() + 1;
+                        }
+                    ) +
+                    std::accumulate(
+                        req.argv.begin(), req.argv.end(), std::size_t { 0 },
+                        [](std::size_t acc, const std::string &arg) {
+                            return acc + arg.length() + 1;
+                        }
+                    ), 16
+                ) + (one_more ? 8 : 0) + (num_auxvals * 16) + 8 +
+                req.envp.size() * 8 + 8 + req.argv.size() * 8 + 8;
+
+            lib::bug_on(required_size % 16 != 0);
+
+            lib::membuffer stack_buffer { required_size };
+            std::memset(stack_buffer.data(), 0, stack_buffer.size());
+
+            auto offset = stack_size;
+            const auto sptr = [&] {
+                return reinterpret_cast<std::uintptr_t *>(
+                    reinterpret_cast<std::uintptr_t>(stack_buffer.data()) + required_size - (stack_size - offset)
+                );
+            };
+
+            std::vector<std::uintptr_t> envp_offsets { };
+            envp_offsets.reserve(req.envp.size());
             for (const auto &env : req.envp)
             {
-                stack -= env.length() + 1;
+                offset -= env.length() + 1;
                 std::memcpy(sptr(), env.c_str(), env.length() + 1);
-                envp_addrs.push_back(stack);
+                envp_offsets.push_back(addr_bottom + offset);
             }
 
-            std::vector<std::uintptr_t> argv_addrs { };
-            argv_addrs.reserve(req.argv.size());
+            std::vector<std::uintptr_t> argv_offsets { };
+            argv_offsets.reserve(req.argv.size());
             for (const auto &arg : req.argv)
             {
-                stack -= arg.length() + 1;
+                offset -= arg.length() + 1;
                 std::memcpy(sptr(), arg.c_str(), arg.length() + 1);
-                argv_addrs.push_back(stack);
+                argv_offsets.push_back(addr_bottom + offset);
             }
 
-            stack = lib::align_down(stack, 16);
-            if ((req.argv.size() + req.envp.size() + 1) & 1)
+            offset = lib::align_down(offset, 16);
+            if (one_more)
             {
-                stack -= 8;
+                offset -= 8;
                 *sptr() = 0;
             }
 
-            const auto write_auxv = [&stack, &sptr](int type, std::uint64_t value)
+            std::size_t num = 0;
+            const auto write_auxv = [&](int type, std::uint64_t value)
             {
-                stack -= 8;
+                if (num++ == num_auxvals)
+                    lib::panic("you froggot to update num_auxvals");
+
+                offset -= 8;
                 *sptr() = value;
-                stack -= 8;
+                offset -= 8;
                 *sptr() = type;
             };
 
@@ -225,30 +267,34 @@ namespace bin::elf::exec
             // write_auxv(AT_RANDOM, 0);
             write_auxv(AT_SECURE, 0);
 
-            stack -= 8;
+            offset -= 8;
             *sptr() = 0;
 
-            for (auto it = envp_addrs.rbegin(); it != envp_addrs.rend(); it++)
+            for (auto it = envp_offsets.rbegin(); it != envp_offsets.rend(); it++)
             {
-                stack -= 8;
+                offset -= 8;
                 *sptr() = *it;
             }
 
-            stack -= 8;
+            offset -= 8;
             *sptr() = 0;
 
-            for (auto it = argv_addrs.rbegin(); it != argv_addrs.rend(); it++)
+            for (auto it = argv_offsets.rbegin(); it != argv_offsets.rend(); it++)
             {
-                stack -= 8;
+                offset -= 8;
                 *sptr() = *it;
             }
 
-            stack -= 8;
+            offset -= 8;
             *sptr() = req.argv.size();
 
-            lib::bug_on(stack % 16 != 0);
+            lib::bug_on((stack_size - offset) != required_size);
 
-            thread->update_ustack(reinterpret_cast<std::uintptr_t>(stack));
+            lib::panic_if(obj->write(
+                offset, stack_buffer.span()
+            ) != stack_buffer.size());
+
+            thread->update_ustack(addr_bottom + offset);
             return thread;
         }
     };

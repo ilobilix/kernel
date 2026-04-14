@@ -71,6 +71,31 @@ namespace vfs
         return vfs::root;
     }
 
+    std::string pathname_from(path path)
+    {
+        std::string result;
+        std::vector<std::string_view> segments;
+        while (true)
+        {
+            while (path.dentry == path.mnt->root)
+                path = path.mnt->mounted_on.value();
+
+            if (path.dentry == vfs::root)
+                break;
+
+            segments.push_back(path.dentry->name);
+            path.dentry = path.dentry->parent.lock();
+        }
+        for (auto it = segments.rbegin(); it != segments.rend(); ++it)
+        {
+            result += '/';
+            result += *it;
+        }
+        if (result.empty())
+            result = "/";
+        return result;
+    }
+
     auto path_for(lib::path _path) -> expect<path>
     {
         std::optional<path> parent { };

@@ -56,12 +56,13 @@ namespace time
         return true;
     }
 
-    timespec now()
+    // TODO: this is terrible and only temporary
+    timespec now(clockid_t clockid)
     {
+        lib::unused(clockid);
+
         if (main == nullptr)
             return timespec { };
-
-        // TODO: make this more accurate with rtc
 
         const auto boot_time_s = boot::time();
         const auto clock_ns = main->ns();

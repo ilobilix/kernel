@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <user.h>
-
 export module x86_64.system.syscall:arch;
 
 export namespace x86_64::syscall::arch

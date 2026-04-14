@@ -32,10 +32,30 @@ namespace x86_64::syscall
         [9] = { "mmap", memory::mmap },
         [10] = { "mprotect", memory::mprotect },
         [11] = { "munmap", memory::munmap },
+        [13] = { "sigaction", proc::sigaction },
+        [14] = { "sigprocmask", proc::sigprocmask },
+        [16] = { "ioctl", vfs::ioctl },
+        [39] = { "getpid", proc::getpid },
+        [63] = { "uname", misc::uname },
+        [72] = { "fcntl", vfs::fcntl },
+        [79] = { "getcwd", vfs::getcwd, [](std::uintptr_t val) { return val == 0; } },
         [85] = { "creat", vfs::creat },
+        [102] = { "getuid", proc::getuid },
+        [104] = { "getgid", proc::getgid },
+        [107] = { "geteuid", proc::geteuid },
+        [108] = { "getegid", proc::getegid },
+        [110] = { "getppid", proc::getppid },
+        [118] = { "getresuid", proc::getresuid },
+        [120] = { "getresgid", proc::getresgid },
+        [121] = { "getpgid", proc::getpgid },
         [158] = { "arch_prctl", arch::arch_prctl },
         [186] = { "gettid", proc::gettid },
-        [257] = { "openat", vfs::openat }
+        [202] = { "futex", proc::futex },
+        [228] = { "clock_gettime", time::clock_gettime },
+        [231] = { "exit_group", proc::exit_group },
+        [257] = { "openat", vfs::openat },
+        [262] = { "fstatat", vfs::fstatat },
+        [302] = { "prlimit", proc::prlimit }
     };
 
     extern "C" void syscall_entry();

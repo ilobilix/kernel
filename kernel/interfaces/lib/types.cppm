@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2025  ilobilo
 
-module;
-
-#include <user.h>
-
 export module lib:types;
 
 import :log;
@@ -110,7 +106,9 @@ struct fmt::formatter<lib::user_string> : fmt::formatter<std::string>
 export
 {
     using time_t = std::int64_t;
+    using clockid_t = std::int32_t;
     using pid_t = std::int32_t;
+    using rlim_t = std::uint64_t;
 
     using dev_t = std::uint64_t;
     using ino_t = std::uint64_t;

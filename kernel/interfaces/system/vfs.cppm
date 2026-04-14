@@ -44,6 +44,12 @@ export namespace vfs
         virtual std::ssize_t write(std::shared_ptr<inode> self, std::uint64_t offset, std::span<std::byte> buffer) = 0;
         virtual bool trunc(std::shared_ptr<inode> self, std::size_t size) = 0;
 
+        virtual int ioctl(std::shared_ptr<inode> self, unsigned long request, lib::may_be_uptr argp)
+        {
+            lib::unused(self, request, argp);
+            return (errno = ENOSYS, -1);
+        }
+
         virtual std::shared_ptr<vmm::object> map(std::shared_ptr<inode> self, bool priv) = 0;
 
         virtual bool sync() = 0;
@@ -117,6 +123,12 @@ export namespace vfs
             return op->trunc(shared_from_this(), size);
         }
 
+        int ioctl(unsigned long request, lib::may_be_uptr argp)
+        {
+            lib::bug_on(op == nullptr);
+            return op->ioctl(shared_from_this(), request, argp);
+        }
+
         std::shared_ptr<vmm::object> map(bool priv)
         {
             lib::bug_on(op == nullptr);
@@ -159,6 +171,8 @@ export namespace vfs
 
     bool register_fs(std::unique_ptr<filesystem> fs);
     auto find_fs(std::string_view name) -> expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
+
+    std::string pathname_from(path path);
 
     auto path_for(lib::path _path) -> expect<path>;
     auto resolve(std::optional<path> parent, lib::path path) -> expect<resolve_res>;
