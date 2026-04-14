@@ -206,8 +206,8 @@ export namespace fs::dev::tty
 
         virtual ~line_discipline() { close(); }
 
-        virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
 
@@ -219,38 +219,96 @@ export namespace fs::dev::tty
     {
         static inline constexpr std::size_t buffer_size = 4096;
 
-        lib::rbspmco<std::byte, buffer_size> raw_buffer;
+        struct in_buffer_t
+        {
+            static inline constexpr std::size_t cap = buffer_size;
+
+            std::array<char, cap> data;
+
+            std::size_t read_tail = 0;
+            std::size_t read_head = 0;
+            std::size_t cooked_head = 0;
+
+            std::size_t space() const
+            {
+                return cap - (read_head - read_tail);
+            }
+
+            bool full() const
+            {
+                return space() == 0;
+            }
+
+            bool empty() const
+            {
+                return space() == cap;
+            }
+
+            bool push(char chr)
+            {
+                if (full())
+                    return false;
+                data[read_head % cap] = chr;
+                read_head++;
+                return true;
+            }
+
+            std::optional<char> pop_last()
+            {
+                if (read_head > cooked_head)
+                {
+                    read_head--;
+                    return data[read_head % cap];
+                }
+                return std::nullopt;
+            }
+
+            bool erase()
+            {
+                if (read_head > cooked_head)
+                {
+                    read_head--;
+                    return true;
+                }
+                return false;
+            }
+
+            void commit()
+            {
+                cooked_head = read_head;
+            }
+
+            char peek() const
+            {
+                if (read_head > cooked_head)
+                    return data[(read_head - 1) % cap];
+                return '\0';
+            }
+        };
+
+        lib::rbspscd<std::byte, buffer_size> raw_buffer;
         lib::semaphore raw_sem;
 
-        lib::rbspmco<char, buffer_size> in_buffer;
+        lib::locker<in_buffer_t, lib::mutex> in_buffer;
         lib::semaphore in_sem;
 
-        lib::rbspmco<char, buffer_size> echo_buffer;
-        lib::semaphore echo_sem;
-
-        struct cooked_t
-        {
-            static inline constexpr std::size_t cap = buffer_size - 2;
-            std::array<char, cap> buffer;
-            std::size_t size;
-        };
-        lib::locker<cooked_t, lib::rwmutex> cooked_buffer;
+        lib::rbmpscd<char, buffer_size> out_buffer;
+        lib::semaphore out_sem;
 
         std::atomic_bool stopped;
 
         default_ldisc(instance *inst);
 
+        bool output_append(const ktermios &termios, char chr);
+        void output_flush();
+
         [[noreturn]]
         static void worker(default_ldisc *self);
 
-        std::ssize_t read(lib::maybe_uspan<std::byte> buffer) override;
-        std::ssize_t write(lib::maybe_uspan<std::byte> buffer) override;
+        void receive(std::span<std::byte> buffer) override;
 
-        void receive(std::span<std::byte> buffer) override
-        {
-            raw_buffer.push(buffer);
-            raw_sem.signal_all();
-        }
+        std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+        std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
     };
 
     struct driver;
@@ -279,24 +337,24 @@ export namespace fs::dev::tty
 
         virtual ~instance() = default;
 
-        virtual std::ssize_t read(lib::maybe_uspan<std::byte> buffer)
+        virtual std::ssize_t read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
-                return rlocked.value()->read(buffer);
+                return rlocked.value()->read(file, buffer);
             return -1;
         }
 
-        virtual std::ssize_t write(lib::maybe_uspan<std::byte> buffer)
+        virtual std::ssize_t write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
             const auto rlocked = ldisc.read_lock();
             if (rlocked.value())
-                return rlocked.value()->write(buffer);
+                return rlocked.value()->write(file, buffer);
             return -1;
         }
 
         // send to hardware
-        virtual std::ssize_t transmit(lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual std::size_t transmit(std::span<std::byte> buffer) = 0;
         // called by hardware
         void receive(std::span<std::byte> buffer)
         {
@@ -305,10 +363,11 @@ export namespace fs::dev::tty
                 rlocked.value()->receive(buffer);
         }
 
+        virtual std::size_t can_transmit() = 0;
+
         virtual bool open(std::shared_ptr<vfs::file> self) = 0;
         virtual bool close() = 0;
 
-        virtual void flush_buffer() = 0;
         virtual int ioctl(unsigned long request, lib::uptr_or_addr argp) = 0;
     };
 
