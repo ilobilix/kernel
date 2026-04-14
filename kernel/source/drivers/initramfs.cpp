@@ -14,7 +14,7 @@ namespace initramfs
 {
     namespace ustar
     {
-        // constexpr std::string_view magic { "ustar", 6 };
+        constexpr std::string_view magic { "ustar", 6 };
         // constexpr std::string_view version { "00", 2 };
 
         enum types : char
@@ -65,8 +65,8 @@ namespace initramfs
             lib::info("ustar: extracting initramfs");
 
             auto current = reinterpret_cast<header *>(data.data());
-            // while (magic == std::string_view { current->magic, 6 })
-            while (current < reinterpret_cast<header *>(data.data() + data.size()))
+            while (magic == std::string_view { current->magic, 6 } &&
+                current < reinterpret_cast<header *>(data.data() + data.size()))
             {
                 if (current->name[0] == '\0')
                     break;
