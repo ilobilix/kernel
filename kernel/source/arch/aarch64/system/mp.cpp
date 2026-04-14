@@ -2,6 +2,7 @@
 
 module system.cpu;
 
+import system.cpu.local;
 import lib;
 import std;
 
