@@ -9,6 +9,7 @@ module x86_64.drivers.timers.hpet;
 
 import system.memory;
 import system.time;
+import boot;
 import arch;
 import lib;
 import cppstd;
@@ -25,8 +26,11 @@ namespace x86_64::timers::hpet
             std::uint64_t rsvd1;
             std::uint64_t ist;
             std::uint64_t rsvd2[25];
-            std::uint32_t counter;
-            std::uint32_t counter1;
+            union [[gnu::packed]]
+            {
+                std::uint64_t counter64;
+                std::uint64_t counter32;
+            };
             std::uint64_t rsvd3;
             struct [[gnu::packed]]
             {
@@ -42,6 +46,14 @@ namespace x86_64::timers::hpet
 
         std::int64_t offset = 0;
         std::uint64_t p, n;
+
+        // TODO
+        std::size_t overflows = 0;
+        uint128_t read()
+        {
+            uint128_t counter = is_64bit ? regs->counter64 : regs->counter32;
+            return counter + static_cast<uint128_t>(overflows) * (is_64bit ? -1ul : -1u);
+        }
     } // namespace
 
     bool supported()
@@ -69,18 +81,18 @@ namespace x86_64::timers::hpet
     std::uint64_t time_ns()
     {
         lib::ensure(!!initialised);
-        return lib::ticks2ns(regs->counter, p, n) - offset;
+        return lib::ticks2ns(read(), p, n) - offset;
     }
 
     void calibrate(std::size_t ms)
     {
         const auto ticks = (ms * frequency) / 1'000;
 
-        const auto start = regs->counter;
+        const auto start = read();
         auto current = start;
 
         while (current < start + ticks)
-            current = regs->counter;
+            current = read();
     }
 
     time::clock clock { "hpet", 125, time_ns };
@@ -100,11 +112,6 @@ namespace x86_64::timers::hpet
         regs = reinterpret_cast<decltype(regs)>(vaddr);
 
         is_64bit = (regs->cap & ACPI_HPET_COUNT_SIZE_CAP);
-        if (is_64bit == false)
-        {
-            log::error("hpet: TODO: 32 bit timer is not supported");
-            return;
-        }
 
         frequency = 1'000'000'000'000'000ull / (regs->cap >> 32);
         std::tie(p, n) = lib::freq2nspn(frequency);
@@ -118,7 +125,6 @@ namespace x86_64::timers::hpet
         if (const auto clock = time::main_clock())
             offset = time_ns() - clock->ns();
 
-        // TODO: overflows after 42-ish seconds
-        // time::register_clock(clock);
+        time::register_clock(clock);
     }
 } // namespace x86_64::timers::hpet
