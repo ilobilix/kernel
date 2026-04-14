@@ -10,15 +10,24 @@ export namespace chrono
 {
     struct clock
     {
+        friend void register_clock(clock &timer);
+
         frg::pairing_heap_hook<clock> hook;
 
-        std::string name;
-        std::size_t priority;
+        private:
+        std::string _name;
+        std::size_t _priority;
+        std::int64_t _offset;
 
-        std::uint64_t (*ns)();
+        std::uint64_t (*_ns)();
 
-        clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
-            : name { name }, priority { priority }, ns { time_ns } { }
+        public:
+        clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)());
+
+        std::string_view name() const { return _name; }
+        std::size_t priority() const { return _priority; }
+
+        std::uint64_t ns() const;
     };
 
     void register_clock(clock &timer);

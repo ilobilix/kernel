@@ -16,7 +16,7 @@ namespace chrono
         {
             constexpr bool operator()(const clock *lhs, const clock *rhs) const
             {
-                return lhs->priority < rhs->priority;
+                return lhs->priority() < rhs->priority();
             }
         };
 
@@ -32,11 +32,24 @@ namespace chrono
         clock *main = nullptr;
     } // namespace
 
+    clock::clock(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
+            : _name { name }, _priority { priority }, _offset { 0 }, _ns { time_ns } { }
+
+    std::uint64_t clock::ns() const
+    {
+        return _ns() - _offset;
+    }
+
     void register_clock(clock &clock)
     {
-        lib::info("chrono: registering clock source '{}'", clock.name);
+        if (main != nullptr)
+            clock._offset = clock._ns() - main->ns();
+        else
+            clock._offset = clock._ns();
+
+        lib::info("chrono: registering clock source '{}'", clock.name());
         clocks.push(&clock);
-        lib::debug("chrono: main clock is set to '{}'", (main = clocks.top())->name);
+        lib::debug("chrono: main clock is set to '{}'", (main = clocks.top())->name());
     }
 
     clock *main_clock()
