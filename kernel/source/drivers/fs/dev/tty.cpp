@@ -424,6 +424,7 @@ namespace fs::dev::tty
                     continue;
                 }
 
+                const bool is_eol = (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]));
                 {
                     auto in_locked = self->in_buffer.lock();
                     if (chr == termios.c_cc[veof])
@@ -438,6 +439,12 @@ namespace fs::dev::tty
                         echo_out('\a');
                         continue;
                     }
+
+                    if (is_eol)
+                    {
+                        in_locked->commit();
+                        self->in_sem.signal_all();
+                    }
                 }
 
                 if (termios.c_lflag & echo)
@@ -450,18 +457,10 @@ namespace fs::dev::tty
                     else echo_out(chr);
                 }
 
-                if (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]))
+                if (is_eol)
                 {
                     if (!(termios.c_lflag & echo) && (termios.c_lflag & echonl))
                         echo_out(chr);
-
-                    auto in_locked = self->in_buffer.lock();
-                    if (in_locked->push(chr))
-                    {
-                        in_locked->commit();
-                        self->in_sem.signal_all();
-                    }
-                    else echo_out('\a');
                     continue;
                 }
             }
@@ -683,20 +682,26 @@ namespace fs::dev::tty
                 }
 
                 std::size_t progress = 0;
-                while (progress < std::min<std::size_t>(size, min))
+                while (progress < size)
                 {
                     progress += copy(in_locked, available, progress);
+
+                    if (progress >= min || progress >= size)
+                        return progress;
+
                     available = get_available(in_locked);
                     while (available == 0)
                     {
                         if (inst->hung_up.load(std::memory_order_relaxed))
-                            return 0;
+                            return progress;
 
                         in_locked.unlock();
                         bool interrupted = in_sem.wait_for(ms);
                         in_locked.lock();
+
                         if (!interrupted && available == 0) // expired
                             return progress;
+
                         available = get_available(in_locked);
                     }
                 }
