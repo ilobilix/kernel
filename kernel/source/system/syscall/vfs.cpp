@@ -1083,6 +1083,105 @@ namespace syscall::vfs
         return readlinkat(at_fdcwd, pathname, buf, bufsiz);
     }
 
+    int mkdirat(int dirfd, const char __user *pathname, mode_t mode)
+    {
+        const auto proc = sched::current_process();
+
+        auto val = get_path(pathname);
+        if (!val.has_value())
+            return -1;
+
+        const auto path = std::move(*val);
+        if (resolve_from(proc, dirfd, path).has_value())
+            return (errno = EEXIST, -1);
+
+        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        if (!parent.has_value())
+            return -1;
+
+        if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+            return (errno = ENOTDIR, -1);
+
+        const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifdir;
+        auto created = create(parent->target, path.basename(), cmode);
+        if (!created.has_value())
+            return (errno = lib::map_error(created.error()), -1);
+
+        const auto &parent_stat = parent->target.dentry->inode->stat;
+        {
+            const std::unique_lock _ { created->dentry->inode->lock };
+
+            auto &stat = created->dentry->inode->stat;
+            stat.st_uid = proc->cred->euid;
+
+            if (parent_stat.st_mode & s_isgid)
+                stat.st_gid = parent_stat.st_gid;
+            else
+                stat.st_gid = proc->cred->egid;
+
+            if (const auto ret = dirty_inode(*created); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
+        }
+        return 0;
+    }
+
+    int mkdir(const char __user *pathname, mode_t mode)
+    {
+        return mkdirat(at_fdcwd, pathname, mode);
+    }
+
+    int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags)
+    {
+        constexpr int utime_now = ((1l << 30) - 1l);
+        constexpr int utime_omit = ((1l << 30) - 2l);
+
+        if (flags & ~(at_symlink_nofollow | at_empty_path))
+            return (errno = EINVAL, -1);
+
+        if (pathname == nullptr && dirfd != at_fdcwd)
+            flags |= at_empty_path;
+
+        const auto now = chrono::now(chrono::type::realtime);
+
+        timespec ktimes[2];
+        if (times != nullptr)
+        {
+            if (!lib::copy_from_user(ktimes, times, sizeof(timespec) * 2))
+                return (errno = EFAULT, -1);
+
+            for (auto &ktime : ktimes)
+            {
+                if (ktime.tv_nsec == utime_now)
+                    ktime = now;
+            }
+        }
+        else ktimes[0] = ktimes[1] = now;
+
+        const auto proc = sched::current_process();
+
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
+
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
+        if (!target.has_value())
+            return -1;
+
+        auto &inode = target->dentry->inode;
+        {
+            const std::unique_lock _ { inode->lock };
+
+            if (ktimes[0].tv_nsec != utime_omit)
+                inode->stat.st_atim = ktimes[0];
+            if (ktimes[1].tv_nsec != utime_omit)
+                inode->stat.st_mtim = ktimes[1];
+            inode->stat.st_ctim = now;
+
+            if (const auto ret = dirty_inode(*target); !ret)
+                return (errno = lib::map_error(ret.error()), -1);
+        }
+        return 0;
+    }
+
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
         const auto proc = sched::current_process();
