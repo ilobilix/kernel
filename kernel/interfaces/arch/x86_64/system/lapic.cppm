@@ -5,12 +5,6 @@ import std;
 
 export namespace x86_64::apic
 {
-    enum class timer_mode
-    {
-        periodic,
-        oneshot
-    };
-
     enum class dest
     {
         none = 0b00,
@@ -23,6 +17,7 @@ export namespace x86_64::apic
 
     void eoi();
     void ipi(std::uint8_t id, dest dsh, std::uint8_t vector);
+    void arm(std::size_t ns, std::uint8_t vector);
 
     void init_cpu();
 } // export namespace x86_64::apic
