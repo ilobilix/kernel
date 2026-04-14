@@ -1,0 +1,6 @@
+# Copyright (C) 2024-2025  ilobilo
+
+set(FLANTERM_INCLUDES "${CMAKE_CURRENT_LIST_DIR}/flanterm/src" CACHE PATH "")
+file(GLOB_RECURSE FLANTERM_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/flanterm/src/*.c"
+)
