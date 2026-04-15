@@ -73,7 +73,8 @@ export namespace vmm
         static std::uintptr_t pa_mask;
 
         static const std::uintptr_t valid_table_flags;
-        static const std::uintptr_t new_table_flags;
+        static const std::uintptr_t new_user_table_flags;
+        static const std::uintptr_t new_kernel_table_flags;
 
         class entry
         {
@@ -155,7 +156,7 @@ export namespace vmm
         static std::uintptr_t to_arch(pflag flags, caching cache, page_size psize);
         static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>;
 
-        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize) -> table *;
+        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *;
 
         auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>;
 

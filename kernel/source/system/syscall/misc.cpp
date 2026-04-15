@@ -92,4 +92,14 @@ namespace syscall::misc
             return -EFAULT;
         return lib::random_bytes(*uspan);
     }
+
+    int prctl(
+        int option, unsigned long arg2, unsigned long arg3,
+        unsigned long arg4, unsigned long arg5
+    )
+    {
+        lib::unused(arg2, arg3, arg4, arg5);
+        lib::error("prctl: unhandled option: 0x{:X}", option);
+        return -EINVAL;
+    }
 } // namespace syscall::misc
