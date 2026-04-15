@@ -59,7 +59,10 @@ typedef struct
 #define ELFDATA2LSB 1
 
 #define EI_OSABI 7
-#define ELFOSABI_SYSV 0
+#define ELFOSABI_NONE 0
+#define ELFOSABI_SYSV ELFOSABI_NONE
+#define ELFOSABI_GNU 3
+#define ELFOSABI_LINUX ELFOSABI_GNU
 
 #define EM_AARCH64 183
 #define EM_X86_64 62

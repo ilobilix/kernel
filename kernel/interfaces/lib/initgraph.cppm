@@ -81,7 +81,8 @@ export namespace lib::initgraph
 
         public:
         node(node_type type, engine *engine, std::string_view name = "")
-            : _type { type }, _engine { engine }, _mvisited { false }, _name { name } { realise_node(this); }
+            : _type { type }, _engine { engine }, _mvisited { false }, _name { name }
+        { realise_node(this); }
 
         node(const node &) = delete;
         node &operator=(const node &) = delete;

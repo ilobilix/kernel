@@ -1367,9 +1367,11 @@ namespace sched
             if (!file)
                 return (errno = EACCES, -1);
 
-            auto format = bin::exec::identify(std::move(file));
-            if (!format)
-                return (errno = ENOEXEC, -1);
+            auto image = bin::exec::probe(std::move(file));
+            if (!image)
+                return (errno = lib::map_error(image.error()), -1);
+
+            lib::bug_on(!image.value());
 
             const std::unique_lock _ { process->lock };
             kill_other_threads();
@@ -1393,13 +1395,12 @@ namespace sched
             auto old_vmspace = process->vmspace;
             process->vmspace = std::move(new_vmspace);
 
-            auto new_thread = format->load({
+            auto new_thread = (*image)->load({
                 .pathname = std::move(pathname),
-                .file = file,
-                .interp = { },
                 .argv = std::move(argv),
                 .envp = std::move(envp),
-            }, process);
+                .proc = process,
+            });
 
             if (!new_thread)
             {
