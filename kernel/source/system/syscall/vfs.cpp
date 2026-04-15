@@ -20,14 +20,16 @@ namespace syscall::vfs
 
     namespace
     {
-        std::shared_ptr<filedesc> get_fd(sched::process_t *proc, int fdnum)
+        lib::expect<std::shared_ptr<filedesc>> get_fd(sched::process_t *proc, int fdnum)
         {
             if (fdnum < 0)
-                return (errno = EBADF, nullptr);
-            return proc->fdt->get(fdnum) ?: (errno = EBADF, nullptr);
+                return std::unexpected { lib::err::invalid_fd };
+            if (auto fd = proc->fdt->get(fdnum))
+                return fd;
+            return std::unexpected { lib::err::invalid_fd };
         }
 
-        std::optional<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path)
+        lib::expect<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path)
         {
             if (path.is_absolute())
                 return get_root(true);
@@ -36,49 +38,49 @@ namespace syscall::vfs
                 return proc->vfs->cwd;
 
             auto fd = get_fd(proc, dirfd);
-            if (fd == nullptr)
-                return std::nullopt;
+            if (!fd)
+                return std::unexpected { fd.error() };
 
-            if (fd->file->path.dentry->inode->stat.type() != stat::type::s_ifdir)
-                return (errno = ENOTDIR, std::nullopt);
+            if ((*fd)->file->path.dentry->inode->stat.type() != stat::type::s_ifdir)
+                return std::unexpected { lib::err::not_a_dir };
 
-            return fd->file->path;
+            return (*fd)->file->path;
         }
 
-        std::optional<resolve_res> resolve_from(
+        lib::expect<resolve_res> resolve_from(
             sched::process_t *proc, int dirfd,
             lib::path_view path, bool automount = true
         )
         {
             auto parent = get_parent(proc, dirfd, path);
-            if (!parent.has_value())
-                return std::nullopt;
+            if (!parent)
+                return std::unexpected { parent.error() };
 
-            auto res = resolve(std::move(parent), path, automount);
-            if (!res.has_value())
-                return (errno = lib::map_error(res.error()), std::nullopt);
+            auto res = resolve(std::move(*parent), path, automount);
+            if (!res)
+                return std::unexpected { res.error() };
 
-            return *res;
+            return std::move(*res);
         }
 
-        std::optional<lib::path> get_path(const char __user *pathname)
+        lib::expect<lib::path> get_path(const char __user *pathname)
         {
             if (pathname == nullptr)
-                return (errno = EFAULT, std::nullopt);
+                return std::unexpected { lib::err::invalid_address };
 
             const auto pathname_len = lib::strnlen_user(pathname, path_max);
             if (pathname_len < 0)
-                return (errno = EFAULT, std::nullopt);
+                return std::unexpected { lib::err::invalid_address };
             if (pathname_len == 0)
-                return (errno = EINVAL, std::nullopt);
+                return std::unexpected { lib::err::invalid_path };
             if (pathname_len == path_max)
-                return (errno = ENAMETOOLONG, std::nullopt);
+                return std::unexpected { lib::err::path_too_long };
 
             lib::path path { static_cast<std::size_t>(pathname_len), 0 };
             lib::bug_on(path.str().size() != static_cast<std::size_t>(pathname_len));
 
             if (!lib::copy_from_user(path.str().data(), pathname, pathname_len))
-                return (errno = EFAULT, std::nullopt);
+                return std::unexpected { lib::err::invalid_address };
 
             path.normalise();
             return path;
@@ -89,20 +91,20 @@ namespace syscall::vfs
             if (!was_opened)
             {
                 const auto fdesc = get_fd(proc, fd);
-                if (fdesc == nullptr)
-                    return -1;
+                if (!fdesc)
+                    return -lib::map_error(fdesc.error());
                 proc->fdt->fds.write_lock()->erase(fd);
                 return 0;
             }
 
             if (!proc->fdt->close(fd))
-                return (errno = EBADF, -1);
+                return -EBADF;
 
             return 0;
         }
     } // namespace
 
-    std::optional<path> get_target(
+    lib::expect<path> get_target(
         sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     )
@@ -114,7 +116,7 @@ namespace syscall::vfs
             {
                 const auto pathname_len = lib::strnlen_user(pathname, 1);
                 if (pathname_len < 0)
-                    return (errno = EFAULT, std::nullopt);
+                    return std::unexpected { lib::err::invalid_address };
                 use_dirfd = (pathname_len == 0);
             }
 
@@ -124,20 +126,20 @@ namespace syscall::vfs
                     return proc->vfs->cwd;
 
                 auto fd = get_fd(proc, dirfd);
-                if (fd == nullptr)
-                    return std::nullopt;
+                if (!fd)
+                    return std::unexpected { fd.error() };
 
-                return fd->file->path;
+                return (*fd)->file->path;
             }
         }
 
         auto val = get_path(pathname);
-        if (!val.has_value())
-            return std::nullopt;
+        if (!val)
+            return std::unexpected { val.error() };
 
         auto res = resolve_from(proc, dirfd, std::move(*val), automount);
-        if (!res.has_value())
-            return std::nullopt;
+        if (!res)
+            return std::unexpected { res.error() };
 
         auto target = std::move(res->target);
         lib::bug_on(!target.dentry || !target.dentry->inode);
@@ -145,8 +147,8 @@ namespace syscall::vfs
         if (follow_links)
         {
             auto reduced = reduce(std::move(res->parent), std::move(target), automount);
-            if (!reduced.has_value())
-                return (errno = lib::map_error(reduced.error()), std::nullopt);
+            if (!reduced)
+                return std::unexpected { reduced.error() };
             target = std::move(*reduced);
         }
         return target;
@@ -162,17 +164,17 @@ namespace syscall::vfs
         const bool trunc = (flags & o_trunc) && !(flags & o_path);
 
         if (((flags & o_tmpfile) == o_tmpfile) && !write)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & o_directory) && (flags & o_creat))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         // ignore other bits
         mode &= (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
         auto val = get_path(pathname);
         if (!val.has_value())
-            return -1;
+            return -lib::map_error(val.error());
 
         const auto pathstr = std::move(*val);
 
@@ -183,23 +185,23 @@ namespace syscall::vfs
         if (!res.has_value())
         {
             if ((flags & o_creat) == 0)
-                return -1;
+                return -lib::map_error(res.error());
 
             const auto parent = resolve_from(proc, dirfd, pathstr.dirname());
             if (!parent.has_value())
-                return -1;
+                return -lib::map_error(parent.error());
 
             const auto &parent_stat = parent->target.dentry->inode->stat;
             if (parent_stat.type() != stat::type::s_ifdir)
-                return (errno = ENOTDIR, -1);
+                return -ENOTDIR;
 
             if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
-                return (errno = EACCES, -1);
+                return -EACCES;
 
             const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
             auto created = create(parent->target, pathstr.basename(), cmode);
             if (!created.has_value())
-                return (errno = lib::map_error(created.error()), -1);
+                return -lib::map_error(created.error());
 
             lib::bug_on(!created->dentry || !created->dentry->inode);
 
@@ -215,7 +217,7 @@ namespace syscall::vfs
                     stat.st_gid = proc->cred->egid;
 
                 if (const auto ret = dirty_inode(*created); !ret)
-                    return (errno = lib::map_error(ret.error()), -1);
+                    return -lib::map_error(ret.error());
             }
 
             target = std::move(*created);
@@ -223,8 +225,7 @@ namespace syscall::vfs
         }
         else if ((flags & o_excl) && (flags & o_creat))
         {
-            errno = EEXIST;
-            return -1;
+            return -EEXIST;
         }
         else
         {
@@ -234,21 +235,21 @@ namespace syscall::vfs
             if (target.dentry->inode->stat.type() == stat::type::s_iflnk)
             {
                 if (!follow_links)
-                    return (errno = ELOOP, -1);
+                    return -ELOOP;
 
                 auto reduced = reduce(res->parent, target);
                 if (!reduced.has_value())
-                    return (errno = lib::map_error(reduced.error()), -1);
+                    return -lib::map_error(reduced.error());
                 target = std::move(*reduced);
             }
         }
 
         auto &stat = target.dentry->inode->stat;
         if (stat.type() == stat::type::s_ifdir && (write || trunc))
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
-            return (errno = ENOTDIR, -1);
+            return -ENOTDIR;
 
         if (!(flags & o_path) && !did_create)
         {
@@ -258,39 +259,39 @@ namespace syscall::vfs
             if (is_write(flags) || trunc)
                 acc |= sched::access_mode::write;
             if (!sched::check_perms(proc->cred, stat, acc))
-                return (errno = EACCES, -1);
+                return -EACCES;
         }
 
         const auto fdesc = filedesc::create(target, flags, proc->pid);
         if (!fdesc)
-            return (errno = EMFILE, -1);
+            return -EMFILE;
         const auto fd = fdt->alloc(fdesc, 0, false);
         if (fd < 0)
-            return (errno = EMFILE, -1);
+            return -EMFILE;
 
         if (const auto ret = fdesc->file->open(flags); !ret)
         {
             close_fd(proc, fd, false);
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         }
 
         if (trunc)
         {
             if (const auto ret = fdesc->file->trunc(0); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
 
             {
                 const std::unique_lock _ { target.dentry->inode->lock };
                 stat.update_time(stat::time::modify | stat::time::status);
 
                 if (const auto ret = dirty_inode(target); !ret)
-                    return (errno = lib::map_error(ret.error()), -1);
+                    return -lib::map_error(ret.error());
             }
 
             if (flags & (o_sync | o_dsync))
             {
                 if (const auto ret = fdesc->file->sync(); !ret)
-                    return (errno = lib::map_error(ret.error()), -1);
+                    return -lib::map_error(ret.error());
             }
         }
 
@@ -317,41 +318,42 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_read(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = fdesc->file->read(*uspan);
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return *ret;
@@ -361,41 +363,42 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = fdesc->file->write(*uspan);
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return *ret;
@@ -405,41 +408,42 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_read(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return *ret;
@@ -449,41 +453,42 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::modify | stat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return *ret;
@@ -499,35 +504,36 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_read(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
             if (!uspan.has_value())
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             const auto ret = fdesc->file->read(*uspan);
             if (!ret.has_value())
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
 
             if (*ret == 0)
                 break;
@@ -540,13 +546,13 @@ namespace syscall::vfs
             stat.update_time(stat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return static_cast<std::ssize_t>(total_read);
@@ -556,35 +562,36 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
             if (!uspan.has_value())
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             const auto ret = fdesc->file->write(*uspan);
             if (!ret.has_value())
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
 
             total_written += *ret;
         }
@@ -594,13 +601,13 @@ namespace syscall::vfs
             stat.update_time(stat::time::modify | stat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return static_cast<std::ssize_t>(total_written);
@@ -610,35 +617,36 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_read(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         std::size_t total_read = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
             if (!uspan.has_value())
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
             if (!ret.has_value())
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
 
             if (*ret == 0)
                 break;
@@ -652,13 +660,13 @@ namespace syscall::vfs
             stat.update_time(stat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return static_cast<std::ssize_t>(total_read);
@@ -668,35 +676,36 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() == stat::type::s_ifdir)
-            return (errno = EISDIR, -1);
+            return -EISDIR;
 
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
             if (!uspan.has_value())
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
             if (!ret.has_value())
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
 
             total_written += *ret;
             offset += static_cast<off_t>(*ret);
@@ -707,13 +716,13 @@ namespace syscall::vfs
             stat.update_time(stat::time::modify | stat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         if (file->flags & (o_sync | o_dsync))
         {
             if (const auto ret = file->sync(); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return static_cast<std::ssize_t>(total_written);
@@ -726,15 +735,16 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto &file = fdesc->file;
         const auto &stat = file->path.dentry->inode->stat;
         const auto type = stat.type();
         if (type == stat::s_ifsock || type == stat::s_ififo)
-            return (errno = ESPIPE, -1);
+            return -ESPIPE;
 
         std::size_t new_offset = 0;
         switch (whence)
@@ -744,25 +754,25 @@ namespace syscall::vfs
                 break;
             case seek_cur:
                 if (file->offset + offset > std::numeric_limits<off_t>::max())
-                    return (errno = EOVERFLOW, -1);
+                    return -EOVERFLOW;
                 new_offset = file->offset + offset;
                 break;
             case seek_end:
             {
                 const std::size_t size = stat.st_size;
                 if (size + offset > std::numeric_limits<off_t>::max())
-                    return (errno = EOVERFLOW, -1);
+                    return -EOVERFLOW;
                 new_offset = size + offset;
                 break;
             }
             default:
-                return (errno = EINVAL, -1);
+                return -EINVAL;
         }
 
         if constexpr (std::is_signed_v<off_t>)
         {
             if (static_cast<off_t>(new_offset) < 0)
-                return (errno = EOVERFLOW, -1);
+                return -EOVERFLOW;
         }
 
         return file->offset = new_offset;
@@ -773,7 +783,7 @@ namespace syscall::vfs
         const auto proc = sched::current_process();
 
         if (flags & ~(at_symlink_nofollow | at_no_automount | at_empty_path))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -781,10 +791,10 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, automount);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         if (!lib::copy_to_user(statbuf, &target->dentry->inode->stat, sizeof(::stat)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         return 0;
     }
 
@@ -814,18 +824,18 @@ namespace syscall::vfs
             at_statx_sync_type;
 
         if ((flags & ~valid_flags) != 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto sync_mode = flags & at_statx_sync_type;
         if (sync_mode == (at_statx_force_sync | at_statx_dont_sync))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         constexpr std::uint32_t statx_basic_stats = 0x000007FFu;
         constexpr std::uint32_t statx_mnt_id = 0x00001000u;
         constexpr std::uint32_t statx_reserved = 0x80000000u;
 
         if (mask & statx_reserved)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -833,7 +843,7 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, automount);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         struct stat val;
         {
@@ -875,7 +885,7 @@ namespace syscall::vfs
         }
 
         if (!lib::copy_to_user(statxbuf, &ret, sizeof(struct statx)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         return 0;
     }
@@ -883,10 +893,10 @@ namespace syscall::vfs
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
     {
         if ((mode & ~(f_ok | x_ok | w_ok | r_ok)) != 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & ~(at_symlink_nofollow | at_empty_path | at_eaccess)) != 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
 
@@ -896,7 +906,7 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         if (mode == f_ok)
             return 0;
@@ -924,7 +934,7 @@ namespace syscall::vfs
 
         const auto &stat = target->dentry->inode->stat;
         if (!sched::check_perms(cred, stat, desired))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         return 0;
     }
@@ -942,7 +952,7 @@ namespace syscall::vfs
     int fchmodat(int dirfd, const char __user *pathname, mode_t mode, int flags)
     {
         if (flags & ~(at_symlink_nofollow | at_empty_path))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
 
@@ -951,7 +961,7 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         auto &inode = target->dentry->inode;
         {
@@ -959,7 +969,7 @@ namespace syscall::vfs
 
             const auto &cred = proc->cred;
             if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
-                return (errno = EPERM, -1);
+                return -EPERM;
 
             if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
                 !cred->supp_gids.contains(inode->stat.st_gid) &&
@@ -972,7 +982,7 @@ namespace syscall::vfs
             inode->stat.update_time(stat::time::status);
 
             if (const auto ret = dirty_inode(*target); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
         return 0;
     }
@@ -990,7 +1000,7 @@ namespace syscall::vfs
     int fchownat(int dirfd, const char __user *pathname, uid_t owner, gid_t group, int flags)
     {
         if (flags & ~(at_symlink_nofollow | at_empty_path))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
 
@@ -999,7 +1009,7 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         auto &inode = target->dentry->inode;
         {
@@ -1022,7 +1032,7 @@ namespace syscall::vfs
                 const bool allow_unpriv = is_owner && uid_noop && gid_allowed;
 
                 if (!allow_unpriv && !sched::capable(cred, sched::cap_t::chown))
-                    return (errno = EPERM, -1);
+                    return -EPERM;
 
                 const auto old_uid = inode->stat.st_uid;
                 const auto old_gid = inode->stat.st_gid;
@@ -1034,10 +1044,10 @@ namespace syscall::vfs
 
                     auto fs = target->mnt->fs.lock();
                     if (!fs.get())
-                        return (errno = EIO, -1);
+                        return -EIO;
 
                     if (const auto ret = fs->remxattr(inode, xattr_caps_name); !ret)
-                        return (errno = lib::map_error(ret.error()), -1);
+                        return -lib::map_error(ret.error());
 
                     inode->xattrs.erase(xattr_caps_name);
                 }
@@ -1061,7 +1071,7 @@ namespace syscall::vfs
                     inode->stat.st_uid = old_uid;
                     inode->stat.st_gid = old_gid;
                     inode->stat.st_mode = old_mode;
-                    return (errno = lib::map_error(ret.error()), -1);
+                    return -lib::map_error(ret.error());
                 }
             }
         }
@@ -1089,10 +1099,10 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, false, true, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         if (target->dentry->inode->stat.type() != stat::type::s_iflnk)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto link = target->dentry->symlinked_to;
         const auto to_copy = static_cast<std::size_t>(std::min<std::size_t>(bufsiz, link.size()));
@@ -1100,7 +1110,7 @@ namespace syscall::vfs
         if (to_copy > 0)
         {
             if (!lib::copy_to_user(buf, link.data(), to_copy))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         return static_cast<std::ssize_t>(to_copy);
@@ -1117,27 +1127,27 @@ namespace syscall::vfs
 
         auto val = get_path(pathname);
         if (!val.has_value())
-            return -1;
+            return -lib::map_error(val.error());
 
         const auto path = std::move(*val);
         if (resolve_from(proc, dirfd, path).has_value())
-            return (errno = EEXIST, -1);
+            return -EEXIST;
 
         const auto parent = resolve_from(proc, dirfd, path.dirname());
         if (!parent.has_value())
-            return -1;
+            return -lib::map_error(parent.error());
 
         const auto &parent_stat = parent->target.dentry->inode->stat;
         if (parent_stat.type() != stat::type::s_ifdir)
-            return (errno = ENOTDIR, -1);
+            return -ENOTDIR;
 
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifdir;
         auto created = create(parent->target, path.basename(), cmode);
         if (!created.has_value())
-            return (errno = lib::map_error(created.error()), -1);
+            return -lib::map_error(created.error());
 
         {
             const std::unique_lock _ { created->dentry->inode->lock };
@@ -1151,7 +1161,7 @@ namespace syscall::vfs
                 stat.st_gid = proc->cred->egid;
 
             if (const auto ret = dirty_inode(*created); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
         return 0;
     }
@@ -1165,26 +1175,26 @@ namespace syscall::vfs
     int unlinkat(int dirfd, const char __user *pathname, int flags)
     {
         // if (flags & ~at_removedir)
-        //     return (errno = EINVAL, -1);
+        //     return -EINVAL;
 
         if (flags & at_removedir)
-            return (errno = EINVAL);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
 
         auto val = get_path(pathname);
         if (!val.has_value())
-            return -1;
+            return -lib::map_error(val.error());
 
         const auto path = std::move(*val);
 
         const auto parent = resolve_from(proc, dirfd, path.dirname());
         if (!parent.has_value())
-            return -1;
+            return -lib::map_error(parent.error());
 
         const auto &parent_stat = parent->target.dentry->inode->stat;
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         if ((parent_stat.st_mode & s_isvtx) != 0)
         {
@@ -1196,12 +1206,12 @@ namespace syscall::vfs
                 if (cred->fsuid != tstat.st_uid &&
                     cred->fsuid != parent_stat.st_uid &&
                     !sched::capable(cred, sched::cap_t::fowner))
-                    return (errno = EACCES, -1);
+                    return -EACCES;
             }
         }
 
         if (const auto ret = unlink(parent->target, path.basename()); !ret)
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         return 0;
     }
@@ -1217,7 +1227,7 @@ namespace syscall::vfs
         constexpr int utime_omit = ((1l << 30) - 2l);
 
         if (flags & ~(at_symlink_nofollow | at_empty_path))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (pathname == nullptr && dirfd != at_fdcwd)
             flags |= at_empty_path;
@@ -1228,7 +1238,7 @@ namespace syscall::vfs
         if (times != nullptr)
         {
             if (!lib::copy_from_user(ktimes, times, sizeof(timespec) * 2))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
 
             if (ktimes[0].tv_nsec == utime_omit && ktimes[1].tv_nsec == utime_omit)
                 return 0;
@@ -1242,7 +1252,7 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         auto &inode = target->dentry->inode;
         auto &stat = inode->stat;
@@ -1258,11 +1268,11 @@ namespace syscall::vfs
         if (times && (!is_special(ktimes[0].tv_nsec) || !is_special(ktimes[1].tv_nsec)))
         {
             if (!is_owner && !has_fowner)
-                return (errno = EPERM, -1);
+                return -EPERM;
         }
         else if (!is_owner && !has_fowner &&
             !sched::check_perms(proc->cred, stat, sched::access_mode::write))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         for (auto &ktime : ktimes)
         {
@@ -1280,7 +1290,7 @@ namespace syscall::vfs
             stat.st_ctim = now;
 
             if (const auto ret = dirty_inode(*target); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
         return 0;
     }
@@ -1296,13 +1306,14 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         const auto ret = fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         return *ret;
     }
 
@@ -1310,9 +1321,10 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         switch (cmd)
         {
@@ -1322,7 +1334,7 @@ namespace syscall::vfs
             {
                 const auto newfd = dup(static_cast<int>(arg));
                 if (newfd < 0)
-                    return -1;
+                    return newfd;
                 auto new_fdesc = proc->fdt->get(newfd);
                 lib::bug_on(new_fdesc == nullptr);
                 new_fdesc->closexec = true;
@@ -1342,7 +1354,7 @@ namespace syscall::vfs
                 break;
             }
             default:
-                return (errno = EINVAL, -1);
+                return -EINVAL;
         }
         return 0;
     }
@@ -1362,7 +1374,7 @@ namespace syscall::vfs
     int dup3(int oldfd, int newfd, int flags)
     {
         if (oldfd == newfd || (flags & ~o_closexec) != 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
         return proc->fdt->dup(oldfd, newfd, (flags & o_closexec) != 0, true);
@@ -1375,10 +1387,10 @@ namespace syscall::vfs
         const auto path_str = pathname_from(proc->vfs->cwd);
         const auto len = path_str.size() + 1;
         if (len > size)
-            return (errno = ERANGE, -1);
+            return -ERANGE;
 
         if (!lib::copy_to_user(buf, path_str.c_str(), len))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         return len;
     }
@@ -1389,14 +1401,14 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         const auto &stat = target->dentry->inode->stat;
         if (stat.type() != stat::type::s_ifdir)
-            return (errno = ENOTDIR, -1);
+            return -ENOTDIR;
 
         if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         proc->vfs->cwd = *target;
         return 0;
@@ -1408,14 +1420,14 @@ namespace syscall::vfs
 
         const auto target = get_target(proc, fd, nullptr, true, true, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         const auto &stat = target->dentry->inode->stat;
         if (stat.type() != stat::type::s_ifdir)
-            return (errno = ENOTDIR, -1);
+            return -ENOTDIR;
 
         if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
-            return (errno = EACCES, -1);
+            return -EACCES;
 
         proc->vfs->cwd = *target;
         return 0;
@@ -1427,7 +1439,7 @@ namespace syscall::vfs
         auto &fdt = proc->fdt;
 
         if (flags & ~(o_closexec | o_direct | o_nonblock))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         auto shared_inode = std::make_shared<inode>();
         {
@@ -1455,17 +1467,17 @@ namespace syscall::vfs
         }, flags | o_rdonly, proc->pid);
 
         if (!rfdesc)
-            return (errno = EMFILE, -1);
+            return -EMFILE;
         rfdesc->closexec = (flags & o_closexec) != 0;
 
         fds[0] = fdt->alloc(rfdesc, 0, false);
         if (fds[0] < 0)
-            return (errno = EMFILE, -1);
+            return -EMFILE;
 
         if (const auto ret = rfdesc->file->open(flags | o_rdonly); !ret)
         {
             close_fd(proc, fds[0], false);
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         }
 
         const auto wdentry = std::make_shared<dentry>();
@@ -1480,7 +1492,7 @@ namespace syscall::vfs
         if (!wfdesc)
         {
             close_fd(proc, fds[0]);
-            return (errno = EMFILE, -1);
+            return -EMFILE;
         }
         wfdesc->closexec = (flags & o_closexec) != 0;
 
@@ -1488,7 +1500,7 @@ namespace syscall::vfs
         if (fds[1] < 0)
         {
             close_fd(proc, fds[0]);
-            return (errno = EMFILE, -1);
+            return -EMFILE;
         }
 
         wfdesc->file->private_data = rfdesc->file->private_data;
@@ -1496,14 +1508,14 @@ namespace syscall::vfs
         {
             close_fd(proc, fds[0]);
             close_fd(proc, fds[1], false);
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         }
 
         if (!lib::copy_to_user(pipefd, fds.data(), sizeof(int) * 2))
         {
             close_fd(proc, fds[0]);
             close_fd(proc, fds[1]);
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         }
         return 0;
     }
@@ -1516,38 +1528,39 @@ namespace syscall::vfs
     int socket(int domain, int type, int protocol)
     {
         lib::unused(domain, type, protocol);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int getdents64(int fd, dirent64 __user *buf, std::size_t count)
     {
         const auto proc = sched::current_process();
 
-        const auto fdesc = get_fd(proc, fd);
-        if (fdesc == nullptr)
-            return -1;
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
 
         auto &dentry = fdesc->file->path.dentry;
         auto &inode = dentry->inode;
         auto &stat = inode->stat;
 
         if (stat.type() != stat::type::s_ifdir)
-            return (errno = ENOTDIR, -1);
+            return -ENOTDIR;
 
         const auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = fdesc->file->getdents(*uspan);
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
 
         {
             const std::unique_lock _ { inode->lock };
             stat.update_time(stat::time::access);
 
             if (const auto ret = dirty_inode(fdesc->file->path); !ret)
-                return (errno = lib::map_error(ret.error()), -1);
+                return -lib::map_error(ret.error());
         }
 
         return static_cast<int>(ret.value());
@@ -1556,7 +1569,7 @@ namespace syscall::vfs
     int fadvise64(int fd, loff_t offset, std::size_t len, int advice)
     {
         lib::unused(fd, offset, len, advice);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     constexpr int FD_SETSIZE = 1024;
@@ -1626,7 +1639,7 @@ namespace syscall::vfs
             if (timeout)
             {
                 if (timeout->tv_nsec < 0 || timeout->tv_nsec >= 1'000'000'000l)
-                    return (errno = EINVAL, -1);
+                    return -EINVAL;
 
                 timeout_ns = timeout->to_ns();
             }
@@ -1739,7 +1752,7 @@ namespace syscall::vfs
                 if (interrupted)
                 {
                     cleanup();
-                    return (errno = EINTR, -1);
+                    return -EINTR;
                 }
             }
         }
@@ -1747,7 +1760,7 @@ namespace syscall::vfs
         int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
         {
             if (nfds < 0 || nfds > FD_SETSIZE)
-                return (errno = EINVAL, -1);
+                return -EINVAL;
 
             std::vector<pollfd> pfds;
             pfds.reserve(nfds);
@@ -1833,13 +1846,13 @@ namespace syscall::vfs
             sigset_t ksigmask;
 
             if (readfds && !lib::copy_from_user(&kreadfds, readfds, sizeof(fd_set)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
             if (writefds && !lib::copy_from_user(&kwritefds, writefds, sizeof(fd_set)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
             if (exceptfds && !lib::copy_from_user(&kexceptfds, exceptfds, sizeof(fd_set)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
             if (sigmask && !lib::copy_from_user(&ksigmask, sigmask, sizeof(sigset_t)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
 
             const auto ret = pselect(nfds,
                 readfds ? &kreadfds : nullptr,
@@ -1852,11 +1865,11 @@ namespace syscall::vfs
             if (ret >= 0)
             {
                 if (readfds && !lib::copy_to_user(readfds, &kreadfds, sizeof(fd_set)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
                 if (writefds && !lib::copy_to_user(writefds, &kwritefds, sizeof(fd_set)))
-                        return (errno = EFAULT, -1);
+                        return -EFAULT;
                 if (exceptfds && !lib::copy_to_user(exceptfds, &kexceptfds, sizeof(fd_set)))
-                        return (errno = EFAULT, -1);
+                        return -EFAULT;
             }
 
             return ret;
@@ -1869,28 +1882,28 @@ namespace syscall::vfs
     )
     {
         if (fds == nullptr)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         std::vector<pollfd> kfds;
         for (nfds_t i = 0; i < nfds; i++)
         {
             auto &kfd = kfds.emplace_back();
             if (!lib::copy_from_user(&kfd, &fds[i], sizeof(pollfd)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         timespec ktimeout;
         if (timeout != nullptr)
         {
             if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         sigset_t ksigmask;
         if (sigmask != nullptr)
         {
             if (!lib::copy_from_user(&ksigmask, sigmask, sizeof(sigset_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         const auto ret = ppoll(
@@ -1902,13 +1915,13 @@ namespace syscall::vfs
         for (nfds_t i = 0; i < nfds; i++)
         {
             if (!lib::copy_to_user(&fds[i], &kfds[i], sizeof(pollfd)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         if (ret >= 0 && timeout != nullptr)
         {
             if (!lib::copy_to_user(timeout, &ktimeout, sizeof(timespec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         return ret;
@@ -1917,14 +1930,14 @@ namespace syscall::vfs
     int poll(pollfd __user *fds, nfds_t nfds, int timeout)
     {
         if (fds == nullptr)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         std::vector<pollfd> kfds;
         for (nfds_t i = 0; i < nfds; i++)
         {
             auto &kfd = kfds.emplace_back();
             if (!lib::copy_from_user(&kfd, &fds[i], sizeof(pollfd)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         int ret;
@@ -1941,7 +1954,7 @@ namespace syscall::vfs
         for (nfds_t i = 0; i < nfds; i++)
         {
             if (!lib::copy_to_user(&fds[i], &kfds[i], sizeof(pollfd)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         return ret;
@@ -1957,7 +1970,7 @@ namespace syscall::vfs
         {
             timeval ktimeval;
             if (!lib::copy_from_user(&ktimeval, timeout, sizeof(timeval)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
             ktimeout = timespec::from_timeval(ktimeval);
         }
 
@@ -1971,7 +1984,7 @@ namespace syscall::vfs
         {
             const auto ktimeval = ktimeout.to_timeval();
             if (!lib::copy_to_user(timeout, &ktimeval, sizeof(timeval)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         return ret;
@@ -1986,7 +1999,7 @@ namespace syscall::vfs
         if (timeout != nullptr)
         {
             if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
 
         return pselect(

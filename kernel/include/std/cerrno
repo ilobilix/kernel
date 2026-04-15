@@ -2,12 +2,8 @@
 
 #pragma once
 
-#include <concepts>
-#include <cstddef>
-
 enum errnos : int
 {
-    no_error = 0,
     EPERM = 1,
     ENOENT = 2,
     ESRCH = 3,
@@ -143,35 +139,3 @@ enum errnos : int
     ERFKILL = 132,
     EHWPOISON = 133
 };
-
-class errno_type
-{
-    private:
-    static errnos *errno_location();
-
-    public:
-    errno_type &operator=(errnos rhs)
-    {
-        *errno_location() = rhs;
-        return *this;
-    }
-
-    errno_type &operator=(std::ssize_t rhs)
-    {
-        *errno_location() = static_cast<errnos>(rhs);
-        return *this;
-    }
-
-    operator errnos() const
-    {
-        return *errno_location();
-    }
-
-    template<std::integral Type>
-    explicit operator Type() const
-    {
-        return static_cast<Type>(*errno_location());
-    }
-};
-
-inline constinit errno_type errno;

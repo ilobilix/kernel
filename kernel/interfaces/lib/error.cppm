@@ -36,6 +36,7 @@ export namespace lib
         invalid_filesystem = ENODEV,
         no_such_device = ENODEV,
         invalid_device_or_address = ENXIO,
+
         invalid_path = EINVAL,
         invalid_symlink = EINVAL,
         invalid_flags = EINVAL,
@@ -45,6 +46,8 @@ export namespace lib
         addr_not_aligned = EINVAL,
         addr_out_of_bounds = EINVAL,
         buffer_too_small = EINVAL,
+
+        path_too_long = ENAMETOOLONG,
 
         invalid_fd = EBADF,
 

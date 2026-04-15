@@ -15,7 +15,7 @@ namespace syscall::chrono
     {
         const auto cur = now(static_cast<chrono::type>(clockid));
         if (!lib::copy_to_user(tp, &cur, sizeof(timespec)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         return 0;
     }
 
@@ -26,21 +26,21 @@ namespace syscall::chrono
     {
         constexpr int abstime = 1;
         if ((flags & ~abstime) != 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         timespec ktime;
         if (!lib::copy_from_user(&ktime, time, sizeof(timespec)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         if (ktime.tv_nsec < 0 || ktime.tv_nsec >= 1'000'000'000l)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         std::size_t ns = 0;
         if (flags & abstime)
         {
             const auto now = chrono::now(static_cast<chrono::type>(clockid));
             if (now.to_ns() == 0 || ktime < now)
-                return (errno = EINVAL, -1);
+                return -EINVAL;
             ns = (now - ktime).to_ns();
         }
         else ns = ktime.to_ns();
@@ -49,7 +49,7 @@ namespace syscall::chrono
         {
             timespec tmp { 0 };
             if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
             return 0;
         }
 
@@ -57,13 +57,13 @@ namespace syscall::chrono
         {
             timespec tmp { rns };
             if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-                return (errno = EFAULT, -1);
-            return (errno = EINTR, -1);
+                return -EFAULT;
+            return -EINTR;
         }
 
         timespec tmp { 0 };
         if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         return 0;
     }
 
@@ -71,7 +71,7 @@ namespace syscall::chrono
     {
         const auto cur = now(chrono::realtime).to_timeval();
         if (!lib::copy_to_user(tv, &cur, sizeof(timeval)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         if (tz != nullptr)
         {
@@ -81,7 +81,7 @@ namespace syscall::chrono
                 .tz_dsttime = 0
             };
             if (!lib::copy_to_user(tz, &ktz, sizeof(timezone)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         return 0;
     }
@@ -99,7 +99,7 @@ namespace syscall::chrono
         if (tloc != nullptr)
         {
             if (!lib::copy_to_user(tloc, &seconds, sizeof(time_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         return seconds;
     }

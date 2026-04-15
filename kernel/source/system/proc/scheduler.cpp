@@ -1022,7 +1022,7 @@ namespace sched
     int setpgid(pid_t pid, pid_t pgid)
     {
         if (pgid < 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = current_process();
         if (pid == 0)
@@ -1032,31 +1032,31 @@ namespace sched
 
         const auto target = get_process(pid);
         if (!target)
-            return (errno = ESRCH, -1);
+            return -ESRCH;
 
         if (target->group->pgid == pgid)
             return 0;
 
         // is leader
         if (pid == target->session->sid)
-            return (errno = EPERM, -1);
+            return -EPERM;
 
         if (proc->children.lock()->contains(pid))
         {
             if (target->has_execved)
-                return (errno = EACCES, -1);
+                return -EACCES;
 
             if (proc->session != target->session)
-                return (errno = EPERM, -1);
+                return -EPERM;
         }
         else if (pid != proc->pid)
-            return (errno = ESRCH, -1);
+            return -ESRCH;
 
         auto target_group = get_group(pgid);
         if (!target_group)
         {
             if (pgid != pid)
-                return (errno = EPERM, -1);
+                return -EPERM;
 
             const auto create_group = [&] {
                 auto group = std::make_shared<group_t>();
@@ -1087,14 +1087,14 @@ namespace sched
         }
 
         if (target_group->session != target->session)
-            return (errno = EPERM, -1);
+            return -EPERM;
 
         const std::unique_lock _ { target->lock };
         {
             auto locked = target_group->members.lock();
             auto [it, inserted] = locked->emplace(target->pid, target);
             if (!inserted)
-                return (errno = EPERM, -1);
+                return -EPERM;
         }
         {
             auto glocked = target->group->members.lock();
@@ -1114,7 +1114,7 @@ namespace sched
     {
         const auto proc = current_process();
         if (proc->pid == proc->group->pgid)
-            return (errno = EPERM, -1);
+            return -EPERM;
 
         auto session = std::make_shared<session_t>();
         session->sid = proc->pid;
@@ -1153,52 +1153,52 @@ namespace sched
         const auto flags = args.flags;
 
         if ((flags & (clone_child_settid | clone_child_cleartid)) && !args.child_tid)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         if ((flags & clone_parent_settid) && !args.parent_tid)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         if ((flags & clone_clear_sighand) && (flags & clone_sighand))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_thread) && !(flags & clone_sighand))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & (clone_thread | clone_parent)) && args.exit_signal)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_thread) && (flags & clone_pidfd))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (!(flags & clone_vm) && (flags & clone_sighand))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_fs) && (flags & clone_newns))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_fs) && (flags & clone_newuser))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_newipc) && (flags & clone_sysvsem))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_newpid) && (flags & (clone_thread | clone_parent)))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_newuser) && (flags & clone_thread))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         // TODO: namespaces
         if ((flags & (clone_newipc | clone_newnet | clone_newpid | clone_newuser | clone_newuts)))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((flags & clone_parent) && caller_proc->pid == 1)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto needs_priv = flags & (clone_newcgroup | clone_newipc | clone_newnet |
             clone_newns | clone_newpid | clone_newuts | clone_newtime);
         if (needs_priv && !capable(caller_proc->cred, cap_t::sys_admin))
-            return (errno = EPERM, -1);
+            return -EPERM;
 
         constexpr std::uint64_t stack_alignment = 16;
         std::uintptr_t stack_top = 0;
@@ -1209,11 +1209,11 @@ namespace sched
             constexpr auto min = vmm::vmspace::mmap_min;
             constexpr auto max = vmm::vmspace::vspace_top;
             if (args.stack > max || args.stack < min || args.stack - size < min)
-                return (errno = EINVAL, -1);
+                return -EINVAL;
 
             stack_top = args.stack + size;
             if (stack_top & (stack_alignment - 1))
-                return (errno = EINVAL, -1);
+                return -EINVAL;
         }
 
         process_t *target_proc;
@@ -1234,11 +1234,11 @@ namespace sched
             {
                 auto pmap = std::make_shared<vmm::pagemap>();
                 if (!pmap)
-                    return (errno = ENOMEM, -1);
+                    return -ENOMEM;
 
                 auto ret = caller_proc->vmspace->fork(std::move(pmap));
                 if (!ret)
-                    return (errno = ENOMEM, -1);
+                    return -ENOMEM;
 
                 target_proc->vmspace = std::move(*ret);
             }
@@ -1262,7 +1262,7 @@ namespace sched
             stack_top, caller_thread->nice
         );
         if (target_thread == nullptr)
-            return (errno = ENOMEM, -1);
+            return -ENOMEM;
 
         auto cleanup = [&] {
             delete target_thread;
@@ -1281,7 +1281,7 @@ namespace sched
             if (!lib::copy_to_user(args.parent_tid, &target_thread->tid, sizeof(pid_t)))
             {
                 cleanup();
-                return (errno = EFAULT, -1);
+                return -EFAULT;
             }
         }
 
@@ -1343,18 +1343,18 @@ namespace sched
             const auto xattr_caps = vfs::getxattr(path, vfs::xattr_caps_name);
             if (has_secbit(process->cred->securebits, secbit_t::exec_restrict_file) &&
                 process->cred->euid != 0 && !xattr_caps)
-                return (errno = EACCES, -1);
+                return -EACCES;
 
             // TODO
             // if (has_secbit(cred->securebits, secbit_t::exec_deny_interactive) && opened file is interactive?)
-            //     return (errno = EACCES, -1);
+            //     return -EACCES;
 
             {
                 auto &inode = path.dentry->inode;
                 const std::unique_lock _ { inode->lock };
 
                 if (!check_perms(process->cred, inode->stat, access_mode::exec))
-                    return (errno = EACCES, -1);
+                    return -EACCES;
 
                 std::optional<vfs::file_caps> fcaps;
                 if (xattr_caps)
@@ -1365,11 +1365,11 @@ namespace sched
 
             auto file = vfs::file::create(path, 0, 0, 0);
             if (!file)
-                return (errno = EACCES, -1);
+                return -EACCES;
 
             auto image = bin::exec::probe(std::move(file));
             if (!image)
-                return (errno = lib::map_error(image.error()), -1);
+                return -lib::map_error(image.error());
 
             lib::bug_on(!image.value());
 
@@ -1381,11 +1381,11 @@ namespace sched
 
             auto new_pmap = std::make_shared<vmm::pagemap>();
             if (!new_pmap)
-                return (errno = ENOMEM, -1);
+                return -ENOMEM;
 
             auto new_vmspace = std::make_shared<vmm::vmspace>(std::move(new_pmap));
             if (!new_vmspace)
-                return (errno = ENOMEM, -1);
+                return -ENOMEM;
 
             preempt_disable();
 
@@ -1408,7 +1408,7 @@ namespace sched
                 (*process->threads.lock())[old_thread->tid] = old_thread;
 
                 process->vmspace = std::move(old_vmspace);
-                return (errno = ENOEXEC, -1);
+                return -ENOEXEC;
             }
             lib::bug_on(new_thread->tid != process->pid);
 
@@ -1459,7 +1459,7 @@ namespace sched
                         }
                     }
                     if (!any)
-                        return (errno = ECHILD, -1);
+                        return -ECHILD;
                 }
 
                 for (auto it = locked->begin(); it != locked->end(); it++)
@@ -1494,7 +1494,7 @@ namespace sched
                     }
                 }
                 if (!any)
-                    return (errno = ECHILD, -1);
+                    return -ECHILD;
             }
 
             if (no_hang)
