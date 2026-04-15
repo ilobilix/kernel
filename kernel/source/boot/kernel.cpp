@@ -67,7 +67,7 @@ void kthread()
             .interp = { },
             .argv = { path.basename().data() },
             .envp = {
-                "TERM=linux",
+                "TERM=xterm-256color",
                 "USER=ilobilix",
                 "HOME=/home/ilobilix",
                 "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
