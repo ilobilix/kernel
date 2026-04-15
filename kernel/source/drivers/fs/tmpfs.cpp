@@ -210,7 +210,8 @@ namespace fs::tmpfs
         root->name = "tmpfs root. this shouldn't be visible anywhere";
         root->inode = std::make_shared<inode>(
             dev_id, 0, locked->next_inode++,
-            static_cast<mode_t>(stat::type::s_ifdir)
+            static_cast<mode_t>(stat::type::s_ifdir) |
+                (s_irwxu | s_irgrp | s_ixgrp | s_iroth | s_ixoth)
         );
         root->parent = root;
 

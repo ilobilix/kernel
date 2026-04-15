@@ -58,19 +58,13 @@ namespace lib::syscall
         private:
         std::string_view name;
         void *handler;
-        bool (*checker)(std::uintptr_t);
-        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *, bool (*)(std::uintptr_t));
-
-        static bool default_checker(std::uintptr_t val)
-        {
-            return static_cast<std::intptr_t>(val) < 0;
-        }
+        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *);
 
         public:
-        constexpr entry(std::string_view name, const auto &func, decltype(checker) check = default_checker)
-            : name { name }, handler { reinterpret_cast<void *>(func) }, checker { check },
+        constexpr entry(std::string_view name, const auto &func)
+            : name { name }, handler { reinterpret_cast<void *>(func) },
             invoker {
-                [](cpu::registers *regs, std::string_view name, void *handler, bool (*check)(std::uintptr_t)) -> std::uintptr_t
+                [](cpu::registers *regs, std::string_view name, void *handler) -> std::uintptr_t
                 {
                     using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
                     constexpr bool is_void = std::same_as<typename sign::return_type, void>;
@@ -98,7 +92,9 @@ namespace lib::syscall
                     lib::unused(name);
 #endif
 
-                    const auto _check = [&](auto value) { return is_void || check(value); };
+                    const auto check = [&](auto value) {
+                        return is_void || static_cast<std::intptr_t>(value) < 0;
+                    };
                     std::uintptr_t uptr_ret = 0;
 
                     errno = no_error;
@@ -110,7 +106,7 @@ namespace lib::syscall
                     else std::apply(reinterpret_cast<sign::type *>(handler), args);
 
                     const auto error = magic_enum::enum_cast<errnos>(errno);
-                    if (error.has_value() && _check(uptr_ret))
+                    if (error.has_value() && check(uptr_ret))
                     {
 #if ILOBILIX_SYSCALL_LOG
                         lib::debug(
@@ -147,7 +143,7 @@ namespace lib::syscall
 
         std::uintptr_t invoke(cpu::registers *regs)
         {
-            return invoker(regs, name, handler, checker);
+            return invoker(regs, name, handler);
         }
     };
 } // namespace lib::syscall

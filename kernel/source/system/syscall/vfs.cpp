@@ -1217,6 +1217,13 @@ namespace syscall::vfs
         return 0;
     }
 
+    int fsync(int fd)
+    {
+        // TODO
+        lib::unused(fd);
+        return 0;
+    }
+
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
         const auto proc = sched::current_process();
@@ -1293,17 +1300,19 @@ namespace syscall::vfs
         return proc->fdt->dup(oldfd, newfd, (flags & o_closexec) != 0, true);
     }
 
-    char *getcwd(char __user *buf, std::size_t size)
+    int getcwd(char __user *buf, std::size_t size)
     {
         const auto proc = sched::current_process();
 
         const auto path_str = pathname_from(proc->vfs->cwd);
-        if (path_str.size() + 1 > size)
-            return (errno = ERANGE, nullptr);
+        const auto len = path_str.size() + 1;
+        if (len > size)
+            return (errno = ERANGE, -1);
 
-        if (!lib::copy_to_user(buf, path_str.c_str(), path_str.size() + 1))
-            return (errno = EFAULT, nullptr);
-        return lib::remove_user_cast<char>(buf);
+        if (!lib::copy_to_user(buf, path_str.c_str(), len))
+            return (errno = EFAULT, -1);
+
+        return len;
     }
 
     int chdir(const char __user *pathname)
