@@ -31,14 +31,13 @@ namespace lib
         if (!frame)
             return;
 
-        auto print = [prefix, &frame](std::uintptr_t ip) -> bool
+        auto print = [prefix, &frame](std::uintptr_t ip)
         {
             std::array<char, KSYM_NAME_LEN> namebuf { "unknown" };
             auto ret = bin::elf::sym::lookup(ip, namebuf);
-            bool is_empty = !ret.has_value();
 
             std::string_view str { "unknown" };
-            if (!is_empty)
+            if (ret.has_value())
             {
                 const bool ret = absl::debugging_internal::Demangle(
                     namebuf.data(),
@@ -66,8 +65,6 @@ namespace lib
             const bool is_last = !frame || !frame->ip;
             if (!is_last || where != "unknown")
                 lib::println(prefix, "[0x{:016X}] ({}) <{}+0x{:X}>", ip, where, str, offset);
-
-            return is_empty ? false : (str != "isr_handler"sv && str != "syscall_handler"sv);
         };
 
         lib::println(prefix, "stack trace:");
@@ -81,8 +78,8 @@ namespace lib
 
             ip = frame->ip;
             frame = frame->next;
-            if (!print(ip))
-                break;
+
+            print(ip);
         }
     }
 } // namespace lib

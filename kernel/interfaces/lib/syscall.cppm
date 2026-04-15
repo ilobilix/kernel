@@ -2,6 +2,7 @@
 
 export module lib:syscall;
 
+import :errno;
 import :log;
 import :types;
 import :string;
@@ -97,23 +98,23 @@ namespace lib::syscall
                     lib::unused(log_exit);
 #endif
 
-                    std::intptr_t iptr_ret = 0;
+                    std::uintptr_t uptr_ret = 0;
                     if constexpr (!is_void)
                     {
                         const auto ret = std::apply(reinterpret_cast<sign::type *>(handler), args);
-                        iptr_ret = std::uintptr_t(ret);
+                        uptr_ret = std::uintptr_t(ret);
                     }
                     else std::apply(reinterpret_cast<sign::type *>(handler), args);
 
-                    if (iptr_ret < 0)
+                    if (const auto iptr_ret = static_cast<std::intptr_t>(uptr_ret); iptr_ret < 0)
                     {
 #if ILOBILIX_SYSCALL_LOG
                         lib::debug(
                             "syscall: [{}:{}]: {} -> {}", pid, tid, name,
-                            magic_enum::enum_name(error.value())
+                            magic_enum::enum_name(static_cast<errnos>(-iptr_ret))
                         );
 #endif
-                        return iptr_ret;
+                        return uptr_ret;
                     }
 #if ILOBILIX_SYSCALL_LOG
                     if (log_exit)
@@ -129,7 +130,7 @@ namespace lib::syscall
 #endif
                     if constexpr (is_void)
                         return 0;
-                    return iptr_ret;
+                    return uptr_ret;
                 }
             } { }
 
