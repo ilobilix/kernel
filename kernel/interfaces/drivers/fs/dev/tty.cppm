@@ -288,6 +288,8 @@ export namespace fs::dev::tty
         tiocspgrp = 0x5410,
         tiocgwinsz = 0x5413,
         tiocswinsz = 0x5414,
+        tiocnotty = 0x5422,
+        tiocsctty = 0x540E,
         tcgets2 = 0x802C542A,
         tcsets2 = 0x402C542B,
         tcsetsw2 = 0x402C542C,
@@ -425,7 +427,7 @@ export namespace fs::dev::tty
     };
 
     struct driver;
-    struct instance
+    struct instance : sched::ctty_base, std::enable_shared_from_this<instance>
     {
         static constexpr std::size_t raw_buffer_size = 4096;
 
@@ -500,6 +502,8 @@ export namespace fs::dev::tty
         }
 
         void hangup();
+
+        void detach(sched::session_t *session) override;
     };
 
     enum class type

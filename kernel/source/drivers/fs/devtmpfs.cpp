@@ -38,7 +38,7 @@ namespace fs::devtmpfs
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir)
+                static_cast<mode_t>(stat::type::s_ifdir) | 0755
             );
             root->parent = root;
 
@@ -138,7 +138,7 @@ namespace fs::devtmpfs
         },
         lib::initgraph::entail { mounted_stage() },
         [] {
-            const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir);
+            const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir | 0755);
             if (!cerr && cerr.error() != lib::err::already_exists)
             {
                 lib::panic(

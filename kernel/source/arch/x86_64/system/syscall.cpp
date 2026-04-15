@@ -78,6 +78,8 @@ namespace x86_64::syscall
         [96] = { "gettimeofday", chrono::gettimeofday },
         [102] = { "getuid", proc::getuid, true },
         [104] = { "getgid", proc::getgid, true },
+        [105] = { "setuid", proc::setuid },
+        [106] = { "setgid", proc::setgid },
         [107] = { "geteuid", proc::geteuid, true },
         [108] = { "getegid", proc::getegid, true },
         [109] = { "setpgid", proc::setpgid },

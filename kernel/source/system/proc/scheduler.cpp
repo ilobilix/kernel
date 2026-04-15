@@ -763,7 +763,17 @@ namespace sched
             }
 
             {
-                // TODO: if session leader exits, send sighup to foreground group
+                if (proc->pid == proc->session->sid)
+                {
+                    std::shared_ptr<ctty_base> ctty;
+                    {
+                        auto locked = proc->session->ctty.lock();
+                        ctty = locked.value();
+                    }
+                    if (ctty)
+                        ctty->detach(proc->session.get());
+                }
+
                 auto glocked = proc->group->members.lock();
                 glocked->erase(proc->pid);
                 if (glocked->empty())
@@ -1017,6 +1027,13 @@ namespace sched
 
         // return first thread affinity
         return locked->begin()->second->affinity;
+    }
+
+    int group_t::signal_all(int sig)
+    {
+        // TODO
+        lib::unused(sig);
+        return 0;
     }
 
     int setpgid(pid_t pid, pid_t pgid)

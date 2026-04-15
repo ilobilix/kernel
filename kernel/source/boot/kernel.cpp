@@ -15,7 +15,7 @@ void kthread()
 
     sched::thread_t *thread = nullptr;
     {
-        lib::path_view path { "/usr/bin/bash" };
+        lib::path_view path { "/init" };
         lib::info("loading {}", path);
 
         auto ret = vfs::resolve(std::nullopt, path);
@@ -42,10 +42,7 @@ void kthread()
         proc->vfs->cwd = proc->vfs->root;
 
         proc->fdt = std::make_shared<vfs::fdtable>();
-        proc->cred = std::make_shared<sched::cred_t>();
-
-        proc->cred->ruid = proc->cred->euid = proc->cred->suid = proc->cred->fsuid = 1000;
-        proc->cred->rgid = proc->cred->egid = proc->cred->sgid = proc->cred->fsgid = 1000;
+        proc->cred = sched::cred_t::root();
 
         lib::path_view tty_path { "/dev/ttyS0" };
         ret = vfs::resolve(std::nullopt, tty_path);
@@ -66,8 +63,6 @@ void kthread()
             .argv = { path.basename().data() },
             .envp = {
                 "TERM=xterm-256color",
-                "USER=ilobilix",
-                "HOME=/home/ilobilix",
                 "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
             },
             .proc = proc

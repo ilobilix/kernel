@@ -73,25 +73,33 @@ namespace fs::dev::tty
         lib::expect<void> generic_close(std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst)
         {
             lib::unused(file);
+            return inst->close();
+        }
+    } // namespace
 
-            if (const auto ret = inst->close(); !ret)
-                return ret;
-
-            auto locked = inst->ctrl.lock();
-            if (auto session = locked->session.lock())
+    void instance::detach(sched::session_t *session)
+    {
+        std::shared_ptr<sched::group_t> fg_group;
+        {
+            auto locked = ctrl.lock();
+            if (locked->session.lock().get() == session)
             {
-                lib::bug_on(locked->group.use_count() == 0);
-                {
-                    auto ctty = session->ctty.lock();
-                    if (ctty.value() == inst)
-                        ctty.value() = nullptr;
-                }
+                fg_group = locked->group.lock();
                 locked->session.reset();
                 locked->group.reset();
             }
-            return { };
         }
-    } // namespace
+
+        {
+            auto locked = session->ctty.lock();
+            if (locked.value().get() == this)
+                locked.value().reset();
+        }
+
+        // TODO: send SIGHUP and SIGCONT to fg_group
+        if (fg_group)
+            fg_group->signal_all(0);
+    }
 
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
         raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { },
@@ -770,7 +778,13 @@ namespace fs::dev::tty
         {
             case tiocgpgrp:
             {
-                auto glocked = inst->ctrl.lock()->group.lock();
+                const auto proc = sched::current_process();
+
+                auto locked = inst->ctrl.lock();
+                if (locked->session.lock() != proc->session)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+
+                auto glocked = locked->group.lock();
                 if (!glocked)
                     return std::unexpected { lib::err::inappropriate_ioctl };
                 if (!argp.write(glocked->pgid))
@@ -779,11 +793,30 @@ namespace fs::dev::tty
             }
             case tiocspgrp:
             {
-                auto glocked = inst->ctrl.lock()->group.lock();
-                if (!glocked)
-                    return std::unexpected { lib::err::inappropriate_ioctl };
-                if (!argp.read(glocked->pgid))
+                pid_t pgid;
+                if (!argp.read(pgid))
                     return std::unexpected { lib::err::invalid_address };
+                if (pgid < 0)
+                    return std::unexpected { lib::err::invalid_flags };
+
+                const auto proc = sched::current_process();
+
+                auto locked = inst->ctrl.lock();
+                auto tty_session = locked->session.lock();
+                if (!tty_session || tty_session != proc->session)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+
+                std::shared_ptr<sched::group_t> new_group;
+                {
+                    auto members = tty_session->members.lock();
+                    auto it = members->find(pgid);
+                    if (it == members->end())
+                        return std::unexpected { lib::err::permission_denied };
+                    new_group = it->second.lock();
+                    if (!new_group)
+                        return std::unexpected { lib::err::permission_denied };
+                }
+                locked->group = std::move(new_group);
                 return 0;
             }
             case tiocgwinsz:
@@ -794,6 +827,66 @@ namespace fs::dev::tty
                 if (!argp.read(inst->winsize.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
+            case tiocsctty:
+            {
+                int force;
+                if (!argp.read(force))
+                    return std::unexpected { lib::err::invalid_address };
+
+                const auto proc = sched::current_process();
+                if (proc->pid != proc->session->sid)
+                    return std::unexpected { lib::err::not_permitted };
+
+                auto locked = inst->ctrl.lock();
+                if (auto existing = locked->session.lock())
+                {
+                    if (existing == proc->session)
+                        return 0;
+
+                    if (force != 1 || !sched::capable(sched::cap_t::sys_admin))
+                        return std::unexpected { lib::err::permission_denied };
+
+                    auto old_ctty = existing->ctty.lock();
+                    if (old_ctty.value().get() == inst)
+                        old_ctty.value().reset();
+
+                    locked->session.reset();
+                    locked->group.reset();
+                }
+
+                {
+                    auto locked = proc->session->ctty.lock();
+                    if (locked.value())
+                        return std::unexpected { lib::err::permission_denied };
+                    locked.value() = inst->shared_from_this();
+                }
+
+                locked->session = proc->session;
+                locked->group = proc->group;
+                return 0;
+            }
+            case tiocnotty:
+            {
+                const auto proc = sched::current_process();
+
+                auto locked = inst->ctrl.lock();
+                if (locked->session.lock() != proc->session)
+                    return std::unexpected { lib::err::not_permitted };
+
+                if (proc->pid != proc->session->sid)
+                    return 0;
+
+                // TODO: send SIGHUP and SIGCONT to the foreground process group
+                {
+                    auto locked = proc->session->ctty.lock();
+                    if (locked.value().get() == inst)
+                        locked.value().reset();
+                }
+
+                locked->session.reset();
+                locked->group.reset();
+                return 0;
+            }
             case tcgets:
             {
                 const auto cur = inst->termios.lock().value();
@@ -878,6 +971,9 @@ namespace fs::dev::tty
                 inst->set_termios(wlocked.value(), old);
                 return 0;
             }
+            default:
+                lib::println("tty: unhandled ioctl: 0x{:X}", request);
+                break;
         }
         return std::unexpected { lib::err::inappropriate_ioctl };
     }
@@ -999,8 +1095,26 @@ namespace fs::dev::tty
         if (hung_up.exchange(true))
             return;
 
-        // auto ctrl_locked = ctrl.lock();
-        // TODO: send sighup to session leader (and sigcont)
+        std::shared_ptr<sched::session_t> session;
+        std::shared_ptr<sched::group_t> fg_group;
+        {
+            auto locked = ctrl.lock();
+            session = locked->session.lock();
+            fg_group = locked->group.lock();
+            locked->session.reset();
+            locked->group.reset();
+        }
+
+        if (session)
+        {
+            auto locked = session->ctty.lock();
+            if (locked.value().get() == this)
+                locked.value().reset();
+        }
+
+        // TODO: send SIGHUP and SIGCONT to fg_group
+        if (fg_group)
+            fg_group->signal_all(0);
 
         auto ld = ldisc.lock().value();
         lib::bug_on(!ld);

@@ -39,6 +39,12 @@ export namespace sched
     struct group_t;
     struct session_t;
 
+    struct ctty_base
+    {
+        virtual ~ctty_base() = default;
+        virtual void detach(session_t *session) = 0;
+    };
+
     struct process_t
     {
         pid_t pid;
@@ -128,10 +134,8 @@ export namespace sched
 
         lib::locker<
             std::shared_ptr<
-                void
+                ctty_base
             >, lib::spinlock
         > ctty;
-
-        std::weak_ptr<group_t> foreground_pg;
     };
 } // export namespace sched

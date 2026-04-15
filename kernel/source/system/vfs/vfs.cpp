@@ -380,6 +380,9 @@ namespace vfs
                 current.dentry = current.dentry->parent.lock();
                 current = resolve_mounts(current);
 
+                if (current.mnt == nullptr)
+                    current = proc_root;
+
                 if (last)
                 {
                     auto parent = resolve_mounts(current);
@@ -396,7 +399,13 @@ namespace vfs
             auto dentry = current.dentry->children.lock()->lookup(segment);
             if (dentry == nullptr)
             {
-                auto found = current.mnt->fs.lock()->lookup(current.dentry, segment);
+                auto found = [&] -> lib::expect<std::optional<dir_entry>> {
+                    auto fs = current.mnt->fs.lock();
+                    if (fs.get() == nullptr)
+                        return std::unexpected { lib::err::io_error };
+                    return fs->lookup(current.dentry, segment);
+                } ();
+
                 if (!found)
                     return std::unexpected { found.error() };
 
