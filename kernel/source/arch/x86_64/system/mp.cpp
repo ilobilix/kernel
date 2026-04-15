@@ -9,7 +9,6 @@ import system.memory.phys;
 import system.cpu.local;
 import system.chrono;
 import system.acpi;
-import magic_enum;
 import arch;
 import lib;
 import std;
@@ -82,7 +81,7 @@ namespace cpu::mp
         {
             auto inner = [&](auto &obj) {
                 if (const auto ret = obj.map(std::forward<Args>(args)...); !ret)
-                    lib::panic("could not map {}: {}", str, magic_enum::enum_name(ret.error()));
+                    lib::panic("could not map {}: {}", str, lib::error_name(ret.error()));
             };
             pagemap_use_lowmem = true;
                 inner(temp_map);
@@ -94,7 +93,7 @@ namespace cpu::mp
         {
             auto inner = [&](auto &obj) {
                 if (const auto ret = obj.unmap(std::forward<Args>(args)...); !ret)
-                    lib::panic("could not unmap {}: {}", str, magic_enum::enum_name(ret.error()));
+                    lib::panic("could not unmap {}: {}", str, lib::error_name(ret.error()));
             };
             inner(temp_map);
             inner(*vmm::kernel_pagemap);

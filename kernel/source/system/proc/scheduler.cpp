@@ -591,7 +591,7 @@ namespace sched
             {
                 lib::error(
                     "sched: could not map user stack: {}",
-                    magic_enum::enum_name(ret.error())
+                    lib::error_name(ret.error())
                 );
                 delete thread;
                 return nullptr;
@@ -628,7 +628,7 @@ namespace sched
             {
                 lib::error(
                     "sched: could not unmap user stack: {}",
-                    magic_enum::enum_name(ret.error())
+                    lib::error_name(ret.error())
                 );
             }
         }

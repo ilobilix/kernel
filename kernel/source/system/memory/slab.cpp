@@ -4,7 +4,6 @@ module system.memory.slab;
 
 import system.memory.phys;
 import system.memory.virt;
-import magic_enum;
 import frigg;
 import lib;
 import std;
@@ -35,7 +34,7 @@ namespace slab
                 {
                     lib::panic(
                         "slab: could not map page: {}",
-                        magic_enum::enum_name(ret.error())
+                        lib::error_name(ret.error())
                     );
                 }
             }
@@ -55,7 +54,7 @@ namespace slab
                 {
                     lib::panic(
                         "slab: could not translate page: {}",
-                        magic_enum::enum_name(ret.error())
+                        lib::error_name(ret.error())
                     );
                 }
 
@@ -64,7 +63,7 @@ namespace slab
                 {
                     lib::panic(
                         "slab: could not unmap page: {}",
-                        magic_enum::enum_name(uret.error())
+                        lib::error_name(uret.error())
                     );
                 }
 

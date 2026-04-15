@@ -77,4 +77,9 @@ export namespace lib
         lib::bug_on(!magic_enum::enum_contains(err));
         return static_cast<errnos>(err);
     }
+
+    std::string_view error_name(err e)
+    {
+        return magic_enum::enum_name(e);
+    }
 } // export namespace lib

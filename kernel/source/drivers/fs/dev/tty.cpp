@@ -10,8 +10,6 @@ import system.vfs.dev;
 import arch;
 import lib;
 import std;
-
-import magic_enum;
 import fmt;
 
 namespace fs::dev::tty
@@ -1249,7 +1247,7 @@ namespace fs::dev::tty
             {
                 lib::error(
                     "tty: could not create '{}': {}",
-                    name, magic_enum::enum_name(ret.error())
+                    name, lib::error_name(ret.error())
                 );
             }
 
@@ -1278,7 +1276,7 @@ namespace fs::dev::tty
             {
                 lib::panic(
                     "tty: failed to create '/dev/tty': {}",
-                    magic_enum::enum_name(ret.error())
+                    lib::error_name(ret.error())
                 );
             }
         }

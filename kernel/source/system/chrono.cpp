@@ -99,11 +99,8 @@ namespace chrono
         if (clockid == type::monotonic)
             return main->ns();
 
-        lib::panic_if(
-            clockid != type::realtime,
-            "unsupported clockid {}",
-            static_cast<clockid_t>(clockid)
-        );
+        if (clockid != type::realtime)
+            return { };
 
         if (realtime_base_ns != 0)
             return realtime_base_ns + main->ns();

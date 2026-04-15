@@ -10,7 +10,6 @@ import system.bin.exec;
 import system.sched;
 import system.memory;
 import system.vfs;
-import magic_enum;
 import boot;
 import lib;
 import std;
@@ -86,6 +85,8 @@ namespace bin::elf::exec
 
             std::uintptr_t phdr_vaddr = 0;
             bool has_phdr = false;
+            std::uintptr_t phdr_load_vaddr = 0;
+            bool has_phdr_load = false;
 
             for (std::size_t i = 0; i < ehdr.e_phnum; i++)
             {
@@ -104,7 +105,7 @@ namespace bin::elf::exec
                 {
                     lib::error(
                         "elf: could not read phdr: {}",
-                        magic_enum::enum_name(ret.error())
+                        lib::error_name(ret.error())
                     );
                     return std::nullopt;
                 }
@@ -143,7 +144,7 @@ namespace bin::elf::exec
                         {
                             lib::error(
                                 "elf: could not read phdr data: {}",
-                                magic_enum::enum_name(ret.error())
+                                lib::error_name(ret.error())
                             );
                             return std::nullopt;
                         }
@@ -203,7 +204,7 @@ namespace bin::elf::exec
                         {
                             lib::error(
                                 "elf: could not map segment: {}",
-                                magic_enum::enum_name(mret.error())
+                                lib::error_name(mret.error())
                             );
                             return std::nullopt;
                         };
@@ -212,6 +213,18 @@ namespace bin::elf::exec
                         {
                             base_addr = mret.value() - (phdr.p_vaddr - misalign);
                             addr = base_addr;
+                        }
+
+                        if (!has_phdr_load)
+                        {
+                            const auto phdr_end = ehdr.e_phoff +
+                                static_cast<std::uint64_t>(ehdr.e_phnum) * ehdr.e_phentsize;
+                            if (ehdr.e_phoff >= phdr.p_offset &&
+                                phdr_end <= phdr.p_offset + phdr.p_filesz)
+                            {
+                                phdr_load_vaddr = phdr.p_vaddr + (ehdr.e_phoff - phdr.p_offset);
+                                has_phdr_load = true;
+                            }
                         }
 
                         max_end = std::max(max_end, *mret + phdr.p_memsz + misalign);
@@ -233,7 +246,7 @@ namespace bin::elf::exec
                         {
                             lib::error(
                                 "elf: could not read interpreter path: {}",
-                                magic_enum::enum_name(ret.error())
+                                lib::error_name(ret.error())
                             );
                             return std::nullopt;
                         }
@@ -280,16 +293,18 @@ namespace bin::elf::exec
                 }
             }
 
-            auxval aux
-            {
-                .at_entry = addr + ehdr.e_entry,
-                .at_phdr = has_phdr ? (addr + phdr_vaddr) : (addr + ehdr.e_phoff),
-                .at_phent = ehdr.e_phentsize,
-                .at_phnum = ehdr.e_phnum
-            };
+            const auto at_phdr = has_phdr
+                ? (addr + phdr_vaddr)
+                : (has_phdr_load ? (addr + phdr_load_vaddr) : (addr + ehdr.e_phoff));
 
             return std::make_tuple(
-                aux, std::move(interp),
+                auxval {
+                    .at_entry = addr + ehdr.e_entry,
+                    .at_phdr = at_phdr,
+                    .at_phent = ehdr.e_phentsize,
+                    .at_phnum = ehdr.e_phnum
+                },
+                std::move(interp),
                 lib::align_up(max_end, npsize)
             );
         }

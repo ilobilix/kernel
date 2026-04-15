@@ -593,7 +593,7 @@ export namespace vfs
                 std::shared_ptr<vfs::filedesc>
             >, lib::rwspinlock
         > fds;
-        int next_fd;
+        int next_fd = 0;
 
         std::shared_ptr<vfs::filedesc> get(int fd);
         bool close(int fd);

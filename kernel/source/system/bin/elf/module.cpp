@@ -9,7 +9,6 @@ module system.bin.elf;
 import drivers.initramfs;
 import system.memory;
 import system.vfs;
-import magic_enum;
 import lib;
 import std;
 
@@ -228,7 +227,7 @@ namespace bin::elf::mod
             {
                 const auto paddr = pmm::alloc(npages, true);
                 if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize); !ret)
-                    lib::panic("could not map memory for a module: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("could not map memory for a module: {}", lib::error_name(ret.error()));
 
                 memory.emplace_back(loaded_at + i, paddr);
             }
@@ -239,7 +238,7 @@ namespace bin::elf::mod
                 for (auto [vaddr, paddr] : memory)
                 {
                     if (auto ret = pmap->unmap(vaddr, pmm::page_size); !ret)
-                        lib::panic("could not unmap memory for a module: {}", magic_enum::enum_name(ret.error()));
+                        lib::panic("could not unmap memory for a module: {}", lib::error_name(ret.error()));
                     pmm::free(paddr);
                 }
                 memory.clear();
@@ -425,7 +424,7 @@ namespace bin::elf::mod
                 const auto size = lib::align_up(phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size);
 
                 if (auto ret = vmm::kernel_pagemap->protect(aligned, size, flags, vmm::page_size::small); !ret)
-                    lib::panic("could not change module memory mapping flags: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("could not change module memory mapping flags: {}", lib::error_name(ret.error()));
             }
 
             const auto nmod = load(

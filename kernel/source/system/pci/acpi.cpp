@@ -14,7 +14,6 @@ module system.pci;
 
 import system.memory.virt;
 import system.acpi;
-import magic_enum;
 import lib;
 import std;
 
@@ -55,7 +54,7 @@ namespace pci::acpi
             const auto caching = vmm::caching::mmio;
 
             if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, size, flags, psize, caching); !ret)
-                lib::panic("could not map ecam memory: {}", magic_enum::enum_name(ret.error()));
+                lib::panic("could not map ecam memory: {}", lib::error_name(ret.error()));
 
             mappings[paddr] = vaddr;
             return vaddr + offset;

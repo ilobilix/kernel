@@ -13,7 +13,6 @@ import system.memory;
 import system.acpi;
 import system.cpu.local;
 import system.cpu;
-import magic_enum;
 import lib;
 import std;
 
@@ -271,7 +270,7 @@ namespace x86_64::apic
             const auto cache = vmm::caching::mmio;
 
             if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
-                lib::panic("could not map lapic mmio: {}", magic_enum::enum_name(ret.error()));
+                lib::panic("could not map lapic mmio: {}", lib::error_name(ret.error()));
         }
     }
 

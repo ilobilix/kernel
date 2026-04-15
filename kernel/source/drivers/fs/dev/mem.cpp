@@ -4,7 +4,6 @@ import drivers.fs.devtmpfs;
 import system.memory.virt;
 import system.vfs;
 import system.vfs.dev;
-import magic_enum;
 import boot;
 import lib;
 import std;
@@ -169,7 +168,7 @@ namespace fs::dev::mem
                 {
                     lib::panic(
                         "mem: failed to create '/dev/{}': {}",
-                        name, magic_enum::enum_name(ret.error())
+                        name, lib::error_name(ret.error())
                     );
                 }
             };

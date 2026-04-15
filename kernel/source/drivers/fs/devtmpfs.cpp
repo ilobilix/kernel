@@ -6,7 +6,6 @@ import drivers.fs.tmpfs;
 import system.sched.mutex;
 import system.vfs.dev;
 import system.vfs;
-import magic_enum;
 import lib;
 import std;
 
@@ -144,14 +143,14 @@ namespace fs::devtmpfs
             {
                 lib::panic(
                     "devtmpfs: failed to create directory '/dev': {}",
-                    magic_enum::enum_name(cerr.error())
+                    lib::error_name(cerr.error())
                 );
             }
             if (const auto merr = vfs::mount("", "/dev", "devtmpfs", 0); !merr)
             {
                 lib::panic(
                     "devtmpfs: failed to mount devtmpfs at '/dev': {}",
-                    magic_enum::enum_name(merr.error())
+                    lib::error_name(merr.error())
                 );
             }
         }

@@ -3,6 +3,7 @@
 module system.syscall.chrono;
 
 import system.chrono;
+import system.sched;
 import lib;
 import std;
 
@@ -14,6 +15,54 @@ namespace syscall::chrono
     {
         const auto cur = now(static_cast<chrono::type>(clockid));
         if (!lib::copy_to_user(tp, &cur, sizeof(timespec)))
+            return (errno = EFAULT, -1);
+        return 0;
+    }
+
+    int clock_nanosleep(
+        const clockid_t clockid, int flags,
+        const timespec __user *time, timespec __user *remain
+    )
+    {
+        constexpr int abstime = 1;
+        if ((flags & ~abstime) != 0)
+            return (errno = EINVAL, -1);
+
+        timespec ktime;
+        if (!lib::copy_from_user(&ktime, time, sizeof(timespec)))
+            return (errno = EFAULT, -1);
+
+        if (ktime.tv_nsec < 0 || ktime.tv_nsec >= 1'000'000'000l)
+            return (errno = EINVAL, -1);
+
+        std::size_t ns = 0;
+        if (flags & abstime)
+        {
+            const auto now = chrono::now(static_cast<chrono::type>(clockid));
+            if (now.to_ns() == 0 || ktime < now)
+                return (errno = EINVAL, -1);
+            ns = (now - ktime).to_ns();
+        }
+        else ns = ktime.to_ns();
+
+        if (ns == 0)
+        {
+            timespec tmp { 0 };
+            if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
+                return (errno = EFAULT, -1);
+            return 0;
+        }
+
+        if (const auto rns = sched::sleep_for_ns(ns))
+        {
+            timespec tmp { rns };
+            if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
+                return (errno = EFAULT, -1);
+            return (errno = EINTR, -1);
+        }
+
+        timespec tmp { 0 };
+        if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
             return (errno = EFAULT, -1);
         return 0;
     }
