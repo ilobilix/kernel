@@ -44,8 +44,8 @@ void kthread()
         proc->fdt = std::make_shared<vfs::fdtable>();
         proc->cred = std::make_shared<sched::cred_t>();
 
-        proc->cred->ruid = proc->cred->euid = proc->cred->suid = 1000;
-        proc->cred->rgid = proc->cred->egid = proc->cred->sgid = 1000;
+        proc->cred->ruid = proc->cred->euid = proc->cred->suid = proc->cred->fsuid = 1000;
+        proc->cred->rgid = proc->cred->egid = proc->cred->sgid = proc->cred->fsgid = 1000;
 
         lib::path_view tty_path { "/dev/ttyS0" };
         ret = vfs::resolve(std::nullopt, tty_path);

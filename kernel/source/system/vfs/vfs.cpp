@@ -349,6 +349,11 @@ namespace vfs
 
         lib::bug_on(parent->mnt == nullptr);
 
+        auto check_search = [&](const auto &parent) {
+            const auto &stat = parent->inode->stat;
+            return sched::check_perms(stat, sched::access_mode::exec);
+        };
+
         auto current = parent.value();
 
         auto split = std::views::split(_path.str(), '/');
@@ -385,6 +390,9 @@ namespace vfs
                 }
                 continue;
             }
+
+            if (!check_search(current.dentry))
+                return std::unexpected { lib::err::permission_denied };
 
             auto dentry = current.dentry->children.lock()->lookup(segment);
             if (dentry == nullptr)
