@@ -35,14 +35,24 @@ namespace bin::exec
         return it->second;
     }
 
-    std::shared_ptr<format> identify(const std::shared_ptr<vfs::file> &file)
+    lib::expect<std::unique_ptr<image>> probe(
+        const std::shared_ptr<vfs::file> &file, std::size_t depth
+    )
     {
+        if (depth >= max_depth)
+            return std::unexpected { lib::err::binfmt_recursion };
+
         const auto rlocked = formats.read_lock();
         for (const auto &[name, fmt] : *rlocked)
         {
-            if (fmt->identify(file))
-                return fmt;
+            auto ret = fmt->probe(file, depth + 1);
+            if (ret.has_value())
+            {
+                if (*ret != nullptr)
+                    return std::move(ret);
+            }
+            else return std::unexpected { ret.error() };
         }
-        return nullptr;
+        return std::unexpected { lib::err::invalid_binfmt };
     }
 } // namespace bin::exec

@@ -23,6 +23,9 @@ export namespace lib
 
         symloop_max = ELOOP,
 
+        binfmt_recursion = ELOOP,
+        invalid_binfmt = ENOEXEC,
+
         target_is_a_dir = EISDIR,
         target_is_busy = EBUSY,
 

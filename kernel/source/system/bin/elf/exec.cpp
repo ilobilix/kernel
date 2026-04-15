@@ -17,11 +17,11 @@ import std;
 
 namespace bin::elf::exec
 {
-    class format : public bin::exec::format
+    namespace
     {
-        private:
-        static constexpr std::uintptr_t default_base = 0x400000;
-        static constexpr std::uintptr_t default_interp_base = 0x40000000;
+        constexpr std::string_view fmt_name { "elf" };
+        constexpr std::uintptr_t default_base = 0x400000;
+        constexpr std::uintptr_t default_interp_base = 0x40000000;
 
         struct auxval
         {
@@ -34,38 +34,44 @@ namespace bin::elf::exec
         struct ctx
         {
             bin::exec::request req;
+            std::string execfn;
             std::uintptr_t entry;
             std::uintptr_t interp_base;
             auxval auxv;
         };
 
-        static auto load_file(
-            const std::shared_ptr<vfs::file> &file,
-            std::shared_ptr<vmm::vmspace> &vmspace,
-            std::uintptr_t &addr
-        ) -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
+        std::optional<Elf64_Ehdr> read_ehdr(const std::shared_ptr<vfs::file> &file)
         {
             Elf64_Ehdr ehdr;
             auto hdruspan = lib::maybe_uspan<std::byte>::create(
                 reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
             );
-            lib::bug_on(!hdruspan.has_value());
+            if (!hdruspan.has_value())
+                return std::nullopt;
 
             const auto ret = file->pread(0, std::move(*hdruspan));
-            if (!ret.has_value())
-            {
-                lib::error(
-                    "elf: could not read header: {}",
-                    magic_enum::enum_name(ret.error())
-                );
+            if (!ret.has_value() || *ret != sizeof(ehdr))
                 return std::nullopt;
-            }
-            if (*ret != sizeof(ehdr))
-            {
-                lib::error("elf: header size mismatch: {} != {}", *ret, sizeof(ehdr));
-                return std::nullopt;
-            }
 
+            return ehdr;
+        }
+
+        bool is_valid_elf(const Elf64_Ehdr &ehdr)
+        {
+            return std::memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0 &&
+                ehdr.e_ident[EI_CLASS] == ELFCLASS64 &&
+                ehdr.e_ident[EI_DATA] == ELFDATA2LSB &&
+                (ehdr.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                    ehdr.e_ident[EI_OSABI] == ELFOSABI_LINUX) &&
+                ehdr.e_ident[EI_VERSION] == EV_CURRENT &&
+                ehdr.e_machine == EM_CURRENT;
+        }
+
+        auto load_file(
+            const std::shared_ptr<vfs::file> &file, const Elf64_Ehdr &ehdr,
+            std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr
+        ) -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
+        {
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
 
@@ -289,7 +295,7 @@ namespace bin::elf::exec
         }
 
         [[noreturn]]
-        static void trampoline(ctx *ctx)
+        void trampoline(ctx *ctx)
         {
             auto &req = ctx->req;
             auto &auxv = ctx->auxv;
@@ -301,10 +307,7 @@ namespace bin::elf::exec
             const auto addr_top = thread->ustack_top;
             const auto addr_bottom = addr_top - stack_size;
 
-            const auto execfn_path = req.pathname.empty()
-                ? vfs::pathname_from(req.file->path)
-                : req.pathname;
-
+            const std::string_view execfn_path = ctx->execfn;
             const std::string_view plaform_name { ILOBILIX_SYSNAME };
 
             auto offset = stack_size;
@@ -343,7 +346,7 @@ namespace bin::elf::exec
             std::uintptr_t execfn_offset = 0;
             {
                 offset -= execfn_path.length() + 1;
-                copy_to_user(curr(), execfn_path.c_str(), execfn_path.length() + 1);
+                copy_to_user(curr(), execfn_path.data(), execfn_path.length() + 1);
                 execfn_offset = addr_bottom + offset;
             }
 
@@ -428,54 +431,45 @@ namespace bin::elf::exec
 
             sched::jump_to_user(entry, stack);
         }
+    } // namespace
+
+    class image : public bin::exec::image
+    {
+        private:
+        Elf64_Ehdr _ehdr;
 
         public:
-        format() : bin::exec::format { "elf" } { }
+        image(std::shared_ptr<vfs::file> file, const Elf64_Ehdr &ehdr)
+            : bin::exec::image { std::move(file) }, _ehdr { ehdr } { }
 
-        bool identify(const std::shared_ptr<vfs::file> &file) const override
+        sched::thread_t *load(const bin::exec::request &req) const override
         {
-            Elf64_Ehdr ehdr;
-            auto ehdruspan = lib::maybe_uspan<std::byte>::create(
-                reinterpret_cast<std::byte *>(&ehdr), sizeof(ehdr)
-            );
-            if (!ehdruspan.has_value())
-                return false;
-
-            const auto ret = file->pread(0, std::move(*ehdruspan));
-            if (!ret.has_value())
-                return false;
-            if (*ret != sizeof(ehdr))
-                return false;
-
-            return std::memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0 &&
-                ehdr.e_ident[EI_CLASS] == ELFCLASS64 &&
-                ehdr.e_ident[EI_DATA] == ELFDATA2LSB &&
-                ehdr.e_ident[EI_OSABI] == ELFOSABI_SYSV &&
-                ehdr.e_ident[EI_VERSION] == EV_CURRENT &&
-                ehdr.e_machine == EM_CURRENT;
-        }
-
-        sched::thread_t *load(const bin::exec::request &req,  sched::process_t *proc) const override
-        {
-            lib::bug_on(!proc);
+            lib::bug_on(!req.proc);
 
             std::uintptr_t exec_base = default_base;
             std::uintptr_t interp_base = 0;
 
-            auto ret = load_file(req.file, proc->vmspace, exec_base);
+            auto ret = load_file(file, _ehdr, req.proc->vmspace, exec_base);
             if (!ret.has_value())
                 return nullptr;
 
             const auto [auxv, interp, exec_end] = ret.value();
-            lib::bug_on(req.interp && interp);
 
             std::uintptr_t brk_base = exec_end;
-
             std::uintptr_t entry = auxv.at_entry;
+
             if (interp)
             {
                 interp_base = default_interp_base;
-                ret = load_file(interp, proc->vmspace, interp_base);
+
+                const auto iehdr = read_ehdr(interp);
+                if (!iehdr || !is_valid_elf(*iehdr))
+                {
+                    lib::error("elf: invalid interpreter");
+                    return nullptr;
+                }
+
+                ret = load_file(interp, *iehdr, req.proc->vmspace, interp_base);
                 if (!ret.has_value())
                     return nullptr;
 
@@ -488,15 +482,39 @@ namespace bin::elf::exec
                 lib::bug_on(ii != nullptr);
             }
 
-            proc->vmspace->current_brk = brk_base;
+            req.proc->vmspace->current_brk = brk_base;
 
-            const auto arg = new ctx { req, entry, interp_base, auxv };
+            auto execfn = req.pathname.empty()
+                ? vfs::pathname_from(file->path)
+                : req.pathname;
+            const auto arg = new ctx {
+                req, std::move(execfn), entry, interp_base, auxv
+            };
             return sched::create_uthread(
-                proc,
+                req.proc,
                 reinterpret_cast<std::uintptr_t>(trampoline),
                 reinterpret_cast<std::uintptr_t>(arg),
                 true, false, 0
             );
+        }
+
+        std::string_view format_name() const override { return fmt_name; }
+    };
+
+    class format : public bin::exec::format
+    {
+        public:
+        format() : bin::exec::format { fmt_name } { }
+
+        lib::expect<std::unique_ptr<bin::exec::image>> probe(
+            const std::shared_ptr<vfs::file> &file, std::size_t depth
+        ) const override
+        {
+            lib::unused(depth);
+            const auto ehdr = read_ehdr(file);
+            if (!ehdr || !is_valid_elf(*ehdr))
+                return nullptr;
+            return std::make_unique<image>(file, *ehdr);
         }
     };
 

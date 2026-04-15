@@ -27,8 +27,8 @@ void kthread()
             lib::panic("could not reduce {}", path);
 
         auto file = vfs::file::create(res.value(), 0, 0, 0);
-        auto format = bin::exec::identify(file);
-        if (!format)
+        auto image = bin::exec::probe(file);
+        if (!image || !*image)
             lib::panic("could not identify {} file format", path);
 
         auto proc = sched::create_process(nullptr);
@@ -61,18 +61,17 @@ void kthread()
         proc->fdt->dup(0, 1, false, false);
         proc->fdt->dup(0, 2, false, false);
 
-        thread = format->load({
+        thread = image.value()->load({
             .pathname = path.data(),
-            .file = file,
-            .interp = { },
             .argv = { path.basename().data() },
             .envp = {
                 "TERM=xterm-256color",
                 "USER=ilobilix",
                 "HOME=/home/ilobilix",
                 "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
-            }
-        }, proc);
+            },
+            .proc = proc
+        });
 
         if (!thread)
             lib::panic("could not create a thread for {}", path);
