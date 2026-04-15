@@ -87,8 +87,8 @@ namespace initramfs
                 const auto linkname { get_string(current->linkname) };
 
                 const auto mode = lib::oct2int<mode_t>(current->mode);
-                const auto uid = lib::oct2int<mode_t>(current->uid);
-                const auto gid = lib::oct2int<mode_t>(current->gid);
+                const auto uid = lib::oct2int<uid_t>(current->uid);
+                const auto gid = lib::oct2int<gid_t>(current->gid);
                 const auto size = lib::oct2int<std::size_t>(current->size);
                 const auto mtim = lib::oct2int<time_t>(current->mtime);
 

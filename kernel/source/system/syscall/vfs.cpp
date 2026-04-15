@@ -16,6 +16,7 @@ import std;
 namespace syscall::vfs
 {
     using namespace ::vfs;
+    using namespace magic_enum::bitwise_operators;
 
     namespace
     {
@@ -158,6 +159,7 @@ namespace syscall::vfs
 
         const bool follow_links = (flags & o_nofollow) == 0;
         const bool write = is_write(flags);
+        const bool trunc = (flags & o_trunc) && !(flags & o_path);
 
         if (((flags & o_tmpfile) == o_tmpfile) && !write)
             return (errno = EINVAL, -1);
@@ -174,6 +176,8 @@ namespace syscall::vfs
 
         const auto pathstr = std::move(*val);
 
+        bool did_create = false;
+
         path target { };
         auto res = resolve_from(proc, dirfd, pathstr);
         if (!res.has_value())
@@ -185,8 +189,12 @@ namespace syscall::vfs
             if (!parent.has_value())
                 return -1;
 
-            if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+            const auto &parent_stat = parent->target.dentry->inode->stat;
+            if (parent_stat.type() != stat::type::s_ifdir)
                 return (errno = ENOTDIR, -1);
+
+            if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
+                return (errno = EACCES, -1);
 
             const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
             auto created = create(parent->target, pathstr.basename(), cmode);
@@ -195,7 +203,6 @@ namespace syscall::vfs
 
             lib::bug_on(!created->dentry || !created->dentry->inode);
 
-            const auto &parent_stat = parent->target.dentry->inode->stat;
             auto &stat = created->dentry->inode->stat;
 
             {
@@ -212,6 +219,7 @@ namespace syscall::vfs
             }
 
             target = std::move(*created);
+            did_create = true;
         }
         else if ((flags & o_excl) && (flags & o_creat))
         {
@@ -236,11 +244,22 @@ namespace syscall::vfs
         }
 
         auto &stat = target.dentry->inode->stat;
-        if (stat.type() == stat::type::s_ifdir && write)
+        if (stat.type() == stat::type::s_ifdir && (write || trunc))
             return (errno = EISDIR, -1);
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return (errno = ENOTDIR, -1);
+
+        if (!(flags & o_path) && !did_create)
+        {
+            auto acc = sched::access_mode::none;
+            if (is_read(flags))
+                acc |= sched::access_mode::read;
+            if (is_write(flags) || trunc)
+                acc |= sched::access_mode::write;
+            if (!sched::check_perms(proc->cred, stat, acc))
+                return (errno = EACCES, -1);
+        }
 
         const auto fdesc = filedesc::create(target, flags, proc->pid);
         if (!fdesc)
@@ -255,7 +274,7 @@ namespace syscall::vfs
             return (errno = lib::map_error(ret.error()), -1);
         }
 
-        if ((flags & o_trunc) && write)
+        if (trunc)
         {
             if (const auto ret = fdesc->file->trunc(0); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
@@ -899,7 +918,7 @@ namespace syscall::vfs
             cred->fsgid = cred->rgid;
 
             if (cred->ruid != 0)
-                cred->effective &= ~(sched::cap_t::dac_override | sched::cap_t::dac_override);
+                cred->effective &= ~(sched::cap_t::dac_override | sched::cap_t::dac_read_search);
         }
         else cred = proc->cred;
 
@@ -937,6 +956,15 @@ namespace syscall::vfs
         auto &inode = target->dentry->inode;
         {
             const std::unique_lock _ { inode->lock };
+
+            const auto &cred = proc->cred;
+            if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
+                return (errno = EPERM, -1);
+
+            if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
+                !cred->supp_gids.contains(inode->stat.st_gid) &&
+                !sched::capable(cred, sched::cap_t::fsetid))
+                mode &= ~s_isgid;
 
             constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
@@ -1099,15 +1127,18 @@ namespace syscall::vfs
         if (!parent.has_value())
             return -1;
 
-        if (parent->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+        const auto &parent_stat = parent->target.dentry->inode->stat;
+        if (parent_stat.type() != stat::type::s_ifdir)
             return (errno = ENOTDIR, -1);
+
+        if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
+            return (errno = EACCES, -1);
 
         const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifdir;
         auto created = create(parent->target, path.basename(), cmode);
         if (!created.has_value())
             return (errno = lib::map_error(created.error()), -1);
 
-        const auto &parent_stat = parent->target.dentry->inode->stat;
         {
             const std::unique_lock _ { created->dentry->inode->lock };
 
@@ -1130,13 +1161,12 @@ namespace syscall::vfs
         return mkdirat(at_fdcwd, pathname, mode);
     }
 
-    // TODO: this is a stub
+    // TODO
     int unlinkat(int dirfd, const char __user *pathname, int flags)
     {
         // if (flags & ~at_removedir)
         //     return (errno = EINVAL, -1);
 
-        // TODO
         if (flags & at_removedir)
             return (errno = EINVAL);
 
@@ -1147,12 +1177,28 @@ namespace syscall::vfs
             return -1;
 
         const auto path = std::move(*val);
-        if (resolve_from(proc, dirfd, path).has_value())
-            return (errno = EEXIST, -1);
 
         const auto parent = resolve_from(proc, dirfd, path.dirname());
         if (!parent.has_value())
             return -1;
+
+        const auto &parent_stat = parent->target.dentry->inode->stat;
+        if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
+            return (errno = EACCES, -1);
+
+        if ((parent_stat.st_mode & s_isvtx) != 0)
+        {
+            const auto target = get_target(proc, dirfd, pathname, false, false, true);
+            if (target.has_value())
+            {
+                const auto &cred = proc->cred;
+                const auto &tstat = target->dentry->inode->stat;
+                if (cred->fsuid != tstat.st_uid &&
+                    cred->fsuid != parent_stat.st_uid &&
+                    !sched::capable(cred, sched::cap_t::fowner))
+                    return (errno = EACCES, -1);
+            }
+        }
 
         if (const auto ret = unlink(parent->target, path.basename()); !ret)
             return (errno = lib::map_error(ret.error()), -1);
@@ -1184,11 +1230,8 @@ namespace syscall::vfs
             if (!lib::copy_from_user(ktimes, times, sizeof(timespec) * 2))
                 return (errno = EFAULT, -1);
 
-            for (auto &ktime : ktimes)
-            {
-                if (ktime.tv_nsec == utime_now)
-                    ktime = now;
-            }
+            if (ktimes[0].tv_nsec == utime_omit && ktimes[1].tv_nsec == utime_omit)
+                return 0;
         }
         else ktimes[0] = ktimes[1] = now;
 
@@ -1202,14 +1245,39 @@ namespace syscall::vfs
             return -1;
 
         auto &inode = target->dentry->inode;
+        auto &stat = inode->stat;
+
+        const auto &cred = proc->cred;
+        const bool is_owner = (cred->fsuid == stat.st_uid);
+        const bool has_fowner = sched::capable(cred, sched::cap_t::fowner);
+
+        const auto is_special = [](const auto ns) {
+            return ns == utime_now || ns == utime_omit;
+        };
+
+        if (times && (!is_special(ktimes[0].tv_nsec) || !is_special(ktimes[1].tv_nsec)))
+        {
+            if (!is_owner && !has_fowner)
+                return (errno = EPERM, -1);
+        }
+        else if (!is_owner && !has_fowner &&
+            !sched::check_perms(proc->cred, stat, sched::access_mode::write))
+            return (errno = EACCES, -1);
+
+        for (auto &ktime : ktimes)
+        {
+            if (ktime.tv_nsec == utime_now)
+                ktime = now;
+        }
+
         {
             const std::unique_lock _ { inode->lock };
 
             if (ktimes[0].tv_nsec != utime_omit)
-                inode->stat.st_atim = ktimes[0];
+                stat.st_atim = ktimes[0];
             if (ktimes[1].tv_nsec != utime_omit)
-                inode->stat.st_mtim = ktimes[1];
-            inode->stat.st_ctim = now;
+                stat.st_mtim = ktimes[1];
+            stat.st_ctim = now;
 
             if (const auto ret = dirty_inode(*target); !ret)
                 return (errno = lib::map_error(ret.error()), -1);
@@ -1323,8 +1391,12 @@ namespace syscall::vfs
         if (!target.has_value())
             return -1;
 
-        if (target->dentry->inode->stat.type() != stat::type::s_ifdir)
+        const auto &stat = target->dentry->inode->stat;
+        if (stat.type() != stat::type::s_ifdir)
             return (errno = ENOTDIR, -1);
+
+        if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
+            return (errno = EACCES, -1);
 
         proc->vfs->cwd = *target;
         return 0;
@@ -1338,8 +1410,12 @@ namespace syscall::vfs
         if (!target.has_value())
             return -1;
 
-        if (target->dentry->inode->stat.type() != stat::type::s_ifdir)
+        const auto &stat = target->dentry->inode->stat;
+        if (stat.type() != stat::type::s_ifdir)
             return (errno = ENOTDIR, -1);
+
+        if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
+            return (errno = EACCES, -1);
 
         proc->vfs->cwd = *target;
         return 0;

@@ -24,6 +24,8 @@ namespace lib::log
         constinit std::atomic_uint64_t last_consumed = 0;
         constinit std::uint64_t next_seq = 0;
 
+        constinit std::atomic_uint64_t dropped = 0;
+
         constinit lib::spinlock_irq lock;
         constinit std::atomic_bool direct = true;
 
@@ -598,7 +600,12 @@ namespace lib::log
             }
         };
 
-        using ring_type = ring<14, 6>;
+#if ILOBILIX_SYSCALL_LOG
+        constexpr std::size_t data_bits = 18;
+#else
+        constexpr std::size_t data_bits = 14;
+#endif
+        using ring_type = ring<data_bits, 6>;
         constinit ring_type buffer { };
 
         constexpr std::size_t len_time = 18;
@@ -762,7 +769,11 @@ namespace lib::log
 
                 auto res = buffer.reserve(len);
                 if (!res)
+                {
+                    dropped.fetch_add(1, std::memory_order_relaxed);
+                    available.wake_all();
                     return;
+                }
 
                 if ((res->info_ptr->lvl = lvl) != level::none)
                     res->info_ptr->time = nanos;
@@ -780,9 +791,34 @@ namespace lib::log
         }
     } // namespace detail
 
+    namespace
+    {
+        void print_dropped(std::uint64_t count)
+        {
+            auto nanos = chrono::now(chrono::monotonic).to_ns();
+            const auto [h, m, s] = lib::time_from(nanos / 1'000'000'000);
+            nanos %= 1'000'000'000;
+            nanos /= 1'000;
+
+            std::array<char, 96> buf { };
+            const auto prefix = prefixes[std::to_underlying(level::error)];
+            const auto sz = fmt::format_to_n(
+                buf.data(), buf.size(),
+                "[{:02}:{:02}:{:02}.{:06}] {}log: dropped {} entries\n",
+                h, m, s, nanos, prefix, count
+            ).size;
+
+            lock.lock();
+            prints(std::string_view { buf.data(), sz });
+            lock.unlock();
+        }
+    } // namespace
+
     void consumer()
     {
         set_direct_print(false);
+
+        std::uint64_t reported_drops = 0;
 
         while (true)
         {
@@ -793,6 +829,12 @@ namespace lib::log
             {
                 if (res.error() == ring_type::error::not_yet_available)
                 {
+                    const auto cur = dropped.load(std::memory_order_relaxed);
+                    if (cur > reported_drops)
+                    {
+                        print_dropped(cur - reported_drops);
+                        reported_drops = cur;
+                    }
                     finished.wake_all();
                     available.wait_unint();
                     continue;
@@ -800,6 +842,16 @@ namespace lib::log
                 next_seq = buffer.first_seq();
                 last_consumed.store(next_seq - 1, std::memory_order_release);
                 continue;
+            }
+
+            if (res->seq != next_seq)
+                dropped.fetch_add(res->seq - next_seq, std::memory_order_relaxed);
+
+            const auto cur = dropped.load(std::memory_order_relaxed);
+            if (cur > reported_drops)
+            {
+                print_dropped(cur - reported_drops);
+                reported_drops = cur;
             }
 
             print(*res);

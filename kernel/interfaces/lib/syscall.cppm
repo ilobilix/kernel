@@ -58,17 +58,21 @@ namespace lib::syscall
         private:
         std::string_view name;
         void *handler;
-        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *);
+        bool log_exit;
+        std::uintptr_t (*invoker)(cpu::registers *, std::string_view, void *, bool);
 
         public:
-        constexpr entry(std::string_view name, const auto &func)
-            : name { name }, handler { reinterpret_cast<void *>(func) },
+        constexpr entry(std::string_view name, const auto &func, bool log_exit = false)
+            : name { name }, handler { reinterpret_cast<void *>(func) }, log_exit { log_exit },
             invoker {
-                [](cpu::registers *regs, std::string_view name, void *handler) -> std::uintptr_t
+                [](cpu::registers *regs, std::string_view name, void *handler, bool log_exit)
                 {
                     using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
                     constexpr bool is_void = std::same_as<typename sign::return_type, void>;
-                    static_assert(std::is_trivially_default_constructible_v<typename sign::return_type> || is_void);
+                    static_assert(
+                        std::is_trivially_default_constructible_v<typename sign::return_type> ||
+                        is_void
+                    );
 
                     const auto arr = Getter::get_args(regs);
                     typename sign::args_type args;
@@ -90,6 +94,7 @@ namespace lib::syscall
                         lib::debug("syscall: [{}:{}]: {}{}", pid, tid, name, ptr(args));
 #else
                     lib::unused(name);
+                    lib::unused(log_exit);
 #endif
 
                     const auto check = [&](auto value) {
@@ -114,24 +119,28 @@ namespace lib::syscall
                             magic_enum::enum_name(error.value())
                         );
 #endif
-                        return -errno;
+                        return static_cast<std::uintptr_t>(-errno);
                     }
 #if ILOBILIX_SYSCALL_LOG
-                    if constexpr (is_void)
+                    if (log_exit)
                     {
-                        lib::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
-                        return 0;
+                        if constexpr (is_void)
+                            lib::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
+                        else if constexpr (std::is_pointer_v<typename sign::return_type>)
+                            lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name,
+                                reinterpret_cast<const void *>(uptr_ret));
+                        else
+                            lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
                     }
-                    else if constexpr (std::is_pointer_v<typename sign::return_type>)
-                        lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, reinterpret_cast<const void *>(uptr_ret));
-                    else
-                        lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
 #endif
+                    if constexpr (is_void)
+                        return 0ul;
                     return uptr_ret;
                 }
             } { }
 
-        constexpr entry() : name { "unknown" }, handler { nullptr }, invoker { } { };
+        constexpr entry()
+            : name { "unknown" }, handler { nullptr }, log_exit { false }, invoker { } { };
 
         constexpr entry(const entry &other) = default;
         constexpr entry &operator=(const entry &other) = default;
@@ -143,7 +152,7 @@ namespace lib::syscall
 
         std::uintptr_t invoke(cpu::registers *regs)
         {
-            return invoker(regs, name, handler);
+            return invoker(regs, name, handler, log_exit);
         }
     };
 } // namespace lib::syscall

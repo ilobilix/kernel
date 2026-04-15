@@ -314,7 +314,7 @@ namespace sched
 
             proc->vfs = nullptr;
             proc->fdt = nullptr;
-            proc->cred = std::make_shared<cred_t>();
+            proc->cred = cred_t::root();
             proc->sigactions = nullptr;
 
             (*processes.lock())[proc->pid] = proc;
