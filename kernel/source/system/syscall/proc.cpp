@@ -40,6 +40,13 @@ namespace syscall::proc
         return sched::current_process()->cred->ruid;
     }
 
+    int setuid(uid_t uid)
+    {
+        if (const auto ret = sched::setuid(uid); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
     uid_t geteuid()
     {
         return sched::current_process()->cred->euid;
@@ -48,6 +55,13 @@ namespace syscall::proc
     gid_t getgid()
     {
         return sched::current_process()->cred->rgid;
+    }
+
+    int setgid(gid_t gid)
+    {
+        if (const auto ret = sched::setgid(gid); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
     }
 
     gid_t getegid()

@@ -13,9 +13,13 @@ export namespace syscall::proc
     pid_t getpgrp();
 
     uid_t getuid();
+    int setuid(uid_t uid);
+
     uid_t geteuid();
 
     gid_t getgid();
+    int setgid(gid_t gid);
+
     gid_t getegid();
 
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid);
