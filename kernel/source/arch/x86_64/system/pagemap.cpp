@@ -45,7 +45,8 @@ namespace vmm
     std::uintptr_t pagemap::pa_mask = 0x000FFFFFFFFFF000;
 
     const std::uintptr_t pagemap::valid_table_flags = arch::flag::present;
-    const std::uintptr_t pagemap::new_table_flags = arch::flag::present | arch::flag::write | arch::flag::user;
+    const std::uintptr_t pagemap::new_kernel_table_flags = arch::flag::present | arch::flag::write;
+    const std::uintptr_t pagemap::new_user_table_flags = pagemap::new_kernel_table_flags | arch::flag::user;
 
     bool pagemap::entry::accessor::is_large() const
     {
@@ -231,7 +232,7 @@ namespace vmm
             // pre-allocate higher half
             auto table = lib::tohh(_table);
             for (std::size_t i = 256; i < 512; i++)
-                getlvl(table->entries[i], true, false, static_cast<page_size>(levels - 1));
+                getlvl(table->entries[i], true, false, static_cast<page_size>(levels - 1), false);
         }
         else
         {

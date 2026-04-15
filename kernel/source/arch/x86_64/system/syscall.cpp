@@ -92,6 +92,7 @@ namespace x86_64::syscall
         [122] = { "setfsuid", proc::setfsuid, true },
         [123] = { "setfsgid", proc::setfsgid, true },
         [131] = { "sigaltstack", proc::sigaltstack },
+        [157] = { "prctl", misc::prctl, true },
         [158] = { "arch_prctl", arch::arch_prctl },
         [164] = { "settimeofday", chrono::settimeofday },
         [169] = { "reboot", misc::reboot },

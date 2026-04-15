@@ -21,7 +21,7 @@ namespace vmm
         std::uintptr_t vspace_base;
     } // namespace
 
-    auto pagemap::getlvl(entry &entry, bool allocate, bool split, page_size psize) -> table *
+    auto pagemap::getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *
     {
         table *ret = nullptr;
 
@@ -65,7 +65,7 @@ namespace vmm
 
             accessor.clear()
                 .setaddr(reinterpret_cast<std::uintptr_t>(ret = new_table()))
-                .setflags(new_table_flags, true)
+                .setflags(user ? new_user_table_flags : new_kernel_table_flags, true)
                 .write();
         }
 
@@ -82,6 +82,9 @@ namespace vmm
         const auto retidx = levels - static_cast<std::size_t>(psize) - 1;
         auto shift = shift_start;
 
+        const auto [ustart, uend] = user_range();
+        const bool user = vaddr >= ustart && vaddr < uend;
+
         for (std::size_t i = 0; i < levels; i++)
         {
             auto &entry = pml->entries[(vaddr >> shift) & bits];
@@ -90,7 +93,7 @@ namespace vmm
                 return std::ref(entry);
 
             const auto current_psize = static_cast<page_size>(levels - i - 1);
-            pml = getlvl(entry, allocate, split, current_psize);
+            pml = getlvl(entry, allocate, split, current_psize, user);
             if (pml == nullptr)
                 return std::unexpected { lib::err::invalid_pml_entry };
 
@@ -302,7 +305,7 @@ namespace vmm
 
             for (std::size_t i = start; i < end; i++)
             {
-                auto lvl = getlvl(ptr->entries[i], false, false, static_cast<page_size>(level - 1));
+                auto lvl = getlvl(ptr->entries[i], false, false, static_cast<page_size>(level - 1), true);
                 if (lvl == nullptr)
                     continue;
 
