@@ -136,7 +136,11 @@ namespace x86_64::syscall
     {
         const auto idx = regs->rax;
         if (idx >= std::size(table) || !table[idx].is_valid())
-            lib::panic("invalid syscall: {}", idx);
+        {
+            lib::error("invalid syscall: {}", idx);
+            regs->rax = -ENOSYS;
+            return;
+        }
 
         sched::current_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
