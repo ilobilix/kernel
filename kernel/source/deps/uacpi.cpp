@@ -249,7 +249,7 @@ extern "C"
         const auto vaddr = vmm::alloc_vspace(lib::align_up(size, npsize));
 
         if (const auto ret = pmap->map(vaddr, paddr, size, vmm::pflag::rwg, psize); !ret)
-            lib::panic("could not map uacpi memory: {}", magic_enum::enum_name(ret.error()));
+            lib::panic("could not map uacpi memory: {}", lib::error_name(ret.error()));
 
         return reinterpret_cast<std::uint8_t *>(vaddr) + (addr - paddr);
     }

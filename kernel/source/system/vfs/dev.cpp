@@ -5,7 +5,6 @@ module system.vfs.dev;
 import drivers.initramfs;
 import system.vfs.pipe;
 import system.vfs;
-import magic_enum;
 import lib;
 import std;
 

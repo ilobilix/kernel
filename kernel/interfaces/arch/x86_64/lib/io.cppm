@@ -2,7 +2,6 @@
 
 export module x86_64.lib.io;
 
-import magic_enum;
 import std;
 
 export namespace lib::x86_64::io

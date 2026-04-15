@@ -4,7 +4,6 @@ module drivers.initramfs;
 
 import system.vfs;
 import system.vfs.dev;
-import magic_enum;
 import boot;
 import lib;
 import std;
@@ -111,7 +110,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a regular file '{}': {}",
-                                name, magic_enum::enum_name(ret.error())
+                                name, lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -127,14 +126,14 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not write to a regular file '{}': {}",
-                                name, res.has_value() ? "size mismatch" : magic_enum::enum_name(res.error())
+                                name, res.has_value() ? "size mismatch" : lib::error_name(res.error())
                             );
 
                             if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
                             {
                                 lib::error(
                                     "ustar: could not unlink incomplete regular file '{}': {}",
-                                    name, magic_enum::enum_name(ret.error())
+                                    name, lib::error_name(ret.error())
                                 );
                             }
                             break;
@@ -149,7 +148,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a hardlink '{}' -> '{}': {}",
-                                name, linkname, magic_enum::enum_name(ret.error())
+                                name, linkname, lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -163,7 +162,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a symlink '{}' -> '{}': {}",
-                                name, linkname, magic_enum::enum_name(ret.error())
+                                name, linkname, lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -177,7 +176,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a character device file '{}': {}",
-                                name, magic_enum::enum_name(ret.error())
+                                name, lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -191,7 +190,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a block device file '{}': {}",
-                                name, magic_enum::enum_name(ret.error())
+                                name, lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -205,7 +204,7 @@ namespace initramfs
                         {
                             lib::error(
                                 "ustar: could not create a directory '{}': {}",
-                                name, magic_enum::enum_name(ret.error())
+                                name, lib::error_name(ret.error())
                             );
                             break;
                         }

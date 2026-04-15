@@ -11,7 +11,6 @@ import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
-import magic_enum;
 import lib;
 import std;
 
@@ -69,7 +68,7 @@ namespace x86_64::apic::io
                 const auto cache = vmm::caching::mmio;
 
                 if (const auto ret = vmm::kernel_pagemap->map(_mmio, mmio, npsize, flags, psize, cache); !ret)
-                    lib::panic("could not map ioapic mmio: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("could not map ioapic mmio: {}", lib::error_name(ret.error()));
 
                 _redirs = ((read(0x01) >> 16) & 0xFF) + 1;
                 for (std::size_t i = 0; i < _redirs; i++)

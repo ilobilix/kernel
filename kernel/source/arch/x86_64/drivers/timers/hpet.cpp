@@ -12,7 +12,6 @@ import system.memory;
 import system.chrono;
 import system.acpi;
 import drivers.timers;
-import magic_enum;
 import boot;
 import arch;
 import lib;
@@ -158,7 +157,7 @@ namespace x86_64::timers::hpet
             const auto caching = vmm::caching::mmio;
 
             if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)
-                lib::panic("could not map hpet: {}", magic_enum::enum_name(ret.error()));
+                lib::panic("could not map hpet: {}", lib::error_name(ret.error()));
 
             const auto cap = read(regs::cap);
             is_64bit = (cap & ACPI_HPET_COUNT_SIZE_CAP);

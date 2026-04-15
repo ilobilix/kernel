@@ -8,8 +8,6 @@ import system.vfs;
 import system.vfs.dev;
 import lib;
 import std;
-
-import magic_enum;
 import fmt;
 
 namespace fs::dev::pty

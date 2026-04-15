@@ -353,7 +353,7 @@ namespace vmm
                 );
 
                 if (const auto ret = kernel_pagemap->map(vaddr, paddr, len, pflag::rw, std::nullopt, cache); !ret)
-                    lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("could not map virtual memory: {}", lib::error_name(ret.error()));
             }
         }
         {
@@ -389,7 +389,7 @@ namespace vmm
                     );
 
                     if (const auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, std::nullopt, cache); !ret)
-                        lib::panic("could not map virtual memory: {}", magic_enum::enum_name(ret.error()));
+                        lib::panic("could not map virtual memory: {}", lib::error_name(ret.error()));
                 }
                 phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize);
             }

@@ -5,7 +5,6 @@ module system.cpu;
 import system.cpu.local;
 import system.memory;
 import system.chrono;
-import magic_enum;
 import boot;
 import arch;
 import lib;

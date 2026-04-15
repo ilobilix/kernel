@@ -413,7 +413,7 @@ namespace pmm
 
                 const auto paddr = alloc(1, true);
                 if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, page_size, flags, psize); !ret)
-                    lib::panic("pmm: could not map pfndb: {}", magic_enum::enum_name(ret.error()));
+                    lib::panic("pmm: could not map pfndb: {}", lib::error_name(ret.error()));
             }
         };
     } // namespace

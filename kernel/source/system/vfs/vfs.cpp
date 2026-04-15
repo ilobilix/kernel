@@ -6,7 +6,6 @@ import system.cpu.local;
 import system.vfs.dev;
 import system.sched;
 import drivers.fs;
-import magic_enum;
 import lib;
 import std;
 
@@ -862,13 +861,18 @@ namespace vfs
         if (!fdesc)
             return false;
 
-        if (!fds.write_lock()->erase(fd))
-            return false;
+        {
+            auto wlocked = fds.write_lock();
+            if (!wlocked->erase(fd))
+                return false;
+            if (fd < next_fd)
+                next_fd = fd;
+        }
 
         if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
         {
             if (const auto ret = fdesc->file->close(); !ret)
-                lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+                lib::error("failed to close fd: {}", lib::error_name(ret.error()));
         }
 
         return true;
@@ -890,15 +894,13 @@ namespace vfs
         {
             if (!force)
             {
-                fd = next_fd++;
+                fd = next_fd;
                 while (wlocked->contains(fd))
                     fd++;
                 next_fd = fd + 1;
             }
             else lib::bug_on(!wlocked->erase(fd));
         }
-        else if (fd >= next_fd)
-            next_fd = fd + 1;
 
         wlocked.value()[fd] = std::move(desc);
         return fd;
@@ -931,9 +933,12 @@ namespace vfs
                 if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
                 {
                     if (const auto ret = fdesc->file->close(); !ret)
-                        lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+                        lib::error("failed to close fd: {}", lib::error_name(ret.error()));
                 }
+                const auto closed_fd = it->first;
                 it = wlocked->erase(it);
+                if (closed_fd < next_fd)
+                    next_fd = closed_fd;
             }
             else it++;
         }
@@ -970,7 +975,7 @@ namespace vfs
             if (fdesc && fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
             {
                 if (const auto ret = fdesc->file->close(); !ret)
-                    lib::error("failed to close fd: {}", magic_enum::enum_name(ret.error()));
+                    lib::error("failed to close fd: {}", lib::error_name(ret.error()));
             }
         }
         wlocked->clear();

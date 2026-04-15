@@ -9,7 +9,6 @@ import system.cpu.local;
 import system.chrono;
 import system.cpu;
 import drivers.timers;
-import magic_enum;
 import arch;
 import lib;
 import std;
@@ -119,7 +118,7 @@ namespace x86_64::timers::kvm
         const auto cache = vmm::caching::mmio;
 
         if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache); !ret)
-            lib::panic("pmm: could not map kvmclock: {}", magic_enum::enum_name(ret.error()));
+            lib::panic("pmm: could not map kvmclock: {}", lib::error_name(ret.error()));
 
         clockptr.write(std::construct_at<kvmclock_info>(reinterpret_cast<kvmclock_info *>(vaddr)));
         cpu::msr::write(0x4B564D01, paddr | 1);

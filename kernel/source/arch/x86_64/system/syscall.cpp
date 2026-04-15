@@ -102,6 +102,7 @@ namespace x86_64::syscall
         [218] = { "set_tid_address", proc::set_tid_address, true },
         [221] = { "fadvise64", vfs::fadvise64 },
         [228] = { "clock_gettime", chrono::clock_gettime },
+        [230] = { "clock_nanosleep", chrono::clock_nanosleep },
         [231] = { "exit_group", proc::exit_group },
         [234] = { "tgkill", proc::tgkill },
         [257] = { "openat", vfs::openat, true },

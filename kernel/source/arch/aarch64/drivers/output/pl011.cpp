@@ -4,7 +4,6 @@ module aarch64.drivers.output.pl011;
 
 import drivers.output.serial;
 import system.memory;
-import magic_enum;
 import arch;
 import lib;
 import std;
@@ -51,7 +50,7 @@ namespace aarch64::output::pl011
         const auto caching = vmm::caching::mmio;
 
         if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, len, flags, psize, caching); !ret)
-            lib::panic("could not map uart: {}", magic_enum::enum_name(ret.error()));
+            lib::panic("could not map uart: {}", lib::error_name(ret.error()));
 
         // Disable the UART.
         lib::mmio::out<16>(addr + 0x30, 0);

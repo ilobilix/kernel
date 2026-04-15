@@ -152,7 +152,7 @@ namespace pci
         const auto cache = vmm::caching::mmio;
 
         if (const auto ret = pmap->map(vaddr, paddr, alsize, flags, psize, cache); !ret)
-            lib::panic("could not map pci bar: {}", magic_enum::enum_name(ret.error()));
+            lib::panic("could not map pci bar: {}", lib::error_name(ret.error()));
 
         return virt = (vaddr + (phys - paddr));
     }
@@ -251,7 +251,12 @@ namespace pci
             }
 
             if (ret.type != bar::type::invalid)
-                lib::debug("pci: - bar: 0x{:X}, size: 0x{:X}, type: {}", ret.phys, ret.size, magic_enum::enum_name(ret.type));
+            {
+                lib::debug(
+                    "pci: - bar: 0x{:X}, size: 0x{:X}, type: {}",
+                    ret.phys, ret.size, magic_enum::enum_name(ret.type)
+                );
+            }
 
             bars[i] = ret;
             if (bit64 == true)

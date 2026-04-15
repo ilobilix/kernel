@@ -5,7 +5,6 @@ module system.cpu.local;
 import system.sched;
 import system.cpu;
 import system.memory;
-import magic_enum;
 import boot;
 import lib;
 import std;
@@ -55,7 +54,7 @@ namespace cpu
                 {
                     lib::panic(
                         "cpu: could not map percpu area: {}",
-                        magic_enum::enum_name(ret.error())
+                        lib::error_name(ret.error())
                     );
                 }
             }
