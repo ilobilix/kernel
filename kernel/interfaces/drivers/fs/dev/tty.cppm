@@ -280,12 +280,18 @@ export namespace fs::dev::tty
 
     enum ioctl
     {
+        tcgets = 0x5401,
+        tcsets = 0x5402,
+        tcsetsw = 0x5403,
+        tcsetsf = 0x5404,
         tiocgpgrp = 0x540F,
         tiocspgrp = 0x5410,
         tiocgwinsz = 0x5413,
         tiocswinsz = 0x5414,
         tcgets2 = 0x802C542A,
-        tcsetsw2 = 0x402C542C
+        tcsets2 = 0x402C542B,
+        tcsetsw2 = 0x402C542C,
+        tcsetsf2 = 0x402C542D
     };
 
     struct instance;
@@ -429,7 +435,7 @@ export namespace fs::dev::tty
 
         std::atomic_bool hung_up;
 
-        lib::locker<std::unique_ptr<line_discipline>, sched::mutex> ldisc;
+        lib::locker<std::shared_ptr<line_discipline>, sched::mutex> ldisc;
 
         lib::locker<ktermios, sched::mutex> termios;
         lib::locker<winsize, sched::mutex> winsize;
@@ -448,7 +454,7 @@ export namespace fs::dev::tty
 
         std::weak_ptr<instance> link;
 
-        instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc);
+        instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc);
         virtual ~instance();
 
         [[noreturn]]
@@ -456,18 +462,18 @@ export namespace fs::dev::tty
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto locked = ldisc.lock();
-            if (locked.value())
-                return locked.value()->read(std::move(file), buffer);
-            return std::unexpected { lib::err::io_error };
+            auto ld = ldisc.lock().value();
+            if (!ld)
+                return std::unexpected { lib::err::io_error };
+            return ld->read(std::move(file), buffer);
         }
 
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto locked = ldisc.lock();
-            if (locked.value())
-                return locked.value()->write(std::move(file), buffer);
-            return std::unexpected { lib::err::io_error };
+            auto ld = ldisc.lock().value();
+            if (!ld)
+                return std::unexpected { lib::err::io_error };
+            return ld->write(std::move(file), buffer);
         }
 
         virtual std::size_t transmit(std::span<std::byte> buffer) = 0;

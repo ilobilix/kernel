@@ -66,6 +66,8 @@ export namespace syscall::vfs
 
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
+    int fsync(int fd);
+
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);
 
@@ -73,7 +75,7 @@ export namespace syscall::vfs
     int dup2(int oldfd, int newfd);
     int dup3(int oldfd, int newfd, int flags);
 
-    char *getcwd(char __user *buf, std::size_t size);
+    int getcwd(char __user *buf, std::size_t size);
 
     int chdir(const char __user *pathname);
     int fchdir(int fd);

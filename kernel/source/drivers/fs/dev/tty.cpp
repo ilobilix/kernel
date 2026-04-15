@@ -507,8 +507,8 @@ namespace fs::dev::tty
         const auto termios = inst->termios.lock().value();
         const bool is_cooked = (termios.c_lflag & icanon) != 0;
 
-        const auto min = termios.vmin;
-        const auto time = termios.vtime;
+        const auto min = termios.c_cc[vmin];
+        const auto time = termios.c_cc[vtime];
 
         const auto get_available = [&](const auto &in_locked)
         {
@@ -796,20 +796,87 @@ namespace fs::dev::tty
                 if (!argp.read(inst->winsize.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
+            case tcgets:
+            {
+                const auto cur = inst->termios.lock().value();
+                utermios utios {
+                    .c_iflag = cur.c_iflag,
+                    .c_oflag = cur.c_oflag,
+                    .c_cflag = cur.c_cflag,
+                    .c_lflag = cur.c_lflag,
+                    .c_line = cur.c_line,
+                    .c_cc = { }
+                };
+                std::memcpy(utios.c_cc, cur.c_cc, sizeof(utios.c_cc));
+                if (!argp.write(utios))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tcsets:
+            case tcsetsw:
+            case tcsetsf:
+            {
+                utermios utios;
+                if (!argp.read(utios))
+                    return std::unexpected { lib::err::invalid_address };
+
+                if (request == tcsetsw || request == tcsetsf)
+                {
+                    // TODO: do it better
+                    while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
+                        sched::yield();
+                }
+
+                if (request == tcsetsf)
+                {
+                    auto in_locked = in_buffer.lock();
+                    in_locked->read_tail = in_locked->read_head;
+                    in_locked->cooked_head = in_locked->read_head;
+                }
+
+                auto wlocked = inst->termios.lock();
+                const auto old = wlocked.value();
+
+                wlocked->c_iflag = utios.c_iflag;
+                wlocked->c_oflag = utios.c_oflag;
+                wlocked->c_cflag = utios.c_cflag;
+                wlocked->c_lflag = utios.c_lflag;
+                wlocked->c_line = utios.c_line;
+                std::memcpy(wlocked->c_cc, utios.c_cc, sizeof(utios.c_cc));
+
+                inst->set_termios(wlocked.value(), old);
+                return 0;
+            }
             case tcgets2:
                 if (!argp.write(inst->termios.lock().value()))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
+            case tcsets2:
             case tcsetsw2:
+            case tcsetsf2:
             {
-                // TODO: do it better
-                while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
-                    sched::yield();
+                ktermios ktios;
+                if (!argp.read(ktios))
+                    return std::unexpected { lib::err::invalid_address };
+
+                if (request == tcsetsw2 || request == tcsetsf2)
+                {
+                    // TODO: do it better
+                    while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
+                        sched::yield();
+                }
+
+                if (request == tcsetsf2)
+                {
+                    auto in_locked = in_buffer.lock();
+                    in_locked->read_tail = in_locked->read_head;
+                    in_locked->cooked_head = in_locked->read_head;
+                }
 
                 auto wlocked = inst->termios.lock();
                 const auto old = wlocked.value();
-                if (!argp.read(wlocked.value()))
-                    return std::unexpected { lib::err::invalid_address };
+                wlocked.value() = ktios;
+
                 inst->set_termios(wlocked.value(), old);
                 return 0;
             }
@@ -855,7 +922,7 @@ namespace fs::dev::tty
         return mask;
     }
 
-    instance::instance(driver *drv, std::uint32_t minor, std::unique_ptr<line_discipline> ldisc)
+    instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
           termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { },
           raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { true }
@@ -901,15 +968,17 @@ namespace fs::dev::tty
                 continue;
             }
 
-            const auto locked = self->ldisc.lock();
-            if (locked.value())
-                locked.value()->receive(std::span { chunk.data(), num });
+            auto ld = self->ldisc.lock().value();
+            lib::bug_on(!ld);
+            ld->receive(std::span { chunk.data(), num });
         }
     }
 
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
-        const auto res = ldisc.lock()->get()->ioctl(request, argp);
+        auto ld = ldisc.lock().value();
+        lib::bug_on(!ld);
+        const auto res = ld->ioctl(request, argp);
         if (res.has_value() || (res.error() != lib::err::inappropriate_ioctl))
             return res;
 
@@ -919,7 +988,9 @@ namespace fs::dev::tty
 
     lib::expect<std::uint16_t> instance::poll(vfs::poll_table *pt)
     {
-        return ldisc.lock()->get()->poll(pt);
+        auto ld = ldisc.lock().value();
+        lib::bug_on(!ld);
+        return ld->poll(pt);
     }
 
     void instance::hangup()
@@ -933,8 +1004,9 @@ namespace fs::dev::tty
         // auto ctrl_locked = ctrl.lock();
         // TODO: send sighup to session leader (and sigcont)
 
-        auto ldisc_locked = ldisc.lock();
-        ldisc_locked.value()->hangup();
+        auto ld = ldisc.lock().value();
+        lib::bug_on(!ld);
+        ld->hangup();
     }
 
     struct ops : vfs::ops
@@ -979,7 +1051,10 @@ namespace fs::dev::tty
                     }
                     inst->ref.store(1, std::memory_order_relaxed);
                     locked->emplace(minor(rdev), inst);
-                    inst->ldisc.lock()->get()->open();
+
+                    auto ld = inst->ldisc.lock().value();
+                    lib::bug_on(!ld);
+                    ld->open();
                 }
             }
             file->private_data = inst;

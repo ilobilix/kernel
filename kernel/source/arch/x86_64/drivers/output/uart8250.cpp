@@ -234,7 +234,7 @@ namespace x86_64::output::uart8250
             }
 
             serial_instance(tty::driver *drv, std::uint32_t minor)
-                : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }
+                : instance { drv, minor, std::make_shared<tty::default_ldisc>(this) } { }
         };
 
         std::shared_ptr<fs::dev::tty::instance> create_instance(tty::driver *drv, std::uint32_t minor) override

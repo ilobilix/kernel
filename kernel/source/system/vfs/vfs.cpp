@@ -19,7 +19,8 @@ namespace vfs
             root->name = "/";
             root->parent = root;
             root->inode = std::make_shared<inode>();
-            root->inode->stat.st_mode = stat::s_ifdir;
+            root->inode->stat.st_mode = static_cast<mode_t>(stat::type::s_ifdir) |
+                (s_irwxu | s_irgrp | s_ixgrp | s_iroth | s_ixoth);
             return root;
         } ();
 

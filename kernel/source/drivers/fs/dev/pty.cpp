@@ -60,7 +60,7 @@ namespace fs::dev::pty
             };
 
             ptm_instance(driver *drv, std::uint32_t minor)
-                : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }
+                : instance { drv, minor, std::make_shared<tty::default_ldisc>(this) } { }
         };
 
         std::shared_ptr<tty::instance> create_instance(std::uint32_t minor) override
@@ -106,7 +106,7 @@ namespace fs::dev::pty
             };
 
             pts_instance(driver *drv, std::uint32_t minor)
-                : instance { drv, minor, std::make_unique<tty::default_ldisc>(this) } { }
+                : instance { drv, minor, std::make_shared<tty::default_ldisc>(this) } { }
         };
 
         std::shared_ptr<tty::instance> create_instance(std::uint32_t minor) override
