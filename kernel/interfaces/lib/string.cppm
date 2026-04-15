@@ -2,7 +2,6 @@
 
 export module lib:string;
 
-import :errno;
 import :types;
 import fmt;
 import std;
@@ -145,7 +144,7 @@ export namespace lib
 
         if (out_of_range)
         {
-            errno = ERANGE;
+            // errno = ERANGE;
             if constexpr (std::is_unsigned_v<Ret>)
                 return std::numeric_limits<Ret>::max();
             else

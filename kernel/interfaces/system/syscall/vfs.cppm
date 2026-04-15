@@ -10,7 +10,7 @@ import std;
 export namespace syscall::vfs
 {
     using namespace ::vfs;
-    std::optional<path> get_target(
+    lib::expect<path> get_target(
         sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     );

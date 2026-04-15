@@ -12,27 +12,29 @@ namespace syscall::memory
 {
     void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset)
     {
-        static void *invalid_addr = reinterpret_cast<void *>(-1);
+        const auto err_ptr = [](errnos err) {
+            return reinterpret_cast<void *>(-static_cast<std::intptr_t>(err));
+        };
 
         const bool priv = (flags & vmm::flag::private_);
         const bool shared = (flags & vmm::flag::shared);
         const bool anon = (flags & vmm::flag::anonymous);
 
         if (!(priv ^ shared) || (fd >= 0 && anon) || length == 0)
-            return (errno = EINVAL, invalid_addr);
+            return err_ptr(EINVAL);
 
         const auto psize = vmm::default_page_size();
         const auto npsize = vmm::pagemap::from_page_size(psize);
         if (offset % npsize != 0)
-            return (errno = EINVAL, invalid_addr);
+            return err_ptr(EINVAL);
 
         length = lib::align_up(length, npsize);
 
         if (anon && fd != -1)
-            return (errno = EINVAL, invalid_addr);
+            return err_ptr(EINVAL);
 
         if (!anon && fd < 0)
-            return (errno = EBADF, invalid_addr);
+            return err_ptr(EBADF);
 
         const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
@@ -46,15 +48,15 @@ namespace syscall::memory
         {
             auto fdesc = proc->fdt->get(static_cast<std::size_t>(fd));
             if (!fdesc)
-                return (errno = EBADF, invalid_addr);
+                return err_ptr(EBADF);
 
             const auto ret = fdesc->file->map();
             if (!ret.has_value())
-                return (errno = lib::map_error(ret.error()), invalid_addr);
+                return err_ptr(lib::map_error(ret.error()));
 
             obj = *ret;
             if (!obj)
-                return (errno = ENODEV, invalid_addr);
+                return err_ptr(ENODEV);
 
             const bool is_write = vfs::is_write(fdesc->file->flags);
             if (shared)
@@ -67,7 +69,7 @@ namespace syscall::memory
         else
         {
             if (offset != 0)
-                return (errno = EINVAL, invalid_addr);
+                return err_ptr(EINVAL);
             obj = new vmm::memobject { };
         }
 
@@ -77,7 +79,7 @@ namespace syscall::memory
         );
 
         if (!ret.has_value())
-            return (errno = lib::map_error(ret.error()), invalid_addr);
+            return err_ptr(lib::map_error(ret.error()));
 
         return reinterpret_cast<void *>(ret.value());
     }
@@ -91,7 +93,7 @@ namespace syscall::memory
             reinterpret_cast<std::uintptr_t>(addr),
             length
         );
-        return res ? 0 : (errno = lib::map_error(res.error()), -1);
+        return res ? 0 : -lib::map_error(res.error());
     }
 
     int mprotect(void *addr, std::size_t len, int prot)
@@ -104,7 +106,7 @@ namespace syscall::memory
             static_cast<std::uint8_t>(prot)
         );
 
-        return res ? 0 : (errno = lib::map_error(res.error()), -1);
+        return res ? 0 : -lib::map_error(res.error());
     }
 
     void *brk(void *addr)
@@ -163,6 +165,6 @@ namespace syscall::memory
     int mincore(std::size_t start, std::size_t len, unsigned char __user *vec)
     {
         lib::unused(start, len, vec);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 } // namespace syscall::memory

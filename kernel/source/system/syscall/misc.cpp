@@ -34,7 +34,7 @@ namespace syscall::misc
             .domainname = "(none)"
         };
         if (!lib::copy_to_user(buf, &kbuf, sizeof(utsname)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         return 0;
     }
 
@@ -46,7 +46,7 @@ namespace syscall::misc
         const auto umagic2 = static_cast<std::uint32_t>(magic2);
         if (umagic != 0xFEE1DEAD || (umagic2 != 0x28121969 && umagic2 != 0x05121996 &&
             umagic2 != 0x16041998 && umagic2 != 0x20112000))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         // TODO: only root can call reboot
         // TODO: actual reboot and shutdown
@@ -76,7 +76,7 @@ namespace syscall::misc
                 lib::panic("kexec not implemented");
                 break;
             default:
-                return (errno = EINVAL, -1);
+                return -EINVAL;
         }
         return 0;
     }
@@ -89,7 +89,7 @@ namespace syscall::misc
 
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, buflen);
         if (!uspan)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
         return lib::random_bytes(*uspan);
     }
 } // namespace syscall::misc

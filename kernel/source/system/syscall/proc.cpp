@@ -62,17 +62,17 @@ namespace syscall::proc
         if (ruid)
         {
             if (!lib::copy_to_user(ruid, &cred->ruid, sizeof(uid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         if (euid)
         {
             if (!lib::copy_to_user(euid, &cred->euid, sizeof(uid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         if (suid)
         {
             if (!lib::copy_to_user(suid, &cred->suid, sizeof(uid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         return 0;
     }
@@ -84,17 +84,17 @@ namespace syscall::proc
         if (rgid)
         {
             if (!lib::copy_to_user(rgid, &cred->rgid, sizeof(gid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         if (egid)
         {
             if (!lib::copy_to_user(egid, &cred->egid, sizeof(gid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         if (sgid)
         {
             if (!lib::copy_to_user(sgid, &cred->sgid, sizeof(gid_t)))
-                return (errno = EFAULT, -1);
+                return -EFAULT;
         }
         return 0;
     }
@@ -102,14 +102,14 @@ namespace syscall::proc
     pid_t getpgid(pid_t pid)
     {
         if (pid < 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (pid == 0)
             return sched::current_process()->group->pgid;
 
         const auto target = sched::get_process(pid);
         if (!target)
-            return (errno = ESRCH, -1);
+            return -ESRCH;
 
         return target->group->pgid;
     }
@@ -122,14 +122,14 @@ namespace syscall::proc
     pid_t getsid(pid_t pid)
     {
         if (pid < 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (pid == 0)
             return sched::current_process()->session->sid;
 
         const auto target = sched::get_process(pid);
         if (!target)
-            return (errno = ESRCH, -1);
+            return -ESRCH;
 
         return target->session->sid;
     }
@@ -143,28 +143,28 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(fsuid);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int setfsgid(gid_t fsgid)
     {
         // TODO
         lib::unused(fsgid);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int getgroups(int size, gid_t __user *list)
     {
         if (size < 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         auto uspan = lib::maybe_uspan<gid_t>::create(list, size);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = sched::getgroups(*uspan);
         if (!ret)
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         return *ret;
     }
 
@@ -172,15 +172,15 @@ namespace syscall::proc
     int setgroups(std::size_t size, const gid_t __user *list)
     {
         if (size > NGROUPS_MAX)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         auto uspan = lib::maybe_uspan<gid_t>::create(list, size);
         if (!uspan.has_value())
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         const auto ret = sched::setgroups(*uspan);
         if (!ret)
-            return (errno = lib::map_error(ret.error()), -1);
+            return -lib::map_error(ret.error());
         return 0;
     }
 
@@ -203,7 +203,7 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(signum, act, oldact);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int sigprocmask(
@@ -213,21 +213,21 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(how, set, oldset, sigsetsize);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int sigaltstack(const struct stack_t __user *ss, stack_t __user *old_ss)
     {
         // TODO
         lib::unused(ss, old_ss);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig)
     {
         // TODO
         lib::unused(rseq, rseq_len, flags, sig);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     long futex(
@@ -237,7 +237,7 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(uaddr, futex_op, val, timeout, uaddr2, val3);
-        // return (errno = ENOSYS, -1);
+        // return -ENOSYS;
         return 0;
     }
 
@@ -248,14 +248,14 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(pid, head_ptr, sizep);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     long set_robust_list(struct robust_list_head __user *head, std::size_t size)
     {
         // TODO
         lib::unused(head, size);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     struct rlimit
@@ -271,7 +271,7 @@ namespace syscall::proc
     {
         // TODO
         lib::unused(pid, resource, new_limit, old_limit);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 
     using enum sched::clone_flags;
@@ -283,7 +283,7 @@ namespace syscall::proc
     {
         const auto kflags = (flags & 0xFFFFFFFF) & ~csignal;
         if ((kflags & clone_pidfd) && (kflags & clone_parent_settid))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         return sched::clone({
             .flags = kflags,
@@ -321,36 +321,36 @@ namespace syscall::proc
 
         clone_args uargs { };
         if (size < 64)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (size > sizeof(clone_args))
-            return (errno = E2BIG, -1);
+            return -E2BIG;
 
         if (!lib::copy_from_user(&uargs, cl_args, size))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         if (uargs.set_tid_size > 32)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (!uargs.set_tid && uargs.set_tid_size > 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (uargs.set_tid && uargs.set_tid_size == 0)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((uargs.exit_signal & ~csignal) || uargs.exit_signal > 64 /* _NSIG */)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         constexpr auto max = std::numeric_limits<int>::max();
         constexpr std::size_t size_v2 = 88;
         if ((uargs.flags & clone_into_cgroup) && (uargs.cgroup > max || size < size_v2))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if (uargs.flags & clone_detached)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         if ((uargs.flags & (clone_thread | clone_parent)) && uargs.exit_signal)
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         sched::kclone_args_t kargs
         {
@@ -370,7 +370,7 @@ namespace syscall::proc
         const auto uset_tid = reinterpret_cast<int __user *>(uargs.set_tid);
         const auto uset_tid_size_bytes = uargs.set_tid_size * sizeof(pid_t);
         if (uargs.set_tid && !lib::copy_from_user(set_tid, uset_tid, uset_tid_size_bytes))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         return sched::clone(kargs);
     }
@@ -400,7 +400,7 @@ namespace syscall::proc
         using namespace vfs;
 
         if (flags & ~(at_symlink_nofollow | at_empty_path))
-            return (errno = EINVAL, -1);
+            return -EINVAL;
 
         const auto proc = sched::current_process();
 
@@ -409,7 +409,7 @@ namespace syscall::proc
 
         auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
-            return -1;
+            return -lib::map_error(target.error());
 
         const auto get_array = [](auto &vec, auto *uarray) {
             if (!uarray)
@@ -437,18 +437,18 @@ namespace syscall::proc
 
         std::vector<std::string> kargv;
         if (!get_array(kargv, argv))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         std::vector<std::string> kenvp;
         if (!get_array(kenvp, envp))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         std::string kpathname;
         if (pathname)
         {
             auto ret = lib::user_string::get(pathname);
             if (!ret.has_value())
-                return (errno = EFAULT, -1);
+                return -EFAULT;
             kpathname = std::move(*ret);
         }
 
@@ -476,7 +476,7 @@ namespace syscall::proc
         const auto ret = sched::waitpid(pid, options, &status);
 
         if (wstatus && !lib::copy_to_user(wstatus, &status, sizeof(int)))
-            return (errno = EFAULT, -1);
+            return -EFAULT;
 
         return ret;
     }
@@ -491,6 +491,6 @@ namespace syscall::proc
     int tgkill(pid_t tgid, pid_t tid, int sig)
     {
         lib::unused(tgid, tid, sig);
-        return (errno = ENOSYS, -1);
+        return -ENOSYS;
     }
 } // namespace syscall::proc

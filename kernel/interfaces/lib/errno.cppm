@@ -11,7 +11,4 @@ export
 {
     using enum errnos;
     using errnos = errnos;
-
-    using errno_type = errno_type;
-    extern "C++" errno_type errno;
 } // export

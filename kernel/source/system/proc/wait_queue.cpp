@@ -49,7 +49,7 @@ namespace sched
         if (ns == 0)
         {
             lock.unlock();
-            return sched::yield();
+            return yield();
         }
 
         sleep_entry_t timeout {
@@ -61,7 +61,7 @@ namespace sched
         arm_thread_timeout(&timeout, ns);
 
         lock.unlock();
-        const bool interrupted = sched::yield();
+        const bool interrupted = yield();
         if (timeout.expired)
         {
             lock.lock();
@@ -99,7 +99,7 @@ namespace sched
         if (ns == 0)
         {
             lock.unlock();
-            sched::yield();
+            yield();
             return;
         }
 
@@ -112,7 +112,7 @@ namespace sched
         arm_thread_timeout(&timeout, ns);
 
         lock.unlock();
-        sched::yield();
+        yield();
 
         if (timeout.expired)
         {

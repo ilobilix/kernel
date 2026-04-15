@@ -2,7 +2,6 @@
 
 export module lib:syscall;
 
-import :errno;
 import :log;
 import :types;
 import :string;
@@ -66,6 +65,7 @@ namespace lib::syscall
             : name { name }, handler { reinterpret_cast<void *>(func) }, log_exit { log_exit },
             invoker {
                 [](cpu::registers *regs, std::string_view name, void *handler, bool log_exit)
+                    -> std::uintptr_t
                 {
                     using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
                     constexpr bool is_void = std::same_as<typename sign::return_type, void>;
@@ -97,21 +97,15 @@ namespace lib::syscall
                     lib::unused(log_exit);
 #endif
 
-                    const auto check = [&](auto value) {
-                        return is_void || static_cast<std::intptr_t>(value) < 0;
-                    };
-                    std::uintptr_t uptr_ret = 0;
-
-                    errno = no_error;
+                    std::intptr_t iptr_ret = 0;
                     if constexpr (!is_void)
                     {
                         const auto ret = std::apply(reinterpret_cast<sign::type *>(handler), args);
-                        uptr_ret = std::uintptr_t(ret);
+                        iptr_ret = std::uintptr_t(ret);
                     }
                     else std::apply(reinterpret_cast<sign::type *>(handler), args);
 
-                    const auto error = magic_enum::enum_cast<errnos>(errno);
-                    if (error.has_value() && check(uptr_ret))
+                    if (iptr_ret < 0)
                     {
 #if ILOBILIX_SYSCALL_LOG
                         lib::debug(
@@ -119,7 +113,7 @@ namespace lib::syscall
                             magic_enum::enum_name(error.value())
                         );
 #endif
-                        return static_cast<std::uintptr_t>(-errno);
+                        return iptr_ret;
                     }
 #if ILOBILIX_SYSCALL_LOG
                     if (log_exit)
@@ -134,8 +128,8 @@ namespace lib::syscall
                     }
 #endif
                     if constexpr (is_void)
-                        return 0ul;
-                    return uptr_ret;
+                        return 0;
+                    return iptr_ret;
                 }
             } { }
 

@@ -13,9 +13,11 @@ namespace x86_64::syscall::arch
     {
         const auto thread = sched::current_thread();
         const auto address = reinterpret_cast<std::uintptr_t>(addr);
+
         const auto space = lib::classify_address(address, sizeof(unsigned long));
         if (space != lib::address_space::user)
-            return (errno = EFAULT, -1);
+            return -EFAULT;
+
         switch (op)
         {
             case 0x1001: // ARCH_SET_GS
@@ -26,15 +28,15 @@ namespace x86_64::syscall::arch
                 break;
             case 0x1003: // ARCH_GET_FS
                 if (!lib::copy_to_user(addr, &thread->adata.fs_base, sizeof(unsigned long)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
                 break;
             case 0x1004: // ARCH_GET_GS
                 if (!lib::copy_to_user(addr, &thread->adata.gs_base, sizeof(unsigned long)))
-                    return (errno = EFAULT, -1);
+                    return -EFAULT;
                 break;
             default:
                 lib::error("arch_prctl: unhandled operation: 0x{:X}", op);
-                return (errno = EINVAL, -1);
+                return -EINVAL;
         }
         return 0;
     }

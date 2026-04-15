@@ -909,15 +909,15 @@ namespace vfs
     int fdtable::dup(int oldfd, int newfd, bool closexec, bool force)
     {
         if (oldfd < 0 || newfd < 0)
-            return (errno = EBADF, -1);
+            return -EBADF;
         auto fdesc = get(oldfd);
         if (!fdesc)
-            return (errno = EBADF, -1);
+            return -EBADF;
 
         auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
         const auto fd = alloc(std::move(newfdesc), newfd, force);
         if (fd < 0)
-            return (errno = EMFILE, -1);
+            return -EMFILE;
         fdesc->file->ref.fetch_add(1);
         return fd;
     }
