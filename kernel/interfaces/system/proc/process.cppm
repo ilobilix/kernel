@@ -10,32 +10,11 @@ import system.vfs;
 import lib;
 import std;
 
+import :signal;
 import :thread;
 
 export namespace sched
 {
-    constexpr std::size_t nsig = 64;
-
-    // TODO
-    struct signal_action_t;
-    struct signal_actions_t
-    {
-        // signal_action_t actions[64];
-        lib::spinlock lock;
-
-        std::shared_ptr<signal_actions_t> clone() const
-        {
-            auto cloned = std::make_shared<signal_actions_t>();
-            // TODO
-            return cloned;
-        }
-    };
-
-    struct signal_queue_t
-    {
-        lib::spinlock lock;
-    };
-
     struct group_t;
     struct session_t;
 

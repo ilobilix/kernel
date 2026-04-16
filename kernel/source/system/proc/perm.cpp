@@ -102,7 +102,8 @@ namespace sched
 
     bool check_kill(int sig, const process_t *target)
     {
-        const auto &cred = current_process()->cred;
+        const auto proc = current_process();
+        const auto &cred = proc->cred;
         if (capable(cred, cap_t::kill))
             return true;
 
@@ -111,9 +112,8 @@ namespace sched
             cred->ruid == tcred->euid || cred->ruid == tcred->suid)
             return true;
 
-        // if (sig == SIGCONT && current_session == target_session)
-        //     return true;
-        lib::unused(sig);
+        if (sig == sigcont && proc->session == target->session)
+            return true;
 
         return false;
     }
@@ -304,6 +304,48 @@ namespace sched
         return { };
     }
 
+    uid_t setfsuid(uid_t fsuid)
+    {
+        auto process = current_process();
+        const auto &old_cred = process->cred;
+        const uid_t old_fsuid = old_cred->fsuid;
+
+        if (fsuid == old_cred->ruid || fsuid == old_cred->euid ||
+            fsuid == old_cred->suid || fsuid == old_cred->fsuid ||
+            capable(old_cred, cap_t::setuid))
+        {
+            if (fsuid != old_cred->fsuid)
+            {
+                auto new_cred = old_cred->clone();
+                new_cred->fsuid = fsuid;
+                set_creds(process, std::move(new_cred));
+            }
+        }
+
+        return old_fsuid;
+    }
+
+    gid_t setfsgid(gid_t fsgid)
+    {
+        auto process = current_process();
+        const auto &old_cred = process->cred;
+        const gid_t old_fsgid = old_cred->fsgid;
+
+        if (fsgid == old_cred->rgid || fsgid == old_cred->egid ||
+            fsgid == old_cred->sgid || fsgid == old_cred->fsgid ||
+            capable(old_cred, cap_t::setgid))
+        {
+            if (fsgid != old_cred->fsgid)
+            {
+                auto new_cred = old_cred->clone();
+                new_cred->fsgid = fsgid;
+                set_creds(process, std::move(new_cred));
+            }
+        }
+
+        return old_fsgid;
+    }
+
     lib::expect<void> setgroups(lib::maybe_uspan<gid_t> groups)
     {
         auto process = current_process();
@@ -325,16 +367,16 @@ namespace sched
     {
         auto process = current_process();
         const auto &cred = process->cred;
-        if (cred->supp_gids.gids.empty())
+        auto &gids = cred->supp_gids.gids;
+        if (gids.empty())
             return 0;
 
-        auto &gids = cred->supp_gids.gids;
         if (const auto size = groups.size())
         {
             if (size < gids.size())
                 return std::unexpected { lib::err::invalid_length };
 
-            std::span<gid_t> span { gids.data(), size };
+            std::span<gid_t> span { gids.data(), gids.size() };
             if (!groups.copy_from(span))
                 return std::unexpected { lib::err::invalid_address };
         }

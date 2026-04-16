@@ -49,6 +49,9 @@ export namespace lib
         public:
         static std::optional<maybe_uspan<Type>> create(Type __user *ptr, std::size_t len)
         {
+            if (len == 0)
+                return maybe_uspan<Type> { true, std::span<Type> { } };
+
             const auto space = classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
             if (space != address_space::user)
                 return std::nullopt;
@@ -57,6 +60,9 @@ export namespace lib
 
         static std::optional<maybe_uspan<Type>> create(Type *ptr, std::size_t len)
         {
+            if (len == 0)
+                return maybe_uspan<Type> { false, std::span<Type> { } };
+
             const auto space = classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
             if (space != address_space::kernel)
                 return std::nullopt;

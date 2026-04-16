@@ -8,6 +8,7 @@ import system.sched;
 import system.memory.virt;
 import system.cpu.regs;
 import system.cpu.arch;
+import magic_enum;
 import arch;
 import lib;
 import std;
@@ -47,11 +48,6 @@ namespace syscall::proc
         return 0;
     }
 
-    uid_t geteuid()
-    {
-        return sched::current_process()->cred->euid;
-    }
-
     gid_t getgid()
     {
         return sched::current_process()->cred->rgid;
@@ -62,6 +58,11 @@ namespace syscall::proc
         if (const auto ret = sched::setgid(gid); !ret)
             return -lib::map_error(ret.error());
         return 0;
+    }
+
+    uid_t geteuid()
+    {
+        return sched::current_process()->cred->euid;
     }
 
     gid_t getegid()
@@ -91,6 +92,13 @@ namespace syscall::proc
         return 0;
     }
 
+    int setresuid(uid_t ruid, uid_t euid, uid_t suid)
+    {
+        if (const auto ret = sched::setresuid(ruid, euid, suid); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
     int getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid)
     {
         auto proc = sched::current_process();
@@ -110,6 +118,13 @@ namespace syscall::proc
             if (!lib::copy_to_user(sgid, &cred->sgid, sizeof(gid_t)))
                 return -EFAULT;
         }
+        return 0;
+    }
+
+    int setresgid(gid_t rgid, gid_t egid, gid_t sgid)
+    {
+        if (const auto ret = sched::setresgid(rgid, egid, sgid); !ret)
+            return -lib::map_error(ret.error());
         return 0;
     }
 
@@ -155,16 +170,12 @@ namespace syscall::proc
 
     int setfsuid(uid_t fsuid)
     {
-        // TODO
-        lib::unused(fsuid);
-        return -ENOSYS;
+        return sched::setfsuid(fsuid);
     }
 
     int setfsgid(gid_t fsgid)
     {
-        // TODO
-        lib::unused(fsgid);
-        return -ENOSYS;
+        return sched::setfsgid(fsgid);
     }
 
     int getgroups(int size, gid_t __user *list)
@@ -205,32 +216,141 @@ namespace syscall::proc
         return thread->tid;
     }
 
-    mode_t umask(mode_t mask)
+    int kill(pid_t pid, int sig)
     {
-        const auto proc = sched::current_process();
-        const auto ret = proc->vfs->umask;
-        proc->vfs->umask = mask & 0777;
-        return ret;
+        return sched::kill(pid, sig);
     }
 
-    int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact)
+    int tgkill(pid_t tgid, pid_t tid, int sig)
     {
-        // TODO
-        lib::unused(signum, act, oldact);
-        return -ENOSYS;
+        using namespace sched;
+
+        if (sig < 0 || sig > static_cast<int>(nsig))
+            return -EINVAL;
+
+        if (tgid <= 0 || tid <= 0)
+            return -EINVAL;
+
+        const auto target_proc = get_process(tgid);
+        if (!target_proc)
+            return -ESRCH;
+
+        thread_t *target_thread = nullptr;
+        {
+            auto locked = target_proc->threads.lock();
+            auto it = locked->find(tid);
+            if (it != locked->end())
+                target_thread = it->second;
+        }
+        if (!target_thread)
+            return -ESRCH;
+
+        if (!check_kill(sig, target_proc))
+            return -EPERM;
+
+        if (sig == 0)
+            return 0;
+
+        const auto caller = current_process();
+        siginfo_t info {
+            .signo = sig,
+            .code = si_tkill,
+            .err = 0,
+            .pid = caller->pid,
+            .uid = caller->cred->ruid,
+            .status = 0,
+            .addr = 0,
+            .value = 0,
+        };
+        return send_signal(target_thread, info) ? 0 : -ESRCH;
     }
 
-    int sigprocmask(
-        int how, const struct sigset_t __user *set,
-        struct sigset_t __user *oldset, std::size_t sigsetsize
+    int rt_sigaction(
+        int signum, const sched::sigaction_t __user *act,
+        sched::sigaction_t __user *oldact, std::size_t sigsetsize
     )
     {
-        // TODO
-        lib::unused(how, set, oldset, sigsetsize);
-        return -ENOSYS;
+        using namespace sched;
+
+        if (sigsetsize != sizeof(sigset_t))
+            return -EINVAL;
+
+        if (signum < 1 || signum > static_cast<int>(nsig))
+            return -EINVAL;
+
+        if (signum == sigkill || signum == sigstop)
+            return -EINVAL;
+
+        sigaction_t newact { };
+        if (act)
+        {
+            if (!lib::copy_from_user(&newact, act, sizeof(sigaction_t)))
+                return -EFAULT;
+            newact.mask &= ~sigmask_uncatchable;
+        }
+
+        sigaction_t old;
+        {
+            auto &sigacts = current_process()->sigactions;
+            const std::unique_lock _ { sigacts->lock };
+            old = sigacts->actions[signum - 1];
+            if (act)
+                sigacts->actions[signum - 1] = newact;
+        }
+
+        if (oldact && !lib::copy_to_user(oldact, &old, sizeof(sigaction_t)))
+            return -EFAULT;
+
+        return 0;
     }
 
-    int sigaltstack(const struct stack_t __user *ss, stack_t __user *old_ss)
+    int rt_sigprocmask(
+        int how, const sched::sigset_t __user *set,
+        sched::sigset_t __user *oldset, std::size_t sigsetsize
+    )
+    {
+        using namespace sched;
+
+        if (sigsetsize != sizeof(sigset_t))
+            return -EINVAL;
+
+        if (how < sig_block || how > sig_setmask)
+            return -EINVAL;
+
+        sigset_t kset;
+        if (set)
+        {
+            if (!lib::copy_from_user(&kset, set, sizeof(sigset_t)))
+                return -EFAULT;
+            kset &= ~sigmask_uncatchable;
+        }
+
+        auto &sigmask = current_thread()->sigmask;
+        const sigset_t old = sigmask;
+
+        if (set)
+        {
+            switch (how)
+            {
+                case sig_block:
+                    sigmask |= kset;
+                    break;
+                case sig_unblock:
+                    sigmask &= ~kset;
+                    break;
+                case sig_setmask:
+                    sigmask = kset;
+                    break;
+            }
+        }
+
+        if (oldset && !lib::copy_to_user(oldset, &old, sizeof(sigset_t)))
+            return -EFAULT;
+
+        return 0;
+    }
+
+    int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss)
     {
         // TODO
         lib::unused(ss, old_ss);
@@ -499,12 +619,5 @@ namespace syscall::proc
     {
         sched::process_exit(status);
         std::unreachable();
-    }
-
-    // TODO: stub
-    int tgkill(pid_t tgid, pid_t tid, int sig)
-    {
-        lib::unused(tgid, tid, sig);
-        return -ENOSYS;
     }
 } // namespace syscall::proc

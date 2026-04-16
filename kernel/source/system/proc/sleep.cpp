@@ -91,4 +91,23 @@ namespace sched
         thread->state = thread_state::blocked;
         schedule();
     }
+
+    void expire_timeouts()
+    {
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        auto locked = sleep_list.lock();
+        auto it = locked->begin();
+        while (it != locked->end())
+        {
+            auto entry = (it++).value();
+            if (entry->deadline_ns > now)
+                break;
+
+            locked->remove(entry);
+            entry->expired = true;
+            wake_up(entry->thread, false);
+        }
+    }
 } // namespace sched

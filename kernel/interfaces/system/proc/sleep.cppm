@@ -32,3 +32,8 @@ export namespace sched
     // put the current thread to uninterruptible sleep
     void block();
 } // export namespace sched
+
+namespace sched
+{
+    void expire_timeouts();
+} // namespace sched

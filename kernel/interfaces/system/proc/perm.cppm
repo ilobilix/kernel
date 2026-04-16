@@ -40,6 +40,9 @@ export namespace sched
     lib::expect<void> setregid(gid_t rgid, gid_t egid);
     lib::expect<void> setresgid(gid_t rgid, gid_t egid, gid_t sgid);
 
+    uid_t setfsuid(uid_t fsuid);
+    gid_t setfsgid(gid_t fsgid);
+
     lib::expect<void> setgroups(lib::maybe_uspan<gid_t> groups);
     lib::expect<std::size_t> getgroups(lib::maybe_uspan<gid_t> groups);
 

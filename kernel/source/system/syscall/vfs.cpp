@@ -154,6 +154,14 @@ namespace syscall::vfs
         return target;
     }
 
+    mode_t umask(mode_t mask)
+    {
+        const auto proc = sched::current_process();
+        const auto ret = proc->vfs->umask;
+        proc->vfs->umask = mask & 0777;
+        return ret;
+    }
+
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
         const auto proc = sched::current_process();

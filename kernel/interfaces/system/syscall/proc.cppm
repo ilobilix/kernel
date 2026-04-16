@@ -2,6 +2,7 @@
 
 export module system.syscall.proc;
 
+import system.sched;
 import lib;
 import std;
 
@@ -15,19 +16,22 @@ export namespace syscall::proc
     uid_t getuid();
     int setuid(uid_t uid);
 
-    uid_t geteuid();
-
     gid_t getgid();
     int setgid(gid_t gid);
 
+    uid_t geteuid();
     gid_t getegid();
 
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid);
+    int setresuid(uid_t ruid, uid_t euid, uid_t suid);
+
     int getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid);
+    int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
 
     pid_t getpgid(pid_t pid);
     int setpgid(pid_t pid, pid_t pgid);
 
+    pid_t getsid(pid_t pid);
     pid_t setsid();
 
     int setfsuid(uid_t fsuid);
@@ -38,14 +42,18 @@ export namespace syscall::proc
 
     int set_tid_address(int __user *tidptr);
 
-    mode_t umask(mode_t mask);
+    int kill(pid_t pid, int sig);
+    int tgkill(pid_t tgid, pid_t tid, int sig);
 
-    int sigaction(int signum, const struct sigaction __user *act, struct sigaction __user *oldact);
-    int sigprocmask(
-        int how, const struct sigset_t __user *set,
-        struct sigset_t __user *oldset, std::size_t sigsetsize
+    int rt_sigaction(
+        int signum, const sched::sigaction_t __user *act,
+        sched::sigaction_t __user *oldact, std::size_t sigsetsize
     );
-    int sigaltstack(const struct stack_t __user *ss, stack_t __user *old_ss);
+    int rt_sigprocmask(
+        int how, const sched::sigset_t __user *set,
+        sched::sigset_t __user *oldset, std::size_t sigsetsize
+    );
+    int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss);
 
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig);
 
@@ -87,6 +95,4 @@ export namespace syscall::proc
     pid_t wait4(pid_t pid, int __user *wstatus, int options, struct rusage __user *rusage);
 
     [[noreturn]] void exit_group(int status);
-
-    int tgkill(pid_t tgid, pid_t tid, int sig);
 } // export namespace syscall::proc

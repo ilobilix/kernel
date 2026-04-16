@@ -44,6 +44,8 @@ void kthread()
         proc->fdt = std::make_shared<vfs::fdtable>();
         proc->cred = sched::cred_t::root();
 
+        proc->sigactions = std::make_shared<sched::signal_actions_t>();
+
         lib::path_view tty_path { "/dev/ttyS0" };
         ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())

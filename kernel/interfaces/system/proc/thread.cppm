@@ -13,6 +13,7 @@ import std;
 
 import :arch;
 import :nice;
+import :signal;
 
 export namespace sched
 {
@@ -87,6 +88,10 @@ export namespace sched
 
         std::uintptr_t clear_child_tid = 0;
         std::uintptr_t set_child_tid = 0;
+
+        sigset_t sigmask { };
+        std::optional<sigset_t> saved_sigmask;
+        stack_t altstack { };
 
         inline bool is_kernel() const
         {

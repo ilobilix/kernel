@@ -15,6 +15,8 @@ export namespace syscall::vfs
         bool follow_links, bool empty_path, bool automount
     );
 
+    mode_t umask(mode_t mask);
+
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode);
     int open(const char __user *pathname, int flags, mode_t mode);
     int creat(const char __user *pathname, mode_t mode);
