@@ -156,8 +156,14 @@ export namespace sched
     {
         si_user = 0,
         si_kernel = 0x80,
-        si_queue = -1,
-        si_tkill = -6
+        // si_queue = -1,
+        si_tkill = -6,
+        // cld_exited = 1,
+        // cld_killed = 2,
+        // cld_dumped = 3,
+        // cld_trapped = 4,
+        cld_stopped = 5,
+        cld_continued = 6
     };
 
     struct siginfo_t

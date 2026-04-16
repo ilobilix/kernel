@@ -78,6 +78,10 @@ export namespace sched
         bool is_zombie = false;
         bool has_execved = false;
 
+        int pending_stop_sig = 0;
+        bool pending_continued = false;
+        lib::spinlock report_lock;
+
         wait_queue_t wait_child;
 
         recursive_mutex lock;
