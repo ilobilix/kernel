@@ -238,7 +238,7 @@ namespace sched
         auto thread = current_thread();
         if (!arch::restore_sigframe(thread, thread->saved_regs))
             process_exit(128 + sigsegv);
-        return thread->saved_regs->rax;
+        return thread->saved_regs->ret();
     }
 
     void handle_pending_signals(cpu::registers *regs)
