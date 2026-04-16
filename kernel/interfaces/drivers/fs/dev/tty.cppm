@@ -284,6 +284,7 @@ export namespace fs::dev::tty
         tcsets = 0x5402,
         tcsetsw = 0x5403,
         tcsetsf = 0x5404,
+        tcxonc = 0x540A,
         tiocgpgrp = 0x540F,
         tiocspgrp = 0x5410,
         tiocgwinsz = 0x5413,
@@ -294,6 +295,14 @@ export namespace fs::dev::tty
         tcsets2 = 0x402C542B,
         tcsetsw2 = 0x402C542C,
         tcsetsf2 = 0x402C542D
+    };
+
+    enum tcflow
+    {
+        tcooff = 0,
+        tcoon = 1,
+        tcioff = 2,
+        tcion = 3
     };
 
     struct instance;
