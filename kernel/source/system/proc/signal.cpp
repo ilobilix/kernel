@@ -34,7 +34,26 @@ namespace sched
             }
         }
 
-        void stop_process(process_t *proc)
+        void notify_parent(process_t *proc, int code, int status)
+        {
+            if (!proc->parent)
+                return;
+
+            siginfo_t info {
+                .signo = sigchld,
+                .code = code,
+                .err = 0,
+                .pid = proc->pid,
+                .uid = 0,
+                .status = status,
+                .addr = 0,
+                .value = 0
+            };
+            send_signal(proc->parent, info);
+            proc->parent->wait_child.wake_one();
+        }
+
+        void stop_process(process_t *proc, int sig)
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
@@ -55,6 +74,13 @@ namespace sched
                         break;
                 }
             }
+
+            {
+                const std::unique_lock _ { proc->report_lock };
+                proc->pending_stop_sig = sig;
+                proc->pending_continued = false;
+            }
+            notify_parent(proc, cld_stopped, sig);
         }
 
         void continue_process(process_t *proc)
@@ -75,6 +101,34 @@ namespace sched
                         wake_up(thread, true);
                         break;
                 }
+            }
+
+            {
+                const std::unique_lock _ { proc->report_lock };
+                proc->pending_stop_sig = 0;
+                proc->pending_continued = true;
+            }
+            notify_parent(proc, cld_continued, sigcont);
+        }
+
+        bool is_stop_signal(int sig)
+        {
+            return sig == sigstop || sig == sigtstp || sig == sigttin || sig == sigttou;
+        }
+
+        void drop_queued(process_t *proc, auto &&pred)
+        {
+            const std::unique_lock _ { proc->sigqueue.lock };
+            auto it = proc->sigqueue.queue.begin();
+            while (it != proc->sigqueue.queue.end())
+            {
+                auto next = std::next(it);
+                if (pred(it->info.signo))
+                {
+                    proc->sigqueue.pending.rem(it->info.signo);
+                    proc->sigqueue.queue.erase(it);
+                }
+                it = next;
             }
         }
 
@@ -114,6 +168,12 @@ namespace sched
             return false;
 
         auto proc = thread->proc;
+
+        if (sig == sigcont)
+            drop_queued(proc, is_stop_signal);
+        else if (is_stop_signal(sig))
+            drop_queued(proc, [](int sig) { return sig == sigcont; });
+
         {
             const std::unique_lock _ { proc->sigqueue.lock };
 
@@ -124,6 +184,9 @@ namespace sched
                 proc->sigqueue.queue.emplace_back(info);
             }
         }
+
+        if (sig == sigcont)
+            continue_process(proc);
 
         thread->flags |= thread_flags::signal_pending;
         wake_for_signal(thread, sig);
@@ -225,11 +288,10 @@ namespace sched
                     case default_action::core:
                         process_exit(128 + sig);
                     case default_action::stop:
-                        stop_process(proc);
+                        stop_process(proc, sig);
                         yield();
                         continue;
                     case default_action::cont:
-                        continue_process(proc);
                         continue;
                 }
                 continue;

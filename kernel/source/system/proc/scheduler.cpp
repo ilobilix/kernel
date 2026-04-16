@@ -1517,6 +1517,39 @@ namespace sched
                     return cpid;
                 }
 
+                if (options & (wuntraced | wcontinued))
+                {
+                    for (auto &[cpid, child] : *locked)
+                    {
+                        if (!matches(child))
+                            continue;
+
+                        const std::unique_lock _ { child->report_lock };
+
+                        if ((options & wuntraced) && child->pending_stop_sig != 0)
+                        {
+                            const int sig = child->pending_stop_sig;
+                            if (!(options & wnowait))
+                                child->pending_stop_sig = 0;
+
+                            if (status != nullptr)
+                                *status = (sig << 8) | 0x7F;
+                            return child->pid;
+                        }
+
+                        if ((options & wcontinued) && child->pending_continued)
+                        {
+                            if (!(options & wnowait))
+                                child->pending_continued = false;
+
+                            if (status != nullptr)
+                                *status = 0xFFFF;
+
+                            return child->pid;
+                        }
+                    }
+                }
+
                 bool any = false;
                 for (auto &[pid, child] : *locked)
                 {
@@ -1533,7 +1566,8 @@ namespace sched
             if (no_hang)
                 return 0;
 
-            proc->wait_child.wait_unint();
+            if (proc->wait_child.wait())
+                return -EINTR;
         }
     }
 
