@@ -13,5 +13,6 @@ export namespace cpu
 
         std::uintptr_t fp() { return rbp; }
         std::uintptr_t ip() { return rip; }
+        std::uintptr_t ret() { return rax; }
     };
 } // export namespace cpu
