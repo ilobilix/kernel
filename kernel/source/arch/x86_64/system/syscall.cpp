@@ -39,8 +39,8 @@ namespace x86_64::syscall
         [10] = { "mprotect", memory::mprotect },
         [11] = { "munmap", memory::munmap },
         [12] = { "brk", memory::brk, true },
-        [13] = { "sigaction", proc::sigaction },
-        [14] = { "sigprocmask", proc::sigprocmask },
+        [13] = { "rt_sigaction", proc::rt_sigaction },
+        [14] = { "rt_sigprocmask", proc::rt_sigprocmask },
         [16] = { "ioctl", vfs::ioctl },
         [17] = { "pread", vfs::pread, true },
         [18] = { "pwrite", vfs::pwrite, true },
@@ -59,6 +59,7 @@ namespace x86_64::syscall
         [58] = { "vfork", proc::vfork, true },
         [59] = { "execve", proc::execve },
         [61] = { "wait4", proc::wait4, true },
+        [62] = { "kill", proc::kill },
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl, true },
         [74] = { "fsync", vfs::fsync },
@@ -74,7 +75,7 @@ namespace x86_64::syscall
         [92] = { "chown", vfs::chown },
         [93] = { "fchown", vfs::fchown },
         [94] = { "lchown", vfs::lchown },
-        [95] = { "umask", proc::umask, true },
+        [95] = { "umask", vfs::umask, true },
         [96] = { "gettimeofday", chrono::gettimeofday },
         [102] = { "getuid", proc::getuid, true },
         [104] = { "getgid", proc::getgid, true },
@@ -88,11 +89,14 @@ namespace x86_64::syscall
         [112] = { "setsid", proc::setsid, true },
         [115] = { "getgroups", proc::getgroups, true },
         [116] = { "setgroups", proc::setgroups },
+        [117] = { "setresuid", proc::setresuid },
         [118] = { "getresuid", proc::getresuid },
+        [119] = { "setresgid", proc::setresgid },
         [120] = { "getresgid", proc::getresgid },
         [121] = { "getpgid", proc::getpgid, true },
         [122] = { "setfsuid", proc::setfsuid, true },
         [123] = { "setfsgid", proc::setfsgid, true },
+        [124] = { "getsid", proc::getsid, true },
         [131] = { "sigaltstack", proc::sigaltstack },
         [157] = { "prctl", misc::prctl, true },
         [158] = { "arch_prctl", arch::arch_prctl },
@@ -147,6 +151,8 @@ namespace x86_64::syscall
 
         sched::current_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
+
+        sched::handle_pending_signals(regs);
     }
 
     void init_cpu()

@@ -109,7 +109,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a regular file '{}': {}",
+                                "ustar: could not create regular file '{}': {}",
                                 name, lib::error_name(ret.error())
                             );
                             break;
@@ -125,7 +125,7 @@ namespace initramfs
                         if (const auto res = file->pwrite(0, data); !res.has_value() || res.value() != size)
                         {
                             lib::error(
-                                "ustar: could not write to a regular file '{}': {}",
+                                "ustar: could not write to regular file '{}': {}",
                                 name, res.has_value() ? "size mismatch" : lib::error_name(res.error())
                             );
 
@@ -147,7 +147,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a hardlink '{}' -> '{}': {}",
+                                "ustar: could not create hardlink '{}' -> '{}': {}",
                                 name, linkname, lib::error_name(ret.error())
                             );
                             break;
@@ -161,7 +161,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a symlink '{}' -> '{}': {}",
+                                "ustar: could not create symlink '{}' -> '{}': {}",
                                 name, linkname, lib::error_name(ret.error())
                             );
                             break;
@@ -175,7 +175,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a character device file '{}': {}",
+                                "ustar: could not create character device file '{}': {}",
                                 name, lib::error_name(ret.error())
                             );
                             break;
@@ -189,7 +189,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a block device file '{}': {}",
+                                "ustar: could not create block device file '{}': {}",
                                 name, lib::error_name(ret.error())
                             );
                             break;
@@ -203,7 +203,7 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create a directory '{}': {}",
+                                "ustar: could not create directory '{}': {}",
                                 name, lib::error_name(ret.error())
                             );
                             break;

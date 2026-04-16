@@ -49,7 +49,12 @@ namespace sched
         if (ns == 0)
         {
             lock.unlock();
-            return yield();
+            const bool interrupted = yield();
+            lock.lock();
+            if (entries.find(&entry) != entries.end())
+                entries.remove(&entry);
+            lock.unlock();
+            return interrupted;
         }
 
         sleep_entry_t timeout {
@@ -62,14 +67,13 @@ namespace sched
 
         lock.unlock();
         const bool interrupted = yield();
-        if (timeout.expired)
-        {
-            lock.lock();
-            if (entries.find(&entry) != entries.end())
-                entries.remove(&entry);
-            lock.unlock();
-        }
-        else cancel_thread_timeout(&timeout);
+        if (!timeout.expired)
+            cancel_thread_timeout(&timeout);
+
+        lock.lock();
+        if (entries.find(&entry) != entries.end())
+            entries.remove(&entry);
+        lock.unlock();
 
         return interrupted;
     }
@@ -100,6 +104,10 @@ namespace sched
         {
             lock.unlock();
             yield();
+            lock.lock();
+            if (entries.find(&entry) != entries.end())
+                entries.remove(&entry);
+            lock.unlock();
             return;
         }
 
@@ -114,14 +122,13 @@ namespace sched
         lock.unlock();
         yield();
 
-        if (timeout.expired)
-        {
-            lock.lock();
-            if (entries.find(&entry) != entries.end())
-                entries.remove(&entry);
-            lock.unlock();
-        }
-        else cancel_thread_timeout(&timeout);
+        if (!timeout.expired)
+            cancel_thread_timeout(&timeout);
+
+        lock.lock();
+        if (entries.find(&entry) != entries.end())
+            entries.remove(&entry);
+        lock.unlock();
     }
 
     void wait_queue_t::wake_one(bool drop)

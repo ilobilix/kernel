@@ -190,4 +190,74 @@ namespace sched::arch
     {
         sched_return_to_user(ip, stack);
     }
+
+    bool in_user_mode(const cpu::registers *regs)
+    {
+        return (regs->cs & 3) == 3;
+    }
+
+    bool setup_sigframe(
+        thread_t *thread, cpu::registers *regs,
+        int sig, const siginfo_t &info, const sigaction_t &action
+    )
+    {
+        auto sp = regs->rsp;
+        if ((action.flags & sa_onstack) && thread->altstack.sp != 0 && thread->altstack.size > 0)
+            sp = thread->altstack.sp + thread->altstack.size;
+
+        sp -= 128;
+        auto frame_addr = (sp - sizeof(sigframe_t)) & ~0xFul;
+        frame_addr -= 8;
+
+        sigframe_t kf { };
+        kf.pretcode = action.restorer;
+        kf.info = info;
+
+        kf.uc.uc_flags = 0;
+        kf.uc.uc_link = nullptr;
+        kf.uc.uc_stack = thread->altstack;
+        kf.uc.uc_sigmask = thread->sigmask;
+
+        auto &mc = kf.uc.uc_mcontext;
+        mc.r15 = regs->r15;
+        mc.r14 = regs->r14;
+        mc.r13 = regs->r13;
+        mc.r12 = regs->r12;
+        mc.r11 = regs->r11;
+        mc.r10 = regs->r10;
+        mc.r9 = regs->r9;
+        mc.r8 = regs->r8;
+        mc.rbp = regs->rbp;
+        mc.rdi = regs->rdi;
+        mc.rsi = regs->rsi;
+        mc.rdx = regs->rdx;
+        mc.rcx = regs->rcx;
+        mc.rbx = regs->rbx;
+        mc.rax = regs->rax;
+        mc.rip = regs->rip;
+        mc.cs  = regs->cs;
+        mc.rflags = regs->rflags;
+        mc.rsp = regs->rsp;
+        mc.ss  = regs->ss;
+
+        if (!lib::copy_to_user(reinterpret_cast<void __user *>(frame_addr), &kf, sizeof(kf)))
+            return false;
+
+        regs->rip = action.handler;
+        regs->rsp = frame_addr;
+        regs->rdi = sig;
+        regs->rsi = frame_addr + __builtin_offsetof(sigframe_t, info);
+        regs->rdx = frame_addr + __builtin_offsetof(sigframe_t, uc);
+        regs->rax = 0;
+        regs->rcx = 0;
+        regs->r11 = 0;
+
+        auto new_mask = thread->sigmask | action.mask;
+        if (!(action.flags & sa_nodefer))
+            new_mask.add(sig);
+        new_mask &= ~sigmask_uncatchable;
+        thread->sigmask = new_mask;
+
+        return true;
+    }
 } // namespace sched::arch

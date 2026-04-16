@@ -9,6 +9,7 @@ export import system.sched.cred;
 
 export import :perm;
 export import :nice;
+export import :signal;
 export import :process;
 export import :thread;
 export import :sleep;
@@ -224,4 +225,6 @@ export namespace sched
     };
 
     pid_t waitpid(pid_t wait_pid, int options, int *status);
+
+    int kill(pid_t pid, int sig);
 } // export namespace sched

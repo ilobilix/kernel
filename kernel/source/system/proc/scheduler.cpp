@@ -52,18 +52,6 @@ namespace sched
             >, lib::spinlock
         > sessions;
 
-        lib::locker<
-            lib::rbtree<
-                sleep_entry_t,
-                &sleep_entry_t::hook,
-                lib::compare<
-                    sleep_entry_t,
-                    std::uint64_t,
-                    &sleep_entry_t::deadline_ns
-                >
-            >, lib::spinlock_irq
-        > sleep_list;
-
         std::atomic_bool should_start = false;
 
         std::atomic<pid_t> next_id = 2;
@@ -681,20 +669,19 @@ namespace sched
             return false;
 
         preempt_disable();
-        {
-            auto &rq = run_queue.unsafe_get();
-            const std::unique_lock _ { rq.lock };
+        thread->state = thread_state::runnable;
 
-            thread->state = thread_state::runnable;
+        const auto self_idx = cpu::self().unsafe_get().idx;
+        std::size_t target;
+        if (should_start.load(std::memory_order_relaxed))
+            target = find_least_loaded(thread);
+        else
+            target = self_idx;
 
-            rq.adjust(thread, false);
-            rq.enqueue(thread);
-            rq.nr_running++;
+        enqueue_on(thread, target, false);
 
-            if (preempt && rq.check_preempt_wakeup(thread))
-                rq.current->flags |= thread_flags::needs_resched;
-        }
-        if (preempt_enable() && preempt)
+        const bool on_self = (target == self_idx);
+        if (preempt_enable() && preempt && on_self)
             schedule();
 
         return true;
@@ -840,24 +827,7 @@ namespace sched
             }
         }
 
-        {
-            const auto timer = chrono::main_timer();
-            const auto now = timer->ns();
-
-            auto locked = sleep_list.lock();
-            auto it = locked->begin();
-            while (it != locked->end())
-            {
-                auto entry = (it++).value();
-                if (entry->deadline_ns > now)
-                    break;
-
-                locked->remove(entry);
-                entry->expired = true;
-                wake_up(entry->thread, false);
-            }
-        }
-
+        expire_timeouts();
         load_balance();
     }
 
@@ -1031,9 +1001,45 @@ namespace sched
 
     int group_t::signal_all(int sig)
     {
-        // TODO
-        lib::unused(sig);
-        return 0;
+        if (sig < 0 || sig > static_cast<int>(nsig))
+            return -EINVAL;
+
+        const auto caller = current_process();
+        siginfo_t info {
+            .signo = sig,
+            .code = si_user,
+            .err = 0,
+            .pid = caller->pid,
+            .uid = caller->cred->ruid,
+            .status = 0,
+            .addr = 0,
+            .value = 0,
+        };
+
+        std::vector<process_t *> targets;
+        {
+            auto locked = members.lock();
+            if (locked->empty())
+                return -ESRCH;
+
+            targets.reserve(locked->size());
+            for (const auto &[_, proc] : *locked)
+                targets.push_back(proc);
+        }
+
+        bool any_perm = false;
+        for (auto proc : targets)
+        {
+            if (!check_kill(sig, proc))
+                continue;
+
+            any_perm = true;
+            if (sig == 0)
+                continue;
+
+            send_signal(proc, info);
+        }
+        return any_perm ? 0 : -EPERM;
     }
 
     int setpgid(pid_t pid, pid_t pgid)
@@ -1303,14 +1309,11 @@ namespace sched
         }
 
         if (flags & clone_clear_sighand)
-        {
-            // TODO: use default signals
-        }
+            target_proc->sigactions = std::make_shared<signal_actions_t>();
         else if (flags & clone_sighand)
-        {
-            // TODO: share signal handlers
-        }
-        else { } // TODO: copy parent signals
+            target_proc->sigactions = caller_proc->sigactions;
+        else
+            target_proc->sigactions = caller_proc->sigactions->clone();
 
         // TODO: cgroups
         // TODO: namespaces
@@ -1519,5 +1522,68 @@ namespace sched
 
             proc->wait_child.wait_unint();
         }
+    }
+
+    int kill(pid_t pid, int sig)
+    {
+        using namespace sched;
+
+        if (sig < 0 || sig > static_cast<int>(nsig))
+            return -EINVAL;
+
+        if (pid < -1)
+        {
+            auto group = get_group(-pid);
+            if (!group)
+                return -ESRCH;
+            return group->signal_all(sig);
+        }
+
+        const auto caller = current_process();
+        if (pid == 0)
+            return caller->group->signal_all(sig);
+
+        siginfo_t info {
+            .signo = sig,
+            .code = si_user,
+            .err = 0,
+            .pid = caller->pid,
+            .uid = caller->cred->ruid,
+            .status = 0,
+            .addr = 0,
+            .value = 0,
+        };
+
+        if (pid > 0)
+        {
+            const auto target = get_process(pid);
+            if (!target)
+                return -ESRCH;
+
+            if (!check_kill(sig, target))
+                return -EPERM;
+
+            if (sig == 0)
+                return 0;
+
+            return send_signal(target, info) ? 0 : -ESRCH;
+        }
+
+        bool any_perm = false;
+        for (auto &[pid, proc] : *processes.lock())
+        {
+            if (pid == 0 || pid == 1)
+                continue;
+
+            if (!check_kill(sig, proc))
+                continue;
+
+            any_perm = true;
+            if (sig == 0)
+                continue;
+
+            send_signal(proc, info);
+        }
+        return any_perm ? 0 : -EPERM;
     }
 } // namespace sched

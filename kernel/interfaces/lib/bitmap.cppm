@@ -159,6 +159,15 @@ export namespace lib
             return _count;
         }
 
+        constexpr std::size_t popcount() const
+        {
+            lib::bug_on(!_initialised);
+            std::size_t ret = 0;
+            for (std::size_t i = 0; i < div_roundup(_count, 8); i++)
+                ret += std::popcount(_data[i]);
+            return ret;
+        }
+
         constexpr bool empty() const
         {
             for (std::size_t i = 0; i < div_roundup(_count, 8); i++)

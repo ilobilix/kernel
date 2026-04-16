@@ -56,4 +56,21 @@ namespace sched::arch
         lib::unused(ip, stack);
         std::unreachable();
     }
+
+    bool in_user_mode(const cpu::registers *regs)
+    {
+        // TODO
+        lib::unused(regs);
+        return false;
+    }
+
+    bool setup_sigframe(
+        thread_t *thread, cpu::registers *regs,
+        int sig, const siginfo_t &info, const sigaction_t &action
+    )
+    {
+        // TODO
+        lib::unused(thread, regs, sig, info, action);
+        return false;
+    }
 } // namespace sched::arch

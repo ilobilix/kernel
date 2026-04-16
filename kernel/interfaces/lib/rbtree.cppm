@@ -412,7 +412,6 @@ export namespace lib
                 hook(nh, y)->colour = hook(nh, z)->colour;
 
                 augment(y);
-                x = y;
             }
 
             auto us = parent(nh, x);
