@@ -269,7 +269,7 @@ namespace sched
     {
         auto thread = current_thread();
         if (!arch::restore_sigframe(thread, thread->saved_regs))
-            process_exit(128 + sigsegv);
+            process_exit_signal(sigsegv);
         return thread->saved_regs->ret();
     }
 
@@ -317,8 +317,9 @@ namespace sched
                     case default_action::ignore:
                         continue;
                     case default_action::term:
+                        process_exit_signal(sig);
                     case default_action::core:
-                        process_exit(128 + sig);
+                        process_exit_signal(sig, true);
                     case default_action::stop:
                         stop_process(proc, sig);
                         yield();
@@ -330,7 +331,7 @@ namespace sched
             }
 
             if (!arch::setup_sigframe(thread, regs, sig, *info, action))
-                process_exit(128 + sigsegv);
+                process_exit_signal(sigsegv);
 
             break;
         }

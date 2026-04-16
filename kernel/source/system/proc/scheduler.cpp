@@ -786,13 +786,18 @@ namespace sched
 
             if (proc->parent)
             {
+                const auto chld_code = proc->killed_by_signal
+                    ? (proc->dumped_core ? cld_dumped : cld_killed)
+                    : cld_exited;
+                const auto chld_status = proc->killed_by_signal ? proc->term_signal : exit_code;
+
                 siginfo_t info {
                     .signo = sigchld,
-                    .code = si_user,
+                    .code = chld_code,
                     .err = 0,
                     .pid = proc->pid,
                     .uid = 0,
-                    .status = exit_code,
+                    .status = chld_status,
                     .addr = 0,
                     .value = 0
                 };
@@ -817,6 +822,15 @@ namespace sched
 
         thread_exit(exit_code);
         std::unreachable();
+    }
+
+    [[noreturn]] void process_exit_signal(int signo, bool core_dumped)
+    {
+        auto proc = current_process();
+        proc->killed_by_signal = true;
+        proc->term_signal = signo;
+        proc->dumped_core = core_dumped;
+        process_exit(0);
     }
 
     void tick()
@@ -1506,13 +1520,21 @@ namespace sched
 
                     const auto cpid = child->pid;
                     const auto code = child->exit_code;
+                    const bool killed = child->killed_by_signal;
+                    const int term_sig = child->term_signal;
+                    const bool core = child->dumped_core;
 
                     locked->erase(it);
                     (*processes.lock()).erase(cpid);
                     delete child;
 
                     if (status != nullptr)
-                        *status = (code & 0xFF) << 8;
+                    {
+                        if (killed)
+                            *status = (term_sig & 0x7F) | (core ? 0x80 : 0);
+                        else
+                            *status = (code & 0xFF) << 8;
+                    }
 
                     return cpid;
                 }

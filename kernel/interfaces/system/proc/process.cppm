@@ -75,6 +75,9 @@ export namespace sched
         std::atomic<std::size_t> alive_threads = 0;
 
         int exit_code = 0;
+        int term_signal = 0;
+        bool killed_by_signal = false;
+        bool dumped_core = false;
         bool is_zombie = false;
         bool has_execved = false;
 
