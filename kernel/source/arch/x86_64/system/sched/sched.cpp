@@ -49,8 +49,19 @@ namespace sched::arch
             {
                 auto set_child_tid = reinterpret_cast<pid_t __user *>(thread->set_child_tid);
                 if (!lib::copy_to_user(set_child_tid, &thread->tid, sizeof(pid_t)))
-                    // TODO: kill thread instead
-                    lib::panic("failed to write to set_child_tid");
+                {
+                    sched::siginfo_t info {
+                        .signo = sigsegv,
+                        .code = si_kernel,
+                        .err = 0,
+                        .pid = 0,
+                        .uid = 0,
+                        .status = 0,
+                        .addr = thread->set_child_tid,
+                        .value = 0
+                    };
+                    sched::send_signal(thread, info);
+                }
                 thread->set_child_tid = 0;
             }
         }

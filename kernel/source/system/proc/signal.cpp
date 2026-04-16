@@ -116,6 +116,23 @@ namespace sched
             return sig == sigstop || sig == sigtstp || sig == sigttin || sig == sigttou;
         }
 
+        bool is_ignored(process_t *proc, int sig)
+        {
+            if (sig == sigkill || sig == sigstop)
+                return false;
+
+            const std::unique_lock _ { proc->sigactions->lock };
+            const auto &act = proc->sigactions->actions[sig - 1];
+
+            if (act.handler == sig_ign)
+                return true;
+
+            if (act.handler == sig_dfl && default_for(sig) == default_action::ignore)
+                return true;
+
+            return false;
+        }
+
         void drop_queued(process_t *proc, auto &&pred)
         {
             const std::unique_lock _ { proc->sigqueue.lock };
@@ -174,6 +191,13 @@ namespace sched
         else if (is_stop_signal(sig))
             drop_queued(proc, [](int sig) { return sig == sigcont; });
 
+        if (is_ignored(proc, sig))
+        {
+            if (sig == sigcont)
+                continue_process(proc);
+            return true;
+        }
+
         {
             const std::unique_lock _ { proc->sigqueue.lock };
 
@@ -191,6 +215,14 @@ namespace sched
         thread->flags |= thread_flags::signal_pending;
         wake_for_signal(thread, sig);
         return true;
+    }
+
+    void flush_signal(process_t *proc, int sig)
+    {
+        if (sig < 1 || sig > static_cast<int>(nsig))
+            return;
+
+        drop_queued(proc, [sig](int s) { return s == sig; });
     }
 
     bool send_signal(process_t *process, const siginfo_t &info)

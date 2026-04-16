@@ -281,6 +281,8 @@ export namespace sched
     bool send_signal(thread_t *thread, const siginfo_t &info);
     bool send_signal(process_t *process, const siginfo_t &info);
 
+    void flush_signal(process_t *proc, int sig);
+
     void handle_pending_signals(cpu::registers *regs);
     std::uintptr_t sigreturn();
 } // export namespace sched

@@ -289,14 +289,20 @@ namespace syscall::proc
             newact.mask &= ~sigmask_uncatchable;
         }
 
+        auto proc = current_process();
         sigaction_t old;
         {
-            auto &sigacts = current_process()->sigactions;
+            auto &sigacts = proc->sigactions;
             const std::unique_lock _ { sigacts->lock };
             old = sigacts->actions[signum - 1];
             if (act)
                 sigacts->actions[signum - 1] = newact;
         }
+
+        if (act && (newact.handler == sched::sig_ign || (
+            newact.handler == sched::sig_dfl &&
+            sched::default_for(signum) == sched::default_action::ignore)))
+            sched::flush_signal(proc, signum);
 
         if (oldact && !lib::copy_to_user(oldact, &old, sizeof(sigaction_t)))
             return -EFAULT;
