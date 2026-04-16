@@ -932,6 +932,32 @@ namespace fs::dev::tty
                 }
                 return 0;
             }
+            case tcxonc:
+            {
+                const auto termios = inst->termios.lock().value();
+                switch (argp.address())
+                {
+                    case tcooff:
+                        stopped.store(true, std::memory_order_relaxed);
+                        break;
+                    case tcoon:
+                        stopped.store(false, std::memory_order_relaxed);
+                        output_flush();
+                        out_wq.wake_all();
+                        break;
+                    case tcioff:
+                        output_append(termios, termios.c_cc[ktermios::cc::vstop]);
+                        output_flush();
+                        break;
+                    case tcion:
+                        output_append(termios, termios.c_cc[ktermios::cc::vstart]);
+                        output_flush();
+                        break;
+                    default:
+                        return std::unexpected { lib::err::invalid_flags };
+                }
+                return 0;
+            }
             case tcgets:
             {
                 const auto cur = inst->termios.lock().value();
@@ -1017,7 +1043,7 @@ namespace fs::dev::tty
                 return 0;
             }
             default:
-                lib::println("tty: unhandled ioctl: 0x{:X}", request);
+                lib::error("tty: unhandled ioctl: 0x{:X}", request);
                 break;
         }
         return std::unexpected { lib::err::inappropriate_ioctl };
