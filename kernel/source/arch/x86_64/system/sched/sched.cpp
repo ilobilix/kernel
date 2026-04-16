@@ -7,6 +7,7 @@ import x86_64.system.gdt;
 import x86_64.system.idt;
 import system.interrupts;
 import system.cpu.arch;
+import lib;
 
 namespace sched::arch
 {
@@ -257,6 +258,44 @@ namespace sched::arch
             new_mask.add(sig);
         new_mask &= ~sigmask_uncatchable;
         thread->sigmask = new_mask;
+
+        return true;
+    }
+
+    bool restore_sigframe(thread_t *thread, cpu::registers *regs)
+    {
+        const auto uc_addr = regs->rsp;
+        ucontext_t uc;
+        if (!lib::copy_from_user(&uc, reinterpret_cast<const ucontext_t __user *>(uc_addr), sizeof(uc)))
+            return false;
+
+        const auto &mc = uc.uc_mcontext;
+
+        regs->r15 = mc.r15;
+        regs->r14 = mc.r14;
+        regs->r13 = mc.r13;
+        regs->r12 = mc.r12;
+        regs->r11 = mc.r11;
+        regs->r10 = mc.r10;
+        regs->r9 = mc.r9;
+        regs->r8 = mc.r8;
+        regs->rbp = mc.rbp;
+        regs->rdi = mc.rdi;
+        regs->rsi = mc.rsi;
+        regs->rdx = mc.rdx;
+        regs->rcx = mc.rcx;
+        regs->rbx = mc.rbx;
+        regs->rax = mc.rax;
+        regs->rip = mc.rip;
+        regs->rsp = mc.rsp;
+
+        regs->cs = static_cast<std::uint64_t>(gdt::segment::ucode) | 0x03;
+        regs->ss = static_cast<std::uint64_t>(gdt::segment::udata) | 0x03;
+
+        regs->rflags = (mc.rflags & 0xDD5) | 0x202;
+
+        thread->sigmask = uc.uc_sigmask & ~sigmask_uncatchable;
+        thread->altstack = uc.uc_stack;
 
         return true;
     }

@@ -55,6 +55,8 @@ export namespace syscall::proc
     );
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss);
 
+    std::uintptr_t rt_sigreturn();
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig);
 
     long futex(

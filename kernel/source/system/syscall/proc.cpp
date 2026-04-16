@@ -357,6 +357,11 @@ namespace syscall::proc
         return -ENOSYS;
     }
 
+    std::uintptr_t rt_sigreturn()
+    {
+        return sched::sigreturn();
+    }
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig)
     {
         // TODO

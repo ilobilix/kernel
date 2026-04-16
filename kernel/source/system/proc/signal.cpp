@@ -38,20 +38,22 @@ namespace sched
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
-                if (thread->state == thread_state::dead ||
-                    thread->state == thread_state::stopped)
-                    continue;
-
-                if (thread->state == thread_state::running)
+                switch (thread->state)
                 {
-                    thread->state = thread_state::stopped;
-                    if (thread->running_on)
-                    {
-                        thread->flags |= thread_flags::needs_resched;
-                        arch::wake_up_other(thread->running_on->idx);
-                    }
+                    case thread_state::running:
+                    case thread_state::runnable:
+                    case thread_state::sleeping:
+                        thread->prev_state = thread->state;
+                        thread->state = thread_state::stopped;
+                        if (thread->running_on)
+                        {
+                            thread->flags |= thread_flags::needs_resched;
+                            arch::wake_up_other(thread->running_on->idx);
+                        }
+                        break;
+                    default:
+                        break;
                 }
-                else thread->state = thread_state::stopped;
             }
         }
 
@@ -59,8 +61,20 @@ namespace sched
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
-                if (thread->state == thread_state::stopped)
-                    wake_up(thread, true);
+                if (thread->state != thread_state::stopped)
+                    continue;
+
+                switch (thread->prev_state)
+                {
+                    case thread_state::sleeping:
+                    case thread_state::blocked:
+                        thread->state = thread->prev_state;
+                        break;
+                    default:
+                        thread->state = thread_state::sleeping;
+                        wake_up(thread, true);
+                        break;
+                }
             }
         }
 
@@ -154,6 +168,14 @@ namespace sched
             return false;
 
         return send_signal(target, info);
+    }
+
+    std::uintptr_t sigreturn()
+    {
+        auto thread = current_thread();
+        if (!arch::restore_sigframe(thread, thread->saved_regs))
+            process_exit(128 + sigsegv);
+        return thread->saved_regs->rax;
     }
 
     void handle_pending_signals(cpu::registers *regs)

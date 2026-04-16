@@ -28,11 +28,6 @@ syscall_entry:
 
     add rsp, 16
 
-    pop rcx
-    add rsp, 8
-    pop r11
-    pop rsp
-
     swapgs
-    sysretq
+    iretq
 .global syscall_entry
