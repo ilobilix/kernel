@@ -64,6 +64,7 @@ namespace bin::script
         {
             lib::membuffer data { max_length };
             auto uspan = data.maybe_uspan();
+            lib::bug_on(!uspan);
 
             const auto ret = file->pread(0, *uspan);
             if (!ret)

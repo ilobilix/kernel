@@ -147,6 +147,10 @@ export namespace sched
     // exit the current process and kill all threads
     [[noreturn]] void process_exit(int exit_code);
 
+    // exit the current process as if killed by signal signo
+    // status reported to waitpid will have WIFSIGNALED set
+    [[noreturn]] void process_exit_signal(int signo, bool core_dumped = false);
+
     // get process with the pid
     process_t *get_process(pid_t pid);
 
