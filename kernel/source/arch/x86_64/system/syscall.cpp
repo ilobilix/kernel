@@ -41,6 +41,7 @@ namespace x86_64::syscall
         [12] = { "brk", memory::brk, true },
         [13] = { "rt_sigaction", proc::rt_sigaction },
         [14] = { "rt_sigprocmask", proc::rt_sigprocmask },
+        [15] = { "rt_sigreturn", proc::rt_sigreturn },
         [16] = { "ioctl", vfs::ioctl },
         [17] = { "pread", vfs::pread, true },
         [18] = { "pwrite", vfs::pwrite, true },

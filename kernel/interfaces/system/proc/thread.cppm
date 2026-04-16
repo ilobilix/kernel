@@ -58,6 +58,7 @@ export namespace sched
         process_t *proc;
 
         thread_state state = thread_state::runnable;
+        thread_state prev_state = thread_state::runnable;
         thread_flags flags = thread_flags::none;
         int exit_code = 0;
 

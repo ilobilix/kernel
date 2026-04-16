@@ -62,4 +62,5 @@ export namespace sched::arch
         thread_t *thread, cpu::registers *regs,
         int sig, const siginfo_t &info, const sigaction_t &action
     );
+    bool restore_sigframe(thread_t *thread, cpu::registers *regs);
 } // export namespace sched::arch

@@ -50,6 +50,72 @@ namespace x86_64::idt
             else
                 pic::eoi(vector);
         }
+
+        bool deliver_fault_signal(cpu::registers *regs, std::uintptr_t cr2)
+        {
+            if (!sched::is_running())
+                return false;
+            if ((regs->cs & 3) != 3)
+                return false;
+
+            const auto thread = sched::current_thread();
+
+            int signo = 0;
+            switch (regs->vector)
+            {
+                case 0: // #DE
+                    signo = sched::sigfpe;
+                    break;
+                case 1: // #DB
+                    signo = sched::sigtrap;
+                    break;
+                case 3: // #BP
+                    signo = sched::sigtrap;
+                    break;
+                case 4: // #OF
+                    signo = sched::sigsegv;
+                    break;
+                case 5: // #BR
+                    signo = sched::sigsegv;
+                    break;
+                case 6: // #UD
+                    signo = sched::sigill;
+                    break;
+                case 7: // #NM
+                    signo = sched::sigfpe;
+                    break;
+                case 13: // #GP
+                    signo = sched::sigsegv;
+                    break;
+                case 14: // #PF
+                    signo = sched::sigsegv;
+                    break;
+                case 16: // #MF
+                    signo = sched::sigfpe;
+                    break;
+                case 17: // #AC
+                    signo = sched::sigbus;
+                    break;
+                case 19: // #XM
+                    signo = sched::sigfpe;
+                    break;
+                default:
+                    return false;
+            }
+
+            sched::siginfo_t info {
+                .signo = signo,
+                .code = sched::si_kernel,
+                .err = static_cast<int>(regs->error_code),
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = (regs->vector == 14) ? cr2 : regs->rip,
+                .value = 0
+            };
+            sched::send_signal(thread, info);
+            return true;
+        }
     } // namespace
 
     using irq_vec = frg::small_vector<
@@ -118,10 +184,13 @@ namespace x86_64::idt
 
                 goto end;
             }
-            else if (vector == 14)
+
+            std::uintptr_t cr2 = 0;
+            if (vector == 14)
             {
+                cr2 = cpu::read_reg<"cr2">();
                 vmm::pfault_state state {
-                    cpu::read_reg<"cr2">(),
+                    cr2,
                     (regs->error_code & (1 << 0)) != 0,
                     (regs->error_code & (1 << 1)) != 0,
                     (regs->error_code & (1 << 4)) != 0,
@@ -130,6 +199,9 @@ namespace x86_64::idt
                 if (vmm::handle_pfault(state))
                     goto end;
             }
+
+            if (deliver_fault_signal(regs, cr2))
+                goto end;
 
             if (sched::is_running())
             {

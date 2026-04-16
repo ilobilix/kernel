@@ -663,9 +663,13 @@ namespace sched
 
     bool wake_up(thread_t *thread, bool preempt)
     {
+        if (thread->state == thread_state::stopped)
+        {
+            thread->prev_state = thread_state::runnable;
+            return false;
+        }
         if (thread->state != thread_state::sleeping &&
-            thread->state != thread_state::blocked &&
-            thread->state != thread_state::stopped)
+            thread->state != thread_state::blocked)
             return false;
 
         preempt_disable();
@@ -782,8 +786,17 @@ namespace sched
 
             if (proc->parent)
             {
-                // TODO: send SIGCHLD to parent and wake up waitpid
-                // TODO: if SIGCHLD doesn't exist, then manually reap the process
+                siginfo_t info {
+                    .signo = sigchld,
+                    .code = si_user,
+                    .err = 0,
+                    .pid = proc->pid,
+                    .uid = 0,
+                    .status = exit_code,
+                    .addr = 0,
+                    .value = 0
+                };
+                send_signal(proc->parent, info);
                 proc->parent->wait_child.wake_one();
             }
         }

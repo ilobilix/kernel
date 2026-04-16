@@ -276,4 +276,5 @@ export namespace sched
     bool send_signal(process_t *process, const siginfo_t &info);
 
     void handle_pending_signals(cpu::registers *regs);
+    std::uintptr_t sigreturn();
 } // export namespace sched

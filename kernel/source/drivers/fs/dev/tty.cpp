@@ -96,9 +96,11 @@ namespace fs::dev::tty
                 locked.value().reset();
         }
 
-        // TODO: send SIGHUP and SIGCONT to fg_group
         if (fg_group)
-            fg_group->signal_all(0);
+        {
+            fg_group->signal_all(sched::sighup);
+            fg_group->signal_all(sched::sigcont);
+        }
     }
 
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
@@ -304,7 +306,41 @@ namespace fs::dev::tty
 
             if (termios.c_lflag & isig)
             {
-                // TODO: signals
+                int sig = 0;
+                if (chr == termios.c_cc[vintr])
+                    sig = sched::sigint;
+                else if (chr == termios.c_cc[vquit])
+                    sig = sched::sigquit;
+                else if (chr == termios.c_cc[vsusp])
+                    sig = sched::sigtstp;
+
+                if (sig != 0)
+                {
+                    if ((termios.c_lflag & echo) && (termios.c_lflag & echoctl) && is_control(chr))
+                    {
+                        echo_out('^');
+                        echo_out((chr + '@') % 128);
+                    }
+
+                    if (!(termios.c_lflag & noflsh))
+                    {
+                        {
+                            auto in_locked = self->in_buffer.lock();
+                            in_locked->read_tail = in_locked->read_head;
+                            in_locked->cooked_head = in_locked->read_head;
+                        }
+                        while (self->raw_buffer.pop().has_value()) { }
+                    }
+
+                    std::shared_ptr<sched::group_t> fg;
+                    {
+                        auto locked = self->inst->ctrl.lock();
+                        fg = locked->group.lock();
+                    }
+                    if (fg)
+                        fg->signal_all(sig);
+                    continue;
+                }
             }
 
             if (termios.c_iflag & ixon)
@@ -869,22 +905,31 @@ namespace fs::dev::tty
             {
                 const auto proc = sched::current_process();
 
-                auto locked = inst->ctrl.lock();
-                if (locked->session.lock() != proc->session)
-                    return std::unexpected { lib::err::not_permitted };
-
-                if (proc->pid != proc->session->sid)
-                    return 0;
-
-                // TODO: send SIGHUP and SIGCONT to the foreground process group
+                std::shared_ptr<sched::group_t> fg_group;
                 {
-                    auto locked = proc->session->ctty.lock();
-                    if (locked.value().get() == inst)
-                        locked.value().reset();
+                    auto locked = inst->ctrl.lock();
+                    if (locked->session.lock() != proc->session)
+                        return std::unexpected { lib::err::not_permitted };
+
+                    if (proc->pid != proc->session->sid)
+                        return 0;
+
+                    fg_group = locked->group.lock();
+                    locked->session.reset();
+                    locked->group.reset();
                 }
 
-                locked->session.reset();
-                locked->group.reset();
+                {
+                    auto ctty_locked = proc->session->ctty.lock();
+                    if (ctty_locked.value().get() == inst)
+                        ctty_locked.value().reset();
+                }
+
+                if (fg_group)
+                {
+                    fg_group->signal_all(sched::sighup);
+                    fg_group->signal_all(sched::sigcont);
+                }
                 return 0;
             }
             case tcgets:
@@ -1112,9 +1157,11 @@ namespace fs::dev::tty
                 locked.value().reset();
         }
 
-        // TODO: send SIGHUP and SIGCONT to fg_group
         if (fg_group)
-            fg_group->signal_all(0);
+        {
+            fg_group->signal_all(sched::sighup);
+            fg_group->signal_all(sched::sigcont);
+        }
 
         auto ld = ldisc.lock().value();
         lib::bug_on(!ld);
