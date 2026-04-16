@@ -209,6 +209,13 @@ namespace vmm
             auto &pte = ret->get();
             auto accessor = pte.access();
 
+            if (!accessor.getflags(valid_table_flags))
+            {
+                current_vaddr += npsize;
+                remaining -= npsize;
+                continue;
+            }
+
             if (use_psize != page_size::small && !accessor.is_large())
                 return std::unexpected { lib::err::addr_in_use };
 
