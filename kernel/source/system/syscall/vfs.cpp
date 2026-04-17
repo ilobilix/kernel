@@ -270,14 +270,15 @@ namespace syscall::vfs
                 return -EACCES;
         }
 
-        const auto fdesc = filedesc::create(target, flags, proc->pid);
+        const auto fdesc = filedesc::create(target, flags);
         if (!fdesc)
             return -EMFILE;
+
         const auto fd = fdt->alloc(fdesc, 0, false);
         if (fd < 0)
             return -EMFILE;
 
-        if (const auto ret = fdesc->file->open(flags); !ret)
+        if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
         {
             close_fd(proc, fd, false);
             return -lib::map_error(ret.error());
@@ -1518,7 +1519,7 @@ namespace syscall::vfs
         const auto rfdesc = filedesc::create({
             .dentry = rdentry,
             .mnt = nullptr
-        }, flags | o_rdonly, proc->pid);
+        }, flags | o_rdonly);
 
         if (!rfdesc)
             return -EMFILE;
@@ -1528,7 +1529,7 @@ namespace syscall::vfs
         if (fds[0] < 0)
             return -EMFILE;
 
-        if (const auto ret = rfdesc->file->open(flags | o_rdonly); !ret)
+        if (const auto ret = rfdesc->file->open(flags | o_rdonly, proc->pid); !ret)
         {
             close_fd(proc, fds[0], false);
             return -lib::map_error(ret.error());
@@ -1541,7 +1542,7 @@ namespace syscall::vfs
         const auto wfdesc = filedesc::create({
             .dentry = wdentry,
             .mnt = nullptr
-        }, flags | o_wronly, proc->pid);
+        }, flags | o_wronly);
 
         if (!wfdesc)
         {
@@ -1558,7 +1559,7 @@ namespace syscall::vfs
         }
 
         wfdesc->file->private_data = rfdesc->file->private_data;
-        if (const auto ret = wfdesc->file->open(flags | o_wronly); !ret)
+        if (const auto ret = wfdesc->file->open(flags | o_wronly, proc->pid); !ret)
         {
             close_fd(proc, fds[0]);
             close_fd(proc, fds[1], false);

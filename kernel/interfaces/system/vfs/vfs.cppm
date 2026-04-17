@@ -173,9 +173,9 @@ export namespace vfs
     struct file;
     struct ops
     {
-        virtual lib::expect<void> open(std::shared_ptr<file> file, int flags)
+        virtual lib::expect<void> open(std::shared_ptr<file> file, int flags, pid_t pid)
         {
-            lib::unused(file, flags);
+            lib::unused(file, flags, pid);
             return { };
         }
 
@@ -442,7 +442,6 @@ export namespace vfs
         path path;
         std::size_t offset;
         int flags;
-        pid_t pid;
 
         std::shared_ptr<void> private_data;
 
@@ -462,12 +461,12 @@ export namespace vfs
                 lib::error("failed to close file: {}", lib::error_name(ret.error()));
         }
 
-        lib::expect<void> open(int flags)
+        lib::expect<void> open(int flags, pid_t pid)
         {
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            auto ret = ops->get()->open(shared_from_this(), flags);
+            auto ret = ops->get()->open(shared_from_this(), flags, pid);
             if (ret.has_value())
                 opened = true;
             return ret;
@@ -570,14 +569,13 @@ export namespace vfs
             return { };
         }
 
-        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags, pid_t pid)
+        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
         {
             auto file = std::make_shared<vfs::file>();
             file->opened = false;
             file->path = path;
             file->offset = offset;
             file->flags = flags;
-            file->pid = pid;
             return file;
         }
     };
@@ -587,10 +585,10 @@ export namespace vfs
         std::shared_ptr<file> file { };
         std::atomic_bool closexec = false;
 
-        static std::shared_ptr<filedesc> create(const path &path, int flags, pid_t pid)
+        static std::shared_ptr<filedesc> create(const path &path, int flags)
         {
             auto fd = std::make_shared<filedesc>();
-            fd->file = vfs::file::create(path, 0, flags & ~creation_flags, pid);
+            fd->file = vfs::file::create(path, 0, flags & ~creation_flags);
             fd->closexec = (flags & o_closexec) != 0;
             return fd;
         }

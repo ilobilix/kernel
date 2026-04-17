@@ -285,7 +285,7 @@ namespace bin::elf::exec
                             return std::nullopt;
                         }
 
-                        interp = vfs::file::create(std::move(*res), 0, 0, 0);
+                        interp = vfs::file::create(std::move(*res), 0, 0);
                         break;
                     }
                     default:

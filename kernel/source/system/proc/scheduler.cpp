@@ -1418,7 +1418,7 @@ namespace sched
                 apply_exec_caps(process, inode->stat, fcaps);
             }
 
-            auto file = vfs::file::create(path, 0, 0, 0);
+            auto file = vfs::file::create(path, 0, 0);
             if (!file)
                 return -EACCES;
 
