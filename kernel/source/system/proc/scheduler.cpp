@@ -784,6 +784,12 @@ namespace sched
             proc->exit_code = exit_code;
             proc->is_zombie = true;
 
+            if (proc->parent && proc->vfork_pending)
+            {
+                proc->vfork_pending = false;
+                proc->parent->vfork_done.wake_all();
+            }
+
             if (proc->parent)
             {
                 const auto chld_code = proc->killed_by_signal
@@ -1346,11 +1352,6 @@ namespace sched
         // TODO: namespaces
         // TODO: pidfd
 
-        if (flags & clone_vfork)
-        {
-            // TODO: suspend caller until child calls execve or exit
-        }
-
         // TODO: better abstraction
 #if defined(__x86_64__)
         auto regs = reinterpret_cast<cpu::registers *>(
@@ -1374,7 +1375,14 @@ namespace sched
         if (!(flags & clone_thread))
             (*target_proc->parent->children.lock())[target_proc->pid] = target_proc;
 
+        if (flags & clone_vfork)
+            target_proc->vfork_pending = true;
+
         sched::enqueue_new(target_thread);
+
+        if (flags & clone_vfork)
+            caller_proc->vfork_done.wait_unint();
+
         return target_thread->tid;
     }
 
@@ -1465,7 +1473,14 @@ namespace sched
             if (process->fdt.use_count() > 1)
                 process->fdt = process->fdt->clone();
             process->fdt->close_on_exec();
+
             process->has_execved = true;
+
+            if (process->vfork_pending)
+            {
+                process->vfork_pending = false;
+                process->parent->vfork_done.wake_all();
+            }
 
             sched::enqueue_new(new_thread);
         }

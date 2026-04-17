@@ -76,16 +76,19 @@ export namespace sched
 
         int exit_code = 0;
         int term_signal = 0;
-        bool killed_by_signal = false;
-        bool dumped_core = false;
-        bool is_zombie = false;
-        bool has_execved = false;
+        // this saves 8 bytes :trl:
+        bool killed_by_signal : 1 = false;
+        bool dumped_core : 1 = false;
+        bool is_zombie : 1 = false;
+        bool has_execved : 1 = false;
+        bool vfork_pending : 1 = false;
 
+        bool pending_continued : 1 = false;
         int pending_stop_sig = 0;
-        bool pending_continued = false;
         lib::spinlock report_lock;
 
         wait_queue_t wait_child;
+        wait_queue_t vfork_done;
 
         recursive_mutex lock;
 
