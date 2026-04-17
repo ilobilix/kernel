@@ -82,12 +82,15 @@ namespace chrono
 
         lib::bug_on(main == nullptr);
 
-        auto prev = main_rtc->unix();
+        const auto prev = main_rtc->unix();
         std::uint64_t unix_secs;
-        while ((unix_secs = main_rtc->unix()) == prev)
-            arch::pause();
+        std::uint64_t ns_before;
+        do {
+            ns_before = main->ns();
+            unix_secs = main_rtc->unix();
+        } while (unix_secs == prev);
 
-        realtime_base_ns = unix_secs * 1'000'000'000ul - main->ns();
+        realtime_base_ns = unix_secs * 1'000'000'000ul - ns_before;
     }
 
     // TODO: realtime is ~1 second behind
