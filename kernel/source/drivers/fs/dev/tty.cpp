@@ -810,8 +810,23 @@ namespace fs::dev::tty
 
     lib::expect<int> default_ldisc::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
+        const auto apply_locked = [&](ktermios &tios, const ktermios &old)
+        {
+            const auto locked = inst->termios_locked.lock().value();
+            tios.c_iflag = (tios.c_iflag & ~locked.c_iflag) | (old.c_iflag & locked.c_iflag);
+            tios.c_oflag = (tios.c_oflag & ~locked.c_oflag) | (old.c_oflag & locked.c_oflag);
+            tios.c_cflag = (tios.c_cflag & ~locked.c_cflag) | (old.c_cflag & locked.c_cflag);
+            tios.c_lflag = (tios.c_lflag & ~locked.c_lflag) | (old.c_lflag & locked.c_lflag);
+        };
+
         switch (request)
         {
+            case kdgkbmode:
+                // TODO
+                return std::unexpected { lib::err::inappropriate_ioctl };
+            case vt_getstate:
+                // TODO
+                return std::unexpected { lib::err::inappropriate_ioctl };
             case tiocgpgrp:
             {
                 const auto proc = sched::current_process();
@@ -1005,6 +1020,14 @@ namespace fs::dev::tty
                 wlocked->c_lflag = utios.c_lflag;
                 wlocked->c_line = utios.c_line;
                 std::memcpy(wlocked->c_cc, utios.c_cc, sizeof(utios.c_cc));
+                apply_locked(wlocked.value(), old);
+
+                using enum ktermios::lflag;
+                if (!(old.c_lflag & icanon) && (wlocked->c_lflag & icanon))
+                {
+                    auto in_locked = in_buffer.lock();
+                    in_locked->cooked_head = in_locked->read_head;
+                }
 
                 inst->set_termios(wlocked.value(), old);
                 return 0;
@@ -1038,8 +1061,59 @@ namespace fs::dev::tty
                 auto wlocked = inst->termios.lock();
                 const auto old = wlocked.value();
                 wlocked.value() = ktios;
+                apply_locked(wlocked.value(), old);
+
+                using enum ktermios::lflag;
+                if (!(old.c_lflag & ktermios::icanon) && (wlocked->c_lflag & ktermios::icanon))
+                {
+                    auto in_locked = in_buffer.lock();
+                    in_locked->cooked_head = in_locked->read_head;
+                }
 
                 inst->set_termios(wlocked.value(), old);
+                return 0;
+            }
+            case tcflsh:
+            {
+                switch (argp.address())
+                {
+                    case tciflush:
+                    {
+                        auto in_locked = in_buffer.lock();
+                        in_locked->read_tail = in_locked->read_head;
+                        in_locked->cooked_head = in_locked->read_head;
+                        raw_buffer.clear();
+                        break;
+                    }
+                    case tcoflush:
+                        out_buffer.clear();
+                        break;
+                    case tcioflush:
+                    {
+                        {
+                            auto in_locked = in_buffer.lock();
+                            in_locked->read_tail = in_locked->read_head;
+                            in_locked->cooked_head = in_locked->read_head;
+                            raw_buffer.clear();
+                        }
+                        out_buffer.clear();
+                        break;
+                    }
+                    default:
+                        return std::unexpected { lib::err::invalid_flags };
+                }
+                return 0;
+            }
+            case tiocglcktrmios:
+                if (!argp.write(inst->termios_locked.lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tiocslcktrmios:
+            {
+                if (!sched::capable(sched::cap_t::sys_admin))
+                    return std::unexpected { lib::err::permission_denied };
+                if (!argp.read(inst->termios_locked.lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
                 return 0;
             }
             default:
@@ -1089,7 +1163,7 @@ namespace fs::dev::tty
 
     instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
-          termios { drv->init_termios }, winsize { winsize::standard() }, ctrl { },
+          termios { drv->init_termios }, termios_locked { ktermios { } }, winsize { winsize::standard() }, ctrl { },
           raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { true }
     {
         lib::bug_on(drv == nullptr);

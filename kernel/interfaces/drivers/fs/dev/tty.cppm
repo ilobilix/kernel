@@ -280,17 +280,22 @@ export namespace fs::dev::tty
 
     enum ioctl
     {
+        kdgkbmode = 0x4B44,
         tcgets = 0x5401,
         tcsets = 0x5402,
         tcsetsw = 0x5403,
         tcsetsf = 0x5404,
         tcxonc = 0x540A,
+        tcflsh = 0x540B,
         tiocgpgrp = 0x540F,
         tiocspgrp = 0x5410,
         tiocgwinsz = 0x5413,
         tiocswinsz = 0x5414,
         tiocnotty = 0x5422,
         tiocsctty = 0x540E,
+        tiocglcktrmios = 0x5456,
+        tiocslcktrmios = 0x5457,
+        vt_getstate = 0x5603,
         tcgets2 = 0x802C542A,
         tcsets2 = 0x402C542B,
         tcsetsw2 = 0x402C542C,
@@ -303,6 +308,13 @@ export namespace fs::dev::tty
         tcoon = 1,
         tcioff = 2,
         tcion = 3
+    };
+
+    enum tcflush_queue
+    {
+        tciflush = 0,
+        tcoflush = 1,
+        tcioflush = 2
     };
 
     struct instance;
@@ -449,6 +461,7 @@ export namespace fs::dev::tty
         lib::locker<std::shared_ptr<line_discipline>, sched::mutex> ldisc;
 
         lib::locker<ktermios, sched::mutex> termios;
+        lib::locker<ktermios, sched::mutex> termios_locked;
         lib::locker<winsize, sched::mutex> winsize;
 
         struct ctrl_t

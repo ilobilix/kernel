@@ -34,7 +34,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 process_t *
-            >, lib::spinlock
+            >, mutex
         > children;
 
         std::shared_ptr<group_t> group;
@@ -69,7 +69,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 thread_t *
-            >, lib::spinlock
+            >, mutex
         > threads;
 
         std::atomic<std::size_t> alive_threads = 0;
@@ -104,7 +104,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 process_t *
-            >, lib::spinlock
+            >, mutex
         > members;
 
         int signal_all(int sig);
@@ -118,13 +118,13 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<group_t>
-            >, lib::spinlock
+            >, mutex
         > members;
 
         lib::locker<
             std::shared_ptr<
                 ctty_base
-            >, lib::spinlock
+            >, mutex
         > ctty;
     };
 } // export namespace sched

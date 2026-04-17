@@ -365,11 +365,16 @@ export namespace lib
         }
 
         std::size_t length() const { return size(); }
-
         std::size_t available() const { return capacity - size(); }
 
         bool empty() const { return size() == 0; }
         bool full() const { return size() >= capacity; }
+
+        void clear()
+        {
+            // ehhh
+            while (pop().has_value()) { }
+        }
     };
 
     template<typename Type, std::size_t Cap>
