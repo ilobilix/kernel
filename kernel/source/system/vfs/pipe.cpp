@@ -54,25 +54,25 @@ namespace vfs::pipe
             return { };
         }
 
-        lib::expect<void> close(std::shared_ptr<vfs::file> file) override
+        lib::expect<void> close(vfs::file &file) override
         {
-            lib::bug_on(!file || !file->private_data);
+            lib::bug_on(!file.private_data);
 
-            const auto pdata = std::static_pointer_cast<data>(file->private_data);
+            const auto pdata = std::static_pointer_cast<data>(file.private_data);
             lib::bug_on(pdata->readers == 0 && pdata->writers == 0);
 
-            if (is_read(file->flags))
+            if (is_read(file.flags))
             {
                 pdata->readers--;
                 pdata->write_wait.wake_all();
             }
-            else if (is_write(file->flags))
+            else if (is_write(file.flags))
             {
                 pdata->writers--;
                 pdata->read_wait.wake_all();
             }
 
-            file->private_data.reset();
+            file.private_data.reset();
             return { };
         }
 

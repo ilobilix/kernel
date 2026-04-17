@@ -357,12 +357,6 @@ namespace syscall::vfs
         {
             if (it->first >= static_cast<int>(first) && it->first <= static_cast<int>(last))
             {
-                auto &fdesc = it->second;
-                if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
-                {
-                    if (const auto ret = fdesc->file->close(); !ret)
-                        lib::error("failed to close fd: {}", lib::error_name(ret.error()));
-                }
                 const auto closed_fd = it->first;
                 it = wlocked->erase(it);
                 if (closed_fd < fdt->next_fd)
