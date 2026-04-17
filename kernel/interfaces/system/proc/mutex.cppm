@@ -28,7 +28,29 @@ export namespace sched
         mutex &operator=(const mutex &) = delete;
         mutex &operator=(mutex &&) = delete;
 
-        bool lock()
+        void lock()
+        {
+            while (true)
+            {
+                {
+                    const std::unique_lock _ { _lock };
+                    const auto thread = current_thread();
+
+                    if (_owner == nullptr)
+                    {
+                        _owner = thread;
+                        return;
+                    }
+                    else if (_owner == thread)
+                        lib::panic("mutex deadlock");
+                }
+
+                _waiters.wait_unint();
+            }
+        }
+
+        [[nodiscard]]
+        bool lock_interruptible()
         {
             while (true)
             {
@@ -129,7 +151,34 @@ export namespace sched
         recursive_mutex &operator=(const recursive_mutex &) = delete;
         recursive_mutex &operator=(recursive_mutex &&) = delete;
 
-        bool lock()
+        void lock()
+        {
+            while (true)
+            {
+                {
+                    const std::unique_lock _ { _lock };
+                    const auto thread = current_thread();
+                    if (_owner == nullptr)
+                    {
+                        lib::bug_on(_depth != 0);
+                        _owner = thread;
+                        _depth++;
+                        return;
+                    }
+                    else if (_owner == thread)
+                    {
+                        lib::bug_on(_depth == 0);
+                        _depth++;
+                        return;
+                    }
+                }
+
+                _waiters.wait_unint();
+            }
+        }
+
+        [[nodiscard]]
+        bool lock_interruptible()
         {
             while (true)
             {

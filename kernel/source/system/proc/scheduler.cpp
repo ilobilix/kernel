@@ -35,21 +35,21 @@ namespace sched
             lib::map::flat_hash<
                 pid_t,
                 process_t *
-            >, lib::spinlock
+            >, mutex
         > processes;
 
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<group_t>
-            >, lib::spinlock
+            >, mutex
         > groups;
 
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<session_t>
-            >, lib::spinlock
+            >, mutex
         > sessions;
 
         std::atomic_bool should_start = false;
