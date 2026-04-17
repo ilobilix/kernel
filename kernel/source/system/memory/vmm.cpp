@@ -1224,6 +1224,7 @@ namespace vmm
                                 pmm::free(paddr_from(opg), num_alloc_pages);
                             return false;
                         }
+                        pinned = opg;
                     }
                 }
                 else // write
@@ -1255,6 +1256,7 @@ namespace vmm
                             pmm::free(paddr_from(opg), num_alloc_pages);
                         return false;
                     }
+                    pinned = opg;
                 }
             }
             else // shared

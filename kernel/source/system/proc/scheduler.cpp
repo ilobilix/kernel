@@ -1146,6 +1146,8 @@ namespace sched
             return -EPERM;
 
         const std::unique_lock _ { target->lock };
+        if (target->group->pgid == pgid)
+            return 0;
         {
             auto locked = target_group->members.lock();
             auto [it, inserted] = locked->emplace(target->pid, target);
