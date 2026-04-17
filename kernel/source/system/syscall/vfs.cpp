@@ -322,6 +322,57 @@ namespace syscall::vfs
         return close_fd(proc, fd);
     }
 
+    int close_range(unsigned int first, unsigned int last, unsigned int flags)
+    {
+        enum : std::uint32_t {
+            unshare = 1 << 1,
+            cloexec = 1 << 2
+        };
+
+        if (first > last)
+            return -EINVAL;
+
+        if (flags & ~(unshare | cloexec))
+            return -EINVAL;
+
+        auto proc = sched::current_process();
+        if (flags & unshare)
+            proc->fdt = proc->fdt->clone();
+
+        auto &fdt = proc->fdt;
+
+        if (flags & cloexec)
+        {
+            auto wlocked = fdt->fds.write_lock();
+            for (auto &[fd, fdesc] : *wlocked)
+            {
+                if (fd >= static_cast<int>(first) && fd <= static_cast<int>(last))
+                    fdesc->closexec.store(true, std::memory_order_relaxed);
+            }
+            return 0;
+        }
+
+        auto wlocked = fdt->fds.write_lock();
+        for (auto it = wlocked->begin(); it != wlocked->end(); )
+        {
+            if (it->first >= static_cast<int>(first) && it->first <= static_cast<int>(last))
+            {
+                auto &fdesc = it->second;
+                if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
+                {
+                    if (const auto ret = fdesc->file->close(); !ret)
+                        lib::error("failed to close fd: {}", lib::error_name(ret.error()));
+                }
+                const auto closed_fd = it->first;
+                it = wlocked->erase(it);
+                if (closed_fd < fdt->next_fd)
+                    fdt->next_fd = closed_fd;
+            }
+            else it++;
+        }
+        return 0;
+    }
+
     std::ssize_t read(int fd, void __user *buf, std::size_t count)
     {
         const auto proc = sched::current_process();
@@ -1362,6 +1413,7 @@ namespace syscall::vfs
                 break;
             }
             default:
+                lib::error("fcntl: unhandled command: 0x{:X}", cmd);
                 return -EINVAL;
         }
         return 0;
