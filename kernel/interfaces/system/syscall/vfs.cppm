@@ -22,6 +22,7 @@ export namespace syscall::vfs
     int creat(const char __user *pathname, mode_t mode);
 
     int close(int fd);
+    int close_range(unsigned int first, unsigned int last, unsigned int flags);
 
     std::ssize_t read(int fd, void __user *buf, std::size_t count);
     std::ssize_t write(int fd, const void __user *buf, std::size_t count);

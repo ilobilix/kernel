@@ -136,6 +136,7 @@ namespace x86_64::syscall
         [332] = { "statx", vfs::statx },
         [334] = { "rseq", proc::rseq },
         [435] = { "clone3", proc::clone3, true },
+        [436] = { "close_range", vfs::close_range },
         [439] = { "faccessat2", vfs::faccessat2 }
     };
 
