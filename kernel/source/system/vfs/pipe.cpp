@@ -32,8 +32,9 @@ namespace vfs::pipe
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
+            lib::unused(pid);
             lib::bug_on(!file);
 
             const bool rd = is_read(flags);

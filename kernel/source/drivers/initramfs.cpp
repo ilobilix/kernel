@@ -121,7 +121,7 @@ namespace initramfs
                             ), size
                         ).value();
 
-                        auto file = vfs::file::create(ret.value(), 0, 0, 0);
+                        auto file = vfs::file::create(ret.value(), 0, 0);
                         if (const auto res = file->pwrite(0, data); !res.has_value() || res.value() != size)
                         {
                             lib::error(

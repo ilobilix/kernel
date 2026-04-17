@@ -26,7 +26,7 @@ void kthread()
         if (!res.has_value())
             lib::panic("could not reduce {}", path);
 
-        auto file = vfs::file::create(res.value(), 0, 0, 0);
+        auto file = vfs::file::create(res.value(), 0, 0);
         auto image = bin::exec::probe(file);
         if (!image || !*image)
             lib::panic("could not identify {} file format", path);
@@ -50,10 +50,10 @@ void kthread()
         ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);
-        auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr, proc->pid);
+        auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr);
         if (!tty || !tty->file)
             lib::panic("could not create {} filedesc", tty_path);
-        if (!tty->file->open(0))
+        if (!tty->file->open(0, proc->pid))
             lib::panic("could not open {}", tty_path);
 
         proc->fdt->alloc(tty, 0, false);

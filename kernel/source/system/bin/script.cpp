@@ -117,7 +117,7 @@ namespace bin::script
             if (!res.has_value())
                 return std::unexpected { lib::err::invalid_binfmt };
 
-            auto interp_file = vfs::file::create(std::move(*res), 0, 0, 0);
+            auto interp_file = vfs::file::create(std::move(*res), 0, 0);
             auto next = exec::probe(interp_file, depth);
             if (!next.has_value())
                 return std::unexpected { next.error() };

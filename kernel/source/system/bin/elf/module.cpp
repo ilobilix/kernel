@@ -475,7 +475,7 @@ namespace bin::elf::mod
                         if (!res)
                             continue;
 
-                        load(path, vfs::file::create(res->target, 0, 0, 0));
+                        load(path, vfs::file::create(res->target, 0, 0));
                     }
                 }
             };

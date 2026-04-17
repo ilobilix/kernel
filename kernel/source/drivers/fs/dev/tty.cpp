@@ -35,7 +35,10 @@ namespace fs::dev::tty
             return nullptr;
         }
 
-        lib::expect<void> generic_open(std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst, int flags, bool inst_opened)
+        lib::expect<void> generic_open(
+            std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst,
+            int flags, pid_t pid, bool inst_opened
+        )
         {
             if (!inst_opened)
             {
@@ -43,7 +46,7 @@ namespace fs::dev::tty
                     return ret;
             }
 
-            const auto proc = sched::get_process(file->pid);
+            const auto proc = sched::get_process(pid);
             lib::bug_on(!proc);
 
             const bool noctty = !(flags & vfs::o_noctty) ||
@@ -1276,7 +1279,7 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
             lib::bug_on(!file->path.dentry || !file->path.dentry->inode);
@@ -1293,7 +1296,7 @@ namespace fs::dev::tty
                 {
                     // found an already open instance
                     inst = it->second;
-                    if (const auto ret = generic_open(file, inst, flags, true); !ret)
+                    if (const auto ret = generic_open(file, inst, flags, pid, true); !ret)
                         return ret;
                     inst->ref.fetch_add(1, std::memory_order_acq_rel);
                 }
@@ -1303,7 +1306,7 @@ namespace fs::dev::tty
                     if (!inst)
                         return std::unexpected { lib::err::no_such_device };
 
-                    if (const auto ret = generic_open(file, inst, flags, false); !ret)
+                    if (const auto ret = generic_open(file, inst, flags, pid, false); !ret)
                     {
                         drv->destroy_instance(inst);
                         return ret;
@@ -1319,7 +1322,7 @@ namespace fs::dev::tty
             file->private_data = inst;
 
             if constexpr (debug)
-                lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), file->pid);
+                lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), pid);
             return { };
         }
 
@@ -1355,7 +1358,7 @@ namespace fs::dev::tty
             if constexpr (debug)
             {
                 const auto rdev = file.path.dentry->inode->stat.st_rdev;
-                lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), file.pid);
+                lib::debug("tty: closed ({}, {})", major(rdev), minor(rdev));
             }
             return { };
         }
@@ -1405,12 +1408,12 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
             lib::unused(flags);
 
-            const auto proc = sched::get_process(file->pid);
+            const auto proc = sched::get_process(pid);
             lib::bug_on(!proc);
 
             auto ctty = proc->session->ctty.lock();
@@ -1423,7 +1426,7 @@ namespace fs::dev::tty
             file->private_data = ctty.value();
 
             if constexpr (debug)
-                lib::debug("tty: opened (5, 0) for pid {}", file->pid);
+                lib::debug("tty: opened (5, 0) for pid {}", pid);
             return { };
         }
 
