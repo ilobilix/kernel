@@ -232,8 +232,16 @@ namespace pmm
                     return 0;
 
                 const auto pg = vmm::page_for(addr);
-                lib::bug_on(pg->buddy.allocated == 0);
-                lib::bug_on(pg->buddy.order != order);
+                lib::bug_on(
+                    pg->buddy.allocated == 0,
+                    "pmm::free: not allocated: addr=0x{:X} npages={} order={} pg->order={}",
+                    addr, npages, order, static_cast<std::size_t>(pg->buddy.order)
+                );
+                lib::bug_on(
+                    pg->buddy.order != order,
+                    "pmm::free: order mismatch: addr=0x{:X} npages={} expected order={} pg->order={}",
+                    addr, npages, order, static_cast<std::size_t>(pg->buddy.order)
+                );
                 pg->buddy.allocated = 0;
 
                 put(order, reinterpret_cast<list *>(lib::tohh(addr)));
@@ -275,8 +283,16 @@ namespace pmm
                 const auto ret = reinterpret_cast<std::uintptr_t>(rem(order));
 
                 const auto pg = vmm::page_for(ret);
-                lib::bug_on(pg->buddy.allocated == 1);
-                lib::bug_on(pg->buddy.order != order);
+                lib::bug_on(
+                    pg->buddy.allocated == 1,
+                    "pmm::alloc: already allocated: addr=0x{:X} order={} pg->order={}",
+                    ret, order, static_cast<std::size_t>(pg->buddy.order)
+                );
+                lib::bug_on(
+                    pg->buddy.order != order,
+                    "pmm::alloc: order mismatch: addr=0x{:X} expected order={} pg->order={}",
+                    ret, order, static_cast<std::size_t>(pg->buddy.order)
+                );
                 pg->buddy.allocated = 1;
 
                 return { ret, real_size };

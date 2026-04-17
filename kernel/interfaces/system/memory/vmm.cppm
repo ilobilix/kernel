@@ -249,6 +249,7 @@ export namespace vmm
     bool handle_pfault(pfault_state state);
 
     std::uintptr_t alloc_vspace(std::size_t length);
+    void free_vspace(std::uintptr_t addr, std::size_t length);
 
     void init();
     void init_vspaces();

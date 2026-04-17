@@ -47,7 +47,10 @@ namespace slab
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
 
-            for (std::uintptr_t i = addr; i < addr + length; i += npsize)
+            const auto aligned = lib::align_up(length, npsize);
+            // std::memset(reinterpret_cast<void *>(addr), 0xDE, aligned);
+
+            for (std::uintptr_t i = addr; i < addr + aligned; i += npsize)
             {
                 const auto ret = vmm::kernel_pagemap->translate(i, psize);
                 if (!ret)
@@ -69,6 +72,8 @@ namespace slab
 
                 pmm::free(paddr, npsize / pmm::page_size);
             }
+
+            vmm::free_vspace(addr, aligned);
         }
     };
 

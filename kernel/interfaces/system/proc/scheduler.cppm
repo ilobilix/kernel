@@ -128,6 +128,7 @@ export namespace sched
     }
 
     template<typename Func, typename Arg>
+        requires (!std::convertible_to<Arg, std::uintptr_t>)
     inline thread_t *spawn(Func &&func, Arg arg, nice_t nice = default_nice)
     {
         return spawn(

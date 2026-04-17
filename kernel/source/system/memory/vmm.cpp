@@ -3,6 +3,7 @@
 module system.memory.virt;
 
 import system.memory.phys;
+import system.memory.va;
 import system.sched;
 import system.cpu;
 import magic_enum;
@@ -855,74 +856,15 @@ namespace vmm
         const auto psize = default_page_size();
         const auto npsize = pagemap::from_page_size(psize);
 
-        const auto plen = lib::div_roundup(length, npsize);
+        const auto pages = lib::div_roundup(length, npsize);
         const auto pmin = mmap_min / npsize;
         const auto pmax = mmap_max / npsize;
 
-        if (locked->empty())
-        {
-            if (plen > pmax - pmin)
-                return std::unexpected { lib::err::out_of_memory };
-
-            return (pmax - plen) * npsize;
-        }
-
-        const auto root = locked->root();
-
-        const auto max_gap = root->interval.subtree_max_gap;
-        const auto high_gap = pmax - root->interval.subtree_max;
-        const auto low_gap = root->interval.subtree_min - pmin;
-
-        if (max_gap < plen && high_gap < plen && low_gap < plen)
+        const auto page = va::find_free_region(*locked, pmin, pmax, pages);
+        if (!page)
             return std::unexpected { lib::err::out_of_memory };
 
-        if (high_gap >= plen)
-            return (pmax - plen) * npsize;
-
-        const auto nil = locked->nil();
-        auto node = locked->root();
-
-        std::uintptr_t floor = pmin;
-        while (node != nil)
-        {
-            const auto left = node->hook.left;
-            const auto right = node->hook.right;
-
-            if (right != nil && right->interval.subtree_max_gap >= plen)
-            {
-                auto current_max = node->endp;
-                if (left != nil && left->interval.subtree_max > current_max)
-                    current_max = left->interval.subtree_max;
-
-                if (current_max > floor)
-                    floor = current_max;
-
-                node = right;
-                continue;
-            }
-
-            if (right != nil)
-            {
-                const auto gap_after_node = right->interval.subtree_min - node->endp;
-                if (gap_after_node >= plen)
-                    return (right->interval.subtree_min - plen) * npsize;
-            }
-
-            const auto prev_endp = std::max(floor, left != nil ? left->interval.subtree_max : 0ul);
-            if (node->startp > prev_endp && (node->startp - prev_endp) >= plen)
-                return (node->startp - plen) * npsize;
-
-            if (left == nil)
-                break;
-
-            node = left;
-        }
-
-        const auto first = locked->first();
-        if (first->startp - pmin >= plen)
-            return (first->startp - plen) * npsize;
-
-        return std::unexpected { lib::err::out_of_memory };
+        return *page * npsize;
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region(std::size_t length)
