@@ -312,137 +312,146 @@ namespace bin::elf::exec
         [[noreturn]]
         void trampoline(ctx *ctx)
         {
-            auto &req = ctx->req;
-            auto &auxv = ctx->auxv;
-
-            const auto thread = sched::current_thread();
-            const auto proc = thread->proc;
-
-            const auto stack_size = boot::ustack_size;
-            const auto addr_top = thread->ustack_top;
-            const auto addr_bottom = addr_top - stack_size;
-
-            const std::string_view execfn_path = ctx->execfn;
-            const std::string_view plaform_name { ILOBILIX_SYSNAME };
-
-            auto offset = stack_size;
-            const auto curr = [&] {
-                return addr_bottom + offset;
-            };
-
-            const auto copy_to_user = [](std::uintptr_t dest, const void *src, std::size_t len) {
-                auto ptr = reinterpret_cast<__user void *>(dest);
-                // TODO
-                lib::panic_if(!lib::copy_to_user(ptr, src, len));
-            };
-
-            const auto write = [&](std::uint64_t val) {
-                copy_to_user(curr(), &val, sizeof(val));
-            };
-
-            std::vector<std::uintptr_t> envp_offsets { };
-            envp_offsets.reserve(req.envp.size());
-            for (const auto &env : req.envp)
+            std::uintptr_t entry, stack;
             {
-                offset -= env.length() + 1;
-                copy_to_user(curr(), env.c_str(), env.length() + 1);
-                envp_offsets.push_back(addr_bottom + offset);
-            }
+                auto &req = ctx->req;
+                auto &auxv = ctx->auxv;
 
-            std::vector<std::uintptr_t> argv_offsets { };
-            argv_offsets.reserve(req.argv.size());
-            for (const auto &arg : req.argv)
-            {
-                offset -= arg.length() + 1;
-                copy_to_user(curr(), arg.c_str(), arg.length() + 1);
-                argv_offsets.push_back(addr_bottom + offset);
-            }
+                const auto thread = sched::current_thread();
+                const auto proc = thread->proc;
 
-            std::uintptr_t execfn_offset = 0;
-            {
-                offset -= execfn_path.length() + 1;
-                copy_to_user(curr(), execfn_path.data(), execfn_path.length() + 1);
-                execfn_offset = addr_bottom + offset;
-            }
+                const auto stack_size = boot::ustack_size;
+                const auto addr_top = thread->ustack_top;
+                const auto addr_bottom = addr_top - stack_size;
 
-            std::uintptr_t platform_offset = 0;
-            {
-                offset -= plaform_name.length() + 1;
-                copy_to_user(curr(), plaform_name.data(), plaform_name.length() + 1);
-                platform_offset = addr_bottom + offset;
-            }
+                const std::string_view execfn_path = ctx->execfn;
+                const std::string_view plaform_name { ILOBILIX_SYSNAME };
 
-            std::uintptr_t random_offset = 0;
-            {
-                offset -= 16;
-                const auto uspan = lib::maybe_uspan<std::byte>::create(
-                    reinterpret_cast<__user std::byte *>(curr()), 16
-                );
-                lib::bug_on(!uspan.has_value());
-                lib::bug_on(lib::random_bytes(*uspan) != 16);
-                random_offset = addr_bottom + offset;
-            }
+                auto offset = stack_size;
+                const auto curr = [&] {
+                    return addr_bottom + offset;
+                };
 
-            offset = lib::align_down(offset, 16);
-            if ((req.argv.size() + req.envp.size() + 1) & 1)
-            {
+                const auto copy_to_user = [](std::uintptr_t dest, const void *src, std::size_t len) {
+                    auto ptr = reinterpret_cast<__user void *>(dest);
+                    // TODO
+                    lib::panic_if(!lib::copy_to_user(ptr, src, len));
+                };
+
+                const auto write = [&](std::uint64_t val) {
+                    copy_to_user(curr(), &val, sizeof(val));
+                };
+
+                const auto envp_top = offset;
+                for (const auto &env : req.envp)
+                {
+                    offset -= env.length() + 1;
+                    copy_to_user(curr(), env.c_str(), env.length() + 1);
+                }
+
+                const auto argv_top = offset;
+                for (const auto &arg : req.argv)
+                {
+                    offset -= arg.length() + 1;
+                    copy_to_user(curr(), arg.c_str(), arg.length() + 1);
+                }
+
+                std::uintptr_t execfn_offset = 0;
+                {
+                    offset -= execfn_path.length() + 1;
+                    copy_to_user(curr(), execfn_path.data(), execfn_path.length() + 1);
+                    execfn_offset = addr_bottom + offset;
+                }
+
+                std::uintptr_t platform_offset = 0;
+                {
+                    offset -= plaform_name.length() + 1;
+                    copy_to_user(curr(), plaform_name.data(), plaform_name.length() + 1);
+                    platform_offset = addr_bottom + offset;
+                }
+
+                std::uintptr_t random_offset = 0;
+                {
+                    offset -= 16;
+                    const auto uspan = lib::maybe_uspan<std::byte>::create(
+                        reinterpret_cast<__user std::byte *>(curr()), 16
+                    );
+                    lib::bug_on(!uspan.has_value());
+                    lib::bug_on(lib::random_bytes(*uspan) != 16);
+                    random_offset = addr_bottom + offset;
+                }
+
+                offset = lib::align_down(offset, 16);
+                if ((req.argv.size() + req.envp.size() + 1) & 1)
+                {
+                    offset -= 8;
+                    write(0);
+                }
+
+                const auto write_auxv = [&](int type, std::uint64_t value)
+                {
+                    offset -= 8;
+                    write(value);
+                    offset -= 8;
+                    write(type);
+                };
+
+                const auto psize = vmm::default_page_size();
+                const auto npsize = vmm::pagemap::from_page_size(psize);
+
+                write_auxv(AT_NULL, 0);
+                write_auxv(AT_PHDR, auxv.at_phdr);
+                write_auxv(AT_PHENT, auxv.at_phent);
+                write_auxv(AT_PHNUM, auxv.at_phnum);
+                write_auxv(AT_PAGESZ, npsize);
+                write_auxv(AT_BASE, ctx->interp_base);
+                write_auxv(AT_ENTRY, auxv.at_entry);
+                write_auxv(AT_NOTELF, 0);
+                write_auxv(AT_UID, proc->cred->ruid);
+                write_auxv(AT_EUID, proc->cred->euid);
+                write_auxv(AT_GID, proc->cred->rgid);
+                write_auxv(AT_EGID, proc->cred->egid);
+                write_auxv(AT_PLATFORM, platform_offset);
+                // write_auxv(AT_HWCAP, 0); // TODO
+                write_auxv(AT_EXECFN, execfn_offset);
+                write_auxv(AT_RANDOM, random_offset);
+                write_auxv(AT_SECURE, 0);
+
                 offset -= 8;
                 write(0);
+
+                offset -= 8 * req.envp.size();
+                auto array_base = addr_bottom + offset;
+                auto str_offset = envp_top;
+                for (std::size_t i = 0; const auto &env : req.envp)
+                {
+                    str_offset -= env.length() + 1;
+                    const auto addr = addr_bottom + str_offset;
+                    copy_to_user(array_base + i * 8, &addr, sizeof(addr));
+                    i++;
+                }
+
+                offset -= 8;
+                write(0);
+
+                offset -= 8 * req.argv.size();
+                array_base = addr_bottom + offset;
+                str_offset = argv_top;
+                for (std::size_t i = 0; const auto &arg : req.argv)
+                {
+                    str_offset -= arg.length() + 1;
+                    const auto addr = addr_bottom + str_offset;
+                    copy_to_user(array_base + i * 8, &addr, sizeof(addr));
+                    i++;
+                }
+
+                offset -= 8;
+                write(req.argv.size());
+
+                entry = ctx->entry;
+                stack = addr_bottom + offset;
+                delete ctx;
             }
-
-            const auto write_auxv = [&](int type, std::uint64_t value)
-            {
-                offset -= 8;
-                write(value);
-                offset -= 8;
-                write(type);
-            };
-
-            const auto psize = vmm::default_page_size();
-            const auto npsize = vmm::pagemap::from_page_size(psize);
-
-            write_auxv(AT_NULL, 0);
-            write_auxv(AT_PHDR, auxv.at_phdr);
-            write_auxv(AT_PHENT, auxv.at_phent);
-            write_auxv(AT_PHNUM, auxv.at_phnum);
-            write_auxv(AT_PAGESZ, npsize);
-            write_auxv(AT_BASE, ctx->interp_base);
-            write_auxv(AT_ENTRY, auxv.at_entry);
-            write_auxv(AT_NOTELF, 0);
-            write_auxv(AT_UID, proc->cred->ruid);
-            write_auxv(AT_EUID, proc->cred->euid);
-            write_auxv(AT_GID, proc->cred->rgid);
-            write_auxv(AT_EGID, proc->cred->egid);
-            write_auxv(AT_PLATFORM, platform_offset);
-            // write_auxv(AT_HWCAP, 0); // TODO
-            write_auxv(AT_EXECFN, execfn_offset);
-            write_auxv(AT_RANDOM, random_offset);
-            write_auxv(AT_SECURE, 0);
-
-            offset -= 8;
-            write(0);
-
-            for (auto it = envp_offsets.rbegin(); it != envp_offsets.rend(); it++)
-            {
-                offset -= 8;
-                write(*it);
-            }
-
-            offset -= 8;
-            write(0);
-
-            for (auto it = argv_offsets.rbegin(); it != argv_offsets.rend(); it++)
-            {
-                offset -= 8;
-                write(*it);
-            }
-
-            offset -= 8;
-            write(req.argv.size());
-
-            const auto entry = ctx->entry;
-            const auto stack = addr_bottom + offset;
-            delete ctx;
 
             sched::jump_to_user(entry, stack);
         }

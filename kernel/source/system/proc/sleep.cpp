@@ -64,7 +64,7 @@ namespace sched
             thread->state = thread_state::sleeping;
         }
 
-        const bool interrupted = yield();
+        yield();
 
         if (!entry.expired)
         {
@@ -73,9 +73,7 @@ namespace sched
         }
 
         const auto now = timer->ns();
-        const auto ret = now >= deadline ? 0 : deadline - now;
-        lib::bug_on(!interrupted && ret != 0);
-        return ret;
+        return now >= deadline ? 0 : deadline - now;
     }
 
     void sleep()

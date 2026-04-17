@@ -4,6 +4,7 @@ export module system.memory;
 
 export import system.memory.phys;
 export import system.memory.virt;
+export import system.memory.va;
 export import system.memory.slab;
 
 export namespace memory

@@ -845,18 +845,20 @@ namespace sched
             auto &rq = run_queue.unsafe_get();
             const std::unique_lock _ { rq.lock };
 
-            auto curr = rq.current;
-            if (!curr->is_idle())
+            if (auto curr = rq.current)
             {
-                const auto timer = chrono::main_timer();
-                rq.update_current(timer->ns());
-            }
-            curr->flags |= thread_flags::needs_resched;
+                if (!curr->is_idle())
+                {
+                    const auto timer = chrono::main_timer();
+                    rq.update_current(timer->ns());
+                }
+                curr->flags |= thread_flags::needs_resched;
 
-            if (is_preempt_disabled())
-            {
-                const auto timeslice = rq.calc_timeslice(rq.current->weight);
-                arch::arm_timer_ns(timeslice);
+                if (is_preempt_disabled())
+                {
+                    const auto timeslice = rq.calc_timeslice(curr->weight);
+                    arch::arm_timer_ns(timeslice);
+                }
             }
         }
 

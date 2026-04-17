@@ -7,7 +7,9 @@ module;
 module system.memory.virt;
 
 import system.memory.phys;
+import system.memory.va;
 import magic_enum;
+import frigg;
 import boot;
 import lib;
 import std;
@@ -18,7 +20,7 @@ namespace vmm
 {
     namespace
     {
-        std::uintptr_t vspace_base;
+        constinit frg::manual_box<va::allocator> kernel_va;
     } // namespace
 
     auto pagemap::getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *
@@ -411,18 +413,41 @@ namespace vmm
 
     void init_vspaces()
     {
-        vspace_base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+
+        const auto base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
+        const auto kvbase = boot::requests::kernel_address.response->virtual_base;
+
+        kernel_va.initialize(base / npsize, kvbase / npsize);
     }
 
     std::uintptr_t alloc_vspace(std::size_t length)
     {
         lib::bug_on(length == 0);
+        lib::bug_on(!kernel_va.valid());
 
-        const auto psize = vmm::page_size::small;
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
 
-        const auto ret = lib::align_up(vspace_base, npsize);
-        vspace_base = ret + length;
-        return ret;
+        const auto ret = kernel_va->allocate(lib::div_roundup(length, npsize));
+        if (!ret.has_value())
+            lib::panic("vmm: could not allocate 0x{:X} bytes of virtual address space", length);
+        return *ret * npsize;
+    }
+
+
+    void free_vspace(std::uintptr_t addr, std::size_t length)
+    {
+        lib::bug_on(!kernel_va.valid());
+
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+
+        const auto startp = addr / npsize;
+        lib::bug_on(startp * npsize != addr);
+
+        if (!kernel_va->free(startp, lib::div_roundup(length, npsize)))
+            lib::panic("vmm: free_vspace unknown range: 0x{:X}-0x{:X}", addr, addr + length);
     }
 } // namespace vmm
