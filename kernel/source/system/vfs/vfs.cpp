@@ -866,24 +866,11 @@ namespace vfs
 
     bool fdtable::close(int fd)
     {
-        auto fdesc = get(fd);
-        if (!fdesc)
+        auto wlocked = fds.write_lock();
+        if (!wlocked->erase(fd))
             return false;
-
-        {
-            auto wlocked = fds.write_lock();
-            if (!wlocked->erase(fd))
-                return false;
-            if (fd < next_fd)
-                next_fd = fd;
-        }
-
-        if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
-        {
-            if (const auto ret = fdesc->file->close(); !ret)
-                lib::error("failed to close fd: {}", lib::error_name(ret.error()));
-        }
-
+        if (fd < next_fd)
+            next_fd = fd;
         return true;
     }
 
@@ -927,7 +914,6 @@ namespace vfs
         const auto fd = alloc(std::move(newfdesc), newfd, force);
         if (fd < 0)
             return -EMFILE;
-        fdesc->file->ref.fetch_add(1);
         return fd;
     }
 
@@ -938,12 +924,6 @@ namespace vfs
         {
             if (it->second && it->second->closexec.load(std::memory_order_relaxed))
             {
-                auto &fdesc = it->second;
-                if (fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
-                {
-                    if (const auto ret = fdesc->file->close(); !ret)
-                        lib::error("failed to close fd: {}", lib::error_name(ret.error()));
-                }
                 const auto closed_fd = it->first;
                 it = wlocked->erase(it);
                 if (closed_fd < next_fd)
@@ -968,7 +948,6 @@ namespace vfs
             if (!old_desc)
                 continue;
 
-            old_desc->file->ref.fetch_add(1, std::memory_order_relaxed);
             wlocked.value()[fd] = std::make_shared<vfs::filedesc>(
                 old_desc->file,
                 old_desc->closexec.load(std::memory_order_relaxed)
@@ -976,21 +955,7 @@ namespace vfs
         }
     }
 
-    fdtable::~fdtable()
-    {
-        auto wlocked = fds.write_lock();
-        for (auto &[fd, fdesc] : *wlocked)
-        {
-            if (fdesc && fdesc->file && fdesc->file->ref.fetch_sub(1) == 1)
-            {
-                if (const auto ret = fdesc->file->close(); !ret)
-                    lib::error("failed to close fd: {}", lib::error_name(ret.error()));
-            }
-        }
-        wlocked->clear();
-    }
-
-    lib::initgraph::stage *root_mounted_stage()
+lib::initgraph::stage *root_mounted_stage()
     {
         static lib::initgraph::stage stage
         {

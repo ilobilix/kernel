@@ -70,7 +70,7 @@ namespace fs::dev::tty
             return { };
         }
 
-        lib::expect<void> generic_close(std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst)
+        lib::expect<void> generic_close(vfs::file &file, std::shared_ptr<instance> inst)
         {
             lib::unused(file);
             return inst->close();
@@ -1323,10 +1323,10 @@ namespace fs::dev::tty
             return { };
         }
 
-        lib::expect<void> close(std::shared_ptr<vfs::file> file) override
+        lib::expect<void> close(vfs::file &file) override
         {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
+            lib::bug_on(!file.private_data);
+            const auto inst = std::static_pointer_cast<instance>(file.private_data);
 
             const auto prev = inst->ref.fetch_sub(1, std::memory_order_acq_rel);
             lib::bug_on(prev == 0);
@@ -1350,12 +1350,12 @@ namespace fs::dev::tty
                 }
                 drv->destroy_instance(inst);
             }
-            file->private_data.reset();
+            file.private_data.reset();
 
             if constexpr (debug)
             {
-                const auto rdev = file->path.dentry->inode->stat.st_rdev;
-                lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), file->pid);
+                const auto rdev = file.path.dentry->inode->stat.st_rdev;
+                lib::debug("tty: closed ({}, {}) for pid {}", major(rdev), minor(rdev), file.pid);
             }
             return { };
         }
@@ -1427,9 +1427,9 @@ namespace fs::dev::tty
             return { };
         }
 
-        lib::expect<void> close(std::shared_ptr<vfs::file> file) override
+        lib::expect<void> close(vfs::file &file) override
         {
-            return tty::ops::singleton()->close(std::move(file));
+            return tty::ops::singleton()->close(file);
         }
 
         lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override

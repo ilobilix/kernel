@@ -179,7 +179,7 @@ export namespace vfs
             return { };
         }
 
-        virtual lib::expect<void> close(std::shared_ptr<file> file)
+        virtual lib::expect<void> close(file &file)
         {
             lib::unused(file);
             return { };
@@ -438,7 +438,7 @@ export namespace vfs
         auto get_ops() const -> lib::expect<std::shared_ptr<ops>>;
 
         sched::mutex lock;
-        std::atomic<std::uint32_t> ref;
+        bool opened;
         path path;
         std::size_t offset;
         int flags;
@@ -446,20 +446,31 @@ export namespace vfs
 
         std::shared_ptr<void> private_data;
 
+        ~file()
+        {
+            if (!opened)
+                return;
+
+            const auto ops = get_ops();
+            if (!ops.has_value())
+            {
+                lib::error("failed to close file: {}", lib::error_name(ops.error()));
+                return;
+            }
+
+            if (const auto ret = ops->get()->close(*this); !ret)
+                lib::error("failed to close file: {}", lib::error_name(ret.error()));
+        }
+
         lib::expect<void> open(int flags)
         {
             const auto ops = get_ops();
             if (!ops.has_value())
                 return std::unexpected { ops.error() };
-            return ops->get()->open(shared_from_this(), flags);
-        }
-
-        lib::expect<void> close()
-        {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->close(shared_from_this());
+            auto ret = ops->get()->open(shared_from_this(), flags);
+            if (ret.has_value())
+                opened = true;
+            return ret;
         }
 
         lib::expect<std::size_t> read(lib::maybe_uspan<std::byte> buffer)
@@ -562,7 +573,7 @@ export namespace vfs
         static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags, pid_t pid)
         {
             auto file = std::make_shared<vfs::file>();
-            file->ref = 1;
+            file->opened = false;
             file->path = path;
             file->offset = offset;
             file->flags = flags;
@@ -607,7 +618,6 @@ export namespace vfs
 
         fdtable() = default;
         fdtable(fdtable &other);
-        ~fdtable();
     };
 
     struct resolve_res
