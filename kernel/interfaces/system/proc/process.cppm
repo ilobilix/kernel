@@ -73,6 +73,7 @@ export namespace sched
         > threads;
 
         std::atomic<std::size_t> alive_threads = 0;
+        std::atomic<std::size_t> to_quiesce = 0;
 
         int exit_code = 0;
         int term_signal = 0;
@@ -91,8 +92,6 @@ export namespace sched
         wait_queue_t vfork_done;
 
         recursive_mutex lock;
-
-        ~process_t();
     };
 
     struct group_t

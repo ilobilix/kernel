@@ -7,6 +7,7 @@ module;
 
 module x86_64.system.lapic;
 
+import x86_64.system.idt;
 import drivers.timers;
 import system.interrupts;
 import system.memory;
@@ -290,18 +291,18 @@ namespace x86_64::apic
             enable(val);
         }
 
-        const auto spr = interrupts::allocate(self.idx, 0xFF);
-        lib::bug_on(!spr.has_value() || spr->second != 0xFF);
+        const auto spr = interrupts::allocate(self.idx, idt::int_spurious);
+        lib::bug_on(!spr.has_value() || spr->second != idt::int_spurious);
         spr->first.set([](auto) { });
 
-        const auto err = interrupts::allocate(self.idx, 0xFE);
-        lib::bug_on(!err.has_value() || err->second != 0xFE);
+        const auto err = interrupts::allocate(self.idx, idt::int_lapic_error);
+        lib::bug_on(!err.has_value() || err->second != idt::int_lapic_error);
         err->first.set([](auto) {
             const auto err = read(reg::err);
             lib::error("lapic: got error: 0x{:X}", err);
         });
 
-        write(reg::siv, 0xFF);
+        write(reg::siv, idt::int_spurious);
         write(reg::err, 0);
 
         if (self.idx == cpu::bsp_idx())
@@ -327,11 +328,11 @@ namespace x86_64::apic
             }
         }
 
-        write(reg::lvt_lint0, (1 << 16) | 0xFF);
-        write(reg::lvt_lint1, (1 << 16) | 0xFF);
-        write(reg::lvt_error, 0xFE);
+        write(reg::lvt_lint0, (1 << 16) | idt::int_spurious);
+        write(reg::lvt_lint1, (1 << 16) | idt::int_spurious);
+        write(reg::lvt_error, idt::int_lapic_error);
 
-        write(reg::siv, (1 << 8) | 0xFF);
+        write(reg::siv, (1 << 8) | idt::int_spurious);
 
         write(reg::err, 0);
         if (const auto err = read(reg::err))

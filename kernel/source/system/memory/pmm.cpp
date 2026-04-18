@@ -73,7 +73,7 @@ namespace pmm
             inline void *rem(std::size_t order)
             {
                 const auto ret = lists[order].next;
-                lists[order].next = lists[order].next->next;
+                lists[order].next = ret->next;
                 if (lists[order].next)
                     lists[order].next->prev = nullptr;
                 return ret;

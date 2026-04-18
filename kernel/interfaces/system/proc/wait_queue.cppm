@@ -39,6 +39,11 @@ export namespace sched
         void add_entry(wait_queue_entry_t &entry);
         void remove_entry(wait_queue_entry_t &entry);
 
+        void unlink_atomic(
+            std::atomic<wait_queue_t *> &on_queue_ref,
+            std::atomic<wait_queue_entry_t *> &entry_ref
+        );
+
         bool wait(std::uint64_t ns = 0);
         void wait_unint(std::uint64_t ns = 0);
 

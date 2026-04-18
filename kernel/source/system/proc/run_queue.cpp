@@ -6,19 +6,19 @@ namespace sched
 {
     void run_queue_t::enqueue(thread_t *thread)
     {
-        lib::bug_on(thread->in_rq);
+        lib::bug_on(thread->on_rq != nullptr);
         queue.insert(thread);
         total_weight += thread->weight;
-        thread->in_rq = true;
+        thread->on_rq = static_cast<void *>(this);
         update_min_vruntime();
     }
 
     void run_queue_t::dequeue(thread_t *thread)
     {
-        lib::bug_on(!thread->in_rq);
+        lib::bug_on(thread->on_rq == nullptr);
         queue.remove(thread);
         total_weight -= thread->weight;
-        thread->in_rq = false;
+        thread->on_rq = nullptr;
         update_min_vruntime();
     }
 

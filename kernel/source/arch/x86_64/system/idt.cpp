@@ -157,6 +157,8 @@ namespace x86_64::idt
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
+            eoi(vector);
+
             const auto idx = vector - irq(0);
             auto &irqh = irq_handlers.unsafe_get();
             if (irqh.size() > idx)
@@ -167,8 +169,6 @@ namespace x86_64::idt
                 else
                     lib::panic(regs, "unhandled irq {}", vector);
             }
-
-            eoi(vector);
         }
         else if (vector < irq(0))
         {
@@ -182,7 +182,7 @@ namespace x86_64::idt
                 else if (status & (1 << 6))
                     lib::panic("nmi: channel check");
 
-                goto end;
+                goto skip_sched;
             }
 
             std::uintptr_t cr2 = 0;
@@ -231,6 +231,7 @@ namespace x86_64::idt
                 sched::handle_pending_signals(regs);
         }
 
+        skip_sched:
         std::atomic_signal_fence(std::memory_order_release);
         self.in_interrupt.store(false, std::memory_order_relaxed);
     }
@@ -250,7 +251,7 @@ namespace x86_64::idt
         if (cpu->idx == cpu::bsp_idx())
         {
             lib::info("idt: setting up irq handlers");
-            idt[2].ist = 1; idt[14].ist = 2;
+            idt[2].ist = 1; idt[8].ist = 2; idt[18].ist = 3;
         }
 
         irq_handlers.unsafe_get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
