@@ -74,11 +74,11 @@ namespace sched::arch
     {
         cpu::gs::write(reinterpret_cast<std::uintptr_t>(initial));
 
-        auto ret = interrupts::allocate(cpu::self().unsafe_get().idx, idt::int_sched);
+        auto ret = interrupts::allocate(cpu::self().unsafe_get().idx, idt::vec_sched);
         lib::bug_on(!ret.has_value());
 
         auto [handler, vec] = *ret;
-        lib::bug_on(idt::int_sched != vec);
+        lib::bug_on(idt::vec_sched != vec);
 
         handler.set([](auto) { tick(); });
     }
@@ -156,9 +156,9 @@ namespace sched::arch
     void arm_timer_ns(std::uint64_t ns)
     {
         if (ns == 0)
-            apic::ipi(apic::shorthand::self, apic::delivery::fixed, idt::int_sched);
+            apic::ipi(apic::shorthand::self, apic::delivery::fixed, idt::vec_sched);
         else
-            apic::arm(ns, idt::int_sched);
+            apic::arm(ns, idt::vec_sched);
     }
 
     void wake_up_other(std::size_t cpu_idx)
@@ -167,7 +167,7 @@ namespace sched::arch
             cpu::local::nth(cpu_idx)->arch_id,
             apic::destination::physical,
             apic::delivery::fixed,
-            idt::int_sched
+            idt::vec_sched
         );
     }
 
