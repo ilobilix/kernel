@@ -24,6 +24,25 @@ namespace sched
             entries.remove(&entry);
     }
 
+    void wait_queue_t::unlink_atomic(
+        std::atomic<wait_queue_t *> &on_queue_ref,
+        std::atomic<wait_queue_entry_t *> &entry_ref
+    )
+    {
+        const std::unique_lock _ { lock };
+        if (on_queue_ref.load(std::memory_order_relaxed) != this)
+            return;
+
+        if (auto entry = entry_ref.load(std::memory_order_relaxed))
+        {
+            if (entries.find(entry) != entries.end())
+                entries.remove(entry);
+        }
+
+        on_queue_ref.store(nullptr, std::memory_order_relaxed);
+        entry_ref.store(nullptr, std::memory_order_relaxed);
+    }
+
     bool wait_queue_t::wait(std::uint64_t ns)
     {
         if (pending.load(std::memory_order_acquire) > 0)
@@ -44,13 +63,21 @@ namespace sched
 
         entries.push_back(&entry);
         auto thread = static_cast<thread_t *>(entry.thread);
-        thread->state = thread_state::sleeping;
+
+        thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
+        thread->on_wait_queue.store(this, std::memory_order_relaxed);
+        thread->wait_entry.store(&entry, std::memory_order_relaxed);
 
         if (ns == 0)
         {
             lock.unlock();
-            const bool interrupted = yield();
+            schedule();
+            const bool interrupted = thread->test_and_clear_flag(thread_flags::interrupted);
             lock.lock();
+
+            thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+            thread->wait_entry.store(nullptr, std::memory_order_relaxed);
+
             if (entries.find(&entry) != entries.end())
                 entries.remove(&entry);
             lock.unlock();
@@ -66,11 +93,15 @@ namespace sched
         arm_thread_timeout(&timeout, ns);
 
         lock.unlock();
-        const bool interrupted = yield();
+        schedule();
+        const bool interrupted = thread->test_and_clear_flag(thread_flags::interrupted);
         if (!timeout.expired)
             cancel_thread_timeout(&timeout);
 
         lock.lock();
+        thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+        thread->wait_entry.store(nullptr, std::memory_order_relaxed);
+
         if (entries.find(&entry) != entries.end())
             entries.remove(&entry);
         lock.unlock();
@@ -98,13 +129,20 @@ namespace sched
 
         entries.push_back(&entry);
         auto thread = static_cast<thread_t *>(entry.thread);
-        thread->state = thread_state::sleeping;
+
+        thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
+        thread->on_wait_queue.store(this, std::memory_order_relaxed);
+        thread->wait_entry.store(&entry, std::memory_order_relaxed);
 
         if (ns == 0)
         {
             lock.unlock();
-            yield();
+            schedule();
             lock.lock();
+
+            thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+            thread->wait_entry.store(nullptr, std::memory_order_relaxed);
+
             if (entries.find(&entry) != entries.end())
                 entries.remove(&entry);
             lock.unlock();
@@ -120,12 +158,14 @@ namespace sched
         arm_thread_timeout(&timeout, ns);
 
         lock.unlock();
-        yield();
+        schedule();
 
         if (!timeout.expired)
             cancel_thread_timeout(&timeout);
 
         lock.lock();
+        thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+        thread->wait_entry.store(nullptr, std::memory_order_relaxed);
         if (entries.find(&entry) != entries.end())
             entries.remove(&entry);
         lock.unlock();
@@ -142,13 +182,14 @@ namespace sched
             return;
         }
         auto entry = entries.pop_front();
+        auto thread = static_cast<thread_t *>(entry->thread);
         lock.unlock();
-        wake_up(static_cast<thread_t *>(entry->thread), true);
+        wake_up(thread, true);
     }
 
     void wait_queue_t::wake_all()
     {
-        lock.lock();
+        const std::unique_lock _ { lock };
         if (!entries.empty())
         {
             while (!entries.empty())
@@ -158,6 +199,5 @@ namespace sched
             }
         }
         else pending.fetch_add(1, std::memory_order_release);
-        lock.unlock();
     }
 } // namespace sched

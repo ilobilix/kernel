@@ -28,8 +28,20 @@ namespace sched
 
         cpu_local(dead_threads_t, dead_threads);
         cpu_local(wait_queue_t, dead_bell);
-        cpu_local(thread_t *, reaper_thread);
         cpu_local(bool, need_reaper_wake);
+
+        bool claim_for_reap(thread_t *thread)
+        {
+            if (thread->dead_listed.exchange(true, std::memory_order_acq_rel))
+                return false;
+
+            if (thread->has_flag(thread_flags::quiesce_pending))
+                thread->proc->to_quiesce.fetch_sub(1, std::memory_order_acq_rel);
+
+            dead_threads.unsafe_get().lock()->push_back(thread);
+            need_reaper_wake.unsafe_get() = true;
+            return true;
+        }
 
         lib::locker<
             lib::map::flat_hash<
@@ -65,11 +77,11 @@ namespace sched
             return ret;
         }
 
-        // void free_id(pid_t id)
-        // {
-        //     // TODO
-        //     lib::unused(id);
-        // }
+        void free_id(pid_t id)
+        {
+            // TODO
+            lib::unused(id);
+        }
 
         bool can_run_on(const thread_t *thread, std::size_t cpu)
         {
@@ -136,7 +148,7 @@ namespace sched
 
             if (should_resched)
             {
-                rq.current->flags |= thread_flags::needs_resched;
+                rq.current->set_flag(thread_flags::needs_resched);
                 if (cpu_idx != self.idx)
                     arch::wake_up_other(cpu_idx);
             }
@@ -206,28 +218,52 @@ namespace sched
             while (!to_kill.empty())
             {
                 auto thread = to_kill.pop_back();
-                locked->erase(thread->tid);
+                lib::bug_on(locked->erase(thread->tid) != 1);
+                process->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
 
-                switch (thread->state)
+                if (!thread->saved_vmspace)
+                    thread->saved_vmspace = process->vmspace;
+
+                bool reap_directly = false;
+                switch (thread->state.load(std::memory_order_relaxed))
                 {
                     case thread_state::sleeping:
-                        thread->flags |= thread_flags::interrupted;
+                        thread->set_flag(thread_flags::interrupted);
                         [[fallthrough]];
                     case thread_state::blocked:
                     case thread_state::stopped:
-                        // TODO: remove from wait queues
-                        thread->state = thread_state::dead;
+                    {
+                        if (auto wq = thread->on_wait_queue.load(std::memory_order_acquire))
+                            wq->unlink_atomic(thread->on_wait_queue, thread->wait_entry);
+                        thread->state.store(thread_state::dead, std::memory_order_release);
+                        reap_directly = true;
                         break;
+                    }
                     case thread_state::running:
-                        thread->state = thread_state::dead;
-                        thread->flags |= thread_flags::needs_resched;
+                        thread->set_flag(thread_flags::quiesce_pending | thread_flags::needs_resched);
+                        process->to_quiesce.fetch_add(1, std::memory_order_acq_rel);
+                        thread->state.store(thread_state::dead, std::memory_order_release);
                         break;
                     case thread_state::runnable:
-                        thread->state = thread_state::dead;
+                        if (auto rq = static_cast<run_queue_t *>(thread->on_rq))
+                        {
+                            const std::unique_lock _ { rq->lock };
+                            if (thread->on_rq == rq)
+                            {
+                                rq->dequeue(thread);
+                                if (!thread->is_idle())
+                                    rq->nr_running--;
+                            }
+                        }
+                        thread->state.store(thread_state::dead, std::memory_order_release);
+                        reap_directly = true;
                         break;
                     case thread_state::dead:
                         break;
                 }
+
+                if (reap_directly)
+                    claim_for_reap(thread);
 
                 if (thread->running_on)
                     arch::wake_up_other(thread->running_on->idx);
@@ -318,18 +354,18 @@ namespace sched
         rq.load_update = (self.idx * balance_interval_ns) / cpu::count();
 
         rq.idle = create_kthread(reinterpret_cast<std::uintptr_t>(arch::halt), true);
-        rq.idle->flags |= thread_flags::idle;
+        rq.idle->set_flag(thread_flags::idle);
         rq.idle->affinity.clear(0);
         rq.idle->affinity.set(rq.cpu_idx, true);
 
         rq.current = rq.idle;
         rq.current->running_on = self.self;
-        rq.current->state = thread_state::running;
+        rq.current->state.store(thread_state::running, std::memory_order_relaxed);
 
         arch::init_core(rq.current);
 
         {
-            auto reaper = reaper_thread.unsafe_get() = create_kthread(
+            auto reaper = create_kthread(
                 reinterpret_cast<std::uintptr_t>(reap), 0, nice_t::max
             );
             reaper->affinity.clear(0);
@@ -369,11 +405,11 @@ namespace sched
 
         rq.update_current(now);
 
-        switch (prev->state)
+        switch (prev->state.load(std::memory_order_relaxed))
         {
             case thread_state::running:
-                prev->state = thread_state::runnable;
-                if (!prev->in_rq && !prev->is_idle())
+                prev->state.store(thread_state::runnable, std::memory_order_relaxed);
+                if (prev->on_rq == nullptr && !prev->is_idle())
                     rq.enqueue(prev);
                 break;
             case thread_state::runnable:
@@ -381,13 +417,13 @@ namespace sched
             case thread_state::sleeping:
             case thread_state::blocked:
             case thread_state::stopped:
-                if (prev->in_rq)
+                if (prev->on_rq != nullptr)
                     rq.dequeue(prev);
                 if (!prev->is_idle())
                     rq.nr_running--;
                 break;
             case thread_state::dead:
-                if (prev->in_rq)
+                if (prev->on_rq != nullptr)
                     rq.dequeue(prev);
                 rq.current = nullptr;
                 if (!prev->is_idle())
@@ -395,30 +431,47 @@ namespace sched
 
                 if (!prev->saved_vmspace)
                     prev->saved_vmspace = prev->proc->vmspace;
-                dead_threads.unsafe_get().lock()->push_back(prev);
-                need_reaper_wake.unsafe_get() = true;
+
+                claim_for_reap(prev);
                 break;
         }
 
-        prev->flags &= ~thread_flags::needs_resched;
+        prev->clear_flag(thread_flags::needs_resched);
 
-        next = rq.pick_next();
+        const auto pick_alive = [&] -> thread_t * {
+            while (auto cand = rq.pick_next())
+            {
+                if (cand->state.load(std::memory_order_relaxed) != thread_state::dead)
+                {
+                    rq.dequeue(cand);
+                    return cand;
+                }
+                rq.dequeue(cand);
+                if (!cand->is_idle())
+                    rq.nr_running--;
+                if (!cand->saved_vmspace)
+                    cand->saved_vmspace = cand->proc->vmspace;
+
+                claim_for_reap(cand);
+            }
+            return nullptr;
+        };
+
+        next = pick_alive();
         if (next == nullptr)
         {
             rq.lock.unlock();
             load_balance();
             rq.lock.lock();
-            next = rq.pick_next();
+            next = pick_alive();
         }
 
         if (next == nullptr)
             next = rq.idle;
-        else
-            rq.dequeue(next);
 
         lib::bug_on(!can_run_on(next, rq.cpu_idx));
 
-        next->state = thread_state::running;
+        next->state.store(thread_state::running, std::memory_order_relaxed);
         next->sched_time = now;
         next->prev_runtime = next->total_runtime;
         next->running_on = self.self;
@@ -439,8 +492,13 @@ namespace sched
             }
             return;
         }
-        else if (next->proc->vmspace != prev->proc->vmspace)
-            next->proc->vmspace->pmap->load();
+        else
+        {
+            const auto &prev_vmspace = prev->saved_vmspace
+                ? prev->saved_vmspace : prev->proc->vmspace;
+            if (next->proc->vmspace != prev_vmspace)
+                next->proc->vmspace->pmap->load();
+        }
 
         if (self.in_interrupt.load(std::memory_order_relaxed))
             next->was_in_interrupt = &self.in_interrupt;
@@ -473,6 +531,8 @@ namespace sched
     process_t *create_process(process_t *parent)
     {
         auto proc = new process_t { };
+        if (!proc)
+            return nullptr;
 
         if (parent == nullptr)
         {
@@ -516,11 +576,13 @@ namespace sched
         lib::bug_on(!proc);
 
         auto thread = new thread_t { };
+        if (!thread)
+            return nullptr;
         thread->self = thread;
 
         thread->tid = alloc_id();
         thread->proc = proc;
-        thread->flags = thread_flags::kernel;
+        thread->set_flag(thread_flags::kernel);
 
         thread->nice = nice;
         thread->weight = nice_to_weight(thread->nice);
@@ -549,6 +611,8 @@ namespace sched
         const std::unique_lock _ { proc->lock };
 
         auto thread = new thread_t { };
+        if (!thread)
+            return nullptr;
         thread->self = thread;
 
         if (auto locked = proc->threads.lock(); locked->empty())
@@ -624,11 +688,6 @@ namespace sched
         arch::deinit_thread(this);
     }
 
-    process_t::~process_t()
-    {
-        // TODO
-    }
-
     void enqueue_new(thread_t *thread)
     {
         preempt_disable();
@@ -645,6 +704,8 @@ namespace sched
     thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
     {
         auto thread = create_kthread(ip, arg, nice);
+        if (!thread)
+            return nullptr;
         enqueue_new(thread);
         return thread;
     }
@@ -663,17 +724,17 @@ namespace sched
 
     bool wake_up(thread_t *thread, bool preempt)
     {
-        if (thread->state == thread_state::stopped)
+        auto state = thread->state.load(std::memory_order_acquire);
+        if (state == thread_state::stopped)
         {
-            thread->prev_state = thread_state::runnable;
+            thread->prev_state.store(thread_state::runnable, std::memory_order_relaxed);
             return false;
         }
-        if (thread->state != thread_state::sleeping &&
-            thread->state != thread_state::blocked)
+        if (state != thread_state::sleeping && state != thread_state::blocked)
             return false;
 
         preempt_disable();
-        thread->state = thread_state::runnable;
+        thread->state.store(thread_state::runnable, std::memory_order_release);
 
         const auto self_idx = cpu::self().unsafe_get().idx;
         std::size_t target;
@@ -685,7 +746,8 @@ namespace sched
         enqueue_on(thread, target, false);
 
         const bool on_self = (target == self_idx);
-        if (preempt_enable() && preempt && on_self)
+        const bool in_interrupt = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed);
+        if (preempt_enable() && preempt && on_self && !in_interrupt)
             schedule();
 
         return true;
@@ -703,15 +765,13 @@ namespace sched
 
             if (!rq.queue.empty())
                 curr->vruntime = std::max(curr->vruntime, rq.queue.last()->vruntime);
-            curr->flags |= thread_flags::needs_resched;
+            curr->set_flag(thread_flags::needs_resched);
         }
         preempt_enable();
         schedule();
 
         auto thread = current_thread();
-        const bool interrupted = (thread->flags & thread_flags::interrupted) != thread_flags::none;
-        thread->flags &= ~thread_flags::interrupted;
-        return interrupted;
+        return thread->test_and_clear_flag(thread_flags::interrupted);
     }
 
     [[noreturn]] void thread_exit(int exit_code)
@@ -721,7 +781,10 @@ namespace sched
         auto thread = current_thread();
         auto proc = thread->proc;
 
-        thread->state = thread_state::dead;
+        if (!thread->saved_vmspace)
+            thread->saved_vmspace = proc->vmspace;
+
+        thread->state.store(thread_state::dead, std::memory_order_release);
 
         if (thread->clear_child_tid)
         {
@@ -826,6 +889,10 @@ namespace sched
         while (proc->alive_threads.load(std::memory_order_acquire) > 1)
             yield();
 
+        while (proc->to_quiesce.load(std::memory_order_acquire) > 0)
+            yield();
+
+        proc->lock.unlock();
         thread_exit(exit_code);
         std::unreachable();
     }
@@ -852,7 +919,7 @@ namespace sched
                     const auto timer = chrono::main_timer();
                     rq.update_current(timer->ns());
                 }
-                curr->flags |= thread_flags::needs_resched;
+                curr->set_flag(thread_flags::needs_resched);
 
                 if (is_preempt_disabled())
                 {
@@ -996,7 +1063,7 @@ namespace sched
             thread->affinity = std::move(mask);
 
             if (!thread->affinity.get(thread->running_on->idx))
-                thread->flags |= thread_flags::needs_resched;
+                thread->set_flag(thread_flags::needs_resched);
             return;
         }
 
@@ -1011,9 +1078,9 @@ namespace sched
         for (auto &[tid, thread] : *locked)
         {
             thread->affinity = mask;
-            if (thread->state == thread_state::running &&
+            if (thread->state.load(std::memory_order_acquire) == thread_state::running &&
                 !thread->affinity.get(thread->running_on->idx))
-                thread->flags |= thread_flags::needs_resched;
+                thread->set_flag(thread_flags::needs_resched);
         }
     }
 
@@ -1276,12 +1343,42 @@ namespace sched
                 return -EINVAL;
         }
 
-        process_t *target_proc;
-        if (!(flags & clone_thread))
+        process_t *target_proc = nullptr;
+        thread_t *target_thread = nullptr;
+        const bool created_proc = !(flags & clone_thread);
+
+        auto cleanup = [&] {
+            if (target_thread)
+            {
+                if (!target_thread->saved_vmspace && target_proc)
+                    target_thread->saved_vmspace = target_proc->vmspace;
+
+                const auto tid = target_thread->tid;
+                const bool freed_pid = created_proc && target_proc && tid == target_proc->pid;
+
+                delete target_thread;
+                if (!freed_pid)
+                    free_id(tid);
+            }
+            if (created_proc && target_proc)
+            {
+                processes.lock()->erase(target_proc->pid);
+                if (target_proc->group)
+                    target_proc->group->members.lock()->erase(target_proc->pid);
+
+                const auto pid = target_proc->pid;
+                delete target_proc;
+                free_id(pid);
+            }
+        };
+
+        if (created_proc)
         {
             target_proc = create_process(
                 (flags & clone_parent) ? caller_proc->parent : caller_proc
             );
+            if (target_proc == nullptr)
+                return -ENOMEM;
 
             if (flags & clone_vm)
             {
@@ -1294,11 +1391,17 @@ namespace sched
             {
                 auto pmap = std::make_shared<vmm::pagemap>();
                 if (!pmap)
+                {
+                    cleanup();
                     return -ENOMEM;
+                }
 
                 auto ret = caller_proc->vmspace->fork(std::move(pmap));
                 if (!ret)
+                {
+                    cleanup();
                     return -ENOMEM;
+                }
 
                 target_proc->vmspace = std::move(*ret);
             }
@@ -1317,16 +1420,15 @@ namespace sched
         }
         else target_proc = caller_proc;
 
-        auto target_thread = create_uthread(
+        target_thread = create_uthread(
             target_proc, 0, 0, false, true,
             stack_top, caller_thread->nice
         );
         if (target_thread == nullptr)
+        {
+            cleanup();
             return -ENOMEM;
-
-        auto cleanup = [&] {
-            delete target_thread;
-        };
+        }
 
         // TODO: set_tid array
 
@@ -1438,6 +1540,9 @@ namespace sched
             while (process->alive_threads.load(std::memory_order_acquire) > 1)
                 yield();
 
+            while (process->to_quiesce.load(std::memory_order_acquire) > 0)
+                yield();
+
             auto new_pmap = std::make_shared<vmm::pagemap>();
             if (!new_pmap)
                 return -ENOMEM;
@@ -1471,7 +1576,7 @@ namespace sched
             }
             lib::bug_on(new_thread->tid != process->pid);
 
-            old_thread->state = thread_state::dead;
+            old_thread->state.store(thread_state::dead, std::memory_order_release);
             old_thread->saved_vmspace = std::move(old_vmspace);
 
             if (process->fdt.use_count() > 1)
@@ -1490,7 +1595,7 @@ namespace sched
         }
         preempt_enable();
 
-        sched::yield();
+        schedule();
         std::unreachable();
     }
 

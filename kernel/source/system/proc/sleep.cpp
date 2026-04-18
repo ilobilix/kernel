@@ -61,7 +61,7 @@ namespace sched
         {
             auto locked = sleep_list.lock();
             locked->insert(&entry);
-            thread->state = thread_state::sleeping;
+            thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
         }
 
         yield();
@@ -79,14 +79,14 @@ namespace sched
     void sleep()
     {
         auto thread = current_thread();
-        thread->state = thread_state::sleeping;
+        thread->state.store(thread_state::sleeping, std::memory_order_release);
         schedule();
     }
 
     void block()
     {
         auto thread = current_thread();
-        thread->state = thread_state::blocked;
+        thread->state.store(thread_state::blocked, std::memory_order_release);
         schedule();
     }
 

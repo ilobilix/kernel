@@ -51,10 +51,12 @@ namespace x86_64::gdt
             lib::info("gdt: loading on bsp");
 
         auto &tlocal = tss_local.unsafe_get();
-        // nmi
+        // #NMI
         tlocal.ist[0] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
-        // page fault
+        // #DF
         tlocal.ist[1] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
+        // #MC
+        tlocal.ist[2] = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
 
         tlocal.iopboffset = sizeof(tss::reg);
 

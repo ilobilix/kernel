@@ -1782,7 +1782,7 @@ namespace syscall::vfs
                     return 0;
                 }
 
-                thread->state = sched::thread_state::sleeping;
+                thread->state.store(sched::thread_state::sleeping, std::memory_order_release);
                 sched::sleep_entry_t sleep_timeout {
                     .thread = thread,
                     .deadline_ns = 0,

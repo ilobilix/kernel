@@ -12,10 +12,10 @@ namespace sched
     {
         void wake_for_signal(thread_t *thread, int sig)
         {
-            switch (thread->state)
+            switch (thread->state.load(std::memory_order_acquire))
             {
                 case thread_state::sleeping:
-                    thread->flags |= thread_flags::interrupted;
+                    thread->set_flag(thread_flags::interrupted);
                     wake_up(thread, true);
                     break;
                 case thread_state::stopped:
@@ -25,7 +25,7 @@ namespace sched
                 case thread_state::running:
                     if (thread->running_on)
                     {
-                        thread->flags |= thread_flags::needs_resched;
+                        thread->set_flag(thread_flags::needs_resched);
                         arch::wake_up_other(thread->running_on->idx);
                     }
                     break;
@@ -57,16 +57,16 @@ namespace sched
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
-                switch (thread->state)
+                switch (const auto state = thread->state.load(std::memory_order_acquire))
                 {
                     case thread_state::running:
                     case thread_state::runnable:
                     case thread_state::sleeping:
-                        thread->prev_state = thread->state;
-                        thread->state = thread_state::stopped;
+                        thread->prev_state.store(state, std::memory_order_relaxed);
+                        thread->state.store(thread_state::stopped, std::memory_order_release);
                         if (thread->running_on)
                         {
-                            thread->flags |= thread_flags::needs_resched;
+                            thread->set_flag(thread_flags::needs_resched);
                             arch::wake_up_other(thread->running_on->idx);
                         }
                         break;
@@ -87,17 +87,17 @@ namespace sched
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
-                if (thread->state != thread_state::stopped)
+                if (thread->state.load(std::memory_order_acquire) != thread_state::stopped)
                     continue;
 
-                switch (thread->prev_state)
+                switch (const auto prev = thread->prev_state.load(std::memory_order_relaxed))
                 {
                     case thread_state::sleeping:
                     case thread_state::blocked:
-                        thread->state = thread->prev_state;
+                        thread->state.store(prev, std::memory_order_release);
                         break;
                     default:
-                        thread->state = thread_state::sleeping;
+                        thread->state.store(thread_state::sleeping, std::memory_order_release);
                         wake_up(thread, true);
                         break;
                 }
@@ -212,7 +212,7 @@ namespace sched
         if (sig == sigcont)
             continue_process(proc);
 
-        thread->flags |= thread_flags::signal_pending;
+        thread->set_flag(thread_flags::signal_pending);
         wake_for_signal(thread, sig);
         return true;
     }
@@ -236,7 +236,7 @@ namespace sched
             auto locked = process->threads.lock();
             for (auto &[_, thread] : *locked)
             {
-                if (thread->state == thread_state::dead)
+                if (thread->state.load(std::memory_order_acquire) == thread_state::dead)
                     continue;
 
                 if (!thread->sigmask.has(sig))
@@ -250,7 +250,7 @@ namespace sched
             {
                 for (auto &[_, thread] : *locked)
                 {
-                    if (thread->state != thread_state::dead)
+                    if (thread->state.load(std::memory_order_acquire) != thread_state::dead)
                     {
                         target = thread;
                         break;
@@ -339,7 +339,7 @@ namespace sched
         {
             const std::unique_lock _ { proc->sigqueue.lock };
             if (!(proc->sigqueue.pending & ~thread->sigmask).any())
-                thread->flags &= ~thread_flags::signal_pending;
+                thread->clear_flag(thread_flags::signal_pending);
         }
     }
 } // namespace sched

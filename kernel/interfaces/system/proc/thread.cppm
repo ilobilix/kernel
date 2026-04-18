@@ -3,6 +3,7 @@
 export module system.sched:thread;
 
 import system.sched.thread_base;
+import system.sched.wait_queue;
 
 import system.memory.virt;
 import system.cpu.local;
@@ -34,7 +35,8 @@ export namespace sched
         idle = (1 << 1),
         needs_resched = (1 << 2),
         interrupted = (1 << 3),
-        signal_pending = (1 << 4)
+        signal_pending = (1 << 4),
+        quiesce_pending = (1 << 5)
     };
 
     using namespace magic_enum::bitwise_operators;
@@ -57,9 +59,9 @@ export namespace sched
         pid_t tid;
         process_t *proc;
 
-        thread_state state = thread_state::runnable;
-        thread_state prev_state = thread_state::runnable;
-        thread_flags flags = thread_flags::none;
+        std::atomic<thread_state> state = thread_state::runnable;
+        std::atomic<thread_state> prev_state = thread_state::runnable;
+        std::atomic<std::uint8_t> flags = 0;
         int exit_code = 0;
 
         std::uint64_t vruntime = 0;
@@ -71,13 +73,18 @@ export namespace sched
         std::uint64_t weight;
         std::uint64_t inv_weight;
 
-        bool in_rq = false;
+        void *on_rq = nullptr;
         lib::rbtree_hook<thread_t> hook;
 
         lib::intrusive_list_hook<thread_t> dead_hook;
 
         std::atomic_bool *was_in_interrupt = nullptr;
         lib::spinlock_irq *needs_unlock = nullptr;
+
+        std::atomic<wait_queue_t *> on_wait_queue = nullptr;
+        std::atomic<wait_queue_entry_t *> wait_entry = nullptr;
+
+        std::atomic<bool> dead_listed = false;
 
         arch::context ctx;
         arch::data adata;
@@ -94,20 +101,30 @@ export namespace sched
         std::optional<sigset_t> saved_sigmask;
         stack_t altstack { };
 
-        inline bool is_kernel() const
+        inline void set_flag(thread_flags flag)
         {
-            return (flags & thread_flags::kernel) != thread_flags::none;
+            flags.fetch_or(static_cast<std::uint8_t>(flag), std::memory_order_acq_rel);
         }
 
-        inline bool is_idle() const
+        inline void clear_flag(thread_flags flag)
         {
-            return (flags & thread_flags::idle) != thread_flags::none;
+            flags.fetch_and(~static_cast<std::uint8_t>(flag), std::memory_order_acq_rel);
         }
 
-        inline bool needs_resched() const
+        inline bool has_flag(thread_flags flag) const
         {
-            return (flags & thread_flags::needs_resched) != thread_flags::none;
+            return (flags.load(std::memory_order_acquire) & static_cast<std::uint8_t>(flag)) != 0;
         }
+
+        inline bool test_and_clear_flag(thread_flags flag)
+        {
+            const auto bits = static_cast<std::uint8_t>(flag);
+            return (flags.fetch_and(~bits, std::memory_order_acq_rel) & bits) != 0;
+        }
+
+        inline bool is_kernel() const { return has_flag(thread_flags::kernel); }
+        inline bool is_idle() const { return has_flag(thread_flags::idle); }
+        inline bool needs_resched() const { return has_flag(thread_flags::needs_resched); }
 
         ~thread_t();
     };
