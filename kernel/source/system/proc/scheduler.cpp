@@ -736,7 +736,8 @@ namespace sched
         preempt_disable();
         thread->state.store(thread_state::runnable, std::memory_order_release);
 
-        const auto self_idx = cpu::self().unsafe_get().idx;
+        const auto &self = cpu::self().unsafe_get();
+        const auto self_idx = self.idx;
         std::size_t target;
         if (should_start.load(std::memory_order_relaxed))
             target = find_least_loaded(thread);
@@ -746,9 +747,14 @@ namespace sched
         enqueue_on(thread, target, false);
 
         const bool on_self = (target == self_idx);
-        const bool in_interrupt = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed);
-        if (preempt_enable() && preempt && on_self && !in_interrupt)
-            schedule();
+        const bool in_interrupt = self.in_interrupt.load(std::memory_order_relaxed);
+        if (preempt_enable() && preempt && on_self)
+        {
+            if (in_interrupt)
+                current_thread()->set_flag(thread_flags::needs_resched);
+            else
+                schedule();
+        }
 
         return true;
     }
