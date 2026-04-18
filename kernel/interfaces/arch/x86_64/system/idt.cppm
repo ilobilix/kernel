@@ -51,9 +51,9 @@ export namespace x86_64::idt
     constexpr std::size_t num_ints = 256;
     constexpr std::size_t num_preints = 20;
 
-    constexpr std::uint8_t int_spurious = 0xFF;
-    constexpr std::uint8_t int_lapic_error = 0xFE;
-    constexpr std::uint8_t int_sched = 0xFD;
+    constexpr std::uint8_t vec_spurious = 0xFF;
+    constexpr std::uint8_t vec_lapic_error = 0xFE;
+    constexpr std::uint8_t vec_sched = 0xFD;
 
     constexpr reg invalid { 0, 0 };
 

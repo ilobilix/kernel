@@ -10,7 +10,6 @@ export import system.cpu;
 export import system.cpu.local;
 export import system.interrupts;
 export import system.memory;
-export import system.net;
 export import system.pci;
 export import system.sched;
 export import system.syscall;
