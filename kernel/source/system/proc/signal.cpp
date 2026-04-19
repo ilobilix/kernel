@@ -3,6 +3,7 @@
 module system.sched;
 
 import system.cpu.regs;
+import system.cpu.local;
 import lib;
 import std;
 
@@ -19,14 +20,17 @@ namespace sched
                     wake_up(thread, true);
                     break;
                 case thread_state::stopped:
-                    if (sig == sigkill || sig == sigcont)
+                    if (sig == sigkill)
+                        wake_up(thread, true, true);
+                    else if (sig == sigcont)
                         wake_up(thread, true);
                     break;
                 case thread_state::running:
-                    if (thread->running_on)
+                    if (auto on = thread->running_on)
                     {
                         thread->set_flag(thread_flags::needs_resched);
-                        arch::wake_up_other(thread->running_on->idx);
+                        if (on != &cpu::self().unsafe_get())
+                            arch::wake_up_other(on->idx);
                     }
                     break;
                 default:
@@ -64,10 +68,11 @@ namespace sched
                     case thread_state::sleeping:
                         thread->prev_state.store(state, std::memory_order_relaxed);
                         thread->state.store(thread_state::stopped, std::memory_order_release);
-                        if (thread->running_on)
+                        if (auto on = thread->running_on)
                         {
                             thread->set_flag(thread_flags::needs_resched);
-                            arch::wake_up_other(thread->running_on->idx);
+                            if (on != &cpu::self().unsafe_get())
+                                arch::wake_up_other(on->idx);
                         }
                         break;
                     default:
@@ -271,6 +276,58 @@ namespace sched
         if (!arch::restore_sigframe(thread, thread->saved_regs))
             process_exit_signal(sigsegv);
         return thread->saved_regs->ret();
+    }
+
+    bool consume_pending_stops()
+    {
+        auto thread = current_thread();
+        auto proc = thread->proc;
+
+        bool stopped = false;
+        while (true)
+        {
+            int sig = 0;
+            {
+                const std::unique_lock _ { proc->sigqueue.lock };
+                sig = (proc->sigqueue.pending & ~thread->sigmask).lowest();
+                if (sig == 0)
+                    break;
+            }
+
+            sigaction_t action;
+            {
+                const std::unique_lock _ { proc->sigactions->lock };
+                action = proc->sigactions->actions[sig - 1];
+            }
+
+            if (action.handler != sig_dfl)
+                break;
+
+            const auto da = default_for(sig);
+            if (da == default_action::stop)
+            {
+                {
+                    const std::unique_lock _ { proc->sigqueue.lock };
+                    dequeue_signal(proc, sig);
+                }
+                stop_process(proc, sig);
+                yield();
+                stopped = true;
+                continue;
+            }
+
+            if (da == default_action::ignore || da == default_action::cont)
+            {
+                const std::unique_lock _ { proc->sigqueue.lock };
+                dequeue_signal(proc, sig);
+                continue;
+            }
+
+            break;
+        }
+
+        thread->test_and_clear_flag(thread_flags::interrupted);
+        return stopped;
     }
 
     void handle_pending_signals(cpu::registers *regs)

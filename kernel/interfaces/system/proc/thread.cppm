@@ -86,6 +86,9 @@ export namespace sched
 
         std::atomic<bool> dead_listed = false;
 
+        std::atomic<bool> on_cpu = false;
+        thread_t *prev_to_release = nullptr;
+
         arch::context ctx;
         arch::data adata;
 

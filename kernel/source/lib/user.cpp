@@ -11,9 +11,10 @@ namespace lib
     {
         const auto [user_start, user_end] = vmm::pagemap::user_range();
         const auto [kernel_start, kernel_end] = vmm::pagemap::kernel_range();
-        if (addr >= user_start && (addr + len) <= user_end)
+
+        if (addr >= user_start && addr < user_end && len <= user_end - addr)
             return address_space::user;
-        else if (addr >= kernel_start && (addr + len) <= kernel_end)
+        else if (addr >= kernel_start && len <= kernel_end - addr)
             return address_space::kernel;
         return address_space::invalid;
     }

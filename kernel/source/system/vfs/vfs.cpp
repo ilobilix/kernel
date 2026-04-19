@@ -659,24 +659,37 @@ namespace vfs
 
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>
     {
+        const auto base = path.basename();
+        if (base == "." || base == "..")
+            return std::unexpected { lib::err::invalid_path };
+
         const auto res = resolve(parent, path);
         if (!res)
             return std::unexpected { res.error() };
 
         const auto real_parent = res->parent.dentry;
-        const auto name = path.basename();
+        const auto target_dentry = res->target.dentry;
 
-        auto &inode = res->target.dentry->inode;
+        if (target_dentry == real_parent)
+            return std::unexpected { lib::err::invalid_path };
+
+        {
+            const auto locked = real_parent->children.lock();
+            if (locked->lookup(target_dentry->name) != target_dentry)
+                return std::unexpected { lib::err::invalid_path };
+        }
+
+        auto &inode = target_dentry->inode;
         if (inode->stat.type() == stat::s_ifdir)
         {
-            if (res->target.dentry == res->target.mnt->root)
+            if (target_dentry == res->target.mnt->root)
                 return std::unexpected { lib::err::target_is_busy };
 
-            if (!res->target.dentry->children.lock()->empty())
+            if (!target_dentry->children.lock()->empty())
                 return std::unexpected { lib::err::dir_not_empty };
 
             std::size_t cookie = 3;
-            const auto ret = res->target.mnt->fs.lock()->readdir(res->target.dentry, cookie);
+            const auto ret = res->target.mnt->fs.lock()->readdir(target_dentry, cookie);
             if (!ret)
                 return std::unexpected { ret.error() };
             if (!ret->empty())
@@ -688,7 +701,7 @@ namespace vfs
             return std::unexpected { ret.error() };
 
         auto wlocked = real_parent->children.lock();
-        lib::bug_on(!wlocked->erase(name));
+        lib::bug_on(!wlocked->erase(target_dentry->name));
         return { };
     }
 
@@ -731,7 +744,7 @@ namespace vfs
         if (!ret.has_value())
             return ret;
 
-        return inode->xattrs.insert_or_assign(name, std::move(*ret)).second;
+        return inode->xattrs.insert_or_assign(name, std::move(*ret)).first->second;
     }
 
     auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
@@ -766,11 +779,16 @@ namespace vfs
         }
 
         lib::membuffer buf { data.size() };
-        data.copy_to(buf.span());
+        const bool copied = data.copy_to(buf.span());
         inode->xattrs.insert_or_assign(name, std::move(buf));
 
         inode->stat.update_time(stat::time::status);
-        return dirty_inode(target);
+        if (const auto ret = dirty_inode(target); !ret)
+            return ret;
+
+        if (!copied)
+            return std::unexpected { lib::err::invalid_address };
+        return { };
     }
 
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>
@@ -851,7 +869,7 @@ namespace vfs
 
             for (const auto &name : *ret)
             {
-                if (auto val = fs->getxattr(inode, name); !val.has_value())
+                if (auto val = fs->getxattr(inode, name))
                     inode->xattrs[name] = std::move(*val);
             }
         }
@@ -938,11 +956,12 @@ namespace vfs
         return std::make_shared<fdtable>(*this);
     }
 
-    fdtable::fdtable(fdtable &other) : next_fd { other.next_fd }
+    fdtable::fdtable(fdtable &other)
     {
         auto orlocked = other.fds.read_lock();
-        auto wlocked = fds.write_lock();
+        next_fd = other.next_fd;
 
+        auto wlocked = fds.write_lock();
         for (const auto &[fd, old_desc] : *orlocked)
         {
             if (!old_desc)

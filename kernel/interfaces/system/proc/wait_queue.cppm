@@ -32,9 +32,12 @@ export namespace sched
 
         lib::spinlock_irq lock;
         std::atomic_size_t pending;
+        std::atomic_size_t generation;
+
+        bool try_dec_pending();
 
         public:
-        wait_queue_t() : entries { }, lock { }, pending { 0 } { }
+        wait_queue_t() : entries { }, lock { }, pending { 0 }, generation { 0 } { }
 
         void add_entry(wait_queue_entry_t &entry);
         void remove_entry(wait_queue_entry_t &entry);

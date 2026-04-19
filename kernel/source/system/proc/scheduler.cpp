@@ -100,6 +100,8 @@ namespace sched
                     continue;
 
                 auto &rq = run_queue.unsafe_get(cpu::local::nth_base(i));
+                const std::unique_lock _ { rq.lock };
+
                 if (rq.nr_running == 0)
                 {
                     if (best_load != 0 || i == self.idx)
@@ -360,6 +362,7 @@ namespace sched
 
         rq.current = rq.idle;
         rq.current->running_on = self.self;
+        rq.current->on_cpu.store(true, std::memory_order_relaxed);
         rq.current->state.store(thread_state::running, std::memory_order_relaxed);
 
         arch::init_core(rq.current);
@@ -503,11 +506,18 @@ namespace sched
         if (self.in_interrupt.load(std::memory_order_relaxed))
             next->was_in_interrupt = &self.in_interrupt;
         next->needs_unlock = &rq.lock;
+        next->prev_to_release = prev;
+        next->on_cpu.store(true, std::memory_order_release);
 
         arch::arm_timer_ns(timeslice);
         arch::context_switch(prev, next);
 
         auto thread = current_thread();
+        if (auto released = thread->prev_to_release)
+        {
+            thread->prev_to_release = nullptr;
+            released->on_cpu.store(false, std::memory_order_release);
+        }
         if (thread->needs_unlock)
         {
             thread->needs_unlock->unlock();
@@ -578,6 +588,15 @@ namespace sched
         auto thread = new thread_t { };
         if (!thread)
             return nullptr;
+
+        thread->kstack_base = allocate_kstack();
+        if (!thread->kstack_base)
+        {
+            delete thread;
+            return nullptr;
+        }
+        thread->kstack_top = thread->kstack_base + kstack_size;
+
         thread->self = thread;
 
         thread->tid = alloc_id();
@@ -587,9 +606,6 @@ namespace sched
         thread->nice = nice;
         thread->weight = nice_to_weight(thread->nice);
         thread->inv_weight = nice_to_inv_weight(thread->nice);
-
-        thread->kstack_base = allocate_kstack();
-        thread->kstack_top = thread->kstack_base + kstack_size;
 
         thread->affinity = create_affinity();
 
@@ -613,6 +629,15 @@ namespace sched
         auto thread = new thread_t { };
         if (!thread)
             return nullptr;
+
+        thread->kstack_base = allocate_kstack();
+        if (!thread->kstack_base)
+        {
+            delete thread;
+            return nullptr;
+        }
+        thread->kstack_top = thread->kstack_base + kstack_size;
+
         thread->self = thread;
 
         if (auto locked = proc->threads.lock(); locked->empty())
@@ -625,9 +650,6 @@ namespace sched
         thread->nice = nice;
         thread->weight = nice_to_weight(thread->nice);
         thread->inv_weight = nice_to_inv_weight(thread->nice);
-
-        thread->kstack_base = allocate_kstack();
-        thread->kstack_top = thread->kstack_base + kstack_size;
 
         if (stack == 0)
         {
@@ -722,19 +744,30 @@ namespace sched
         return it->second;
     }
 
-    bool wake_up(thread_t *thread, bool preempt)
+    bool wake_up(thread_t *thread, bool preempt, bool force)
     {
         auto state = thread->state.load(std::memory_order_acquire);
-        if (state == thread_state::stopped)
+        while (true)
         {
-            thread->prev_state.store(thread_state::runnable, std::memory_order_relaxed);
-            return false;
+            if (state == thread_state::stopped && !force)
+            {
+                thread->prev_state.store(thread_state::runnable, std::memory_order_relaxed);
+                return false;
+            }
+            else if (state != thread_state::sleeping && state != thread_state::blocked)
+                return false;
+
+            if (thread->state.compare_exchange_weak(
+                state, thread_state::runnable,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire))
+                break;
         }
-        if (state != thread_state::sleeping && state != thread_state::blocked)
-            return false;
 
         preempt_disable();
-        thread->state.store(thread_state::runnable, std::memory_order_release);
+
+        while (thread->on_cpu.load(std::memory_order_acquire))
+            arch::pause();
 
         const auto &self = cpu::self().unsafe_get();
         const auto self_idx = self.idx;
@@ -1341,7 +1374,7 @@ namespace sched
 
             constexpr auto min = vmm::vmspace::mmap_min;
             constexpr auto max = vmm::vmspace::vspace_top;
-            if (args.stack > max || args.stack < min || args.stack - size < min)
+            if (args.stack > max || args.stack < min || size > args.stack || args.stack - size < min)
                 return -EINVAL;
 
             stack_top = args.stack + size;
@@ -1366,15 +1399,23 @@ namespace sched
                 if (!freed_pid)
                     free_id(tid);
             }
-            if (created_proc && target_proc)
+            if (target_proc)
             {
-                processes.lock()->erase(target_proc->pid);
-                if (target_proc->group)
-                    target_proc->group->members.lock()->erase(target_proc->pid);
+                if (created_proc)
+                {
+                    processes.lock()->erase(target_proc->pid);
+                    if (target_proc->group)
+                        target_proc->group->members.lock()->erase(target_proc->pid);
 
-                const auto pid = target_proc->pid;
-                delete target_proc;
-                free_id(pid);
+                    const auto pid = target_proc->pid;
+                    delete target_proc;
+                    free_id(pid);
+                }
+                else
+                {
+                    target_proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
+                    target_proc->threads.lock()->erase(target_thread->tid);
+                }
             }
         };
 
@@ -1439,7 +1480,15 @@ namespace sched
         // TODO: set_tid array
 
         if (flags & clone_child_settid)
+        {
             target_thread->set_child_tid = reinterpret_cast<std::uintptr_t>(args.child_tid);
+            const auto space = lib::classify_address(target_thread->set_child_tid, sizeof(pid_t));
+            if (space != lib::address_space::user)
+            {
+                cleanup();
+                return -EFAULT;
+            }
+        }
 
         if (flags & clone_child_cleartid)
             target_thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(args.child_tid);
@@ -1516,18 +1565,12 @@ namespace sched
             // if (has_secbit(cred->securebits, secbit_t::exec_deny_interactive) && opened file is interactive?)
             //     return -EACCES;
 
+            auto &inode = path.dentry->inode;
             {
-                auto &inode = path.dentry->inode;
                 const std::unique_lock _ { inode->lock };
 
                 if (!check_perms(process->cred, inode->stat, access_mode::exec))
                     return -EACCES;
-
-                std::optional<vfs::file_caps> fcaps;
-                if (xattr_caps)
-                    fcaps = vfs::parse_file_caps(xattr_caps->span());
-
-                apply_exec_caps(process, inode->stat, fcaps);
             }
 
             auto file = vfs::file::create(path, 0, 0);
@@ -1548,6 +1591,16 @@ namespace sched
 
             while (process->to_quiesce.load(std::memory_order_acquire) > 0)
                 yield();
+
+            {
+                const std::unique_lock _ { inode->lock };
+
+                std::optional<vfs::file_caps> fcaps;
+                if (xattr_caps)
+                    fcaps = vfs::parse_file_caps(xattr_caps->span());
+
+                apply_exec_caps(process, inode->stat, fcaps);
+            }
 
             auto new_pmap = std::make_shared<vmm::pagemap>();
             if (!new_pmap)
@@ -1578,6 +1631,7 @@ namespace sched
                 (*process->threads.lock())[old_thread->tid] = old_thread;
 
                 process->vmspace = std::move(old_vmspace);
+                preempt_enable();
                 return -ENOEXEC;
             }
             lib::bug_on(new_thread->tid != process->pid);
@@ -1625,19 +1679,7 @@ namespace sched
             {
                 auto locked = proc->children.lock();
                 if (locked->empty())
-                {
-                    bool any = false;
-                    for (auto &[pid, child] : *locked)
-                    {
-                        if (matches(child))
-                        {
-                            any = true;
-                            break;
-                        }
-                    }
-                    if (!any)
-                        return -ECHILD;
-                }
+                    return -ECHILD;
 
                 for (auto it = locked->begin(); it != locked->end(); it++)
                 {

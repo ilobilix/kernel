@@ -53,18 +53,37 @@ namespace syscall::chrono
             return 0;
         }
 
-        if (const auto rns = sched::sleep_for_ns(ns))
+        const auto timer = chrono::main_timer();
+        const auto deadline = timer->ns() + ns;
+
+        while (true)
         {
+            const auto now = timer->ns();
+            if (now >= deadline)
+            {
+                timespec tmp { 0 };
+                if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
+                    return -EFAULT;
+                return 0;
+            }
+
+            const auto rns = sched::sleep_for_ns(deadline - now);
+            if (rns == 0)
+            {
+                timespec tmp { 0 };
+                if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
+                    return -EFAULT;
+                return 0;
+            }
+
+            if (sched::consume_pending_stops())
+                continue;
+
             timespec tmp { rns };
             if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
                 return -EFAULT;
             return -EINTR;
         }
-
-        timespec tmp { 0 };
-        if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-            return -EFAULT;
-        return 0;
     }
 
     int gettimeofday(timeval __user *tv, timezone __user *tz)

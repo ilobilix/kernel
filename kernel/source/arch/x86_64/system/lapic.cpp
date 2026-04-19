@@ -180,6 +180,7 @@ namespace x86_64::apic
                 const auto count = read(reg::tcc);
                 write(reg::tic, 0);
 
+                lib::bug_on(slept_for == 0);
                 val += ((0xFFFFFFFFul - count) * 1'000'000'000ul) / slept_for;
             }
             val /= times;

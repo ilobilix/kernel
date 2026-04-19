@@ -44,10 +44,7 @@ namespace vmm
                 const auto [pflags, cache] = from_arch(raw_flags, psize);
                 const auto flags = to_arch(pflags, cache, smaller_psize);
 
-                accessor.clear()
-                    .setaddr(reinterpret_cast<std::uintptr_t>(ret = new_table()))
-                    .setflags(valid_table_flags, true)
-                    .write();
+                ret = new_table();
 
                 for (std::size_t i = 0; i < 512; i++)
                 {
@@ -57,6 +54,11 @@ namespace vmm
                         .setflags(flags, true)
                         .write();
                 }
+
+                accessor.clear()
+                    .setaddr(reinterpret_cast<std::uintptr_t>(ret))
+                    .setflags(valid_table_flags, true)
+                    .write();
             }
             else ret = reinterpret_cast<table *>(addr);
         }

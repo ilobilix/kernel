@@ -11,6 +11,20 @@ namespace sched
         return sched::current_thread();
     }
 
+    bool wait_queue_t::try_dec_pending()
+    {
+        auto expected = pending.load(std::memory_order_acquire);
+        while (expected > 0)
+        {
+            if (pending.compare_exchange_weak(
+                expected, expected - 1,
+                std::memory_order_acquire,
+                std::memory_order_acquire))
+                return true;
+        }
+        return false;
+    }
+
     void wait_queue_t::add_entry(wait_queue_entry_t &entry)
     {
         const std::unique_lock _ { lock };
@@ -45,11 +59,10 @@ namespace sched
 
     bool wait_queue_t::wait(std::uint64_t ns)
     {
-        if (pending.load(std::memory_order_acquire) > 0)
-        {
-            pending.fetch_sub(1, std::memory_order_acquire);
+        const auto gen = generation.load(std::memory_order_acquire);
+
+        if (try_dec_pending())
             return false;
-        }
 
         wait_queue_entry_t entry { };
 
@@ -57,6 +70,12 @@ namespace sched
         if (pending.load(std::memory_order_acquire) > 0)
         {
             pending.fetch_sub(1, std::memory_order_release);
+            lock.unlock();
+            return false;
+        }
+
+        if (generation.load(std::memory_order_acquire) != gen)
+        {
             lock.unlock();
             return false;
         }
@@ -111,11 +130,10 @@ namespace sched
 
     void wait_queue_t::wait_unint(std::uint64_t ns)
     {
-        if (pending.load(std::memory_order_acquire) > 0)
-        {
-            pending.fetch_sub(1, std::memory_order_acquire);
+        const auto gen = generation.load(std::memory_order_acquire);
+
+        if (try_dec_pending())
             return;
-        }
 
         wait_queue_entry_t entry { };
 
@@ -123,6 +141,12 @@ namespace sched
         if (pending.load(std::memory_order_acquire) > 0)
         {
             pending.fetch_sub(1, std::memory_order_release);
+            lock.unlock();
+            return;
+        }
+
+        if (generation.load(std::memory_order_acquire) != gen)
+        {
             lock.unlock();
             return;
         }
@@ -190,14 +214,11 @@ namespace sched
     void wait_queue_t::wake_all()
     {
         const std::unique_lock _ { lock };
-        if (!entries.empty())
+        generation.fetch_add(1, std::memory_order_release);
+        while (!entries.empty())
         {
-            while (!entries.empty())
-            {
-                auto entry = entries.pop_front();
-                wake_up(static_cast<thread_t *>(entry->thread), false);
-            }
+            auto entry = entries.pop_front();
+            wake_up(static_cast<thread_t *>(entry->thread), false);
         }
-        else pending.fetch_add(1, std::memory_order_release);
     }
 } // namespace sched
