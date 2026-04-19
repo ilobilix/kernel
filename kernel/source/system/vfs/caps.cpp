@@ -9,10 +9,10 @@ namespace vfs
         constexpr std::size_t rev3_len = sizeof(cap_data);
         constexpr std::size_t rev2_len = rev3_len - sizeof(cap_data::rootid);
 
-        if (data.size() < rev2_len)
+        if (data.size() < rev2_len || data.size() > rev3_len)
             return std::nullopt;
 
-        bool is_rev3 = data.size() > rev2_len;
+        bool is_rev3 = data.size() == rev3_len;
 
         cap_data raw;
         std::memcpy(&raw, data.data(), is_rev3 ? rev3_len : rev2_len);

@@ -7,6 +7,8 @@ import system.vfs;
 import lib;
 import std;
 
+// TODO: rewrite and fix pipes
+
 namespace vfs::pipe
 {
     struct data

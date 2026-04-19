@@ -31,6 +31,11 @@ namespace sched::arch
         extern "C" void sched_trampoline_entry()
         {
             auto thread = current_thread();
+            if (auto released = thread->prev_to_release)
+            {
+                thread->prev_to_release = nullptr;
+                released->on_cpu.store(false, std::memory_order_release);
+            }
             if (thread->needs_unlock)
             {
                 thread->needs_unlock->unlock();

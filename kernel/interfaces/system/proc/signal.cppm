@@ -284,5 +284,6 @@ export namespace sched
     void flush_signal(process_t *proc, int sig);
 
     void handle_pending_signals(cpu::registers *regs);
+    bool consume_pending_stops();
     std::uintptr_t sigreturn();
 } // export namespace sched

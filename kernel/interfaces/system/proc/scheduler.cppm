@@ -137,7 +137,7 @@ export namespace sched
         );
     }
 
-    bool wake_up(thread_t *thread, bool preempt = true);
+    bool wake_up(thread_t *thread, bool preempt = true, bool force = false);
 
     bool yield();
 

@@ -25,7 +25,7 @@ namespace syscall::memory
 
         const auto psize = vmm::default_page_size();
         const auto npsize = vmm::pagemap::from_page_size(psize);
-        if (offset % npsize != 0)
+        if (offset < 0 || offset % npsize != 0)
             return err_ptr(EINVAL);
 
         length = lib::align_up(length, npsize);

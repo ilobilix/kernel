@@ -495,7 +495,7 @@ namespace vmm
         if (length == 0)
             return std::unexpected { lib::err::invalid_length };
 
-        if (!((flags & flag::shared) ^ (flags & flag::private_)))
+        if (((flags & flag::shared) != 0) + ((flags & flag::private_) != 0) != 1)
             return std::unexpected { lib::err::invalid_flags };
 
         if ((max_prot & prot) != prot)
@@ -839,13 +839,20 @@ namespace vmm
 
             locked->insert(ent);
 
-            startp = overlap_end;
-        }
+            auto tgt_prot = prot;
+            if ((ent->flags & flag::private_) && (tgt_prot & prot::write))
+                tgt_prot &= ~prot::write;
 
-        if (const auto ret = pmap->protect(address, length, prot_to_pflags(prot), psize); !ret)
-        {
-            if (ret.error() != lib::err::not_mapped)
-                return std::unexpected { ret.error() };
+            const auto vaddr = overlap_start * npsize;
+            const auto len = (overlap_end - overlap_start) * npsize;
+
+            if (const auto ret = pmap->protect(vaddr, len, prot_to_pflags(tgt_prot), psize); !ret)
+            {
+                if (ret.error() != lib::err::not_mapped)
+                    return std::unexpected { ret.error() };
+            }
+
+            startp = overlap_end;
         }
 
         return { };
@@ -911,14 +918,16 @@ namespace vmm
             anon_map::ptr camap;
             if (ent.amap)
             {
+                const auto span = ent.endp - ent.startp;
+
                 camap = new anon_map { };
-                camap->nslots = ent.amap->nslots;
+                camap->nslots = span;
                 camap->slots = std::make_unique<anon::ptr[]>(camap->nslots);
 
                 const std::unique_lock _ { ent.amap->lock };
-                for (std::size_t i = 0; i < ent.amap->nslots; i++)
+                for (std::size_t i = 0; i < span; i++)
                 {
-                    auto &slot = ent.amap->slots[i];
+                    auto &slot = ent.amap->slots[ent.anon_idx + i];
                     if (!slot)
                         continue;
 
@@ -937,7 +946,7 @@ namespace vmm
                 .obj = ent.obj,
                 .offp = ent.offp,
                 .amap = camap,
-                .anon_idx = ent.anon_idx,
+                .anon_idx = 0,
                 .prot = ent.prot,
                 .max_prot = ent.max_prot,
                 .flags = ent.flags,
@@ -1232,6 +1241,8 @@ namespace vmm
             if (entry.flags != flags)
                 goto fail;
 
+            if (!(entry.prot & prot::read))
+                goto fail;
             if (state.is_write && !(entry.prot & prot::write))
                 goto fail;
             if (state.is_exec && !(entry.prot & prot::exec))
@@ -1243,10 +1254,10 @@ namespace vmm
                 goto fail;
             if (amap && (entry.amap != amap || (entry.anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
-        }
 
-        if ((flags & flag::private_) && (prot & prot::write) && !state.is_write)
-            prot &= ~prot::write;
+            if ((flags & flag::private_) && (entry.prot & prot::write) && !state.is_write)
+                prot &= ~prot::write;
+        }
 
         if (vmspace->pmap->map(aligned, paddr, npsize, prot_to_pflags(prot), psize))
         {
