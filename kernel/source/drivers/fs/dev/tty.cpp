@@ -115,7 +115,6 @@ namespace fs::dev::tty
     {
         should_work.store(true, std::memory_order_relaxed);
         worker_thread = sched::spawn(worker, this, -10);
-        lib::bug_on(!worker_thread);
     }
 
     void default_ldisc::hangup()
@@ -1171,7 +1170,6 @@ namespace fs::dev::tty
     {
         lib::bug_on(drv == nullptr);
         worker_thread = sched::spawn(raw_worker, this, -10);
-        lib::bug_on(!worker_thread);
     }
 
     instance::~instance()

@@ -51,8 +51,6 @@ void kthread()
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);
         auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr);
-        if (!tty || !tty->file)
-            lib::panic("could not create {} filedesc", tty_path);
         if (!tty->file->open(0, proc->pid))
             lib::panic("could not open {}", tty_path);
 

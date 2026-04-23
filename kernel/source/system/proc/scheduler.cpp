@@ -541,8 +541,6 @@ namespace sched
     process_t *create_process(process_t *parent)
     {
         auto proc = new process_t { };
-        if (!proc)
-            return nullptr;
 
         if (parent == nullptr)
         {
@@ -586,15 +584,8 @@ namespace sched
         lib::bug_on(!proc);
 
         auto thread = new thread_t { };
-        if (!thread)
-            return nullptr;
 
         thread->kstack_base = allocate_kstack();
-        if (!thread->kstack_base)
-        {
-            delete thread;
-            return nullptr;
-        }
         thread->kstack_top = thread->kstack_base + kstack_size;
 
         thread->self = thread;
@@ -627,15 +618,8 @@ namespace sched
         const std::unique_lock _ { proc->lock };
 
         auto thread = new thread_t { };
-        if (!thread)
-            return nullptr;
 
         thread->kstack_base = allocate_kstack();
-        if (!thread->kstack_base)
-        {
-            delete thread;
-            return nullptr;
-        }
         thread->kstack_top = thread->kstack_base + kstack_size;
 
         thread->self = thread;
@@ -726,8 +710,6 @@ namespace sched
     thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
     {
         auto thread = create_kthread(ip, arg, nice);
-        if (!thread)
-            return nullptr;
         enqueue_new(thread);
         return thread;
     }
@@ -1424,8 +1406,6 @@ namespace sched
             target_proc = create_process(
                 (flags & clone_parent) ? caller_proc->parent : caller_proc
             );
-            if (target_proc == nullptr)
-                return -ENOMEM;
 
             if (flags & clone_vm)
             {
@@ -1437,20 +1417,8 @@ namespace sched
             else
             {
                 auto pmap = std::make_shared<vmm::pagemap>();
-                if (!pmap)
-                {
-                    cleanup();
-                    return -ENOMEM;
-                }
-
-                auto ret = caller_proc->vmspace->fork(std::move(pmap));
-                if (!ret)
-                {
-                    cleanup();
-                    return -ENOMEM;
-                }
-
-                target_proc->vmspace = std::move(*ret);
+                auto vmspace = caller_proc->vmspace->fork(std::move(pmap));
+                target_proc->vmspace = std::move(vmspace);
             }
 
             if (flags & clone_fs)
@@ -1471,11 +1439,6 @@ namespace sched
             target_proc, 0, 0, false, true,
             stack_top, caller_thread->nice
         );
-        if (target_thread == nullptr)
-        {
-            cleanup();
-            return -ENOMEM;
-        }
 
         // TODO: set_tid array
 
@@ -1574,9 +1537,6 @@ namespace sched
             }
 
             auto file = vfs::file::create(path, 0, 0);
-            if (!file)
-                return -EACCES;
-
             auto image = bin::exec::probe(std::move(file));
             if (!image)
                 return -lib::map_error(image.error());
@@ -1603,12 +1563,7 @@ namespace sched
             }
 
             auto new_pmap = std::make_shared<vmm::pagemap>();
-            if (!new_pmap)
-                return -ENOMEM;
-
             auto new_vmspace = std::make_shared<vmm::vmspace>(std::move(new_pmap));
-            if (!new_vmspace)
-                return -ENOMEM;
 
             preempt_disable();
 
