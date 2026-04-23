@@ -271,8 +271,6 @@ namespace syscall::vfs
         }
 
         const auto fdesc = filedesc::create(target, flags);
-        if (!fdesc)
-            return -EMFILE;
 
         const auto fd = fdt->alloc(fdesc, 0, false);
         if (fd < 0)
@@ -1521,8 +1519,6 @@ namespace syscall::vfs
             .mnt = nullptr
         }, flags | o_rdonly);
 
-        if (!rfdesc)
-            return -EMFILE;
         rfdesc->closexec = (flags & o_closexec) != 0;
 
         fds[0] = fdt->alloc(rfdesc, 0, false);
@@ -1544,11 +1540,6 @@ namespace syscall::vfs
             .mnt = nullptr
         }, flags | o_wronly);
 
-        if (!wfdesc)
-        {
-            close_fd(proc, fds[0]);
-            return -EMFILE;
-        }
         wfdesc->closexec = (flags & o_closexec) != 0;
 
         fds[1] = fdt->alloc(wfdesc, 0, false);

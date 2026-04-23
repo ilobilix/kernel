@@ -239,9 +239,6 @@ extern "C"
         const std::size_t len = strlen(str) + 1;
 
         void *newstr = lib::alloc(len);
-        if (newstr == nullptr)
-            return nullptr;
-
         return static_cast<char *>(memcpy(newstr, str, len));
     }
 

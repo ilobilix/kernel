@@ -883,7 +883,7 @@ namespace vmm
         return find_free_region_internal(locked, length);
     }
 
-    lib::expect<std::shared_ptr<vmspace>> vmspace::fork(std::shared_ptr<vmm::pagemap> cpmap)
+    std::shared_ptr<vmspace> vmspace::fork(std::shared_ptr<vmm::pagemap> cpmap)
     {
         const auto psize = default_page_size();
         const auto npsize = pagemap::from_page_size(psize);

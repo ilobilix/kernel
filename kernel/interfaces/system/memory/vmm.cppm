@@ -210,7 +210,7 @@ export namespace vmm
 
         lib::expect<std::uintptr_t> find_free_region(std::size_t length);
 
-        lib::expect<std::shared_ptr<vmspace>> fork(std::shared_ptr<vmm::pagemap> cpmap);
+        std::shared_ptr<vmspace> fork(std::shared_ptr<vmm::pagemap> cpmap);
 
         ~vmspace()
         {
