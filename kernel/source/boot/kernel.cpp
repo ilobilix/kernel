@@ -56,6 +56,9 @@ void kthread()
         if (!tty->file->open(0, proc->pid))
             lib::panic("could not open {}", tty_path);
 
+        // TODO: cmdline
+        fs::dev::tty::set_console(ret->target.dentry->inode->stat.st_rdev);
+
         proc->fdt->alloc(tty, 0, false);
         proc->fdt->dup(0, 1, false, false);
         proc->fdt->dup(0, 2, false, false);

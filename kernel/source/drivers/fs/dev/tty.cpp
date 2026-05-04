@@ -21,6 +21,13 @@ namespace fs::dev::tty
 
         lib::intrusive_list<driver, &driver::hook> drivers;
 
+        struct console_target_t
+        {
+            driver *drv = nullptr;
+            std::uint32_t minor = 0;
+        };
+        lib::locker<console_target_t, sched::mutex> console_target;
+
         driver *get_driver(dev_t rdev)
         {
             const auto maj = major(rdev);
@@ -78,6 +85,113 @@ namespace fs::dev::tty
             lib::unused(file);
             return inst->close();
         }
+
+        lib::expect<std::shared_ptr<instance>> open_or_create(
+            std::shared_ptr<vfs::file> file, driver *drv, std::uint32_t min,
+            int flags, pid_t pid)
+        {
+            auto locked = drv->instances.lock();
+            if (auto it = locked->find(min); it != locked->end())
+            {
+                auto inst = it->second;
+                if (const auto ret = generic_open(file, inst, flags, pid, true); !ret)
+                    return std::unexpected { ret.error() };
+                inst->ref.fetch_add(1, std::memory_order_acq_rel);
+                return inst;
+            }
+
+            auto inst = drv->create_instance(min);
+            if (!inst)
+                return std::unexpected { lib::err::no_such_device };
+
+            if (const auto ret = generic_open(file, inst, flags, pid, false); !ret)
+            {
+                drv->destroy_instance(inst);
+                return std::unexpected { ret.error() };
+            }
+            inst->ref.store(1, std::memory_order_relaxed);
+            locked->emplace(min, inst);
+
+            if (auto ld = inst->ldisc.lock().value())
+                ld->open();
+            return inst;
+        }
+
+        struct alias_ops : vfs::ops
+        {
+            lib::expect<void> close(vfs::file &file) override
+            {
+                lib::bug_on(!file.private_data);
+                const auto inst = std::static_pointer_cast<instance>(file.private_data);
+
+                const auto prev = inst->ref.fetch_sub(1, std::memory_order_acq_rel);
+                lib::bug_on(prev == 0);
+                if (prev == 1)
+                {
+                    const auto drv = inst->drv;
+                    lib::bug_on(drv == nullptr);
+                    {
+                        auto locked = drv->instances.lock();
+                        // someone else could have opened it again
+                        if (inst->ref.load(std::memory_order_acquire) != 0)
+                            return { };
+
+                        if (const auto ret = generic_close(file, inst); !ret)
+                        {
+                            // can't even close ttys properly smh
+                            inst->ref.fetch_add(1, std::memory_order_relaxed);
+                            return ret;
+                        }
+                        lib::bug_on(!locked->erase(inst->minor));
+                    }
+                    drv->destroy_instance(inst);
+                }
+                file.private_data.reset();
+
+                if constexpr (debug)
+                {
+                    const auto rdev = file.path.dentry->inode->stat.st_rdev;
+                    lib::debug("tty: closed ({}, {})", major(rdev), minor(rdev));
+                }
+                return { };
+            }
+
+            lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            {
+                lib::unused(offset);
+                lib::bug_on(!file || !file->private_data);
+                const auto inst = std::static_pointer_cast<instance>(file->private_data);
+                return inst->read(std::move(file), buffer);
+            }
+
+            lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            {
+                lib::unused(offset);
+                lib::bug_on(!file || !file->private_data);
+                const auto inst = std::static_pointer_cast<instance>(file->private_data);
+                return inst->write(std::move(file), buffer);
+            }
+
+            lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
+            {
+                lib::bug_on(!file || !file->private_data);
+                const auto inst = std::static_pointer_cast<instance>(file->private_data);
+                return inst->ioctl(request, argp);
+            }
+
+            lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
+            {
+                lib::unused(file, size);
+                return { };
+            }
+
+            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+            {
+                lib::bug_on(!file || !file->private_data);
+                const auto inst = std::static_pointer_cast<instance>(file->private_data);
+                return inst->poll(pt);
+            }
+        };
     } // namespace
 
     void instance::detach(sched::session_t *session)
@@ -1163,13 +1277,14 @@ namespace fs::dev::tty
         return mask;
     }
 
-    instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ldisc)
-        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { std::move(ldisc) },
+    instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ld)
+        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { ld },
           termios { drv->init_termios }, termios_locked { ktermios { } }, winsize { winsize::standard() }, ctrl { },
-          raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { true }
+          raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { ld != nullptr }
     {
         lib::bug_on(drv == nullptr);
-        worker_thread = sched::spawn(raw_worker, this, -10);
+        if (ld)
+            worker_thread = sched::spawn(raw_worker, this, -10);
     }
 
     instance::~instance()
@@ -1217,7 +1332,8 @@ namespace fs::dev::tty
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
         auto ld = ldisc.lock().value();
-        lib::bug_on(!ld);
+        if (!ld)
+            return std::unexpected { lib::err::io_error };
         const auto res = ld->ioctl(request, argp);
         if (res.has_value() || (res.error() != lib::err::inappropriate_ioctl))
             return res;
@@ -1229,7 +1345,8 @@ namespace fs::dev::tty
     lib::expect<std::uint16_t> instance::poll(vfs::poll_table *pt)
     {
         auto ld = ldisc.lock().value();
-        lib::bug_on(!ld);
+        if (!ld)
+            return std::unexpected { lib::err::io_error };
         return ld->poll(pt);
     }
 
@@ -1264,12 +1381,11 @@ namespace fs::dev::tty
             fg_group->signal_all(sched::sigcont);
         }
 
-        auto ld = ldisc.lock().value();
-        lib::bug_on(!ld);
-        ld->hangup();
+        if (auto ld = ldisc.lock().value())
+            ld->hangup();
     }
 
-    struct ops : vfs::ops
+    struct ops : alias_ops
     {
         static std::shared_ptr<ops> singleton()
         {
@@ -1287,118 +1403,18 @@ namespace fs::dev::tty
             if (!drv)
                 return std::unexpected { lib::err::no_such_device };
 
-            std::shared_ptr<instance> inst;
-            {
-                auto locked = drv->instances.lock();
-                if (auto it = locked->find(minor(rdev)); it != locked->end())
-                {
-                    // found an already open instance
-                    inst = it->second;
-                    if (const auto ret = generic_open(file, inst, flags, pid, true); !ret)
-                        return ret;
-                    inst->ref.fetch_add(1, std::memory_order_acq_rel);
-                }
-                else
-                {
-                    inst = drv->create_instance(minor(rdev));
-                    if (!inst)
-                        return std::unexpected { lib::err::no_such_device };
-
-                    if (const auto ret = generic_open(file, inst, flags, pid, false); !ret)
-                    {
-                        drv->destroy_instance(inst);
-                        return ret;
-                    }
-                    inst->ref.store(1, std::memory_order_relaxed);
-                    locked->emplace(minor(rdev), inst);
-
-                    auto ld = inst->ldisc.lock().value();
-                    lib::bug_on(!ld);
-                    ld->open();
-                }
-            }
-            file->private_data = inst;
+            auto res = open_or_create(file, drv, minor(rdev), flags, pid);
+            if (!res)
+                return std::unexpected { res.error() };
+            file->private_data = std::move(*res);
 
             if constexpr (debug)
                 lib::debug("tty: opened ({}, {}) for pid {}", major(rdev), minor(rdev), pid);
             return { };
         }
-
-        lib::expect<void> close(vfs::file &file) override
-        {
-            lib::bug_on(!file.private_data);
-            const auto inst = std::static_pointer_cast<instance>(file.private_data);
-
-            const auto prev = inst->ref.fetch_sub(1, std::memory_order_acq_rel);
-            lib::bug_on(prev == 0);
-            if (prev == 1)
-            {
-                const auto drv = inst->drv;
-                lib::bug_on(drv == nullptr);
-                {
-                    auto locked = drv->instances.lock();
-                    // someone else could have opened it again
-                    if (inst->ref.load(std::memory_order_acquire) != 0)
-                        return { };
-
-                    if (const auto ret = generic_close(file, inst); !ret)
-                    {
-                        // can't even close ttys properly smh
-                        inst->ref.fetch_add(1, std::memory_order_relaxed);
-                        return ret;
-                    }
-                    lib::bug_on(!locked->erase(inst->minor));
-                }
-                drv->destroy_instance(inst);
-            }
-            file.private_data.reset();
-
-            if constexpr (debug)
-            {
-                const auto rdev = file.path.dentry->inode->stat.st_rdev;
-                lib::debug("tty: closed ({}, {})", major(rdev), minor(rdev));
-            }
-            return { };
-        }
-
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-        {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(std::move(file), buffer);
-        }
-
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-        {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(std::move(file), buffer);
-        }
-
-        lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->ioctl(request, argp);
-        }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
-        }
-
-        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->poll(pt);
-        }
     };
 
-    struct current_ops : vfs::ops
+    struct current_ops : alias_ops
     {
         static std::shared_ptr<current_ops> singleton()
         {
@@ -1427,48 +1443,62 @@ namespace fs::dev::tty
                 lib::debug("tty: opened (5, 0) for pid {}", pid);
             return { };
         }
+    };
 
-        lib::expect<void> close(vfs::file &file) override
+    struct console_ops : alias_ops
+    {
+        static std::shared_ptr<console_ops> singleton()
         {
-            return tty::ops::singleton()->close(file);
+            static auto instance = std::make_shared<console_ops>();
+            return instance;
         }
 
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->read(std::move(file), buffer);
-        }
+            lib::bug_on(!file || file->private_data != nullptr);
 
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
-        {
-            lib::unused(offset);
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->write(std::move(file), buffer);
-        }
+            driver *drv;
+            std::uint32_t min;
+            {
+                auto locked = console_target.lock();
+                drv = locked->drv;
+                min = locked->minor;
+            }
+            if (!drv)
+                return std::unexpected { lib::err::no_such_device };
 
-        lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->ioctl(request, argp);
-        }
+            auto res = open_or_create(file, drv, min, flags, pid);
+            if (!res)
+                return std::unexpected { res.error() };
+            file->private_data = std::move(*res);
 
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
+            if constexpr (debug)
+                lib::debug("tty: opened (5, 1) for pid {}", pid);
             return { };
         }
-
-        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
-        {
-            lib::bug_on(!file || !file->private_data);
-            const auto inst = std::static_pointer_cast<instance>(file->private_data);
-            return inst->poll(pt);
-        }
     };
+
+    void set_console(driver *drv, std::uint32_t minor)
+    {
+        lib::bug_on(!drv);
+        auto locked = console_target.lock();
+        locked->drv = drv;
+        locked->minor = minor;
+    }
+
+    void set_console(dev_t rdev)
+    {
+        auto drv = get_driver(rdev);
+        if (!drv)
+        {
+            lib::warn(
+                "tty: set_console: no tty driver for ({}, {})",
+                major(rdev), minor(rdev)
+            );
+            return;
+        }
+        set_console(drv, minor(rdev));
+    }
 
     void register_driver(driver *drv)
     {
@@ -1522,22 +1552,26 @@ namespace fs::dev::tty
             add_one(i, drv->minor_start + i);
     }
 
-    // TODO: /dev/console
-
     lib::initgraph::task tty_task
     {
         "vfs.dev.tty.current.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::registered_stage() },
         [] {
-            // TODO: /dev/tty driver instead of just ops?
             register_dev_ops(makedev(5, 0), current_ops::singleton());
-
-            const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0));
-            if (!ret)
+            if (const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
             {
                 lib::panic(
                     "tty: failed to create '/dev/tty': {}",
+                    lib::error_name(ret.error())
+                );
+            }
+
+            register_dev_ops(makedev(5, 1), console_ops::singleton());
+            if (const auto ret = fs::devtmpfs::create("console", stat::s_ifchr | 0666, makedev(5, 1)); !ret)
+            {
+                lib::panic(
+                    "tty: failed to create '/dev/console': {}",
                     lib::error_name(ret.error())
                 );
             }
