@@ -198,6 +198,7 @@ export namespace vmm
             sched::mutex
         > tree;
 
+        std::uintptr_t brk_start;
         std::uintptr_t current_brk;
 
         lib::expect<std::uintptr_t> map(

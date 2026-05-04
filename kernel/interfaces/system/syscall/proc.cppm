@@ -53,6 +53,7 @@ export namespace syscall::proc
         int how, const sched::sigset_t __user *set,
         sched::sigset_t __user *oldset, std::size_t sigsetsize
     );
+    int rt_sigpending(sched::sigset_t __user *set, std::size_t sigsetsize);
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss);
 
     std::uintptr_t rt_sigreturn();
@@ -71,9 +72,11 @@ export namespace syscall::proc
     long set_robust_list(struct robust_list_head __user *head, std::size_t size);
 
     int prlimit(
-        pid_t pid, int resource, const struct rlimit __user *new_limit,
-        struct rlimit __user *old_limit
+        pid_t pid, int resource, const sched::rlimit __user *new_limit,
+        sched::rlimit __user *old_limit
     );
+    int getrlimit(int resource, sched::rlimit __user *rlim);
+    int setrlimit(int resource, const sched::rlimit __user *rlim);
 
     long clone(
         unsigned long flags, void __user *stack, int __user *parent_tid,

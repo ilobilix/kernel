@@ -890,6 +890,7 @@ namespace vmm
 
         auto ret = std::make_shared<vmspace>();
         ret->pmap = cpmap;
+        ret->brk_start = brk_start;
         ret->current_brk = current_brk;
 
         auto locked = tree.lock();

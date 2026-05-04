@@ -64,6 +64,8 @@ namespace x86_64::syscall
         [63] = { "uname", misc::uname },
         [72] = { "fcntl", vfs::fcntl, true },
         [74] = { "fsync", vfs::fsync },
+        [76] = { "truncate", vfs::truncate },
+        [77] = { "ftruncate", vfs::ftruncate },
         [79] = { "getcwd", vfs::getcwd, true },
         [80] = { "chdir", vfs::chdir },
         [81] = { "fchdir", vfs::fchdir },
@@ -78,6 +80,7 @@ namespace x86_64::syscall
         [94] = { "lchown", vfs::lchown },
         [95] = { "umask", vfs::umask, true },
         [96] = { "gettimeofday", chrono::gettimeofday },
+        [97] = { "getrlimit", proc::getrlimit, true },
         [102] = { "getuid", proc::getuid, true },
         [104] = { "getgid", proc::getgid, true },
         [105] = { "setuid", proc::setuid },
@@ -98,9 +101,11 @@ namespace x86_64::syscall
         [122] = { "setfsuid", proc::setfsuid, true },
         [123] = { "setfsgid", proc::setfsgid, true },
         [124] = { "getsid", proc::getsid, true },
+        [127] = { "rt_sigpending", proc::rt_sigpending },
         [131] = { "sigaltstack", proc::sigaltstack },
         [157] = { "prctl", misc::prctl, true },
         [158] = { "arch_prctl", arch::arch_prctl },
+        [160] = { "setrlimit", proc::setrlimit },
         [164] = { "settimeofday", chrono::settimeofday },
         [169] = { "reboot", misc::reboot },
         [186] = { "gettid", proc::gettid, true },
@@ -137,7 +142,8 @@ namespace x86_64::syscall
         [334] = { "rseq", proc::rseq },
         [435] = { "clone3", proc::clone3, true },
         [436] = { "close_range", vfs::close_range },
-        [439] = { "faccessat2", vfs::faccessat2 }
+        [439] = { "faccessat2", vfs::faccessat2 },
+        [452] = { "fchmodat2", vfs::fchmodat2 }
     };
 
     extern "C" void syscall_entry();

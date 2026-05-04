@@ -123,6 +123,9 @@ namespace syscall::memory
         if (address == old || address < vmm::vmspace::mmap_min)
             return reinterpret_cast<void *>(old);
 
+        if (address > old && address - vmspace->brk_start > proc->rlimits->get(sched::rlimit_data).cur)
+            return reinterpret_cast<void *>(old);
+
         const auto old_end = lib::align_up(old, npsize);
         const auto new_end = lib::align_up(address, npsize);
 

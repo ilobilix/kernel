@@ -272,9 +272,9 @@ namespace syscall::vfs
 
         const auto fdesc = filedesc::create(target, flags);
 
-        const auto fd = fdt->alloc(fdesc, 0, false);
+        const auto fd = fdt->alloc(fdesc, 0, false, proc->rlimits->get(sched::rlimit_nofile).cur);
         if (fd < 0)
-            return -EMFILE;
+            return fd;
 
         if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
         {
@@ -521,6 +521,14 @@ namespace syscall::vfs
         if (stat.type() == stat::type::s_ifdir)
             return -EISDIR;
 
+        if (stat.type() == stat::type::s_ifreg)
+        {
+            const auto fsize = proc->rlimits->get(sched::rlimit_fsize).cur;
+            if (static_cast<rlim_t>(offset) >= fsize ||
+                static_cast<rlim_t>(offset) + count > fsize)
+                return -EFBIG;
+        }
+
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
         if (!uspan.has_value())
             return -EFAULT;
@@ -744,12 +752,23 @@ namespace syscall::vfs
         if (stat.type() == stat::type::s_ifdir)
             return -EISDIR;
 
+        const bool check_fsize = stat.type() == stat::type::s_ifreg;
+        const auto fsize = proc->rlimits->get(sched::rlimit_fsize).cur;
+
         std::size_t total_written = 0;
         for (int i = 0; i < iovcnt; i++)
         {
             iovec local_iov;
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return -EFAULT;
+
+            if (check_fsize && (static_cast<rlim_t>(offset) >= fsize ||
+                static_cast<rlim_t>(offset) + local_iov.iov_len > fsize))
+            {
+                if (total_written == 0)
+                    return -EFBIG;
+                break;
+            }
 
             auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
             if (!uspan.has_value())
@@ -1001,52 +1020,65 @@ namespace syscall::vfs
         return faccessat2(at_fdcwd, pathname, mode, 0);
     }
 
-    int fchmodat(int dirfd, const char __user *pathname, mode_t mode, int flags)
+    namespace
     {
-        if (flags & ~(at_symlink_nofollow | at_empty_path))
-            return -EINVAL;
-
-        const auto proc = sched::current_process();
-
-        const bool follow_links = (flags & at_symlink_nofollow) == 0;
-        const bool empty_path = (flags & at_empty_path) != 0;
-
-        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
-        if (!target.has_value())
-            return -lib::map_error(target.error());
-
-        auto &inode = target->dentry->inode;
+        int do_fchmodat(int dirfd, const char __user *pathname, mode_t mode, int flags)
         {
-            const std::unique_lock _ { inode->lock };
+            if (flags & ~(at_symlink_nofollow | at_empty_path))
+                return -EINVAL;
 
-            const auto &cred = proc->cred;
-            if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
-                return -EPERM;
+            const auto proc = sched::current_process();
 
-            if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
-                !cred->supp_gids.contains(inode->stat.st_gid) &&
-                !sched::capable(cred, sched::cap_t::fsetid))
-                mode &= ~s_isgid;
+            const bool follow_links = (flags & at_symlink_nofollow) == 0;
+            const bool empty_path = (flags & at_empty_path) != 0;
 
-            constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
+            const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
+            if (!target.has_value())
+                return -lib::map_error(target.error());
 
-            inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
-            inode->stat.update_time(stat::time::status);
+            auto &inode = target->dentry->inode;
+            {
+                const std::unique_lock _ { inode->lock };
 
-            if (const auto ret = dirty_inode(*target); !ret)
-                return -lib::map_error(ret.error());
+                const auto &cred = proc->cred;
+                if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
+                    return -EPERM;
+
+                if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
+                    !cred->supp_gids.contains(inode->stat.st_gid) &&
+                    !sched::capable(cred, sched::cap_t::fsetid))
+                    mode &= ~s_isgid;
+
+                constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
+
+                inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
+                inode->stat.update_time(stat::time::status);
+
+                if (const auto ret = dirty_inode(*target); !ret)
+                    return -lib::map_error(ret.error());
+            }
+            return 0;
         }
-        return 0;
+    }
+
+    int fchmodat(int dirfd, const char __user *pathname, mode_t mode)
+    {
+        return do_fchmodat(dirfd, pathname, mode, 0);
+    }
+
+    int fchmodat2(int dirfd, const char __user *pathname, mode_t mode, int flags)
+    {
+        return do_fchmodat(dirfd, pathname, mode, flags);
     }
 
     int chmod(const char __user *pathname, mode_t mode)
     {
-        return fchmodat(at_fdcwd, pathname, mode, 0);
+        return do_fchmodat(at_fdcwd, pathname, mode, 0);
     }
 
     int fchmod(int fd, mode_t mode)
     {
-        return fchmodat(fd, nullptr, mode, at_empty_path);
+        return do_fchmodat(fd, nullptr, mode, at_empty_path);
     }
 
     int fchownat(int dirfd, const char __user *pathname, uid_t owner, gid_t group, int flags)
@@ -1354,6 +1386,67 @@ namespace syscall::vfs
         return 0;
     }
 
+    namespace
+    {
+        int do_trunc(const path &target, off_t length)
+        {
+            auto &inode = target.dentry->inode;
+            if (inode->stat.type() == stat::type::s_ifdir)
+                return -EISDIR;
+            if (inode->stat.type() != stat::type::s_ifreg)
+                return -EINVAL;
+
+            auto file = vfs::file::create(target, 0, o_wronly);
+            if (const auto ret = file->trunc(static_cast<std::size_t>(length)); !ret)
+                return -lib::map_error(ret.error());
+
+            const std::unique_lock _ { inode->lock };
+            inode->stat.update_time(stat::time::modify | stat::time::status);
+            if (const auto ret = dirty_inode(target); !ret)
+                return -lib::map_error(ret.error());
+            return 0;
+        }
+    } // namespace
+
+    int truncate(const char __user *pathname, off_t length)
+    {
+        if (length < 0)
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+        if (static_cast<rlim_t>(length) > proc->rlimits->get(sched::rlimit_fsize).cur)
+            return -EFBIG;
+
+        const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        if (!sched::check_perms(proc->cred, target->dentry->inode->stat, sched::access_mode::write))
+            return -EACCES;
+
+        return do_trunc(*target, length);
+    }
+
+    int ftruncate(int fd, off_t length)
+    {
+        if (length < 0)
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+        if (static_cast<rlim_t>(length) > proc->rlimits->get(sched::rlimit_fsize).cur)
+            return -EFBIG;
+
+        const auto fdesc_res = get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
+
+        if (!is_write(fdesc->file->flags))
+            return -EINVAL;
+
+        return do_trunc(fdesc->file->path, length);
+    }
+
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
         const auto proc = sched::current_process();
@@ -1381,17 +1474,9 @@ namespace syscall::vfs
         switch (cmd)
         {
             case 0: // F_DUPFD
-                return dup(static_cast<int>(arg));
+                return proc->fdt->dup(fd, static_cast<int>(arg), false, false, proc->rlimits->get(sched::rlimit_nofile).cur);
             case 1030: // F_DUPFD_CLOEXEC
-            {
-                const auto newfd = dup(static_cast<int>(arg));
-                if (newfd < 0)
-                    return newfd;
-                auto new_fdesc = proc->fdt->get(newfd);
-                lib::bug_on(new_fdesc == nullptr);
-                new_fdesc->closexec = true;
-                return newfd;
-            }
+                return proc->fdt->dup(fd, static_cast<int>(arg), true, false, proc->rlimits->get(sched::rlimit_nofile).cur);
             case 1: // F_GETFD
                 return fdesc->closexec ? o_closexec : 0;
             case 2: // F_SETFD
@@ -1405,6 +1490,33 @@ namespace syscall::vfs
                 fdesc->file->flags = (fdesc->file->flags & ~changeable_status_flags) | new_flags;
                 break;
             }
+            // TODO: flock
+            case 6: // F_SETLK
+            case 7: // F_SETLKW
+            {
+                struct flock
+                {
+                    std::int16_t l_type;
+                    std::int16_t l_whence;
+                    off_t l_start;
+                    off_t l_len;
+                    pid_t l_pid;
+                };
+
+                flock fl;
+                if (!lib::copy_from_user(&fl, reinterpret_cast<const flock __user *>(arg), sizeof(fl)))
+                    return -EFAULT;
+
+                // F_RDLCK, F_WRLCK, F_UNLCK
+                if (fl.l_type != 0 && fl.l_type != 1 && fl.l_type != 2)
+                    return -EINVAL;
+
+                if (fl.l_whence != seek_set && fl.l_whence != seek_cur && fl.l_whence != seek_end)
+                    return -EINVAL;
+
+                // TODO: actually enforce locks
+                break;
+            }
             default:
                 lib::error("fcntl: unhandled command: 0x{:X}", cmd);
                 return -EINVAL;
@@ -1415,13 +1527,13 @@ namespace syscall::vfs
     int dup(int oldfd)
     {
         const auto proc = sched::current_process();
-        return proc->fdt->dup(oldfd, 0, false, false);
+        return proc->fdt->dup(oldfd, 0, false, false, proc->rlimits->get(sched::rlimit_nofile).cur);
     }
 
     int dup2(int oldfd, int newfd)
     {
         const auto proc = sched::current_process();
-        return proc->fdt->dup(oldfd, newfd, false, true);
+        return proc->fdt->dup(oldfd, newfd, false, true, proc->rlimits->get(sched::rlimit_nofile).cur);
     }
 
     int dup3(int oldfd, int newfd, int flags)
@@ -1430,7 +1542,7 @@ namespace syscall::vfs
             return -EINVAL;
 
         const auto proc = sched::current_process();
-        return proc->fdt->dup(oldfd, newfd, (flags & o_closexec) != 0, true);
+        return proc->fdt->dup(oldfd, newfd, (flags & o_closexec) != 0, true, proc->rlimits->get(sched::rlimit_nofile).cur);
     }
 
     int getcwd(char __user *buf, std::size_t size)
@@ -1521,9 +1633,11 @@ namespace syscall::vfs
 
         rfdesc->closexec = (flags & o_closexec) != 0;
 
-        fds[0] = fdt->alloc(rfdesc, 0, false);
+        const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
+
+        fds[0] = fdt->alloc(rfdesc, 0, false, max_fd);
         if (fds[0] < 0)
-            return -EMFILE;
+            return fds[0];
 
         if (const auto ret = rfdesc->file->open(flags | o_rdonly, proc->pid); !ret)
         {
@@ -1542,11 +1656,11 @@ namespace syscall::vfs
 
         wfdesc->closexec = (flags & o_closexec) != 0;
 
-        fds[1] = fdt->alloc(wfdesc, 0, false);
+        fds[1] = fdt->alloc(wfdesc, 0, false, max_fd);
         if (fds[1] < 0)
         {
             close_fd(proc, fds[0]);
-            return -EMFILE;
+            return fds[1];
         }
 
         wfdesc->file->private_data = rfdesc->file->private_data;

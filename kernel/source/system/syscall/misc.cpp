@@ -7,6 +7,7 @@ module;
 
 module system.syscall.misc;
 
+import system.sched;
 import lib;
 import std;
 
@@ -98,8 +99,34 @@ namespace syscall::misc
         unsigned long arg4, unsigned long arg5
     )
     {
-        lib::unused(arg2, arg3, arg4, arg5);
-        lib::error("prctl: unhandled option: 0x{:X}", option);
-        return -EINVAL;
+        lib::unused(arg3, arg4, arg5);
+        switch (option)
+        {
+            case 3: // PR_GET_DUMPABLE
+                return static_cast<int>(
+                    sched::current_process()->dumpable.load(std::memory_order_relaxed)
+                );
+            case 4: // PR_SET_DUMPABLE
+                if (arg2 != static_cast<unsigned long>(sched::dumpable_t::disable) &&
+                    arg2 != static_cast<unsigned long>(sched::dumpable_t::user))
+                    return -EINVAL;
+
+                sched::current_process()->dumpable.store(
+                    static_cast<sched::dumpable_t>(arg2), std::memory_order_relaxed
+                );
+                return 0;
+            case 23: // PR_CAPBSET_READ
+            {
+                if (arg2 >= 64)
+                    return -EINVAL;
+                const auto cap = static_cast<sched::cap_t>(1ul << arg2);
+                if (!sched::cap_valid(cap))
+                    return -EINVAL;
+                return sched::has_cap(sched::current_process()->cred->bounding, cap);
+            }
+            default:
+                lib::error("prctl: unhandled option: 0x{:X}", option);
+                return -EINVAL;
+        }
     }
 } // namespace syscall::misc
