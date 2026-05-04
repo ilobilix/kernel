@@ -602,4 +602,7 @@ export namespace fs::dev::tty
     };
 
     void register_driver(driver *drv);
+
+    void set_console(driver *drv, std::uint32_t minor);
+    void set_console(dev_t rdev);
 } // export namespace fs::dev::tty

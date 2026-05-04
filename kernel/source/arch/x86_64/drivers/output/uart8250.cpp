@@ -183,7 +183,7 @@ namespace x86_64::output::uart8250
 
                 const auto idx = minor - 64;
                 if (!usable[idx])
-                    return std::unexpected { lib::err::invalid_device_or_address };
+                    return { };
 
                 hooks[idx] = [this](char chr) {
                     receive(std::span { reinterpret_cast<std::byte *>(&chr), 1 });
@@ -234,7 +234,9 @@ namespace x86_64::output::uart8250
             }
 
             serial_instance(tty::driver *drv, std::uint32_t minor)
-                : instance { drv, minor, std::make_shared<tty::default_ldisc>(this) } { }
+                : instance { drv, minor, usable[minor - 64]
+                    ? std::make_shared<tty::default_ldisc>(this)
+                    : nullptr } { }
         };
 
         std::shared_ptr<fs::dev::tty::instance> create_instance(tty::driver *drv, std::uint32_t minor) override
