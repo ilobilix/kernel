@@ -5,7 +5,7 @@ module lib;
 import system.chrono;
 import std;
 
-void stat::update_time(std::uint8_t flags)
+void kstat::update_time(std::uint8_t flags)
 {
     const auto now = ::chrono::now(chrono::realtime);
     if (flags & time::access)
@@ -14,4 +14,6 @@ void stat::update_time(std::uint8_t flags)
         st_mtim = now;
     if (flags & time::status)
         st_ctim = now;
+    if (flags & time::birth)
+        st_btim = now;
 }

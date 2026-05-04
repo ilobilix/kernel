@@ -80,8 +80,19 @@ export
         {
             return mode(st_mode);
         }
+    };
 
-        enum time : std::uint8_t { access = (1 << 0), modify = (1 << 1), status = (1 << 2) };
+    struct kstat : stat
+    {
+        timespec st_btim;
+
+        enum time : std::uint8_t
+        {
+            access = (1 << 0),
+            modify = (1 << 1),
+            status = (1 << 2),
+            birth  = (1 << 3)
+        };
         void update_time(std::uint8_t flags);
     };
 

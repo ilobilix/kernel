@@ -782,7 +782,7 @@ namespace vfs
         const bool copied = data.copy_to(buf.span());
         inode->xattrs.insert_or_assign(name, std::move(buf));
 
-        inode->stat.update_time(stat::time::status);
+        inode->stat.update_time(kstat::time::status);
         if (const auto ret = dirty_inode(target); !ret)
             return ret;
 
@@ -818,7 +818,7 @@ namespace vfs
 
         inode->xattrs.erase(name);
 
-        inode->stat.update_time(stat::time::status);
+        inode->stat.update_time(kstat::time::status);
         return dirty_inode(target);
     }
 

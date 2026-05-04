@@ -32,9 +32,10 @@ namespace fs::tmpfs
         stat.st_gid = proc->cred->egid;
 
         stat.update_time(
-            stat::time::access |
-            stat::time::modify |
-            stat::time::status
+            kstat::time::access |
+            kstat::time::modify |
+            kstat::time::status |
+            kstat::time::birth
         );
     }
 
