@@ -341,6 +341,7 @@ namespace sched
             proc->vfs = nullptr;
             proc->fdt = nullptr;
             proc->cred = cred_t::root();
+            proc->rlimits = nullptr;
             proc->sigactions = nullptr;
 
             (*processes.lock())[proc->pid] = proc;
@@ -868,6 +869,7 @@ namespace sched
             // clean up early
             proc->vfs.reset();
             proc->cred.reset();
+            proc->rlimits.reset();
 
             proc->exit_code = exit_code;
             proc->is_zombie = true;
@@ -1436,6 +1438,11 @@ namespace sched
                 target_proc->fdt = caller_proc->fdt->clone();
 
             target_proc->cred = caller_proc->cred;
+            target_proc->rlimits = caller_proc->rlimits->clone();
+            target_proc->dumpable.store(
+                caller_proc->dumpable.load(std::memory_order_relaxed),
+                std::memory_order_relaxed
+            );
         }
         else target_proc = caller_proc;
 

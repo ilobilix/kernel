@@ -356,6 +356,27 @@ namespace syscall::proc
         return 0;
     }
 
+    int rt_sigpending(sched::sigset_t __user *set, std::size_t sigsetsize)
+    {
+        using namespace sched;
+
+        if (sigsetsize != sizeof(sigset_t))
+            return -EINVAL;
+
+        auto proc = current_process();
+        sigset_t pending;
+        {
+            const std::unique_lock _ { proc->sigqueue.lock };
+            pending = proc->sigqueue.pending;
+        }
+        pending &= current_thread()->sigmask;
+
+        if (!lib::copy_to_user(set, &pending, sizeof(sigset_t)))
+            return -EFAULT;
+
+        return 0;
+    }
+
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss)
     {
         // TODO
@@ -403,20 +424,79 @@ namespace syscall::proc
         return -ENOSYS;
     }
 
-    struct rlimit
-    {
-        rlim_t rlim_cur;
-        rlim_t rlim_max;
-    };
-
     int prlimit(
-        pid_t pid, int resource, const struct rlimit __user *new_limit,
-        struct rlimit __user *old_limit
+        pid_t pid, int resource, const sched::rlimit __user *new_limit,
+        sched::rlimit __user *old_limit
     )
     {
-        // TODO
-        lib::unused(pid, resource, new_limit, old_limit);
-        return -ENOSYS;
+        using namespace sched;
+
+        if (resource < 0 || resource >= rlimit_nlimits)
+            return -EINVAL;
+
+        const auto &caller = current_process()->cred;
+
+        auto target = current_process();
+        if (pid != 0)
+        {
+            target = get_process(pid);
+            if (!target)
+                return -ESRCH;
+
+            const auto &tcred = target->cred;
+            if (!tcred)
+                return -ESRCH;
+
+            const bool id_match =
+                caller->ruid == tcred->ruid &&
+                caller->ruid == tcred->euid &&
+                caller->ruid == tcred->suid &&
+                caller->rgid == tcred->rgid &&
+                caller->rgid == tcred->egid &&
+                caller->rgid == tcred->sgid;
+
+            if (!id_match && !capable(caller, cap_t::sys_resource))
+                return -EPERM;
+        }
+
+        if (!target->rlimits)
+            return -ESRCH;
+
+        rlimit knew;
+        if (new_limit)
+        {
+            if (!lib::copy_from_user(&knew, new_limit, sizeof(knew)))
+                return -EFAULT;
+            if (knew.cur > knew.max)
+                return -EINVAL;
+        }
+
+        const auto kold = target->rlimits->get(resource);
+        if (new_limit)
+        {
+            if (knew.max > kold.max && !capable(caller, cap_t::sys_resource))
+                return -EPERM;
+            target->rlimits->set(resource, knew);
+        }
+
+        if (old_limit && !lib::copy_to_user(old_limit, &kold, sizeof(kold)))
+            return -EFAULT;
+
+        return 0;
+    }
+
+    int getrlimit(int resource, sched::rlimit __user *rlim)
+    {
+        if (!rlim)
+            return -EFAULT;
+        return prlimit(0, resource, nullptr, rlim);
+    }
+
+    int setrlimit(int resource, const sched::rlimit __user *rlim)
+    {
+        if (!rlim)
+            return -EFAULT;
+        return prlimit(0, resource, rlim, nullptr);
     }
 
     using enum sched::clone_flags;

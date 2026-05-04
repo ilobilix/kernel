@@ -607,8 +607,8 @@ export namespace vfs
         std::shared_ptr<vfs::filedesc> get(int fd);
         bool close(int fd);
 
-        int alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force);
-        int dup(int oldfd, int newfd, bool closexec, bool force);
+        int alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
+        int dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
 
         void close_on_exec();
 

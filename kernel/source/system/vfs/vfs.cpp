@@ -901,7 +901,7 @@ namespace vfs
         return it->second;
     }
 
-    int fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force)
+    int fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
     {
         auto wlocked = fds.write_lock();
         if (wlocked->contains(fd))
@@ -916,11 +916,14 @@ namespace vfs
             else lib::bug_on(!wlocked->erase(fd));
         }
 
+        if (static_cast<rlim_t>(fd) >= max_fd)
+            return -EMFILE;
+
         wlocked.value()[fd] = std::move(desc);
         return fd;
     }
 
-    int fdtable::dup(int oldfd, int newfd, bool closexec, bool force)
+    int fdtable::dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd)
     {
         if (oldfd < 0 || newfd < 0)
             return -EBADF;
@@ -929,10 +932,7 @@ namespace vfs
             return -EBADF;
 
         auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
-        const auto fd = alloc(std::move(newfdesc), newfd, force);
-        if (fd < 0)
-            return -EMFILE;
-        return fd;
+        return alloc(std::move(newfdesc), newfd, force, max_fd);
     }
 
     void fdtable::close_on_exec()

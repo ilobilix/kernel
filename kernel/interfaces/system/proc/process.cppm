@@ -11,6 +11,7 @@ import lib;
 import std;
 
 import :signal;
+import :rlimit;
 import :thread;
 
 export namespace sched
@@ -22,6 +23,13 @@ export namespace sched
     {
         virtual ~ctty_base() = default;
         virtual void detach(session_t *session) = 0;
+    };
+
+    enum class dumpable_t : std::uint8_t
+    {
+        disable = 0,
+        user = 1,
+        root = 2
     };
 
     struct process_t
@@ -61,6 +69,7 @@ export namespace sched
         std::shared_ptr<vfs::fdtable> fdt;
 
         std::shared_ptr<cred_t> cred;
+        std::shared_ptr<rlimits_t> rlimits;
 
         std::shared_ptr<signal_actions_t> sigactions;
         signal_queue_t sigqueue;
@@ -74,6 +83,8 @@ export namespace sched
 
         std::atomic<std::size_t> alive_threads = 0;
         std::atomic<std::size_t> to_quiesce = 0;
+
+        std::atomic<dumpable_t> dumpable = dumpable_t::user;
 
         int exit_code = 0;
         int term_signal = 0;

@@ -506,6 +506,7 @@ namespace bin::elf::exec
                 lib::bug_on(ii != nullptr);
             }
 
+            req.proc->vmspace->brk_start = brk_base;
             req.proc->vmspace->current_brk = brk_base;
 
             auto execfn = req.pathname.empty()

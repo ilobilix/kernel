@@ -111,4 +111,6 @@ export
     using loff_t = std::int64_t;
     using blksize_t = std::int64_t;
     using blkcnt_t = std::int64_t;
+
+    constexpr auto rlim_inf = ~static_cast<rlim_t>(0);
 } // export

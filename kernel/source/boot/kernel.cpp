@@ -42,7 +42,9 @@ void kthread()
         proc->vfs->cwd = proc->vfs->root;
 
         proc->fdt = std::make_shared<vfs::fdtable>();
+
         proc->cred = sched::cred_t::root();
+        proc->rlimits = std::make_shared<sched::rlimits_t>();
 
         proc->sigactions = std::make_shared<sched::signal_actions_t>();
 

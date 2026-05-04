@@ -10,6 +10,7 @@ export import system.sched.cred;
 export import :perm;
 export import :nice;
 export import :signal;
+export import :rlimit;
 export import :process;
 export import :thread;
 export import :sleep;
