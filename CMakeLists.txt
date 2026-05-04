@@ -38,6 +38,7 @@ add_custom_target(
     COMMAND ${CMAKE_COMMAND}
         -DSRC_DIR=${CMAKE_SOURCE_DIR}
         -DBIN_DIR=${CMAKE_BINARY_DIR}
+        -DPROJECT_VERSION=${PROJECT_VERSION}
         -P ${CMAKE_SOURCE_DIR}/cmake/git-version.cmake
     BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/version.h
 )

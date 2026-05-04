@@ -42,9 +42,7 @@ export namespace mod
     struct declare
     {
         static constexpr std::uint64_t header_magic = 0x737BDF086B7EF53C;
-        static inline constexpr std::string_view build_version {
-            ILOBILIX_VERSION "-" ILOBILIX_COMMIT
-        };
+        static inline constexpr std::string_view build_version { ILOBILIX_RELEASE };
 
         const std::uint64_t magic = header_magic;
         const char *const version = build_version.data();

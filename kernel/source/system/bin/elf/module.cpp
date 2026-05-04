@@ -3,6 +3,7 @@
 module;
 
 #include <elf.h>
+#include <version.h>
 
 module system.bin.elf;
 
@@ -479,8 +480,7 @@ namespace bin::elf::mod
                     }
                 }
             };
-            load_from("/usr/lib/modules/noarch");
-            load_from("/usr/lib/modules/" ILOBILIX_ARCH);
+            load_from("/usr/lib/modules/" ILOBILIX_RELEASE);
         }
     } // namespace
 

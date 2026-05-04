@@ -29,8 +29,8 @@ namespace syscall::misc
         {
             .sysname = "Ilobilix",
             .nodename = "ilobilix",
-            .release = ILOBILIX_VERSION,
-            .version = ILOBILIX_COMMIT,
+            .release = ILOBILIX_RELEASE,
+            .version = __DATE__ " " __TIME__,
             .machine = ILOBILIX_ARCH,
             .domainname = "(none)"
         };
