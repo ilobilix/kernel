@@ -11,9 +11,15 @@ export namespace cpu
 {
     struct extra_regs;
 
-    void invlpg(std::uintptr_t address);
-    void invlasid(std::uintptr_t, std::size_t);
-    bool has_asids();
+    namespace tlb
+    {
+        bool has_asids();
+
+        void flush_page(std::uintptr_t addr);
+        void flush_page(std::uintptr_t addr, std::size_t asid);
+        void flush_asid(std::size_t asid);
+        void flush_all();
+    } // namespace tlb
 
     std::uintptr_t self_addr();
 } // export namespace cpu

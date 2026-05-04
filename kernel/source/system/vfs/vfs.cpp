@@ -343,7 +343,7 @@ namespace vfs
 
         lib::bug_on(!parent.has_value());
 
-        if (_path == "/" || _path.empty() || _path == ".")
+        if (_path.str() == "/"sv || _path.empty() || _path.str() == "."sv)
             return resolve_res { parent.value(), parent.value() };
 
         lib::bug_on(parent->mnt == nullptr);

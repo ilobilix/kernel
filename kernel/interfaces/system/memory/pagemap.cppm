@@ -2,6 +2,7 @@
 
 export module system.memory.virt:pagemap;
 
+import system.cpu.arch;
 import magic_enum;
 import frigg;
 import lib;
@@ -64,12 +65,17 @@ export namespace vmm
         large
     };
 
+    using asid_t = std::size_t;
+
     class pagemap
     {
         friend class vspace;
         friend struct vmm::arch_table;
 
         private:
+        static constexpr std::size_t asid_mask = (1uz << cpu::tlb::asid_bits) - 1;
+        static constexpr std::size_t max_asids = (1uz << cpu::tlb::asid_bits);
+
         static std::uintptr_t pa_mask;
 
         static const std::uintptr_t valid_table_flags;
@@ -148,6 +154,8 @@ export namespace vmm
         table *_table;
         lib::spinlock_irq _lock;
 
+        std::unique_ptr<std::atomic_uint64_t []> _asid_ctx;
+
         static table *new_table();
         static void free_table(table *ptr);
 
@@ -156,11 +164,14 @@ export namespace vmm
         static std::uintptr_t to_arch(pflag flags, caching cache, page_size psize);
         static auto from_arch(std::uintptr_t flags, page_size psize) -> std::pair<pflag, caching>;
 
-        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *;
+        static asid_t alloc_asid();
 
+        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *;
         auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>;
 
         lib::expect<void> unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize);
+
+        void arch_load(asid_t asid, bool flush) const;
 
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
@@ -190,6 +201,7 @@ export namespace vmm
         lib::expect<std::uintptr_t> translate(std::uintptr_t vaddr, page_size psize);
 
         void load() const;
+        void unload() const;
 
         pagemap();
         pagemap(pagemap *ref) : _table { ref->_table } { }

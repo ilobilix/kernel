@@ -74,12 +74,6 @@ namespace vmm
     }
 
     page_size pagemap::fixpsize(page_size psize) { return psize; }
-    void pagemap::invalidate(std::uintptr_t vaddr, std::size_t length)
-    {
-        // TODO
-        lib::unused(length);
-        cpu::invlpg(vaddr);
-    }
 
     std::uintptr_t pagemap::to_arch(pflag flags, caching cache, page_size psize)
     {
@@ -187,9 +181,9 @@ namespace vmm
     static std::size_t n = 0;
     static std::uint64_t tg0 = 0;
 
-    void pagemap::load() const
+    namespace
     {
-        if (n < cpu::count())
+        void arch_cpu_init()
         {
             constexpr auto bits = [](std::size_t top, std::size_t bottom, std::uint64_t value)
             {
@@ -216,6 +210,7 @@ namespace vmm
             tcr_el1 |= bits(11, 10, 0b01); // orgn0: wbwa
             tcr_el1 |= bits(9, 8, 0b01); // irgn0: wbwa
             tcr_el1 |= bits(5, 0, 16); // t0sz: 48 bits
+            // TODO: asids bit 36
             cpu::msr<"tcr_el1">(tcr_el1);
 
             std::uint64_t mair_el1 = 0;
@@ -224,10 +219,30 @@ namespace vmm
             mair_el1 |= (0x00 << (2 * 8)); // nGnRnE
             cpu::msr<"mair_el1">(mair_el1);
 
-            asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(accessor.ttbr1)) : "memory");
+            const auto ttbr = reinterpret_cast<std::uintptr_t>(accessor.ttbr1);
+            asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r"(ttbr) : "memory");
+        }
+    } // namespace
+
+    void pagemap::arch_load(asid_t asid, bool flush) const
+    {
+        if (n < cpu::count())
+        {
+            arch_cpu_init();
             n++;
         }
-        asm volatile ("msr ttbr0_el1, %0; isb; dsb sy; isb" :: "r" (reinterpret_cast<std::uintptr_t>(_table)) : "memory");
+
+        const auto ttbr = reinterpret_cast<std::uintptr_t>(_table) |
+            (static_cast<std::uint64_t>(asid) << 48);
+        asm volatile ("msr ttbr0_el1, %0; isb" :: "r"(ttbr) : "memory");
+
+        if (flush)
+        {
+            if (cpu::tlb::has_asids())
+                cpu::tlb::flush_asid(asid);
+            else
+                cpu::tlb::flush_all();
+        }
     }
 
     pagemap::pagemap() : _table { new_table() }

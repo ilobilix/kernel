@@ -112,27 +112,65 @@ export namespace cpu
         return cached;
     }
 
-    void invlpg(std::uintptr_t addr)
+    namespace tlb
     {
-        asm volatile ("invlpg [%0]" :: "r"(addr) : "memory");
-    }
+        inline constexpr unsigned asid_bits = 12;
 
-    bool has_pcids = false;
-    void invlasid(std::uintptr_t addr, std::size_t asid)
-    {
-        if (!has_pcids)
-            return invlpg(addr);
+        inline bool _enabled = false;
+        inline bool has_asids() { return _enabled; }
 
-        struct {
+        struct invpcid_desc
+        {
             std::uint64_t pcid;
             const void *address;
-        } descriptor { asid, reinterpret_cast<const void *>(addr) };
+        };
 
-        std::uint64_t type = 0;
-        asm volatile ("invpcid %0, %1" : : "r"(type), "m"(descriptor) : "memory");
-    }
+        enum invpcid_type : std::uint64_t
+        {
+            single_address = 0,
+            single_context = 1,
+            all_with_globals = 3,
+        };
 
-    bool has_asids() { return has_pcids; }
+        inline void _reload_cr3()
+        {
+            std::uintptr_t cr3;
+            asm volatile ("mov %0, cr3" : "=r"(cr3));
+            asm volatile ("mov cr3, %0" :: "r"(cr3) : "memory");
+        }
+
+        inline void _invpcid(invpcid_type type, const invpcid_desc &desc)
+        {
+            const std::uint64_t t = type;
+            asm volatile ("invpcid %1, %0" :: "m"(desc), "r"(t) : "memory");
+        }
+
+        inline void flush_page(std::uintptr_t addr)
+        {
+            asm volatile ("invlpg [%0]" :: "r"(addr) : "memory");
+        }
+
+        inline void flush_page(std::uintptr_t addr, std::size_t asid)
+        {
+            if (!_enabled)
+                return flush_page(addr);
+            _invpcid(single_address, { asid, reinterpret_cast<const void *>(addr) });
+        }
+
+        inline void flush_asid(std::size_t asid)
+        {
+            if (!_enabled)
+                return _reload_cr3();
+            _invpcid(single_context, { asid, nullptr });
+        }
+
+        inline void flush_all()
+        {
+            if (!_enabled)
+                return _reload_cr3();
+            _invpcid(all_with_globals, { 0, nullptr });
+        }
+    } // namespace tlb
 
     namespace msr
     {

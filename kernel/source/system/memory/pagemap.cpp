@@ -8,6 +8,8 @@ module system.memory.virt;
 
 import system.memory.phys;
 import system.memory.va;
+import system.cpu.local;
+import system.sched;
 import magic_enum;
 import frigg;
 import boot;
@@ -305,6 +307,92 @@ namespace vmm
             return std::unexpected { lib::err::invalid_pml_entry };
 
         return addr;
+    }
+
+    asid_t pagemap::alloc_asid()
+    {
+        auto &self = cpu::self().unsafe_get();
+        if (self.next_asid >= max_asids)
+        {
+            self.asid_gen++;
+            self.next_asid = 1;
+            cpu::tlb::flush_all();
+        }
+        return self.next_asid++;
+    }
+
+    void pagemap::invalidate(std::uintptr_t vaddr, std::size_t length)
+    {
+        const auto npsize = from_page_size(page_size::small);
+        const auto pages = length / npsize;
+
+        if (!_asid_ctx || !cpu::tlb::has_asids())
+        {
+            for (std::size_t i = 0; i < pages; i++)
+                cpu::tlb::flush_page(vaddr + i * npsize);
+            return;
+        }
+
+        sched::preempt_disable();
+        auto &self = cpu::self().unsafe_get();
+        const auto val = _asid_ctx[self.idx].load(std::memory_order_acquire);
+
+        if ((val >> cpu::tlb::asid_bits) == self.asid_gen)
+        {
+            const asid_t asid = val & asid_mask;
+
+            constexpr std::size_t threshold = 32;
+            if (pages <= threshold)
+            {
+                for (std::size_t i = 0; i < pages; i++)
+                    cpu::tlb::flush_page(vaddr + i * npsize, asid);
+            }
+            else cpu::tlb::flush_asid(asid);
+        }
+
+        // TODO: tlb shootdown
+        sched::preempt_enable();
+    }
+
+    void pagemap::unload() const
+    {
+        if (!_asid_ctx || !cpu::tlb::has_asids())
+            return;
+
+        sched::preempt_disable();
+        const auto idx = cpu::self().unsafe_get().idx;
+        _asid_ctx[idx].store(0, std::memory_order_release);
+        sched::preempt_enable();
+    }
+
+    void pagemap::load() const
+    {
+        if (!_asid_ctx || !cpu::tlb::has_asids())
+        {
+            arch_load(0, true);
+            return;
+        }
+
+        sched::preempt_disable();
+
+        auto &self = cpu::self().unsafe_get();
+        const auto idx = self.idx;
+
+        const auto val = _asid_ctx[idx].load(std::memory_order_acquire);
+        const auto gen = val >> cpu::tlb::asid_bits;
+
+        if (gen != self.asid_gen)
+        {
+            const auto asid = alloc_asid();
+            _asid_ctx[idx].store(
+                (self.asid_gen << cpu::tlb::asid_bits) | asid,
+                std::memory_order_release
+            );
+            arch_load(asid, true);
+        }
+        else arch_load(val & asid_mask, false);
+
+        sched::preempt_enable();
     }
 
     pagemap::~pagemap()

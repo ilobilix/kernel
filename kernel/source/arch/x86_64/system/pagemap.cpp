@@ -4,6 +4,7 @@ module system.memory.virt;
 
 import system.memory.phys;
 import system.cpu;
+import system.cpu.local;
 import magic_enum;
 import lib;
 import std;
@@ -71,13 +72,6 @@ namespace vmm
         if (psize == page_size::large && !arch::large_pages)
             return page_size::medium;
         return psize;
-    }
-
-    void pagemap::invalidate(std::uintptr_t vaddr, std::size_t length)
-    {
-        // TODO: tlb shootdown
-        lib::unused(length);
-        cpu::invlpg(vaddr);
     }
 
     std::uintptr_t pagemap::to_arch(pflag flags, caching cache, page_size psize)
@@ -215,9 +209,11 @@ namespace vmm
         return page_size::small;
     }
 
-    void pagemap::load() const
+    void pagemap::arch_load(asid_t asid, bool flush) const
     {
-        const auto addr = reinterpret_cast<std::uintptr_t>(_table);
+        auto addr = reinterpret_cast<std::uintptr_t>(_table) | asid;
+        if (!flush)
+            addr |= (1ul << 63);
         asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
     }
 
@@ -236,6 +232,8 @@ namespace vmm
         }
         else
         {
+            _asid_ctx = std::make_unique<std::atomic_uint64_t []>(cpu::count());
+
             auto table = lib::tohh(_table);
             const auto ktable = lib::tohh(kernel_pagemap->_table);
             std::memcpy(table->entries + 256, ktable->entries + 256, 256 * sizeof(entry));

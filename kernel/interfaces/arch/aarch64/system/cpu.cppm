@@ -48,13 +48,44 @@ export namespace cpu
         static extra_regs read() { return { }; }
     };
 
-    void invlpg(std::uintptr_t address)
+    namespace tlb
     {
-        asm volatile ("dsb st; tlbi vale1, %0; dsb sy; isb" :: "r"(address >> 12) : "memory");
-    }
+        inline constexpr unsigned asid_bits = 16;
 
-    void invlasid(std::uintptr_t, std::size_t) { }
-    bool has_asids() { return false; }
+        inline bool _enabled = false;
+        inline bool has_asids() { return _enabled; }
+
+        inline void flush_page(std::uintptr_t addr)
+        {
+            asm volatile ("dsb st; tlbi vale1, %0; dsb sy; isb" :: "r"(addr >> 12) : "memory");
+        }
+
+        inline void flush_page(std::uintptr_t addr, std::size_t asid)
+        {
+            if (!_enabled)
+                return flush_page(addr);
+
+            const std::uint64_t op = (addr >> 12) | (static_cast<std::uint64_t>(asid) << 48);
+            asm volatile ("dsb ishst; tlbi vae1, %0; dsb ish; isb" :: "r"(op) : "memory");
+        }
+
+        inline void flush_asid(std::size_t asid)
+        {
+            if (!_enabled)
+            {
+                asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" ::: "memory");
+                return;
+            }
+
+            const std::uint64_t op = static_cast<std::uint64_t>(asid) << 48;
+            asm volatile ("dsb ishst; tlbi aside1, %0; dsb ish; isb" :: "r"(op) : "memory");
+        }
+
+        inline void flush_all()
+        {
+            asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" ::: "memory");
+        }
+    } // namespace tlb
 
     void write_el1_base(std::uintptr_t base)
     {
