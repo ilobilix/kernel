@@ -90,8 +90,6 @@ namespace cpu
             proc->stack_top = lib::alloc<std::uintptr_t>(boot::kstack_size) + boot::kstack_size;
             proc->idx = idx;
             proc->arch_id = aid;
-            proc->in_interrupt = false;
-            proc->online = false;
 
             return proc;
         }
@@ -100,6 +98,23 @@ namespace cpu
         {
             lib::bug_on(n >= count() || !bases);
             return std::addressof(me.unsafe_get(bases[n]));
+        }
+
+        bool available()
+        {
+            if (!bases)
+                return false;
+
+            for (std::size_t i = 0; i < count(); i++)
+            {
+                if (bases[i] == 0)
+                    return false;
+
+                if (!me.unsafe_get(bases[i]).online.load(std::memory_order_acquire))
+                    return false;
+            }
+
+            return true;
         }
 
         std::uintptr_t nth_base(std::size_t n)

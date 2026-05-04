@@ -21,7 +21,7 @@ namespace
 
 export namespace boot
 {
-    constexpr std::uintptr_t kstack_size = 0x10000; // 64 kib
+    constexpr std::uintptr_t kstack_size = 0x4000; // 16 kib
     constexpr std::uintptr_t ustack_size = 0x800000; // 8 mib
 
 #if ILOBILIX_LIMINE_MP

@@ -29,7 +29,10 @@ export namespace cpu
         std::size_t idx;
         std::size_t arch_id;
 
-        std::atomic_bool in_interrupt;
+        std::uint64_t asid_gen = 1;
+        std::size_t next_asid = 1;
+
+        std::atomic_bool in_interrupt = false;
 
         std::atomic_bool online = false;
     };
@@ -126,6 +129,8 @@ export namespace cpu
         std::uintptr_t nth_base(std::size_t n);
 
         std::size_t arch2idx(std::size_t arch_id);
+
+        bool available();
     } // namespace local
 
     local::storage<processor> &self();

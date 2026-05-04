@@ -210,7 +210,7 @@ namespace cpu
                     if ((res1.c & (1 << 17)) && res7.b & (1 << 10))
                     {
                         cr4 |= (1 << 17);
-                        has_pcids = true;
+                        tlb::_enabled = true;
                     }
                 }
                 write_reg<"cr4">(cr4);

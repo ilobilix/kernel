@@ -500,7 +500,11 @@ namespace sched
             const auto &prev_vmspace = prev->saved_vmspace
                 ? prev->saved_vmspace : prev->proc->vmspace;
             if (next->proc->vmspace != prev_vmspace)
+            {
+                if (prev_vmspace)
+                    prev_vmspace->pmap->unload();
                 next->proc->vmspace->pmap->load();
+            }
         }
 
         if (self.in_interrupt.load(std::memory_order_relaxed))
