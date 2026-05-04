@@ -319,7 +319,7 @@ export namespace vfs
     struct inode
     {
         sched::mutex lock;
-        stat stat;
+        kstat stat;
         bool dirty = false;
 
         lib::map::flat_hash<

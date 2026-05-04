@@ -289,7 +289,7 @@ namespace syscall::vfs
 
             {
                 const std::unique_lock _ { target.dentry->inode->lock };
-                stat.update_time(stat::time::modify | stat::time::status);
+                stat.update_time(kstat::time::modify | kstat::time::status);
 
                 if (const auto ret = dirty_inode(target); !ret)
                     return -lib::map_error(ret.error());
@@ -396,7 +396,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::access);
+            stat.update_time(kstat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -441,7 +441,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::modify | stat::time::status);
+            stat.update_time(kstat::time::modify | kstat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -486,7 +486,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::access);
+            stat.update_time(kstat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -539,7 +539,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::modify | stat::time::status);
+            stat.update_time(kstat::time::modify | kstat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -603,7 +603,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::access);
+            stat.update_time(kstat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -658,7 +658,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::modify | stat::time::status);
+            stat.update_time(kstat::time::modify | kstat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -717,7 +717,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::access);
+            stat.update_time(kstat::time::access);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -784,7 +784,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::modify | stat::time::status);
+            stat.update_time(kstat::time::modify | kstat::time::status);
 
             if (const auto ret = dirty_inode(file->path); !ret)
                 return -lib::map_error(ret.error());
@@ -902,6 +902,7 @@ namespace syscall::vfs
             return -EINVAL;
 
         constexpr std::uint32_t statx_basic_stats = 0x000007FFu;
+        constexpr std::uint32_t statx_btime = 0x00000800u;
         constexpr std::uint32_t statx_mnt_id = 0x00001000u;
         constexpr std::uint32_t statx_reserved = 0x80000000u;
 
@@ -916,7 +917,7 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        struct stat val;
+        kstat val;
         {
             const std::unique_lock _ { target->dentry->inode->lock };
             val = target->dentry->inode->stat;
@@ -932,7 +933,7 @@ namespace syscall::vfs
         };
 
         struct statx ret { };
-        ret.stx_mask = statx_basic_stats;
+        ret.stx_mask = statx_basic_stats | statx_btime;
         ret.stx_blksize = static_cast<std::uint32_t>(val.st_blksize);
         ret.stx_nlink = static_cast<std::uint32_t>(val.st_nlink);
         ret.stx_uid = static_cast<std::uint32_t>(val.st_uid);
@@ -942,6 +943,7 @@ namespace syscall::vfs
         ret.stx_size = static_cast<std::uint64_t>(val.st_size);
         ret.stx_blocks = static_cast<std::uint64_t>(val.st_blocks);
         ret.stx_atime = to_statx_timestamp(val.st_atim);
+        ret.stx_btime = to_statx_timestamp(val.st_btim);
         ret.stx_ctime = to_statx_timestamp(val.st_ctim);
         ret.stx_mtime = to_statx_timestamp(val.st_mtim);
         ret.stx_rdev_major = dev::major(val.st_rdev);
@@ -1052,7 +1054,7 @@ namespace syscall::vfs
                 constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
                 inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
-                inode->stat.update_time(stat::time::status);
+                inode->stat.update_time(kstat::time::status);
 
                 if (const auto ret = dirty_inode(*target); !ret)
                     return -lib::map_error(ret.error());
@@ -1148,7 +1150,7 @@ namespace syscall::vfs
                         inode->stat.st_mode &= ~s_isgid;
                 }
 
-                inode->stat.update_time(stat::time::status);
+                inode->stat.update_time(kstat::time::status);
                 if (const auto ret = dirty_inode(*target); !ret)
                 {
                     // TODO: restore xattr
@@ -1401,7 +1403,7 @@ namespace syscall::vfs
                 return -lib::map_error(ret.error());
 
             const std::unique_lock _ { inode->lock };
-            inode->stat.update_time(stat::time::modify | stat::time::status);
+            inode->stat.update_time(kstat::time::modify | kstat::time::status);
             if (const auto ret = dirty_inode(target); !ret)
                 return -lib::map_error(ret.error());
             return 0;
@@ -1614,9 +1616,10 @@ namespace syscall::vfs
             shared_inode->stat.st_gid = proc->cred->egid;
 
             shared_inode->stat.update_time(
-                stat::time::access |
-                stat::time::modify |
-                stat::time::status
+                kstat::time::access |
+                kstat::time::modify |
+                kstat::time::status |
+                kstat::time::birth
             );
         }
 
@@ -1717,7 +1720,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { inode->lock };
-            stat.update_time(stat::time::access);
+            stat.update_time(kstat::time::access);
 
             if (const auto ret = dirty_inode(fdesc->file->path); !ret)
                 return -lib::map_error(ret.error());
