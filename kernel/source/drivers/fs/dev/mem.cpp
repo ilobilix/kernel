@@ -135,7 +135,27 @@ namespace fs::dev::mem
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
-            lib::unused(file, offset, buffer);
+            lib::unused(file, offset);
+
+            if (!buffer.is_user())
+            {
+                lib::add_entropy(buffer.span());
+                return buffer.size_bytes();
+            }
+
+            lib::membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
+            std::size_t progress = 0;
+            while (progress < buffer.size_bytes())
+            {
+                const auto chunk_size = std::min(
+                    buffer.size_bytes() - progress, buf.size_bytes()
+                );
+                if (!buffer.subspan(progress, chunk_size).copy_to(buf.data()))
+                    return std::unexpected { lib::err::invalid_address };
+
+                lib::add_entropy(std::span { buf.data(), chunk_size });
+                progress += chunk_size;
+            }
             return buffer.size_bytes();
         }
 

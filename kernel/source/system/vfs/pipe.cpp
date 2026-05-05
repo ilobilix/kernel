@@ -2,12 +2,34 @@
 
 module system.vfs.pipe;
 
+import system.sched;
 import system.sched.wait_queue;
 import system.vfs;
 import lib;
 import std;
 
 // TODO: rewrite and fix pipes
+
+namespace
+{
+    void raise_sigpipe()
+    {
+        const auto thread = sched::current_thread();
+        lib::bug_on(!thread);
+
+        const sched::siginfo_t info {
+            .signo = sched::sigpipe,
+            .code = sched::si_kernel,
+            .err = 0,
+            .pid = 0,
+            .uid = 0,
+            .status = 0,
+            .addr = 0,
+            .value = 0
+        };
+        sched::send_signal(thread, info);
+    }
+} // namespace
 
 namespace vfs::pipe
 {
@@ -132,8 +154,10 @@ namespace vfs::pipe
                 return std::unexpected { lib::err::todo };
 
             if (pdata->readers == 0)
-                // TODO: SIGPIPE
+            {
+                raise_sigpipe();
                 return std::unexpected { lib::err::no_readers };
+            }
 
             std::size_t total_written = 0;
             const std::size_t count = buffer.size_bytes();
@@ -175,7 +199,8 @@ namespace vfs::pipe
                     {
                         if (total_written + chunk_written > 0)
                             return static_cast<std::ssize_t>(total_written + chunk_written);
-                        // TODO: SIGPIPE
+
+                        raise_sigpipe();
                         return std::unexpected { lib::err::no_readers };
                     }
 

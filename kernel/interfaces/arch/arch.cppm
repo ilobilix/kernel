@@ -29,6 +29,9 @@ export namespace arch
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log::level lvl);
 
+    std::size_t hardware_random(std::span<std::byte> out);
+    std::uint64_t cycle_count();
+
     lib::initgraph::stage *bsp_initialised_stage()
     {
         static lib::initgraph::stage stage
