@@ -44,17 +44,32 @@ namespace lib::mmio
         switch (width)
         {
             case sizeof(std::uint8_t):
-                asm volatile ("mov %1, %0" :: "q"(val), "m"(*reinterpret_cast<volatile std::uint8_t *>(addr)) : "memory");
+            {
+                const auto v = static_cast<std::uint8_t>(val);
+                auto ptr = reinterpret_cast<volatile std::uint8_t *>(addr);
+                asm volatile ("mov %1, %0" :: "q"(v), "m"(*ptr) : "memory");
                 break;
+            }
             case sizeof(std::uint16_t):
-                asm volatile ("mov %1, %0" :: "r"(val), "m"(*reinterpret_cast<volatile std::uint16_t *>(addr)) : "memory");
+            {
+                const auto v = static_cast<std::uint16_t>(val);
+                auto ptr = reinterpret_cast<volatile std::uint16_t *>(addr);
+                asm volatile ("mov %1, %0" :: "r"(v), "m"(*ptr) : "memory");
                 break;
+            }
             case sizeof(std::uint32_t):
-                asm volatile ("mov %1, %0" :: "r"(val), "m"(*reinterpret_cast<volatile std::uint32_t *>(addr)) : "memory");
+            {
+                const auto v = static_cast<std::uint32_t>(val);
+                auto ptr = reinterpret_cast<volatile std::uint32_t *>(addr);
+                asm volatile ("mov %1, %0" :: "r"(v), "m"(*ptr) : "memory");
                 break;
+            }
             case sizeof(std::uint64_t):
-                asm volatile ("mov %1, %0" :: "r"(val), "m"(*reinterpret_cast<volatile std::uint64_t *>(addr)) : "memory");
+            {
+                auto ptr = reinterpret_cast<volatile std::uint64_t *>(addr);
+                asm volatile ("mov %1, %0" :: "r"(val), "m"(*ptr) : "memory");
                 break;
+            }
             default:
                 lib::panic("lib::mmio::write: invalid width {}", width);
         }
