@@ -2,7 +2,7 @@
 
 export module lib:barrier;
 
-namespace lib
+export namespace lib
 {
     inline void rmb()
     {

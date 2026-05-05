@@ -36,8 +36,7 @@ export namespace sched
 
     struct rlimits_t
     {
-        std::array<rlimit, rlimit_nlimits> limits
-        {{
+        std::array<rlimit, rlimit_nlimits> limits { {
             [rlimit_cpu]        = { rlim_inf, rlim_inf },
             [rlimit_fsize]      = { rlim_inf, rlim_inf },
             [rlimit_data]       = { rlim_inf, rlim_inf },
@@ -54,7 +53,7 @@ export namespace sched
             [rlimit_nice]       = { 0, 0 },
             [rlimit_rtprio]     = { 0, 0 },
             [rlimit_rttime]     = { rlim_inf, rlim_inf }
-        }};
+        } };
         mutable lib::spinlock lock;
 
         constexpr rlimits_t() = default;
