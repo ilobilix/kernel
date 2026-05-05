@@ -84,7 +84,16 @@ namespace syscall::misc
 
     std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags)
     {
-        lib::unused(flags);
+        constexpr unsigned int grnd_nonblock = 0x0001;
+        constexpr unsigned int grnd_random = 0x0002;
+        constexpr unsigned int grnd_insecure = 0x0004;
+
+        if (flags & ~(grnd_nonblock | grnd_random | grnd_insecure))
+            return -EINVAL;
+
+        if ((flags & grnd_random) && (flags & grnd_insecure))
+            return -EINVAL;
+
         if (buflen == 0)
             return 0;
 
