@@ -158,6 +158,7 @@ namespace x86_64::idt
         if (vector >= irq(0) && vector <= 0xFF)
         {
             eoi(vector);
+            lib::add_irq_jitter(vector, regs->rip);
 
             const auto idx = vector - irq(0);
             auto &irqh = irq_handlers.unsafe_get();

@@ -2,6 +2,7 @@
 
 module arch;
 
+import x86_64.drivers.timers.tsc;
 import x86_64.system.lapic;
 import x86_64.system.idt;
 import drivers.timers;
@@ -62,6 +63,45 @@ namespace arch
         auto ret = cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed);
         sched::preempt_enable();
         return ret;
+    }
+
+    std::uint64_t cycle_count()
+    {
+        return x86_64::timers::tsc::rdtsc();
+    }
+
+    std::size_t hardware_random(std::span<std::byte> out)
+    {
+        static const auto supported = [] {
+            cpu::id_res res;
+            return cpu::id(1, 0, res) && (res.c & (1 << 30));
+        } ();
+        if (!supported)
+            return 0;
+
+        const auto try_rdrand64 = [](std::uint64_t &val) {
+            for (std::size_t i = 0; i < 10; i++)
+            {
+                unsigned char ok;
+                asm volatile ("rdrand %0; setc %1" : "=r"(val), "=qm"(ok));
+                if (ok)
+                    return true;
+            }
+            return false;
+        };
+
+        std::size_t produced = 0;
+        while (produced < out.size())
+        {
+            std::uint64_t val;
+            if (!try_rdrand64(val))
+                break;
+
+            const auto chunk = std::min(out.size() - produced, sizeof(val));
+            std::memcpy(out.data() + produced, &val, chunk);
+            produced += chunk;
+        }
+        return produced;
     }
 
     // called from panic() only

@@ -51,6 +51,18 @@ namespace arch
         lib::unused(regs, lvl);
     }
 
+    std::uint64_t cycle_count()
+    {
+        return cpu::mrs<"cntvct_el0">();
+    }
+
+    // TODO: ID_AA64ISAR0_EL1.RNDR
+    std::size_t hardware_random(std::span<std::byte> out)
+    {
+        lib::unused(out);
+        return 0;
+    }
+
     void early_init() { }
 
     lib::initgraph::task bsp_task
