@@ -198,6 +198,19 @@ namespace x86_64::idt
                 };
                 if (vmm::handle_pfault(state))
                     goto end;
+
+                if ((regs->cs & 3) != 3 && sched::is_running())
+                {
+                    const auto thread = sched::current_thread();
+                    if (thread->fault_frame.pc != 0 &&
+                        lib::classify_address(cr2, 1) == lib::address_space::user)
+                    {
+                        regs->rsp = thread->fault_frame.sp;
+                        regs->rip = thread->fault_frame.pc;
+                        thread->fault_frame.pc = 0;
+                        goto end;
+                    }
+                }
             }
 
             if (deliver_fault_signal(regs, cr2))

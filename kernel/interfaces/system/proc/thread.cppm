@@ -95,6 +95,11 @@ export namespace sched
         std::shared_ptr<vmm::vmspace> saved_vmspace;
         cpu::registers *saved_regs;
 
+        struct {
+            std::uintptr_t sp = 0;
+            std::uintptr_t pc = 0;
+        } fault_frame;
+
         lib::bitmap affinity;
 
         std::uintptr_t clear_child_tid = 0;
