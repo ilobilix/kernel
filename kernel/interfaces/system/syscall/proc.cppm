@@ -37,6 +37,9 @@ export namespace syscall::proc
     pid_t getsid(pid_t pid);
     pid_t setsid();
 
+    int getpriority(int which, int who);
+    int setpriority(int which, int who, int prio);
+
     int setfsuid(uid_t fsuid);
     int setfsgid(gid_t fsgid);
 

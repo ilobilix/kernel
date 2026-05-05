@@ -996,9 +996,7 @@ namespace fs::dev::tty
                 return 0;
             case tiocsctty:
             {
-                int force;
-                if (!argp.read(force))
-                    return std::unexpected { lib::err::invalid_address };
+                const int force = static_cast<int>(argp.address());
 
                 const auto proc = sched::current_process();
                 if (proc->pid != proc->session->sid)

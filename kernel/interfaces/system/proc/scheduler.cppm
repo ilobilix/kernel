@@ -164,6 +164,16 @@ export namespace sched
     void set_affinity(pid_t pid, lib::bitmap mask);
     lib::bitmap get_affinity(pid_t pid);
 
+    enum priority_which
+    {
+        prio_process = 0,
+        prio_pgrp = 1,
+        prio_user = 2
+    };
+
+    int get_priority(int which, int who);
+    int set_priority(int which, int who, int prio);
+
     int setpgid(pid_t pid, pid_t pgid);
     pid_t setsid();
 

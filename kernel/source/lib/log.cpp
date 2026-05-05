@@ -600,12 +600,7 @@ namespace lib::log
             }
         };
 
-#if ILOBILIX_SYSCALL_LOG
-        constexpr std::size_t data_bits = 18;
-#else
-        constexpr std::size_t data_bits = 14;
-#endif
-        using ring_type = ring<data_bits, 6>;
+        using ring_type = ring<14, 6>;
         constinit ring_type buffer { };
 
         constexpr std::size_t len_time = 18;
@@ -862,6 +857,7 @@ namespace lib::log
         std::unreachable();
     }
 
+#if !ILOBILIX_SYSCALL_LOG
     lib::initgraph::task log_task
     {
         "log.create-thread",
@@ -870,11 +866,10 @@ namespace lib::log
             sched::pid0_created_stage()
         },
         [] {
-// #if !ILOBILIX_SYSCALL_LOG
-            sched::spawn(consumer);
-// #endif
+            sched::spawn(consumer, 0, 5);
         }
     };
+#endif
 
     extern "C" void putchar_(char chr)
     {

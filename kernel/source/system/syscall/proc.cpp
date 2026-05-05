@@ -182,6 +182,16 @@ namespace syscall::proc
         return sched::setsid();
     }
 
+    int getpriority(int which, int who)
+    {
+        return sched::get_priority(which, who);
+    }
+
+    int setpriority(int which, int who, int prio)
+    {
+        return sched::set_priority(which, who, prio);
+    }
+
     int setfsuid(uid_t fsuid)
     {
         return sched::setfsuid(fsuid);
