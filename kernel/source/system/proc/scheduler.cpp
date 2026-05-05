@@ -50,6 +50,8 @@ namespace sched
             >, mutex
         > processes;
 
+        constinit process_t *kernel_proc = nullptr;
+
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
@@ -345,6 +347,7 @@ namespace sched
             proc->sigactions = nullptr;
 
             (*processes.lock())[proc->pid] = proc;
+            kernel_proc = proc;
         }
     };
 
@@ -356,7 +359,24 @@ namespace sched
         rq.cpu_idx = self.idx;
         rq.load_update = (self.idx * balance_interval_ns) / cpu::count();
 
-        rq.idle = create_kthread(reinterpret_cast<std::uintptr_t>(arch::halt), true);
+        lib::bug_on(!kernel_proc);
+        rq.idle = new thread_t { };
+        rq.idle->kstack_base = allocate_kstack();
+        rq.idle->kstack_top = rq.idle->kstack_base + kstack_size;
+        rq.idle->self = rq.idle;
+        rq.idle->tid = alloc_id();
+        rq.idle->proc = kernel_proc;
+        rq.idle->set_flag(thread_flags::kernel);
+        rq.idle->nice = default_nice;
+        rq.idle->weight = nice_to_weight(rq.idle->nice);
+        rq.idle->inv_weight = nice_to_inv_weight(rq.idle->nice);
+        rq.idle->affinity = create_affinity();
+
+        arch::init_thread(
+            rq.idle, reinterpret_cast<std::uintptr_t>(arch::halt), true,
+            false, false
+        );
+
         rq.idle->set_flag(thread_flags::idle);
         rq.idle->affinity.clear(0);
         rq.idle->affinity.set(rq.cpu_idx, true);
@@ -367,6 +387,9 @@ namespace sched
         rq.current->state.store(thread_state::running, std::memory_order_relaxed);
 
         arch::init_core(rq.current);
+
+        (*kernel_proc->threads.lock())[rq.idle->tid] = rq.idle;
+        kernel_proc->alive_threads.fetch_add(1, std::memory_order_relaxed);
 
         {
             auto reaper = create_kthread(

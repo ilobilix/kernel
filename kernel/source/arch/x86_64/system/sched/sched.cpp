@@ -100,7 +100,6 @@ namespace sched::arch
 
         if (!thread->is_kernel())
         {
-            // TODO-SCHED-REWRITE: lazy fpu
             const auto &fpu = cpu::features::get_fpu();
             auto &adata = thread->adata;
             adata.fpu = lib::allocz<std::byte *>(fpu.size);
