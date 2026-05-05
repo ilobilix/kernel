@@ -203,6 +203,18 @@ namespace lib
         base_extract_locked();
     }
 
+    void add_irq_jitter(std::size_t vector, std::uintptr_t ip)
+    {
+        if (!_jitter_armed.load(std::memory_order_acquire))
+            return;
+
+        auto &p = _irq_pool.unsafe_get();
+        const auto mixed = arch::cycle_count() ^ (static_cast<std::uint64_t>(vector) << 32)
+                         ^ static_cast<std::uint64_t>(ip);
+        p.entries[p.count % p.entries.size()] ^= mixed;
+        p.count++;
+    }
+
     std::uint32_t get_random_u32()
     {
         lock::acquire_irq();
@@ -217,18 +229,6 @@ namespace lib
         const auto ret = pop_batch(_batch_u64.unsafe_get());
         lock::release_irq();
         return ret;
-    }
-
-    void add_irq_jitter(std::size_t vector, std::uintptr_t ip)
-    {
-        if (!_jitter_armed.load(std::memory_order_acquire))
-            return;
-
-        auto &p = _irq_pool.unsafe_get();
-        const auto mixed = arch::cycle_count() ^ (static_cast<std::uint64_t>(vector) << 32)
-                         ^ static_cast<std::uint64_t>(ip);
-        p.entries[p.count % p.entries.size()] ^= mixed;
-        p.count++;
     }
 
     std::ssize_t random_bytes(maybe_uspan<std::byte> buffer)

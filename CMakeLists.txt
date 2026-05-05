@@ -27,7 +27,6 @@ set(INTERNAL_MODULE_OBJECTS)
 set(EXTERNAL_MODULE_TARGETS)
 set(EXTERNAL_MODULE_OBJECTS)
 
-add_subdirectory(dependencies/limine)
 add_subdirectory(dependencies/kallsyms)
 add_subdirectory(dependencies)
 add_subdirectory(kernel/interfaces)
