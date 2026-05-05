@@ -16,7 +16,7 @@
 	shallow = true
 [submodule "dependencies/freestnd-c-hdrs/freestnd-c-hdrs"]
 	path = dependencies/freestnd-c-hdrs/freestnd-c-hdrs
-	url = https://codeberg.org/osdev/freestnd-c-hdrs
+	url = https://github.com/osdev0/freestnd-c-hdrs
 	shallow = true
 [submodule "dependencies/frigg/frigg"]
 	path = dependencies/frigg/frigg
@@ -42,14 +42,9 @@
 	path = dependencies/veque/veque
 	url = https://github.com/ilobilo/veque
 	shallow = true
-[submodule "dependencies/limine/limine"]
-	path = dependencies/limine/limine
-	url = https://codeberg.org/Limine/Limine
-	shallow = true
-	branch = v11.x-binary
 [submodule "dependencies/limine-protocol/limine-protocol"]
 	path = dependencies/limine-protocol/limine-protocol
-	url = https://codeberg.org/Limine/limine-protocol
+	url = https://github.com/Limine-Bootloader/limine-protocol
 	shallow = true
 [submodule "dependencies/demangler/demangler"]
 	path = dependencies/demangler/demangler
