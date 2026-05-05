@@ -1151,6 +1151,163 @@ namespace sched
         return locked->begin()->second->affinity;
     }
 
+    int set_priority(int which, int who, int prio)
+    {
+        auto proc = current_process();
+        const auto cred = proc->cred;
+
+        prio = std::clamp<int>(prio, nice_t::min, nice_t::max);
+        const auto new_nice = static_cast<nice_t>(prio);
+
+        auto ret = -ESRCH;
+        const auto handle = [&](process_t *target) {
+            const auto tcred = target->cred;
+
+            const bool perm_ok = capable(cred, cap_t::sys_nice) ||
+                (tcred && (cred->euid == tcred->ruid || cred->euid == tcred->euid));
+
+            if (!perm_ok)
+            {
+                ret = -EPERM;
+                return;
+            }
+
+            auto cur_min = nice_t::max;
+            {
+                auto locked = target->threads.lock();
+                for (auto &[tid, thread] : *locked)
+                    cur_min = std::min(cur_min, thread->nice.value());
+            }
+
+            if (new_nice.value() < cur_min)
+            {
+                rlimit nlim { 0, 0 };
+                if (const auto rlimits = target->rlimits)
+                    nlim = rlimits->get(rlimit_nice);
+                const long min_allowed = 20l - static_cast<long>(nlim.cur);
+                if (new_nice.value() < min_allowed && !capable(cred, cap_t::sys_nice))
+                {
+                    ret = -EACCES;
+                    return;
+                }
+            }
+
+            if (ret == -ESRCH)
+                ret = 0;
+
+            auto locked = target->threads.lock();
+            for (auto &[tid, thread] : *locked)
+            {
+                run_queue_t *rq = static_cast<run_queue_t *>(thread->on_rq);
+                if (!rq && thread->state.load(std::memory_order_acquire) == thread_state::running)
+                {
+                    if (const auto running_on = thread->running_on)
+                        rq = &run_queue.unsafe_get(cpu::local::nth_base(running_on->idx));
+                }
+
+                if (rq)
+                {
+                    const std::unique_lock _ { rq->lock };
+                    const bool on_queue = (thread->on_rq == rq);
+                    if (on_queue)
+                        rq->dequeue(thread);
+                    thread->nice = new_nice;
+                    thread->weight = nice_to_weight(new_nice);
+                    thread->inv_weight = nice_to_inv_weight(new_nice);
+                    if (on_queue)
+                        rq->enqueue(thread);
+                }
+                else
+                {
+                    thread->nice = new_nice;
+                    thread->weight = nice_to_weight(new_nice);
+                    thread->inv_weight = nice_to_inv_weight(new_nice);
+                }
+            }
+        };
+
+        switch (which)
+        {
+            case prio_process:
+                if (auto target = (who == 0) ? proc : get_process(who))
+                    handle(target);
+                break;
+            case prio_pgrp:
+            {
+                auto group = get_group((who == 0) ? proc->group->pgid : static_cast<pid_t>(who));
+                if (!group)
+                    break;
+                auto locked = group->members.lock();
+                for (auto &[pid, target] : *locked)
+                    handle(target);
+                break;
+            }
+            case prio_user:
+            {
+                const uid_t uid = (who == 0) ? proc->cred->ruid : static_cast<uid_t>(who);
+                auto locked = processes.lock();
+                for (auto &[pid, target] : *locked)
+                {
+                    if (target->cred && target->cred->ruid == uid)
+                        handle(target);
+                }
+                break;
+            }
+            default:
+                return -EINVAL;
+        }
+
+        return ret;
+    }
+
+    int get_priority(int which, int who)
+    {
+        auto proc = current_process();
+
+        auto ret = -ESRCH;
+        const auto check_proc = [&](process_t *proc) {
+            auto locked = proc->threads.lock();
+            for (auto &[tid, t] : *locked)
+            {
+                const int niceval = 20 - t->nice.value();
+                if (niceval > ret)
+                    ret = niceval;
+            }
+        };
+
+        switch (which)
+        {
+            case prio_process:
+                if (auto target = (who == 0) ? proc : get_process(who))
+                    check_proc(target);
+                break;
+            case prio_pgrp:
+            {
+                auto group = get_group((who == 0) ? proc->group->pgid : static_cast<pid_t>(who));
+                if (!group)
+                    break;
+                auto locked = group->members.lock();
+                for (auto &[pid, target] : *locked)
+                    check_proc(target);
+                break;
+            }
+            case prio_user:
+            {
+                const uid_t uid = (who == 0) ? proc->cred->ruid : static_cast<uid_t>(who);
+                auto locked = processes.lock();
+                for (auto &[pid, target] : *locked)
+                {
+                    if (target->cred && target->cred->ruid == uid)
+                        check_proc(target);
+                }
+                break;
+            }
+            default:
+                return -EINVAL;
+        }
+        return ret;
+    }
+
     int group_t::signal_all(int sig)
     {
         if (sig < 0 || sig > static_cast<int>(nsig))

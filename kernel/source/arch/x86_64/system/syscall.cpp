@@ -105,6 +105,8 @@ namespace x86_64::syscall
         [124] = { "getsid", proc::getsid, true },
         [127] = { "rt_sigpending", proc::rt_sigpending },
         [131] = { "sigaltstack", proc::sigaltstack },
+        [140] = { "getpriority", proc::getpriority, true },
+        [141] = { "setpriority", proc::setpriority },
         [157] = { "prctl", misc::prctl, true },
         [158] = { "arch_prctl", arch::arch_prctl },
         [160] = { "setrlimit", proc::setrlimit },
