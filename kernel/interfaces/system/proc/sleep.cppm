@@ -17,6 +17,17 @@ export namespace sched
         lib::rbtree_hook<sleep_entry_t> hook;
     };
 
+    struct process_t;
+    struct alarm_entry_t
+    {
+        process_t *proc;
+        std::uint64_t deadline_ns;
+        bool armed;
+        bool expired;
+
+        lib::rbtree_hook<alarm_entry_t> hook;
+    };
+
     // puts entry in sleep list
     void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns);
 
@@ -31,9 +42,16 @@ export namespace sched
 
     // put the current thread to uninterruptible sleep
     void block();
+
+    // arm process alarm and return previous remaining
+    std::uint64_t arm_alarm(alarm_entry_t *entry, process_t *proc, std::uint64_t ns);
+
+    // cancel alarm and return remaining
+    std::uint64_t cancel_alarm(alarm_entry_t *entry);
 } // export namespace sched
 
 namespace sched
 {
     void expire_timeouts();
+    void expire_alarms();
 } // namespace sched

@@ -11,9 +11,9 @@ export import :perm;
 export import :nice;
 export import :signal;
 export import :rlimit;
-export import :process;
 export import :thread;
 export import :sleep;
+export import :process;
 export import :run_queue;
 export import :work_queue;
 

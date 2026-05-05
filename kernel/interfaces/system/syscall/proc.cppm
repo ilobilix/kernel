@@ -48,6 +48,8 @@ export namespace syscall::proc
 
     int set_tid_address(int __user *tidptr);
 
+    unsigned int alarm(unsigned int seconds);
+
     int kill(pid_t pid, int sig);
     int tgkill(pid_t tgid, pid_t tid, int sig);
 
