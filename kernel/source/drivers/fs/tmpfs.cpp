@@ -148,6 +148,18 @@ namespace fs::tmpfs
         return { };
     }
 
+    auto fs::instance::rename(
+        std::shared_ptr<vfs::inode> &old_parent, std::string_view old_name,
+        std::shared_ptr<vfs::inode> &new_parent, std::string_view new_name,
+        std::shared_ptr<vfs::inode> replaced
+    ) -> lib::expect<void>
+    {
+        lib::unused(old_parent, old_name, new_parent, new_name);
+        if (replaced)
+            replaced->stat.st_nlink--;
+        return { };
+    }
+
     auto fs::instance::readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
         -> lib::expect<lib::list<vfs::dir_entry>>
     {

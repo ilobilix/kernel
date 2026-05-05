@@ -1307,6 +1307,75 @@ namespace syscall::vfs
         return unlinkat(at_fdcwd, pathname, 0);
     }
 
+    int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath)
+    {
+        const auto proc = sched::current_process();
+
+        auto old_val = get_path(oldpath);
+        if (!old_val.has_value())
+            return -lib::map_error(old_val.error());
+        const auto old_path = std::move(*old_val);
+
+        auto new_val = get_path(newpath);
+        if (!new_val.has_value())
+            return -lib::map_error(new_val.error());
+        const auto new_path = std::move(*new_val);
+
+        const auto old_anchor = get_parent(proc, olddirfd, old_path);
+        if (!old_anchor.has_value())
+            return -lib::map_error(old_anchor.error());
+
+        const auto new_anchor = get_parent(proc, newdirfd, new_path);
+        if (!new_anchor.has_value())
+            return -lib::map_error(new_anchor.error());
+
+        const auto old_parent = resolve_from(proc, olddirfd, old_path.dirname());
+        if (!old_parent.has_value())
+            return -lib::map_error(old_parent.error());
+
+        const auto new_parent = resolve_from(proc, newdirfd, new_path.dirname());
+        if (!new_parent.has_value())
+            return -lib::map_error(new_parent.error());
+
+        const auto &old_parent_stat = old_parent->target.dentry->inode->stat;
+        const auto &new_parent_stat = new_parent->target.dentry->inode->stat;
+        if (!sched::check_perms(proc->cred, old_parent_stat, sched::access_mode::write) ||
+            !sched::check_perms(proc->cred, new_parent_stat, sched::access_mode::write))
+            return -EACCES;
+
+        const auto sticky_ok = [&](const path &parent_path, const path &target_path) -> bool {
+            const auto &pstat = parent_path.dentry->inode->stat;
+            if (!(pstat.st_mode & s_isvtx))
+                return true;
+
+            const auto &cred = proc->cred;
+            const auto &tstat = target_path.dentry->inode->stat;
+            return cred->fsuid == tstat.st_uid || cred->fsuid == pstat.st_uid ||
+                   sched::capable(cred, sched::cap_t::fowner);
+        };
+
+        if (const auto tgt = resolve_from(proc, olddirfd, old_path); tgt.has_value())
+        {
+            if (!sticky_ok(old_parent->target, tgt->target))
+                return -EACCES;
+        }
+        if (const auto tgt = resolve_from(proc, newdirfd, new_path); tgt.has_value())
+        {
+            if (!sticky_ok(new_parent->target, tgt->target))
+                return -EACCES;
+        }
+
+        if (const auto ret = rename(*old_anchor, old_path, *new_anchor, new_path); !ret)
+            return -lib::map_error(ret.error());
+
+        return 0;
+    }
+
+    int rename(const char __user *oldpath, const char __user *newpath)
+    {
+        return renameat(at_fdcwd, oldpath, at_fdcwd, newpath);
+    }
+
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags)
     {
         constexpr int utime_now = ((1l << 30) - 1l);

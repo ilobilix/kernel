@@ -255,6 +255,12 @@ export namespace vfs
 
             virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
+            virtual auto rename(
+                std::shared_ptr<inode> &old_parent, std::string_view old_name,
+                std::shared_ptr<inode> &new_parent, std::string_view new_name,
+                std::shared_ptr<inode> replaced
+            ) -> lib::expect<void> = 0;
+
             virtual auto readdir(std::shared_ptr<dentry> dir, std::size_t cookie)
                 -> lib::expect<lib::list<dir_entry>> = 0;
 
@@ -643,6 +649,11 @@ export namespace vfs
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
     auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> lib::expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
+
+    auto rename(
+        std::optional<path> old_parent, lib::path old_path,
+        std::optional<path> new_parent, lib::path new_path
+    ) -> lib::expect<void>;
 
     // called with path.dentry->inode->lock acquired
     auto dirty_inode(const path &path) -> lib::expect<void>;

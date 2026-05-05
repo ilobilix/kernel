@@ -59,6 +59,12 @@ export namespace fs::tmpfs
 
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override;
 
+            auto rename(
+                std::shared_ptr<vfs::inode> &old_parent, std::string_view old_name,
+                std::shared_ptr<vfs::inode> &new_parent, std::string_view new_name,
+                std::shared_ptr<vfs::inode> replaced
+            ) -> lib::expect<void> override;
+
             auto readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
