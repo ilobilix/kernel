@@ -101,9 +101,7 @@ namespace vfs
         {
             if (offset < 2)
             {
-                static const std::span<std::byte> dotstr {
-                    reinterpret_cast<std::byte *>(const_cast<char *>(".")), 2
-                };
+                static const auto dotstr = std::as_bytes(std::span { "." });
                 static const std::size_t reclen = (sizeof(vfs::dirent64) + dotstr.size() + 7) & ~7;
 
                 if (progress + reclen > buffer.size())
@@ -129,9 +127,7 @@ namespace vfs
 
             if (offset == 2)
             {
-                static const std::span<std::byte> dotdotstr {
-                    reinterpret_cast<std::byte *>(const_cast<char *>("..")), 3
-                };
+                static const auto dotdotstr = std::as_bytes(std::span { ".." });
                 static const std::size_t reclen = (sizeof(vfs::dirent64) + dotdotstr.size() + 7) & ~7;
 
                 if (progress + reclen > buffer.size())

@@ -4,9 +4,11 @@ export module lib;
 
 export import :barrier;
 export import :bitmap;
+export import :blake2s;
 export import :btree;
 export import :buffer;
 export import :bug_on;
+export import :chacha20;
 export import :endian;
 export import :errno;
 export import :error;
