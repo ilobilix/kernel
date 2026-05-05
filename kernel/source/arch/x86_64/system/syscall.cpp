@@ -53,6 +53,7 @@ namespace x86_64::syscall
         [27] = { "mincore", memory::mincore },
         [32] = { "dup", vfs::dup, true },
         [33] = { "dup2", vfs::dup2, true },
+        [37] = { "alarm", proc::alarm, true },
         [39] = { "getpid", proc::getpid, true },
         [41] = { "socket", vfs::socket, true },
         [56] = { "clone", proc::clone, true },

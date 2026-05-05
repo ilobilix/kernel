@@ -240,6 +240,21 @@ namespace syscall::proc
         return thread->tid;
     }
 
+    unsigned int alarm(unsigned int seconds)
+    {
+        const auto ns = static_cast<std::uint64_t>(seconds) * 1'000'000'000ul;
+        std::uint64_t prev_ns;
+
+        auto proc = sched::current_process();
+
+        if (seconds == 0)
+            prev_ns = sched::cancel_alarm(&proc->alarm);
+        else
+            prev_ns = sched::arm_alarm(&proc->alarm, proc, ns);
+
+        return lib::div_roundup(prev_ns, 1'000'000'000ul);
+    }
+
     int kill(pid_t pid, int sig)
     {
         return sched::kill(pid, sig);

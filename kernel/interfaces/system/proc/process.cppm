@@ -12,6 +12,7 @@ import std;
 
 import :signal;
 import :rlimit;
+import :sleep;
 import :thread;
 
 export namespace sched
@@ -101,6 +102,8 @@ export namespace sched
 
         wait_queue_t wait_child;
         wait_queue_t vfork_done;
+
+        alarm_entry_t alarm { };
 
         recursive_mutex lock;
     };

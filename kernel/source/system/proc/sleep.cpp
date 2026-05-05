@@ -19,6 +19,18 @@ namespace sched
                 >
             >, lib::spinlock_irq
         > sleep_list;
+
+        lib::locker<
+            lib::rbtree<
+                alarm_entry_t,
+                &alarm_entry_t::hook,
+                lib::compare<
+                    alarm_entry_t,
+                    std::uint64_t,
+                    &alarm_entry_t::deadline_ns
+                >
+            >, lib::spinlock_irq
+        > alarm_list;
     } // namespace
 
     void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns)
@@ -106,6 +118,76 @@ namespace sched
             locked->remove(entry);
             entry->expired = true;
             wake_up(entry->thread, false);
+        }
+    }
+
+    std::uint64_t arm_alarm(alarm_entry_t *entry, process_t *proc, std::uint64_t ns)
+    {
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        auto locked = alarm_list.lock();
+
+        std::uint64_t remaining = 0;
+        if (entry->armed)
+        {
+            locked->remove(entry);
+            if (entry->deadline_ns > now)
+                remaining = entry->deadline_ns - now;
+        }
+
+        entry->proc = proc;
+        entry->deadline_ns = now + ns;
+        entry->armed = true;
+        entry->expired = false;
+        locked->insert(entry);
+
+        return remaining;
+    }
+
+    std::uint64_t cancel_alarm(alarm_entry_t *entry)
+    {
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        auto locked = alarm_list.lock();
+        if (!entry->armed)
+            return 0;
+
+        locked->remove(entry);
+        entry->armed = false;
+
+        return entry->deadline_ns > now ? entry->deadline_ns - now : 0;
+    }
+
+    void expire_alarms()
+    {
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        auto locked = alarm_list.lock();
+        auto it = locked->begin();
+        while (it != locked->end())
+        {
+            auto entry = (it++).value();
+            if (entry->deadline_ns > now)
+                break;
+
+            locked->remove(entry);
+            entry->armed = false;
+            entry->expired = true;
+
+            siginfo_t info {
+                .signo = sigalrm,
+                .code = si_kernel,
+                .err = 0,
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = 0,
+                .value = 0,
+            };
+            send_signal(entry->proc, info);
         }
     }
 } // namespace sched

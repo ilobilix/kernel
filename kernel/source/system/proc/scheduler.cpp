@@ -850,6 +850,8 @@ namespace sched
             lib::panic_if(proc->pid == 0, "attempted to kill kernel process");
             lib::panic_if(proc->pid == 1, "attempted to kill init");
 
+            cancel_alarm(&proc->alarm);
+
             auto init = get_process(1);
             lib::bug_on(!init);
 
@@ -980,6 +982,7 @@ namespace sched
         }
 
         expire_timeouts();
+        expire_alarms();
         load_balance();
     }
 
