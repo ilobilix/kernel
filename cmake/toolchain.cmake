@@ -133,6 +133,10 @@ foreach(_define ${_ILOBILIX_DEFINES})
     list(APPEND _C_CXX_ASM_FLAGS "-D'${_replaced_define}'")
 endforeach()
 
+list(APPEND _C_CXX_ASM_FLAGS
+    "-include" "${CMAKE_SOURCE_DIR}/kernel/include/stubs/gthread.h"
+)
+
 string(JOIN " " _C_CXX_ASM_FLAGS_STR ${_C_CXX_ASM_FLAGS})
 string(JOIN " " _CXX_FLAGS_STR ${_CXX_FLAGS})
 
