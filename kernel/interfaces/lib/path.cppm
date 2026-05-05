@@ -271,6 +271,7 @@ export namespace lib
 
         auto c_str() const { return _str.c_str(); }
         auto &str() { return _str; }
+        auto &str() const { return _str; }
 
         auto data() const { return _str.data(); }
         auto size() const { return _str.size(); }

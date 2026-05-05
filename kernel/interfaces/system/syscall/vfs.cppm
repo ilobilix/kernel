@@ -68,6 +68,9 @@ export namespace syscall::vfs
     int unlinkat(int dirfd, const char __user *pathname, int flags);
     int unlink(const char __user *pathname);
 
+    int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
+    int rename(const char __user *oldpath, const char __user *newpath);
+
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
     int fsync(int fd);

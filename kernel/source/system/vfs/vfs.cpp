@@ -701,6 +701,123 @@ namespace vfs
         return { };
     }
 
+    auto rename(
+        std::optional<path> old_parent, lib::path old_path,
+        std::optional<path> new_parent, lib::path new_path
+    ) -> lib::expect<void>
+    {
+        const auto old_base = old_path.basename();
+        const auto new_base = new_path.basename();
+        if (old_base.str() == "."sv || old_base.str() == ".."sv ||
+            new_base.str() == "."sv || new_base.str() == ".."sv)
+            return std::unexpected { lib::err::invalid_path };
+
+        const auto old_res = resolve(old_parent, old_path);
+        if (!old_res)
+            return std::unexpected { old_res.error() };
+
+        const auto old_pres = resolve(old_parent, old_path.dirname());
+        if (!old_pres)
+            return std::unexpected { old_pres.error() };
+
+        const auto new_pres = resolve(new_parent, new_path.dirname());
+        if (!new_pres)
+            return std::unexpected { new_pres.error() };
+
+        if (old_pres->target.mnt != new_pres->target.mnt)
+            return std::unexpected { lib::err::different_filesystem };
+
+        const auto &old_dentry = old_res->target.dentry;
+        const auto &old_parent_dentry = old_pres->target.dentry;
+        const auto &new_parent_dentry = new_pres->target.dentry;
+
+        if (old_dentry == old_res->target.mnt->root)
+            return std::unexpected { lib::err::target_is_busy };
+
+        const bool old_is_dir = old_dentry->inode->stat.type() == stat::type::s_ifdir;
+        if (old_is_dir)
+        {
+            for (auto den = new_parent_dentry; den; )
+            {
+                if (den == old_dentry)
+                    return std::unexpected { lib::err::invalid_path };
+                auto parent = den->parent.lock();
+                if (parent == den)
+                    break;
+                den = std::move(parent);
+            }
+        }
+
+        const auto existing = resolve(new_parent, new_path);
+        std::shared_ptr<dentry> new_dentry;
+        if (existing.has_value())
+        {
+            new_dentry = existing->target.dentry;
+            if (new_dentry == old_dentry || new_dentry->inode == old_dentry->inode)
+                return { };
+
+            const bool new_is_dir = new_dentry->inode->stat.type() == stat::type::s_ifdir;
+            if (old_is_dir && !new_is_dir)
+                return std::unexpected { lib::err::not_a_dir };
+            if (!old_is_dir && new_is_dir)
+                return std::unexpected { lib::err::target_is_a_dir };
+
+            if (new_is_dir)
+            {
+                if (!new_dentry->children.lock()->empty())
+                    return std::unexpected { lib::err::dir_not_empty };
+
+                std::size_t cookie = 3;
+                const auto rd = existing->target.mnt->fs.lock()->readdir(new_dentry, cookie);
+                if (!rd)
+                    return std::unexpected { rd.error() };
+                if (!rd->empty())
+                    return std::unexpected { lib::err::dir_not_empty };
+
+                if (new_dentry == existing->target.mnt->root)
+                    return std::unexpected { lib::err::target_is_busy };
+            }
+        }
+
+        auto fs = old_pres->target.mnt->fs.lock();
+        const auto do_rename = [&](auto &locked_old, auto &locked_new) -> lib::expect<void> {
+            const auto ret = fs->rename(
+                old_parent_dentry->inode, old_base.str(),
+                new_parent_dentry->inode, new_base.str(),
+                new_dentry ? new_dentry->inode : std::shared_ptr<inode> { }
+            );
+            if (!ret.has_value())
+                return std::unexpected { ret.error() };
+
+            if (new_dentry)
+                locked_new->erase(new_dentry->name);
+            locked_old->erase(old_dentry->name);
+
+            old_dentry->name = std::string { new_base.str() };
+            old_dentry->parent = new_parent_dentry;
+            locked_new->insert(old_dentry);
+            return { };
+        };
+
+        if (old_parent_dentry == new_parent_dentry)
+        {
+            auto locked = old_parent_dentry->children.lock();
+            return do_rename(locked, locked);
+        }
+        else if (old_parent_dentry.get() < new_parent_dentry.get())
+        {
+            auto locked_old = old_parent_dentry->children.lock();
+            auto locked_new = new_parent_dentry->children.lock();
+            return do_rename(locked_old, locked_new);
+        }
+        else
+        {
+            auto locked_new = new_parent_dentry->children.lock();
+            auto locked_old = old_parent_dentry->children.lock();
+            return do_rename(locked_old, locked_new);
+        }
+    }
+
     auto dirty_inode(const path &path) -> lib::expect<void>
     {
         if (path.mnt == nullptr)
