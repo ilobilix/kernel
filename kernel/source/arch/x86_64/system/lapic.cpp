@@ -193,8 +193,6 @@ namespace x86_64::apic
 
     void eoi() { write(0xB0, 0); }
 
-    // ! TODO: xapic sipi doesn't work
-
     void ipi(shorthand dest, delivery del, std::uint8_t vec)
     {
         const auto val =
