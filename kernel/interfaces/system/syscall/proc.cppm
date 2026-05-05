@@ -22,6 +22,9 @@ export namespace syscall::proc
     uid_t geteuid();
     gid_t getegid();
 
+    int setreuid(uid_t ruid, uid_t euid);
+    int setregid(gid_t rgid, gid_t egid);
+
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid);
     int setresuid(uid_t ruid, uid_t euid, uid_t suid);
 

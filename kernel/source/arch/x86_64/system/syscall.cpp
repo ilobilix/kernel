@@ -91,6 +91,8 @@ namespace x86_64::syscall
         [110] = { "getppid", proc::getppid, true },
         [111] = { "getpgrp", proc::getpgrp, true },
         [112] = { "setsid", proc::setsid, true },
+        [113] = { "setreuid", proc::setreuid },
+        [114] = { "setregid", proc::setregid },
         [115] = { "getgroups", proc::getgroups, true },
         [116] = { "setgroups", proc::setgroups },
         [117] = { "setresuid", proc::setresuid },

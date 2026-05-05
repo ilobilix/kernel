@@ -70,6 +70,20 @@ namespace syscall::proc
         return sched::current_process()->cred->egid;
     }
 
+    int setreuid(uid_t ruid, uid_t euid)
+    {
+        if (const auto ret = sched::setreuid(ruid, euid); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
+    int setregid(gid_t rgid, gid_t egid)
+    {
+        if (const auto ret = sched::setregid(rgid, egid); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid)
     {
         auto proc = sched::current_process();
