@@ -161,8 +161,7 @@ export namespace lib
                             this->_value = (*res * _pmax) / 100;
                             return true;
                         }
-                        else
-                            return false;
+                        return false;
                     default:
                         return false;
                 }

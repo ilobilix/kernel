@@ -68,6 +68,9 @@ export namespace syscall::vfs
     int unlinkat(int dirfd, const char __user *pathname, int flags);
     int unlink(const char __user *pathname);
 
+    int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath);
+    int symlink(const char __user *target, const char __user *linkpath);
+
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
     int rename(const char __user *oldpath, const char __user *newpath);
 
@@ -121,4 +124,8 @@ export namespace syscall::vfs
         int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
         const timespec __user *timeout, const struct sigset_t __user *sigmask
     );
+
+    int fsopen(const char *fsname, unsigned int flags);
+
+    int inotify_init1(int flags);
 } // export namespace syscall::vfs

@@ -1307,6 +1307,58 @@ namespace syscall::vfs
         return unlinkat(at_fdcwd, pathname, 0);
     }
 
+    int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath)
+    {
+        const auto proc = sched::current_process();
+
+        auto target_val = get_path(target);
+        if (!target_val.has_value())
+            return -lib::map_error(target_val.error());
+
+        auto link_val = get_path(linkpath);
+        if (!link_val.has_value())
+            return -lib::map_error(link_val.error());
+
+        const auto link = std::move(*link_val);
+
+        const auto parent = get_parent(proc, newdirfd, link);
+        if (!parent.has_value())
+            return -lib::map_error(parent.error());
+
+        const auto parent_res = resolve(*parent, link.dirname());
+        if (!parent_res.has_value())
+            return -lib::map_error(parent_res.error());
+
+        const auto &parent_stat = parent_res->target.dentry->inode->stat;
+        if (parent_stat.type() != stat::type::s_ifdir)
+            return -ENOTDIR;
+
+        if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
+            return -EACCES;
+
+        auto created = symlink(*parent, link, std::move(*target_val));
+        if (!created.has_value())
+            return -lib::map_error(created.error());
+
+        {
+            const std::unique_lock _ { created->dentry->inode->lock };
+
+            auto &stat = created->dentry->inode->stat;
+            stat.st_mode |= (s_irwxu | s_irwxg | s_irwxo);
+            stat.st_uid = proc->cred->euid;
+            stat.st_gid = proc->cred->egid;
+
+            if (const auto ret = dirty_inode(*created); !ret)
+                return -lib::map_error(ret.error());
+        }
+        return 0;
+    }
+
+    int symlink(const char __user *target, const char __user *linkpath)
+    {
+        return symlinkat(target, at_fdcwd, linkpath);
+    }
+
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath)
     {
         const auto proc = sched::current_process();
@@ -2239,5 +2291,19 @@ namespace syscall::vfs
             timeout ? &ktimeout : nullptr,
             false, sigmask
         );
+    }
+
+    int fsopen(const char *fsname, unsigned int flags)
+    {
+        // TODO
+        lib::unused(fsname, flags);
+        return -ENOSYS;
+    }
+
+    int inotify_init1(int flags)
+    {
+        // TODO
+        lib::unused(flags);
+        return -ENOSYS;
     }
 } // namespace syscall::vfs
