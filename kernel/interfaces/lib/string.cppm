@@ -54,7 +54,7 @@ export namespace lib
 
     // from mlibc
     template<typename Ret>
-    constexpr Ret str2int(const char *nptr, char **endptr, int _base)
+    constexpr std::optional<Ret> str2int(const char *nptr, char **endptr, int _base)
     {
         using URet = std::make_unsigned_t<Ret>;
 
@@ -68,7 +68,10 @@ export namespace lib
             return 0;
         }
 
-        while (std::isspace(*str))
+        const auto isspace = [](char c) {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+        };
+        while (isspace(*str))
             str++;
 
         bool negative = false;
@@ -80,15 +83,24 @@ export namespace lib
         else if (*str == '+')
             str++;
 
-        bool octal = (str[0] == '0');
-        bool hex = octal && (str[1] == 'x' || str[1] == 'X');
+        const bool octal = (str[0] == '0');
+        const bool hex = octal && (str[1] == 'x' || str[1] == 'X');
+        const bool bin = octal && (str[1] == 'b' || str[1] == 'B');
 
-        if ((base == 0 || base == 16) && hex == true && std::isxdigit(str[2]))
+        const auto isxdigit = [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        };
+        if ((base == 0 || base == 16) && hex && isxdigit(str[2]))
         {
             str += 2;
             base = 16;
         }
-        else if ((base == 0 || base == 8) && octal == true)
+        else if ((base == 0 || base == 2) && bin)
+        {
+            str += 2;
+            base = 2;
+        }
+        else if ((base == 0 || base == 8) && octal)
             base = 8;
         else if (base == 0)
             base = 10;
@@ -98,7 +110,7 @@ export namespace lib
         if constexpr (std::is_unsigned_v<Ret>)
         {
             cutoff = std::numeric_limits<Ret>::max() / base;
-            cutoff = std::numeric_limits<Ret>::max() % base;
+            cutlim = std::numeric_limits<Ret>::max() % base;
         }
         else
         {
@@ -115,12 +127,12 @@ export namespace lib
         for (auto c = *str; c != '\0'; c = *++str)
         {
             URet digit = 0;
-            if (std::isdigit(c))
+            if (c >= '0' && c <= '9')
                 digit = c - '0';
-            else if (std::isupper(c))
-                digit = c - 'A' + 0x10;
-            else if (std::islower(c))
-                digit = c - 'a' + 0x10;
+            else if (c >= 'A' && c <= 'Z')
+                digit = c - 'A' + 10;
+            else if (c >= 'a' && c <= 'z')
+                digit = c - 'a' + 10;
             else
                 break;
 
@@ -143,13 +155,7 @@ export namespace lib
             *endptr = const_cast<char *>(converted ? str : nptr);
 
         if (out_of_range)
-        {
-            // errno = ERANGE;
-            if constexpr (std::is_unsigned_v<Ret>)
-                return std::numeric_limits<Ret>::max();
-            else
-                return negative ? std::numeric_limits<Ret>::min() : std::numeric_limits<Ret>::max();
-        }
+            return std::nullopt;
 
         return negative ? -total : total;
     }
