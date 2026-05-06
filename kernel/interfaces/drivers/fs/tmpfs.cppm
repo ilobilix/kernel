@@ -9,12 +9,6 @@ import std;
 
 export namespace fs::tmpfs
 {
-    struct inode : vfs::inode
-    {
-        vmm::object::ptr memory;
-        inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode);
-    };
-
     struct ops : vfs::ops
     {
         static std::shared_ptr<ops> singleton()
@@ -42,6 +36,11 @@ export namespace fs::tmpfs
     {
         struct instance : vfs::filesystem::instance, std::enable_shared_from_this<instance>
         {
+            std::size_t max_size = std::numeric_limits<std::size_t>::max();
+            std::size_t max_inodes = std::numeric_limits<std::size_t>::max();
+            std::atomic<std::size_t> current_size = 0;
+            std::atomic<std::size_t> current_inodes = 0;
+
             auto create(
                 std::shared_ptr<vfs::inode> &parent,
                 std::string_view name, mode_t mode, dev_t rdev
@@ -82,9 +81,20 @@ export namespace fs::tmpfs
         };
 
         mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
-        auto mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override;
+        auto mount(
+            std::shared_ptr<vfs::dentry> src,
+            std::optional<lib::maybe_uspan<const std::byte>> data
+        ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override;
 
         fs() : vfs::filesystem { "tmpfs" } { }
+    };
+
+    struct inode : vfs::inode
+    {
+        fs::instance *owner;
+        vmm::object::ptr memory;
+        inode(fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode);
+        ~inode();
     };
 
     lib::initgraph::stage *registered_stage();

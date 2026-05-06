@@ -4,6 +4,7 @@ export module lib:kvargs;
 
 import :unused;
 import :string;
+import :math;
 import std;
 
 export namespace lib
@@ -18,7 +19,7 @@ export namespace lib
         static constexpr std::string_view key { Key.value };
 
         constexpr kvarg_base() : _value { std::nullopt } { }
-        constexpr kvarg_base(Type def) :  _value { def } { }
+        constexpr kvarg_base(Type def) : _value { def } { }
 
         constexpr bool parse(std::string_view input)
         {
@@ -47,7 +48,7 @@ export namespace lib
         int _base;
 
         public:
-        constexpr kvarg(int base) : _base { base } { }
+        constexpr kvarg(int base = 0) : _base { base } { }
         constexpr kvarg(int base, Type def)
             : kvarg_base<Type, Key> { def }, _base { base } { }
 
@@ -72,6 +73,104 @@ export namespace lib
         constexpr bool parse(std::string_view input)
         {
             this->_value = input;
+            return true;
+        }
+    };
+
+    template<comptime_string Key>
+    class kvarg<bool, Key> : public kvarg_base<bool, Key>
+    {
+        public:
+        using kvarg_base<bool, Key>::kvarg_base;
+
+        constexpr bool parse(std::string_view input)
+        {
+            if (input.empty() || input == "true" || input == "TRUE" || input == "1")
+                this->_value = true;
+            else if (input == "false" || input == "FALSE" || input == "0")
+                this->_value = false;
+            else
+                return false;
+            return true;
+        }
+    };
+
+    template<std::integral Type, comptime_string Key, bool Percent>
+    class kvarg_size : public kvarg_base<Type, Key>
+    {
+        private:
+        int _base;
+        [[no_unique_address]]
+        std::conditional_t<Percent, Type, std::monostate> _pmax { };
+
+        public:
+        constexpr kvarg_size(int base = 0) requires (!Percent)
+            : _base { base } { }
+        constexpr kvarg_size(int base, Type def) requires (!Percent)
+            : kvarg_base<Type, Key> { def }, _base { base } { }
+
+        constexpr kvarg_size(Type pmax, int base = 0) requires Percent
+            : _base { base }, _pmax { pmax } { }
+        constexpr kvarg_size(Type pmax, int base, Type def) requires Percent
+            : kvarg_base<Type, Key> { def }, _base { base }, _pmax { pmax } { }
+
+        constexpr bool parse(std::string_view input)
+        {
+            if (input.empty())
+                return false;
+
+            char *end;
+            const auto res = str2int<Type>(input.data(), &end, _base);
+            if (!res.has_value())
+                return false;
+
+            const auto consumed = static_cast<std::size_t>(end - input.data());
+            if (consumed == 0)
+                return false;
+
+            Type mult = 1;
+            const auto rest = input.substr(consumed);
+            if (rest.size() == 1)
+            {
+                switch (rest[0])
+                {
+                    case 'k':
+                    case 'K':
+                        mult = kib(1);
+                        break;
+                    case 'm':
+                    case 'M':
+                        mult = mib(1);
+                        break;
+                    case 'g':
+                    case 'G':
+                        mult = gib(1);
+                        break;
+                    case '%':
+                        if constexpr (Percent)
+                        {
+                            if (*res > 100)
+                                return false;
+
+                            if constexpr (std::is_signed_v<Type>)
+                            {
+                                if (*res < 0)
+                                    return false;
+                            }
+
+                            this->_value = (*res * _pmax) / 100;
+                            return true;
+                        }
+                        else
+                            return false;
+                    default:
+                        return false;
+                }
+            }
+            else if (!rest.empty())
+                return false;
+
+            this->_value = *res * mult;
             return true;
         }
     };

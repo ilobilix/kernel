@@ -89,16 +89,17 @@ export namespace lib
             if (dest.size_bytes() > _span.size_bytes())
                 return false;
 
+            auto destptr = const_cast<std::remove_const_t<Type> *>(dest.data());
             if (_is_user)
             {
                 return impl::copy_from_user(
-                    dest.data(),
+                    destptr,
                     add_user_cast<void>(_span.data()),
                     dest.size_bytes()
                 );
             }
 
-            std::memcpy(dest.data(), _span.data(), dest.size_bytes());
+            std::memcpy(destptr, _span.data(), dest.size_bytes());
             return true;
         }
 

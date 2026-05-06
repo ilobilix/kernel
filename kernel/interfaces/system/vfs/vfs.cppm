@@ -308,8 +308,10 @@ export namespace vfs
             instance();
         };
 
-        virtual auto mount(std::shared_ptr<dentry> src) const
-            -> lib::expect<std::shared_ptr<mount>> = 0;
+        virtual auto mount(
+            std::shared_ptr<dentry> src,
+            std::optional<lib::maybe_uspan<const std::byte>> data
+        ) const -> lib::expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name) : name { name } { }
         virtual ~filesystem() = default;
@@ -639,15 +641,28 @@ export namespace vfs
     std::string pathname_from(path path);
 
     auto path_for(lib::path _path) -> lib::expect<path>;
-    auto resolve(std::optional<path> parent, lib::path path, bool automount = true) -> lib::expect<resolve_res>;
-    auto reduce(path parent, path src, bool automount = true, std::size_t symlink_depth = symloop_max) -> lib::expect<path>;
+    auto resolve(std::optional<path> parent, lib::path path, bool automount = true)
+        -> lib::expect<resolve_res>;
+    auto reduce(
+        path parent, path src, bool automount = true,
+        std::size_t symlink_depth = symloop_max
+    ) -> lib::expect<path>;
 
-    auto mount(lib::path source, lib::path target, std::string_view fstype, int flags) -> lib::expect<void>;
+    auto mount(
+        lib::path source_path, lib::path target_path,
+        std::string_view fstype, int flags,
+        std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
+    ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0) -> lib::expect<path>;
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0)
+        -> lib::expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
-    auto link(std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target, bool follow_links = false) -> lib::expect<path>;
+    auto link(
+        std::optional<path> parent, lib::path src,
+        std::optional<path> tgtparent, lib::path target,
+        bool follow_links = false
+    ) -> lib::expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
 
     auto rename(
@@ -659,8 +674,10 @@ export namespace vfs
     auto dirty_inode(const path &path) -> lib::expect<void>;
 
     auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>;
-    auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
-        -> lib::expect<void>;
+    auto setxattr(
+        const path &target, std::string_view name,
+        lib::maybe_uspan<std::byte> data, int flags
+    ) -> lib::expect<void>;
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>;
 
     auto listxattrs(const path &target) -> lib::expect<std::vector<std::string>>;
