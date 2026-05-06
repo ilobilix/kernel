@@ -332,7 +332,8 @@ namespace vfs
         return res->target;
     }
 
-    auto resolve(std::optional<path> parent, lib::path _path, bool automount) -> lib::expect<resolve_res>
+    auto resolve(std::optional<path> parent, lib::path _path, bool automount)
+        -> lib::expect<resolve_res>
     {
         if (!parent || _path.is_absolute())
             parent = get_root(false);
@@ -470,7 +471,8 @@ namespace vfs
         return std::unexpected { lib::err::not_found };
     }
 
-    auto reduce(path parent, path src, bool automount, std::size_t symlink_depth) -> lib::expect<path>
+    auto reduce(path parent, path src, bool automount, std::size_t symlink_depth)
+        -> lib::expect<path>
     {
         const auto is_symlink = [&src]
         {
@@ -501,7 +503,11 @@ namespace vfs
         return src;
     }
 
-    auto mount(lib::path source_path, lib::path target_path, std::string_view fstype, int flags) -> lib::expect<void>
+    auto mount(
+        lib::path source_path, lib::path target_path,
+        std::string_view fstype, int flags,
+        std::optional<lib::maybe_uspan<const std::byte>> data
+    ) -> lib::expect<void>
     {
         // TODO
         lib::unused(flags);
@@ -530,7 +536,7 @@ namespace vfs
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
 
-        auto mnt = fs->get()->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { });
+        auto mnt = fs->get()->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { }, data);
         if (!mnt)
             return std::unexpected { mnt.error() };
 
@@ -548,7 +554,8 @@ namespace vfs
         return std::unexpected { lib::err::todo };
     }
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev) -> lib::expect<path>
+    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev)
+        -> lib::expect<path>
     {
         auto res = resolve(parent, _path);
         if (res)
@@ -860,8 +867,10 @@ namespace vfs
         return inode->xattrs.insert_or_assign(name, std::move(*ret)).first->second;
     }
 
-    auto setxattr(const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags)
-        -> lib::expect<void>
+    auto setxattr(
+        const path &target, std::string_view name,
+        lib::maybe_uspan<std::byte> data, int flags
+    ) -> lib::expect<void>
     {
         lib::bug_on(!target.mnt);
 

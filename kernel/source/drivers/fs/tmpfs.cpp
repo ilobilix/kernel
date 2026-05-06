@@ -3,6 +3,7 @@
 module drivers.fs.tmpfs;
 
 import system.memory.virt;
+import system.memory.phys;
 import system.sched.mutex;
 import system.sched;
 import system.chrono;
@@ -13,8 +14,27 @@ import std;
 
 namespace fs::tmpfs
 {
-    inode::inode(dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
-        : vfs::inode { }, memory { new vmm::memobject { } }
+    namespace
+    {
+        std::size_t page_charge(std::size_t bytes)
+        {
+            return lib::div_roundup(bytes, pmm::page_size) * pmm::page_size;
+        }
+
+        bool reserve(std::atomic<std::size_t> &counter, std::size_t max, std::size_t delta)
+        {
+            auto cur = counter.load(std::memory_order_relaxed);
+            do {
+                if (cur + delta > max)
+                    return false;
+            } while (!counter.compare_exchange_weak(
+                cur, cur + delta, std::memory_order_relaxed));
+            return true;
+        }
+    }
+
+    inode::inode(fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
+        : vfs::inode { }, owner { owner }, memory { new vmm::memobject { } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
@@ -37,6 +57,18 @@ namespace fs::tmpfs
             kstat::time::status |
             kstat::time::birth
         );
+    }
+
+    inode::~inode()
+    {
+        if (owner)
+        {
+            owner->current_inodes.fetch_sub(1, std::memory_order_relaxed);
+            owner->current_size.fetch_sub(
+                page_charge(static_cast<std::size_t>(stat.st_size)),
+                std::memory_order_relaxed
+            );
+        }
     }
 
     lib::expect<std::size_t> ops::read(
@@ -75,13 +107,24 @@ namespace fs::tmpfs
         }
 
         const auto size = buffer.size_bytes();
+        const auto old_size = static_cast<std::size_t>(inod->stat.st_size);
+        const auto new_end = offset + size;
+        const bool grew = new_end > old_size;
+
+        if (grew)
+        {
+            const auto growth = page_charge(new_end) - page_charge(old_size);
+            if (growth > 0 && !reserve(inod->owner->current_size, inod->owner->max_size, growth))
+                return std::unexpected { lib::err::no_space_left };
+        }
+
         const auto ret = inod->memory->write(offset, buffer.subspan(0, size));
 
-        if (offset + size >= static_cast<std::size_t>(inod->stat.st_size))
+        if (grew)
         {
-            inod->stat.st_size = offset + size;
+            inod->stat.st_size = new_end;
             inod->stat.st_blocks = lib::div_roundup(
-                offset + size, static_cast<std::size_t>(inod->stat.st_blksize)
+                new_end, static_cast<std::size_t>(inod->stat.st_blksize)
             );
         }
         return ret;
@@ -92,14 +135,33 @@ namespace fs::tmpfs
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
-        const auto current_size = static_cast<std::size_t>(inod->stat.st_size);
-        if (size == current_size)
+        const auto old_size = static_cast<std::size_t>(inod->stat.st_size);
+        if (size == old_size)
             return { };
 
-        if (size < current_size)
-            inod->memory->clear(size, 0, current_size - size);
+        const auto old_charge = page_charge(old_size);
+        const auto new_charge = page_charge(size);
+
+        if (size > old_size)
+        {
+            if (new_charge > old_charge)
+            {
+                const auto growth = new_charge - old_charge;
+                if (!reserve(inod->owner->current_size, inod->owner->max_size, growth))
+                    return std::unexpected { lib::err::no_space_left };
+            }
+            inod->memory->clear(old_size, 0, size - old_size);
+        }
         else
-            inod->memory->clear(current_size, 0, size - current_size);
+        {
+            if (old_charge > new_charge)
+            {
+                inod->owner->current_size.fetch_sub(
+                    old_charge - new_charge, std::memory_order_relaxed
+                );
+            }
+            inod->memory->clear(size, 0, old_size - size);
+        }
 
         inod->stat.st_size = size;
         inod->stat.st_blocks = lib::div_roundup(
@@ -120,7 +182,9 @@ namespace fs::tmpfs
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
-        return std::shared_ptr<vfs::inode>(new inode { dev_id, rdev, next_inode++, mode });
+        if (!reserve(current_inodes, max_inodes, 1))
+            return std::unexpected { lib::err::no_space_left };
+        return std::shared_ptr<vfs::inode>(new inode { this, dev_id, rdev, next_inode++, mode });
     }
 
     auto fs::instance::symlink(
@@ -211,24 +275,84 @@ namespace fs::tmpfs
         return false;
     }
 
-    auto fs::mount(std::shared_ptr<vfs::dentry> src) const -> lib::expect<std::shared_ptr<struct vfs::mount>>
+    auto fs::mount(
+        std::shared_ptr<vfs::dentry> src,
+        std::optional<lib::maybe_uspan<const std::byte>> data
+    ) const -> lib::expect<std::shared_ptr<struct vfs::mount>>
     {
         lib::unused(src);
 
+        const auto mem = pmm::info().usable;
+        lib::kvargs args {
+            lib::kvarg_size<std::size_t, "size", true> { mem },
+            lib::kvarg_size<std::size_t, "nr_blocks", false> { },
+            lib::kvarg_size<std::size_t, "nr_inodes", false> { 0, mem / (pmm::page_size * 2) },
+            lib::kvarg<mode_t, "mode"> { 8, 0777 | s_isvtx },
+            lib::kvarg<gid_t, "gid"> { 10, 0 },
+            lib::kvarg<uid_t, "uid"> { 10, 0 },
+        };
+
+        if (data)
+        {
+            const auto data_size = std::min(data->size(), pmm::page_size);
+            if (data->is_user())
+            {
+                std::string str;
+                str.resize(data_size);
+                const auto ret = data->subspan(0, data_size).copy_to(
+                    reinterpret_cast<std::byte *>(str.data())
+                );
+                if (!ret)
+                    return std::unexpected { lib::err::invalid_address };
+                args.parse(str, ',');
+            }
+            else
+            {
+                const auto bytes = data->subspan(0, data_size);
+                args.parse({
+                    reinterpret_cast<const char *>(bytes.span().data()),
+                    bytes.size()
+                }, ',');
+            }
+        }
+
         auto instance = lib::make_locked<fs::instance, sched::mutex>();
         auto locked = instance.lock();
-        const auto dev_id = locked->dev_id;
+        {
+            constexpr auto max = std::numeric_limits<std::size_t>::max();
+
+            const auto size = args.get<"size">();
+            if (!size.has_value())
+            {
+                const auto nr_blocks = args.get<"nr_blocks">();
+                if (nr_blocks.has_value())
+                {
+                    const auto blocks = nr_blocks.value();
+                    locked->max_size = blocks > max / pmm::page_size ? max : blocks * pmm::page_size;
+                }
+                else locked->max_size = mem / 2;
+            }
+            else locked->max_size = size.value();
+
+            if (locked->max_size == 0)
+                locked->max_size = max;
+
+            locked->max_inodes = args.get<"nr_inodes">().value() ?: max;
+        }
 
         auto root = std::make_shared<vfs::dentry>();
         root->name = "tmpfs root. this shouldn't be visible anywhere";
+        locked->current_inodes.fetch_add(1, std::memory_order_relaxed);
         root->inode = std::make_shared<inode>(
-            dev_id, 0, locked->next_inode++,
+            locked.get(), locked->dev_id, 0, locked->next_inode++,
             static_cast<mode_t>(stat::type::s_ifdir) |
-                (s_irwxu | s_irgrp | s_ixgrp | s_iroth | s_ixoth)
+            (args.get<"mode">().value() & (0777 | s_isvtx | s_isgid | s_isuid))
         );
+        root->inode->stat.st_uid = args.get<"uid">().value();
+        root->inode->stat.st_gid = args.get<"gid">().value();
         root->parent = root;
 
-        vfs::dev::register_fs_ops(dev_id, ops::singleton());
+        vfs::dev::register_fs_ops(locked->dev_id, ops::singleton());
 
         auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
         mounts.push_back(mount);
