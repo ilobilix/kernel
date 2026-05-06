@@ -102,6 +102,50 @@ namespace syscall::vfs
 
             return 0;
         }
+
+        unsigned long mount_flags(const path &path)
+        {
+            return path.mnt ? path.mnt->flags : 0ul;
+        }
+
+        bool readonly_mount(const path &path)
+        {
+            return (mount_flags(path) & ms_rdonly) != 0;
+        }
+
+        bool should_update_atime(const path &path, const kstat &stat, int file_flags = 0)
+        {
+            if (file_flags & o_noatime)
+                return false;
+
+            const auto flags = mount_flags(path);
+            if (flags & ms_noatime)
+                return false;
+            if ((flags & ms_nodiratime) && stat.type() == stat::type::s_ifdir)
+                return false;
+            if (flags & ms_strictatime)
+                return true;
+
+            const auto &atim = stat.st_atim;
+            if (atim < stat.st_mtim || atim < stat.st_ctim)
+                return true;
+
+            constexpr timespec day { 24 * 60 * 60, 0 };
+            return chrono::now(chrono::realtime) - atim >= day;
+        }
+
+        int touch_atime(const std::shared_ptr<vfs::file> &file)
+        {
+            auto &inode = file->path.dentry->inode;
+            const std::unique_lock _ { inode->lock };
+            if (!should_update_atime(file->path, inode->stat, file->flags))
+                return 0;
+
+            inode->stat.update_time(kstat::time::access);
+            if (const auto ret = dirty_inode(file->path); !ret)
+                return -lib::map_error(ret.error());
+            return 0;
+        }
     } // namespace
 
     lib::expect<path> get_target(
@@ -203,6 +247,9 @@ namespace syscall::vfs
             if (parent_stat.type() != stat::type::s_ifdir)
                 return -ENOTDIR;
 
+            if (readonly_mount(parent->target))
+                return -EROFS;
+
             if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
                 return -EACCES;
 
@@ -253,11 +300,27 @@ namespace syscall::vfs
         }
 
         auto &stat = target.dentry->inode->stat;
-        if (stat.type() == stat::type::s_ifdir && (write || trunc))
+        const auto mflags = mount_flags(target);
+        const bool is_tmpfile = (flags & o_tmpfile) == o_tmpfile;
+        const bool needs_write = is_tmpfile || ((write || trunc) && !did_create);
+
+        if (needs_write && (mflags & ms_rdonly))
+            return -EROFS;
+
+        if (stat.type() == stat::type::s_ifdir && (write || trunc) && !is_tmpfile)
             return -EISDIR;
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return -ENOTDIR;
+
+        if ((mflags & ms_nodev) &&
+            (stat.type() == stat::type::s_ifchr || stat.type() == stat::type::s_ifblk))
+            return -EACCES;
+
+        if ((flags & o_noatime) &&
+            proc->cred->fsuid != stat.st_uid &&
+            !sched::capable(proc->cred, sched::cap_t::fowner))
+            return -EPERM;
 
         if (!(flags & o_path) && !did_create)
         {
@@ -394,13 +457,8 @@ namespace syscall::vfs
         if (!ret.has_value())
             return -lib::map_error(ret.error());
 
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::access);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
+        if (const auto err = touch_atime(file); err < 0)
+            return err;
 
         if (file->flags & (o_sync | o_dsync))
         {
@@ -423,6 +481,9 @@ namespace syscall::vfs
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return -EBADF;
+
+        if (readonly_mount(file->path))
+            return -EROFS;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
@@ -484,13 +545,8 @@ namespace syscall::vfs
         if (!ret.has_value())
             return -lib::map_error(ret.error());
 
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::access);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
+        if (const auto err = touch_atime(file); err < 0)
+            return err;
 
         if (file->flags & (o_sync | o_dsync))
         {
@@ -513,6 +569,9 @@ namespace syscall::vfs
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return -EBADF;
+
+        if (readonly_mount(file->path))
+            return -EROFS;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
@@ -601,13 +660,8 @@ namespace syscall::vfs
             total_read += *ret;
         }
 
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::access);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
+        if (const auto err = touch_atime(file); err < 0)
+            return err;
 
         if (file->flags & (o_sync | o_dsync))
         {
@@ -630,6 +684,9 @@ namespace syscall::vfs
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return -EBADF;
+
+        if (readonly_mount(file->path))
+            return -EROFS;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
@@ -715,13 +772,8 @@ namespace syscall::vfs
             offset += static_cast<off_t>(*ret);
         }
 
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::access);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
+        if (const auto err = touch_atime(file); err < 0)
+            return err;
 
         if (file->flags & (o_sync | o_dsync))
         {
@@ -744,6 +796,9 @@ namespace syscall::vfs
         const auto &file = fdesc->file;
         if (!is_write(file->flags))
             return -EBADF;
+
+        if (readonly_mount(file->path))
+            return -EROFS;
 
         auto &dentry = file->path.dentry;
         auto &inode = dentry->inode;
@@ -1038,6 +1093,9 @@ namespace syscall::vfs
             if (!target.has_value())
                 return -lib::map_error(target.error());
 
+            if (readonly_mount(*target))
+                return -EROFS;
+
             auto &inode = target->dentry->inode;
             {
                 const std::unique_lock _ { inode->lock };
@@ -1096,6 +1154,9 @@ namespace syscall::vfs
         const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
         if (!target.has_value())
             return -lib::map_error(target.error());
+
+        if (readonly_mount(*target))
+            return -EROFS;
 
         auto &inode = target->dentry->inode;
         {
@@ -1227,6 +1288,9 @@ namespace syscall::vfs
         if (parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
+        if (readonly_mount(parent->target))
+            return -EROFS;
+
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
 
@@ -1278,6 +1342,9 @@ namespace syscall::vfs
         if (!parent.has_value())
             return -lib::map_error(parent.error());
 
+        if (readonly_mount(parent->target))
+            return -EROFS;
+
         const auto &parent_stat = parent->target.dentry->inode->stat;
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
@@ -1307,6 +1374,130 @@ namespace syscall::vfs
         return unlinkat(at_fdcwd, pathname, 0);
     }
 
+    int mknodat(int dirfd, const char __user *pathname, mode_t mode, dev_t dev)
+    {
+        auto kind = stat::type(mode);
+        if (static_cast<int>(kind) == 0)
+            kind = stat::type::s_ifreg;
+
+        switch (kind)
+        {
+            case stat::type::s_ifreg:
+            case stat::type::s_ifchr:
+            case stat::type::s_ifblk:
+            case stat::type::s_ififo:
+            case stat::type::s_ifsock:
+                break;
+            default:
+                return -EINVAL;
+        }
+
+        const auto proc = sched::current_process();
+        const auto &cred = proc->cred;
+
+        const bool is_dev = (kind == stat::type::s_ifchr || kind == stat::type::s_ifblk);
+        if (is_dev && !sched::capable(cred, sched::cap_t::mknod))
+            return -EPERM;
+
+        auto val = get_path(pathname);
+        if (!val.has_value())
+            return -lib::map_error(val.error());
+
+        const auto path = std::move(*val);
+        if (resolve_from(proc, dirfd, path).has_value())
+            return -EEXIST;
+
+        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        if (!parent.has_value())
+            return -lib::map_error(parent.error());
+
+        const auto &parent_stat = parent->target.dentry->inode->stat;
+        if (parent_stat.type() != stat::type::s_ifdir)
+            return -ENOTDIR;
+
+        if (readonly_mount(parent->target))
+            return -EROFS;
+
+        if (!sched::check_perms(cred, parent_stat, sched::access_mode::write))
+            return -EACCES;
+
+        const auto perm = (mode & ~proc->vfs->umask) &
+            (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
+
+        auto created = create(parent->target, path.basename(), perm | kind, is_dev ? dev : 0);
+        if (!created.has_value())
+            return -lib::map_error(created.error());
+
+        {
+            const std::unique_lock _ { created->dentry->inode->lock };
+
+            auto &stat = created->dentry->inode->stat;
+            stat.st_uid = cred->euid;
+            if (parent_stat.st_mode & s_isgid)
+                stat.st_gid = parent_stat.st_gid;
+            else
+                stat.st_gid = cred->egid;
+
+            if (const auto ret = dirty_inode(*created); !ret)
+                return -lib::map_error(ret.error());
+        }
+        return 0;
+    }
+
+    int mknod(const char __user *pathname, mode_t mode, dev_t dev)
+    {
+        return mknodat(at_fdcwd, pathname, mode, dev);
+    }
+
+    int linkat(
+        int olddirfd, const char __user *oldpath,
+        int newdirfd, const char __user *newpath, int flags
+    )
+    {
+        if (flags & ~(at_symlink_follow | at_empty_path))
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+        const bool follow_links = (flags & at_symlink_follow) != 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
+
+        const auto src = get_target(proc, olddirfd, oldpath, follow_links, empty_path, true);
+        if (!src.has_value())
+            return -lib::map_error(src.error());
+
+        auto new_val = get_path(newpath);
+        if (!new_val.has_value())
+            return -lib::map_error(new_val.error());
+        const auto new_path = std::move(*new_val);
+
+        const auto new_anchor = get_parent(proc, newdirfd, new_path);
+        if (!new_anchor.has_value())
+            return -lib::map_error(new_anchor.error());
+
+        const auto new_parent = resolve_from(proc, newdirfd, new_path.dirname());
+        if (!new_parent.has_value())
+            return -lib::map_error(new_parent.error());
+
+        if (readonly_mount(new_parent->target))
+            return -EROFS;
+
+        const auto &new_parent_stat = new_parent->target.dentry->inode->stat;
+        if (new_parent_stat.type() != stat::type::s_ifdir)
+            return -ENOTDIR;
+
+        if (!sched::check_perms(proc->cred, new_parent_stat, sched::access_mode::write))
+            return -EACCES;
+
+        if (const auto ret = link(*new_anchor, new_path, *src, lib::path { }, false); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
+    int link(const char __user *oldpath, const char __user *newpath)
+    {
+        return linkat(at_fdcwd, oldpath, at_fdcwd, newpath, 0);
+    }
+
     int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath)
     {
         const auto proc = sched::current_process();
@@ -1333,6 +1524,9 @@ namespace syscall::vfs
         if (parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
+        if (readonly_mount(parent_res->target))
+            return -EROFS;
+
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
 
@@ -1357,6 +1551,67 @@ namespace syscall::vfs
     int symlink(const char __user *target, const char __user *linkpath)
     {
         return symlinkat(target, at_fdcwd, linkpath);
+    }
+
+    int mount(
+        const char __user *source, const char __user *target,
+        const char __user *fstype, unsigned long flags, const void __user *data
+    )
+    {
+        const auto proc = sched::current_process();
+
+        if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
+            return -EPERM;
+
+        if (target == nullptr)
+            return -EFAULT;
+
+        auto target_val = get_path(target);
+        if (!target_val.has_value())
+            return -lib::map_error(target_val.error());
+
+        std::optional<std::string> fstype_str;
+        if (fstype != nullptr)
+        {
+            fstype_str = lib::user_string::get(fstype, 256);
+            if (!fstype_str.has_value())
+                return -EINVAL;
+        }
+        else if (!(flags & ms_remount))
+            return -EFAULT;
+
+        lib::path source_path { };
+        if (source != nullptr)
+        {
+            auto val = get_path(source);
+            if (val.has_value())
+                source_path = std::move(*val);
+            else if (val.error() != lib::err::invalid_path)
+                return -lib::map_error(val.error());
+        }
+
+        constexpr std::size_t data_max = 4096;
+        std::array<std::byte, data_max> data_buf { };
+        std::optional<lib::maybe_uspan<const std::byte>> data_uspan { };
+        if (data != nullptr)
+        {
+            const auto probe = lib::strnlen_user(static_cast<const char __user *>(data), data_max);
+            if (probe < 0)
+                return -EFAULT;
+
+            if (probe > 0 && !lib::copy_from_user(data_buf.data(), data, probe))
+                return -EFAULT;
+
+            auto uspan = lib::maybe_uspan<const std::byte>::create(data_buf.data(), data_max);
+            if (!uspan.has_value())
+                return -EFAULT;
+            data_uspan = *uspan;
+        }
+
+        const std::string_view fstype_sv = fstype_str ? *fstype_str : std::string_view { };
+        if (const auto ret = ::vfs::mount(source_path, *target_val, fstype_sv, flags, data_uspan); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
     }
 
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath)
@@ -1388,6 +1643,9 @@ namespace syscall::vfs
         const auto new_parent = resolve_from(proc, newdirfd, new_path.dirname());
         if (!new_parent.has_value())
             return -lib::map_error(new_parent.error());
+
+        if (readonly_mount(old_parent->target) || readonly_mount(new_parent->target))
+            return -EROFS;
 
         const auto &old_parent_stat = old_parent->target.dentry->inode->stat;
         const auto &new_parent_stat = new_parent->target.dentry->inode->stat;
@@ -1461,6 +1719,9 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
+        if (readonly_mount(*target))
+            return -EROFS;
+
         auto &inode = target->dentry->inode;
         auto &stat = inode->stat;
 
@@ -1518,6 +1779,9 @@ namespace syscall::vfs
                 return -EISDIR;
             if (inode->stat.type() != stat::type::s_ifreg)
                 return -EINVAL;
+
+            if (readonly_mount(target))
+                return -EROFS;
 
             auto file = vfs::file::create(target, 0, o_wronly);
             if (const auto ret = file->trunc(static_cast<std::size_t>(length)); !ret)
@@ -1644,6 +1908,26 @@ namespace syscall::vfs
                 lib::error("fcntl: unhandled command: 0x{:X}", cmd);
                 return -EINVAL;
         }
+        return 0;
+    }
+
+    int flock(int fd, int operation)
+    {
+        // TODO: actually enforce locks
+        constexpr int lock_sh = 1;
+        constexpr int lock_ex = 2;
+        constexpr int lock_un = 8;
+        constexpr int lock_nb = 4;
+
+        if ((operation & ~lock_nb) != lock_sh &&
+            (operation & ~lock_nb) != lock_ex &&
+            (operation & ~lock_nb) != lock_un)
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+        const auto fdesc = get_fd(proc, fd);
+        if (!fdesc)
+            return -lib::map_error(fdesc.error());
         return 0;
     }
 
@@ -1839,13 +2123,8 @@ namespace syscall::vfs
         if (!ret.has_value())
             return -lib::map_error(ret.error());
 
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::access);
-
-            if (const auto ret = dirty_inode(fdesc->file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
+        if (const auto err = touch_atime(fdesc->file); err < 0)
+            return err;
 
         return static_cast<int>(ret.value());
     }
@@ -2293,7 +2572,276 @@ namespace syscall::vfs
         );
     }
 
-    int fsopen(const char *fsname, unsigned int flags)
+    namespace
+    {
+        lib::expect<path> xattr_target_path(
+            sched::process_t *proc,
+            const char __user *pathname, bool follow_links
+        )
+        {
+            return get_target(proc, at_fdcwd, pathname, follow_links, false, true);
+        }
+
+        lib::expect<path> xattr_target_fd(sched::process_t *proc, int fd)
+        {
+            auto fdesc = get_fd(proc, fd);
+            if (!fdesc)
+                return std::unexpected { fdesc.error() };
+            return (*fdesc)->file->path;
+        }
+
+        lib::expect<std::string> xattr_name(const char __user *name)
+        {
+            if (name == nullptr)
+                return std::unexpected { lib::err::invalid_address };
+            auto str = lib::user_string::get(name, xattr_name_max + 1);
+            if (!str.has_value())
+                return std::unexpected { lib::err::invalid_path };
+            return std::move(*str);
+        }
+
+        int do_setxattr(
+            const path &target, std::string_view name,
+            const void __user *value, std::size_t size, int flags
+        )
+        {
+            if (size > xattr_size_max)
+                return -E2BIG;
+            if (readonly_mount(target))
+                return -EROFS;
+
+            auto uspan = lib::maybe_uspan<std::byte>::create(
+                const_cast<void __user *>(value), size
+            );
+            if (!uspan.has_value())
+                return -EFAULT;
+
+            if (const auto ret = setxattr(target, name, *uspan, flags); !ret)
+                return -lib::map_error(ret.error());
+            return 0;
+        }
+
+        std::ssize_t do_getxattr(
+            const path &target, std::string_view name,
+            void __user *value, std::size_t size
+        )
+        {
+            auto ret = getxattr(target, name);
+            if (!ret.has_value())
+                return -lib::map_error(ret.error());
+
+            const auto buf_size = ret->size();
+            if (size == 0)
+                return static_cast<std::ssize_t>(buf_size);
+            if (size < buf_size)
+                return -ERANGE;
+
+            if (buf_size > 0 && !lib::copy_to_user(value, ret->data(), buf_size))
+                return -EFAULT;
+            return static_cast<std::ssize_t>(buf_size);
+        }
+
+        std::ssize_t do_listxattr(const path &target, char __user *list, std::size_t size)
+        {
+            if (size == 0)
+            {
+                auto ret = lenxattrs(target);
+                if (!ret.has_value())
+                    return -lib::map_error(ret.error());
+                return static_cast<std::ssize_t>(*ret);
+            }
+
+            auto ret = listxattrs(target);
+            if (!ret.has_value())
+                return -lib::map_error(ret.error());
+
+            std::size_t total = 0;
+            for (const auto &name : *ret)
+                total += name.size() + 1;
+
+            if (size < total)
+                return -ERANGE;
+
+            std::vector<char> buf;
+            buf.reserve(total);
+            for (const auto &name : *ret)
+            {
+                buf.insert(buf.end(), name.begin(), name.end());
+                buf.push_back('\0');
+            }
+
+            if (total > 0 && !lib::copy_to_user(list, buf.data(), total))
+                return -EFAULT;
+            return static_cast<std::ssize_t>(total);
+        }
+
+        int do_removexattr(const path &target, std::string_view name)
+        {
+            if (readonly_mount(target))
+                return -EROFS;
+            if (const auto ret = remxattr(target, name); !ret)
+                return -lib::map_error(ret.error());
+            return 0;
+        }
+    } // namespace
+
+    int setxattr(
+        const char __user *pathname, const char __user *name,
+        const void __user *value, std::size_t size, int flags
+    )
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_setxattr(*target, *kname, value, size, flags);
+    }
+
+    int lsetxattr(
+        const char __user *pathname, const char __user *name,
+        const void __user *value, std::size_t size, int flags
+    )
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, false);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_setxattr(*target, *kname, value, size, flags);
+    }
+
+    int fsetxattr(int fd, const char __user *name, const void __user *value, std::size_t size, int flags)
+    {
+        const auto target = xattr_target_fd(sched::current_process(), fd);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_setxattr(*target, *kname, value, size, flags);
+    }
+
+    std::ssize_t getxattr(
+        const char __user *pathname, const char __user *name,
+        void __user *value, std::size_t size
+    )
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_getxattr(*target, *kname, value, size);
+    }
+
+    std::ssize_t lgetxattr(
+        const char __user *pathname, const char __user *name,
+        void __user *value, std::size_t size
+    )
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, false);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_getxattr(*target, *kname, value, size);
+    }
+
+    std::ssize_t fgetxattr(int fd, const char __user *name, void __user *value, std::size_t size)
+    {
+        const auto target = xattr_target_fd(sched::current_process(), fd);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_getxattr(*target, *kname, value, size);
+    }
+
+    std::ssize_t listxattr(const char __user *pathname, char __user *list, std::size_t size)
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        return do_listxattr(*target, list, size);
+    }
+
+    std::ssize_t llistxattr(const char __user *pathname, char __user *list, std::size_t size)
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, false);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        return do_listxattr(*target, list, size);
+    }
+
+    std::ssize_t flistxattr(int fd, char __user *list, std::size_t size)
+    {
+        const auto target = xattr_target_fd(sched::current_process(), fd);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        return do_listxattr(*target, list, size);
+    }
+
+    int removexattr(const char __user *pathname, const char __user *name)
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_removexattr(*target, *kname);
+    }
+
+    int lremovexattr(const char __user *pathname, const char __user *name)
+    {
+        const auto target = xattr_target_path(sched::current_process(), pathname, false);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_removexattr(*target, *kname);
+    }
+
+    int fremovexattr(int fd, const char __user *name)
+    {
+        const auto target = xattr_target_fd(sched::current_process(), fd);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto kname = xattr_name(name);
+        if (!kname.has_value())
+            return -lib::map_error(kname.error());
+
+        return do_removexattr(*target, *kname);
+    }
+
+    int fsopen(const char __user *fsname, unsigned int flags)
     {
         // TODO
         lib::unused(fsname, flags);

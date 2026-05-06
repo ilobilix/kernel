@@ -50,7 +50,16 @@ namespace syscall::memory
             if (!fdesc)
                 return err_ptr(EBADF);
 
-            const auto ret = fdesc->file->map();
+            const auto &file = fdesc->file;
+            const auto mflags = file->path.mnt ? file->path.mnt->flags : 0ul;
+
+            if ((prot & vmm::prot::exec) && (mflags & vfs::ms_noexec))
+                return err_ptr(EACCES);
+
+            if (shared && (prot & vmm::prot::write) && (mflags & vfs::ms_rdonly))
+                return err_ptr(EACCES);
+
+            const auto ret = file->map();
             if (!ret.has_value())
                 return err_ptr(lib::map_error(ret.error()));
 
@@ -58,13 +67,14 @@ namespace syscall::memory
             if (!obj)
                 return err_ptr(ENODEV);
 
-            const bool is_write = vfs::is_write(fdesc->file->flags);
+            const bool is_write = vfs::is_write(file->flags);
             if (shared)
                 max_prot = vmm::prot::read | (is_write ? vmm::prot::write : 0);
             else // private
                 max_prot = vmm::prot::read | vmm::prot::write | vmm::prot::exec;
 
-            // TODO: mounted with noexec
+            if (mflags & vfs::ms_noexec)
+                max_prot &= ~vmm::prot::exec;
         }
         else
         {

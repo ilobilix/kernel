@@ -143,4 +143,11 @@ namespace syscall::misc
                 return -EINVAL;
         }
     }
+
+    int syslog(int type, char __user *buf, int len)
+    {
+        // TODO
+        lib::unused(type, buf, len);
+        return -ENOSYS;
+    }
 } // namespace syscall::misc

@@ -104,6 +104,41 @@ export namespace vfs
         r_ok = 4
     };
 
+    enum mountflags : unsigned long
+    {
+        ms_rdonly      = 1ul << 0,
+        ms_nosuid      = 1ul << 1,
+        ms_nodev       = 1ul << 2,
+        ms_noexec      = 1ul << 3,
+        ms_synchronous = 1ul << 4,
+        ms_remount     = 1ul << 5,
+        ms_mandlock    = 1ul << 6,
+        ms_dirsync     = 1ul << 7,
+        ms_nosymfollow = 1ul << 8,
+        ms_noatime     = 1ul << 10,
+        ms_nodiratime  = 1ul << 11,
+        ms_bind        = 1ul << 12,
+        ms_move        = 1ul << 13,
+        ms_rec         = 1ul << 14,
+        ms_silent      = 1ul << 15,
+        ms_posixacl    = 1ul << 16,
+        ms_unbindable  = 1ul << 17,
+        ms_private     = 1ul << 18,
+        ms_slave       = 1ul << 19,
+        ms_shared      = 1ul << 20,
+        ms_relatime    = 1ul << 21,
+        ms_kernmount   = 1ul << 22,
+        ms_i_version   = 1ul << 23,
+        ms_strictatime = 1ul << 24,
+        ms_lazytime    = 1ul << 25,
+
+        ms_supported = ms_rdonly | ms_nosuid | ms_nodev | ms_noexec |
+                       ms_synchronous | ms_remount | ms_dirsync |
+                       ms_nosymfollow | ms_noatime | ms_nodiratime |
+                       ms_silent | ms_relatime | ms_strictatime |
+                       ms_lazytime
+    };
+
     // stat and s_* bits are defined in lib/types.cppm
 
     struct [[gnu::packed]] dirent64
@@ -232,6 +267,7 @@ export namespace vfs
     struct filesystem
     {
         std::string name;
+        bool requires_dev = false;
 
         struct instance
         {
@@ -313,7 +349,8 @@ export namespace vfs
             std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<mount>> = 0;
 
-        filesystem(std::string_view name) : name { name } { }
+        filesystem(std::string_view name, bool requires_dev = false)
+            : name { name }, requires_dev { requires_dev } { }
         virtual ~filesystem() = default;
     };
 
@@ -322,6 +359,7 @@ export namespace vfs
         lib::locked_ptr<filesystem::instance, sched::mutex> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
+        unsigned long flags = 0;
     };
 
     struct inode
@@ -438,7 +476,7 @@ export namespace vfs
         std::weak_ptr<dentry> parent;
         lib::locker<children, sched::mutex> children;
 
-        lib::list<std::weak_ptr<mount>> child_mounts;
+        lib::locker<lib::list<std::weak_ptr<mount>>, sched::mutex> child_mounts;
     };
 
     struct file : std::enable_shared_from_this<file>
@@ -650,7 +688,7 @@ export namespace vfs
 
     auto mount(
         lib::path source_path, lib::path target_path,
-        std::string_view fstype, int flags,
+        std::string_view fstype, unsigned long flags,
         std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;

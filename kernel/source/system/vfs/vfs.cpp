@@ -47,6 +47,11 @@ namespace vfs
             return path;
         };
 
+        bool is_unsupported_xattr(std::string_view name)
+        {
+            return name.starts_with("system.");
+        }
+
         bool can_read_xattr(const std::shared_ptr<sched::cred_t> &cred, std::string_view name)
         {
             if (name.starts_with("security.") || name.starts_with("trusted."))
@@ -246,9 +251,15 @@ namespace vfs
         }
 
         path ret { .mnt = nullptr, .dentry = dentry::root(true) };
-        while (!ret.dentry->child_mounts.empty())
+        while (true)
         {
-            const auto mnt = ret.dentry->child_mounts.back().lock();
+            std::shared_ptr<struct mount> mnt;
+            {
+                const auto locked = ret.dentry->child_mounts.lock();
+                if (locked->empty())
+                    break;
+                mnt = locked->back().lock();
+            }
             if (!mnt || !mnt->root)
                 break;
 
@@ -429,22 +440,28 @@ namespace vfs
 
             auto mnt = current.mnt;
 
-            again:
-            if (automount || !last)
+            while (automount || !last)
             {
-                for (const auto &child_mnt : dentry->child_mounts)
+                std::shared_ptr<struct mount> next_mnt;
                 {
-                    const auto locked = child_mnt.lock();
-                    if (!locked || !locked->mounted_on.has_value() || !locked->root)
-                        continue;
-
-                    if (mnt == locked->mounted_on->mnt)
+                    const auto cm_locked = dentry->child_mounts.lock();
+                    for (const auto &child_mnt : *cm_locked)
                     {
-                        mnt = locked;
-                        dentry = locked->root;
-                        goto again;
+                        const auto locked = child_mnt.lock();
+                        if (!locked || !locked->mounted_on.has_value() || !locked->root)
+                            continue;
+
+                        if (mnt == locked->mounted_on->mnt)
+                        {
+                            next_mnt = locked;
+                            break;
+                        }
                     }
                 }
+                if (!next_mnt)
+                    break;
+                mnt = next_mnt;
+                dentry = next_mnt->root;
             }
 
             path next { mnt, dentry };
@@ -488,6 +505,9 @@ namespace vfs
             if (!is_symlink())
                 return src;
 
+            if (src.mnt && (src.mnt->flags & ms_nosymfollow))
+                return std::unexpected { lib::err::symloop_max };
+
             const auto ret = resolve(parent, src.dentry->symlinked_to, automount);
             if (!ret || ret->target.dentry == src.dentry)
                 return std::unexpected { lib::err::invalid_symlink };
@@ -505,20 +525,41 @@ namespace vfs
 
     auto mount(
         lib::path source_path, lib::path target_path,
-        std::string_view fstype, int flags,
+        std::string_view fstype, unsigned long flags,
         std::optional<lib::maybe_uspan<const std::byte>> data
     ) -> lib::expect<void>
     {
-        // TODO
-        lib::unused(flags);
+        if (flags & ~static_cast<unsigned long>(ms_supported))
+            return std::unexpected { lib::err::invalid_flags };
+
+        if (flags & ms_remount)
+        {
+            auto ret = path_for(target_path);
+            if (!ret)
+                return std::unexpected { ret.error() };
+
+            auto target = ret.value();
+            if (!target.mnt || target.dentry != target.mnt->root)
+                return std::unexpected { lib::err::invalid_path };
+
+            target.mnt->flags = flags & ~static_cast<unsigned long>(ms_remount);
+
+            if (!(flags & ms_silent))
+                lib::info("vfs: remount('{}', 0x{:X})", target_path, flags);
+
+            return { };
+        }
 
         auto fs = find_fs(fstype);
         if (!fs)
             return std::unexpected { fs.error() };
 
         std::optional<path> source { };
-        if (!source_path.empty())
+        if (fs->get()->requires_dev)
         {
+            if (source_path.empty())
+                return std::unexpected { lib::err::invalid_path };
+
             auto ret = path_for(source_path);
             if (!ret)
                 return std::unexpected { ret.error() };
@@ -541,9 +582,11 @@ namespace vfs
             return std::unexpected { mnt.error() };
 
         mnt.value()->mounted_on = target;
-        target.dentry->child_mounts.push_back(mnt.value());
+        mnt.value()->flags = flags;
+        target.dentry->child_mounts.lock()->push_back(mnt.value());
 
-        lib::info("vfs: mount('{}', '{}', '{}')", source_path, target_path, fstype);
+        if (!(flags & ms_silent))
+            lib::info("vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags);
 
         return { };
     }
@@ -844,6 +887,9 @@ namespace vfs
     {
         lib::bug_on(!target.mnt);
 
+        if (is_unsupported_xattr(name))
+            return std::unexpected { lib::err::not_supported };
+
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;
 
@@ -873,6 +919,9 @@ namespace vfs
     ) -> lib::expect<void>
     {
         lib::bug_on(!target.mnt);
+
+        if (is_unsupported_xattr(name))
+            return std::unexpected { lib::err::not_supported };
 
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;
@@ -916,6 +965,9 @@ namespace vfs
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>
     {
         lib::bug_on(!target.mnt);
+
+        if (is_unsupported_xattr(name))
+            return std::unexpected { lib::err::not_supported };
 
         const auto proc = sched::current_process();
         const auto &cred = proc->cred;

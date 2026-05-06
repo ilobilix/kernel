@@ -99,7 +99,7 @@ namespace x86_64::output::uart8250
             lib::io::out<8>(port + 1, 0x00); // disable interrupts
             lib::io::out<8>(port + 3, 0x80); // set DLAB
 
-            lib::io::out<8>(port + 0, 0x03); // DLL - lo 38400 bps
+            lib::io::out<8>(port + 0, 0x01); // DLL - lo 115200 bps
             lib::io::out<8>(port + 1, 0x00); // DLM - hi
 
             lib::io::out<8>(port + 3, 0x03); // 8 data bots, one stop bit, no parity
