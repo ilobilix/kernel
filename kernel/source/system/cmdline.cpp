@@ -14,7 +14,13 @@ namespace cmdline
 
     std::string_view raw()
     {
-        return data ? *data : boot::requests::kernel_file.response->executable_file->string;
+        if (data)
+            return *data;
+
+        const auto resp = boot::requests::kernel_cmdline.response;
+        if (resp == nullptr || resp->cmdline == nullptr)
+            return { };
+        return resp->cmdline;
     }
 
     std::optional<std::string_view> get(std::string_view req)

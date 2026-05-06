@@ -117,6 +117,14 @@ export namespace boot
         };
 
         [[gnu::used, gnu::section(".limine_requests")]]
+        volatile limine_executable_cmdline_request kernel_cmdline
+        {
+            .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID,
+            .revision = 0,
+            .response = nullptr
+        };
+
+        [[gnu::used, gnu::section(".limine_requests")]]
         volatile limine_date_at_boot_request boot_time
         {
             .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
