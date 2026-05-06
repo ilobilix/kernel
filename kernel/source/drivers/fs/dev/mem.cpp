@@ -2,6 +2,7 @@
 
 import drivers.fs.devtmpfs;
 import system.memory.virt;
+import system.random;
 import system.vfs;
 import system.vfs.dev;
 import boot;
@@ -126,7 +127,7 @@ namespace fs::dev::mem
         ) override
         {
             lib::unused(file, offset);
-            lib::random_bytes(buffer);
+            random::get_bytes(buffer);
             return buffer.size_bytes();
         }
 
@@ -139,7 +140,7 @@ namespace fs::dev::mem
 
             if (!buffer.is_user())
             {
-                lib::add_entropy(buffer.span());
+                random::add_entropy(buffer.span());
                 return buffer.size_bytes();
             }
 
@@ -153,7 +154,7 @@ namespace fs::dev::mem
                 if (!buffer.subspan(progress, chunk_size).copy_to(buf.data()))
                     return std::unexpected { lib::err::invalid_address };
 
-                lib::add_entropy(std::span { buf.data(), chunk_size });
+                random::add_entropy(std::span { buf.data(), chunk_size });
                 progress += chunk_size;
             }
             return buffer.size_bytes();

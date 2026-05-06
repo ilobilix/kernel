@@ -7,8 +7,9 @@ module;
 module system.bin.elf;
 
 import system.bin.exec;
-import system.sched;
+import system.random;
 import system.memory;
+import system.sched;
 import system.vfs;
 import boot;
 import lib;
@@ -377,7 +378,7 @@ namespace bin::elf::exec
                         reinterpret_cast<__user std::byte *>(curr()), 16
                     );
                     lib::bug_on(!uspan.has_value());
-                    lib::bug_on(lib::random_bytes(*uspan) != 16);
+                    lib::bug_on(random::get_bytes(*uspan) != 16);
                     random_offset = addr_bottom + offset;
                 }
 

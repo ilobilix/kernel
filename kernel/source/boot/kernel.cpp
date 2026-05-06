@@ -15,7 +15,7 @@ void kthread()
 
     sched::thread_t *thread = nullptr;
     {
-        lib::path_view path { "/init" };
+        lib::path_view path { cmdline::get("init").value_or("/sbin/init") };
         lib::info("loading {}", path);
 
         auto ret = vfs::resolve(std::nullopt, path);
@@ -48,7 +48,7 @@ void kthread()
 
         proc->sigactions = std::make_shared<sched::signal_actions_t>();
 
-        lib::path_view tty_path { "/dev/ttyS0" };
+        lib::path_view tty_path { cmdline::get("console").value_or("/dev/ttyS0") };
         ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);
@@ -56,7 +56,6 @@ void kthread()
         if (!tty->file->open(0, proc->pid))
             lib::panic("could not open {}", tty_path);
 
-        // TODO: cmdline
         fs::dev::tty::set_console(ret->target.dentry->inode->stat.st_rdev);
 
         proc->fdt->alloc(tty, 0, false);

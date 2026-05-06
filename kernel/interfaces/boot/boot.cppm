@@ -159,6 +159,9 @@ export namespace boot
     limine_file *find_module(std::string_view name)
     {
         const auto mods = requests::module_.response;
+        if (!mods)
+            return nullptr;
+
         for (std::size_t i = 0; i < mods->module_count; i++)
         {
             if (mods->modules[i]->string == name)
@@ -202,8 +205,8 @@ export namespace boot
             lib::panic("could not get a response to the framebuffer request");
         if (requests::rsdp.response == nullptr)
             lib::panic("could not get a response to the rsdp request");
-        if (requests::module_.response == nullptr)
-            lib::panic("could not get a response to the module request");
+        // if (requests::module_.response == nullptr)
+        //     lib::panic("could not get a response to the module request");
         if (requests::boot_time.response == nullptr)
             lib::panic("could not get a response to the boot time request");
 #if ILOBILIX_LIMINE_MP

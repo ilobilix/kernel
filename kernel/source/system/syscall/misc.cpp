@@ -7,6 +7,7 @@ module;
 
 module system.syscall.misc;
 
+import system.random;
 import system.sched;
 import lib;
 import std;
@@ -100,7 +101,11 @@ namespace syscall::misc
         auto uspan = lib::maybe_uspan<std::byte>::create(buf, buflen);
         if (!uspan)
             return -EFAULT;
-        return lib::random_bytes(*uspan);
+
+        const auto res = random::get_bytes(*uspan);
+        if (res < 0)
+            return -EFAULT;
+        return res;
     }
 
     int prctl(

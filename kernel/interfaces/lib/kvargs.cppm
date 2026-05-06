@@ -76,71 +76,143 @@ export namespace lib
         }
     };
 
-    template<typename Type>
-    concept is_kvarg = requires {
+    template <typename Type>
+    concept is_kvarg = requires(Type kv, std::string_view sv) {
         { Type::key } -> std::convertible_to<std::string_view>;
+        { kv.parse(sv) } -> std::convertible_to<bool>;
     };
 
-    template<comptime_string Key, is_kvarg ...Args>
-    consteval std::optional<std::size_t> index_of_key()
+    constexpr bool kvparse_next(
+        std::string_view input, char separator,
+        std::size_t &pos, std::pair<std::string_view, std::string_view> &out)
     {
-        std::size_t idx = 0;
-        std::size_t found_at = sizeof...(Args);
-        ((Args::key == std::string_view { Key.value } ? (found_at = idx, idx++) : idx++), ...);
-        if (found_at == sizeof...(Args))
-            return std::nullopt;
-        return found_at;
+        while (true)
+        {
+            if (pos >= input.size())
+                return false;
+
+            pos = input.find_first_not_of(separator, pos);
+            if (pos == input.npos)
+                return false;
+
+            std::size_t end = pos;
+            for (; end < input.size(); end++)
+            {
+                const auto chr = input[end];
+                if (chr == '"' || chr == '\'')
+                {
+                    const auto close = input.find(chr, end + 1);
+                    if (close == input.npos)
+                    {
+                        end = input.size();
+                        break;
+                    }
+                    end = close;
+                }
+                else if (chr == separator)
+                    break;
+            }
+
+            const auto pair = input.substr(pos, end - pos);
+            const auto eq = pair.find('=');
+            const auto key = pair.substr(0, eq);
+
+            pos = (end < input.size()) ? end + 1 : input.size();
+
+            if (key.empty())
+                continue;
+
+            auto value = (eq == pair.npos) ? std::string_view { } : pair.substr(eq + 1);
+
+            if (value.size() >= 2 &&
+                ((value.front() == '"' && value.back() == '"') ||
+                (value.front() == '\'' && value.back() == '\'')))
+                value = value.substr(1, value.size() - 2);
+
+            out = { key, value };
+            return true;
+        }
     }
 
     template<std::invocable<std::string_view, std::string_view> Func>
     constexpr void kvparse(std::string_view input, char separator, Func &&func)
     {
         std::size_t pos = 0;
-        while (pos < input.size())
+        std::pair<std::string_view, std::string_view> out;
+        while (kvparse_next(input, separator, pos, out))
+            func(out.first, out.second);
+    }
+
+    class kvparse_view : public std::ranges::view_interface<kvparse_view>
+    {
+        std::string_view _input;
+        char _separator;
+
+        public:
+        class iterator
         {
-            pos = input.find_first_not_of(separator, pos);
-            if (pos == input.npos)
-                break;
+            std::string_view _input;
+            char _separator;
+            std::size_t _pos;
+            std::pair<std::string_view, std::string_view> _current;
 
-            const auto end = [&] {
-                for (auto i = pos; i < input.size(); i++)
-                {
-                    const auto chr = input[i];
-                    if (chr == '"' || chr == '\'')
-                    {
-                        const auto close = input.find(chr, i + 1);
-                        if (close == input.npos)
-                            return input.size();
-                        i = close;
-                    }
-                    else if (chr == separator)
-                        return i;
-                }
-                return input.size();
-            } ();
-
-            const auto pair = input.substr(pos, end - pos);
-            const auto eq = pair.find('=');
-
-            if (const auto key = pair.substr(0, eq); !key.empty())
+            constexpr void advance()
             {
-                auto value = (eq == pair.npos) ? ""sv : pair.substr(eq + 1);
-                if (value.size() >= 2 &&
-                    ((value.front() == '"' && value.back() == '"') ||
-                    (value.front() == '\'' && value.back() == '\'')))
-                    value = value.substr(1, value.size() - 2);
-                func(key, value);
+                if (!kvparse_next(_input, _separator, _pos, _current))
+                    _pos = std::string_view::npos;
             }
 
-            pos = end + 1;
-        }
-    }
+            public:
+            using value_type = std::pair<std::string_view, std::string_view>;
+            using difference_type = std::ptrdiff_t;
+            using iterator_concept = std::input_iterator_tag;
+
+            constexpr iterator() = default;
+            constexpr iterator(std::string_view input, char separator)
+                : _input { input }, _separator { separator }, _pos { 0 }
+            { advance(); }
+
+            constexpr const value_type &operator*() const { return _current; }
+
+            constexpr iterator &operator++()
+            {
+                advance();
+                return *this;
+            }
+
+            constexpr void operator++(int) { advance(); }
+
+            constexpr bool operator==(std::default_sentinel_t) const
+            {
+                return _pos == std::string_view::npos;
+            }
+        };
+
+        constexpr kvparse_view() = default;
+        constexpr kvparse_view(std::string_view input, char separator)
+            : _input { input }, _separator { separator } { }
+
+        constexpr iterator begin() const { return iterator { _input, _separator }; }
+        constexpr std::default_sentinel_t end() const { return { }; }
+    };
+    static_assert(std::ranges::input_range<kvparse_view>);
 
     template<is_kvarg ...Args>
     class kvargs
     {
         private:
         std::tuple<Args...> _args;
+
+        template<comptime_string Key>
+        static consteval std::optional<std::size_t> index_of_key()
+        {
+            std::size_t idx = 0;
+            std::size_t found_at = sizeof...(Args);
+            ((Args::key == std::string_view { Key.value } ? (found_at = idx, idx++) : idx++), ...);
+            if (found_at == sizeof...(Args))
+                return std::nullopt;
+            return found_at;
+        }
 
         public:
         constexpr kvargs(Args ...args)
@@ -158,7 +230,7 @@ export namespace lib
         template<comptime_string Key>
         constexpr auto &get()
         {
-            constexpr auto idx = index_of_key<Key, Args...>();
+            constexpr auto idx = index_of_key<Key>();
             static_assert(idx.has_value(), "kvargs: key not found");
             return std::get<*idx>(_args);
         }
