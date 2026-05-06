@@ -8,6 +8,7 @@ import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.memory.virt;
 import system.interrupts;
+import system.random;
 import system.sched;
 import system.cpu.local;
 import system.cpu;
@@ -158,7 +159,7 @@ namespace x86_64::idt
         if (vector >= irq(0) && vector <= 0xFF)
         {
             eoi(vector);
-            lib::add_irq_jitter(vector, regs->rip);
+            random::add_irq_jitter(vector, regs->rip);
 
             const auto idx = vector - irq(0);
             auto &irqh = irq_handlers.unsafe_get();

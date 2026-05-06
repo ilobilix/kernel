@@ -1,6 +1,6 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module lib;
+module system.random;
 
 import system.chrono;
 import system.sched;
@@ -10,21 +10,21 @@ import boot;
 import arch;
 import std;
 
-namespace lib
+namespace random
 {
     namespace
     {
         struct base_crng
         {
-            blake2s_state pool;
-            std::array<std::byte, chacha20_key_size> key;
+            lib::blake2s_state pool;
+            std::array<std::byte, lib::chacha20_key_size> key;
             std::uint64_t generation;
             bool initialised;
         };
 
         struct local_crng
         {
-            std::array<std::byte, chacha20_key_size> key;
+            std::array<std::byte, lib::chacha20_key_size> key;
             std::uint32_t counter;
             std::uint64_t generation;
             std::uint64_t bytes_since_derive;
@@ -39,7 +39,7 @@ namespace lib
         template<typename Type>
         struct batch
         {
-            std::array<Type, chacha20_block_size / sizeof(Type)> entropy;
+            std::array<Type, lib::chacha20_block_size / sizeof(Type)> entropy;
             std::uint64_t generation;
             std::size_t position;
             bool initialised;
@@ -50,10 +50,10 @@ namespace lib
 
         constexpr std::uint64_t reseed_interval = 1024 * 1024;
         constexpr std::uint64_t reseed_period_ns = 60'000'000'000ull;
-        constexpr std::array<std::byte, chacha20_nonce_size> zero_nonce { };
+        constexpr std::array<std::byte, lib::chacha20_nonce_size> zero_nonce { };
 
-        spinlock_irq _base_lock;
         base_crng _base;
+        lib::spinlock_irq _base_lock;
         std::atomic<std::uint64_t> _base_generation = 0;
 
         std::atomic<bool> _jitter_armed = false;
@@ -66,7 +66,7 @@ namespace lib
         void memzero(void *ptr, std::size_t n)
         {
             std::memset(ptr, 0, n);
-            cmb();
+            lib::cmb();
         }
 
         constexpr std::uint64_t rotl64(std::uint64_t x, int k)
@@ -95,7 +95,7 @@ namespace lib
 
         void mix_value(const auto &val)
         {
-            blake2s_update(_base.pool, std::as_bytes(std::span { &val, 1 }));
+            lib::blake2s_update(_base.pool, std::as_bytes(std::span { &val, 1 }));
         }
 
         void mix_string(const char *str)
@@ -107,7 +107,7 @@ namespace lib
             if (sv.empty())
                 return;
 
-            blake2s_update(_base.pool, std::as_bytes(std::span { sv }));
+            lib::blake2s_update(_base.pool, std::as_bytes(std::span { sv }));
         }
 
         void mix_hw_rng(std::size_t target)
@@ -120,7 +120,7 @@ namespace lib
                 if (got == 0)
                     break;
 
-                blake2s_update(_base.pool, std::span { buf.data(), got });
+                lib::blake2s_update(_base.pool, std::span { buf.data(), got });
                 mixed += got;
                 if (got < buf.size())
                     break;
@@ -136,8 +136,8 @@ namespace lib
                 const auto now = static_cast<std::uint64_t>(
                     chrono::now(chrono::realtime).to_ns()
                 );
-                blake2s_update(_base.pool, std::as_bytes(std::span { &cycles, 1 }));
-                blake2s_update(_base.pool, std::as_bytes(std::span { &now, 1 }));
+                lib::blake2s_update(_base.pool, std::as_bytes(std::span { &cycles, 1 }));
+                lib::blake2s_update(_base.pool, std::as_bytes(std::span { &now, 1 }));
                 arch::pause();
             }
         }
@@ -222,14 +222,14 @@ namespace lib
 
         void base_extract()
         {
-            std::array<std::byte, blake2s_hash_size> digest;
-            blake2s_state snapshot = _base.pool;
-            blake2s_final(snapshot, digest);
+            std::array<std::byte, lib::blake2s_hash_size> digest;
+            lib::blake2s_state snapshot = _base.pool;
+            lib::blake2s_final(snapshot, digest);
 
-            for (std::size_t i = 0; i < chacha20_key_size; i++)
+            for (std::size_t i = 0; i < lib::chacha20_key_size; i++)
                 _base.key[i] ^= digest[i];
 
-            blake2s_init_key(_base.pool, blake2s_hash_size, _base.key);
+            lib::blake2s_init_key(_base.pool, lib::blake2s_hash_size, _base.key);
             _base.generation++;
             _base_generation.store(_base.generation, std::memory_order_release);
 
@@ -239,7 +239,7 @@ namespace lib
 
         void base_initialise()
         {
-            blake2s_init(_base.pool, blake2s_hash_size);
+            lib::blake2s_init(_base.pool, lib::blake2s_hash_size);
             mix_jitter(32);
             mix_hw_rng(64);
             base_extract();
@@ -266,7 +266,7 @@ namespace lib
                 }
 
                 if (any)
-                    blake2s_update(_base.pool, std::as_bytes(std::span { snapshot }));
+                    lib::blake2s_update(_base.pool, std::as_bytes(std::span { snapshot }));
             }
         }
 
@@ -293,12 +293,12 @@ namespace lib
 
             drain_irq_pools();
 
-            std::array<std::byte, chacha20_block_size> block;
-            chacha20_block(_base.key, zero_nonce, 0, block);
-            std::copy_n(block.begin(), chacha20_key_size, _base.key.begin());
+            std::array<std::byte, lib::chacha20_block_size> block;
+            lib::chacha20_block(_base.key, zero_nonce, 0, block);
+            std::copy_n(block.begin(), lib::chacha20_key_size, _base.key.begin());
             std::copy_n(
-                block.begin() + chacha20_key_size,
-                chacha20_key_size,
+                block.begin() + lib::chacha20_key_size,
+                lib::chacha20_key_size,
                 local.key.begin()
             );
             memzero(block.data(), block.size());
@@ -316,17 +316,17 @@ namespace lib
                 local.bytes_since_derive >= reseed_interval)
                 derive_local(local);
 
-            constexpr std::size_t output_per_block = chacha20_block_size - chacha20_key_size;
+            constexpr std::size_t output_per_block = lib::chacha20_block_size - lib::chacha20_key_size;
             while (!out.empty())
             {
-                std::array<std::byte, chacha20_block_size> block;
-                chacha20_block(local.key, zero_nonce, local.counter, block);
+                std::array<std::byte, lib::chacha20_block_size> block;
+                lib::chacha20_block(local.key, zero_nonce, local.counter, block);
                 local.counter++;
 
-                std::copy_n(block.begin(), chacha20_key_size, local.key.begin());
+                std::copy_n(block.begin(), lib::chacha20_key_size, local.key.begin());
 
                 const std::size_t copylen = std::min(out.size(), output_per_block);
-                std::copy_n(block.begin() + chacha20_key_size, copylen, out.begin());
+                std::copy_n(block.begin() + lib::chacha20_key_size, copylen, out.begin());
                 out = out.subspan(copylen);
                 local.bytes_since_derive += copylen;
 
@@ -361,7 +361,7 @@ namespace lib
         const std::unique_lock _ { _base_lock };
         if (!_base.initialised)
             base_initialise();
-        blake2s_update(_base.pool, data);
+        lib::blake2s_update(_base.pool, data);
         base_extract();
     }
 
@@ -377,27 +377,27 @@ namespace lib
         siphash_mix(p.entries, cycles, data);
     }
 
-    std::uint32_t get_random_u32()
+    std::uint32_t get_u32()
     {
-        lock::acquire_irq();
+        lib::lock::acquire_irq();
         const auto ret = pop_batch(_batch_u32.unsafe_get());
-        lock::release_irq();
+        lib::lock::release_irq();
         return ret;
     }
 
-    std::uint64_t get_random_u64()
+    std::uint64_t get_u64()
     {
-        lock::acquire_irq();
+        lib::lock::acquire_irq();
         const auto ret = pop_batch(_batch_u64.unsafe_get());
-        lock::release_irq();
+        lib::lock::release_irq();
         return ret;
     }
 
-    std::ssize_t random_bytes(maybe_uspan<std::byte> buffer)
+    std::ssize_t get_bytes(lib::maybe_uspan<std::byte> buffer)
     {
         if (buffer.is_user())
         {
-            membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
+            lib::membuffer buf { std::min(buffer.size_bytes(), 1024uz) };
             std::size_t progress = 0;
             while (progress < buffer.size_bytes())
             {
@@ -405,9 +405,9 @@ namespace lib
                     buffer.size_bytes() - progress, buf.size_bytes()
                 );
 
-                lock::acquire_irq();
+                lib::lock::acquire_irq();
                 fill_local(_local.unsafe_get(), std::span { buf.data(), chunk_size });
-                lock::release_irq();
+                lib::lock::release_irq();
 
                 if (!buffer.subspan(progress, chunk_size).copy_from(buf.data()))
                     return -1;
@@ -416,15 +416,15 @@ namespace lib
             return static_cast<std::ssize_t>(progress);
         }
 
-        lock::acquire_irq();
+        lib::lock::acquire_irq();
         fill_local(_local.unsafe_get(), buffer.span());
-        lock::release_irq();
+        lib::lock::release_irq();
         return buffer.size_bytes();
     }
 
     lib::initgraph::task random_init_task
     {
-        "lib.random.init",
+        "random.initialise",
         lib::initgraph::presched_init_engine,
         lib::initgraph::require {
             arch::cpus_stage()
@@ -444,4 +444,4 @@ namespace lib
             sched::schedule_work_after_ns(periodic_reseed, reseed_period_ns);
         }
     };
-} // namespace lib
+} // namespace random

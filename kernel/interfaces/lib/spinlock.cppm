@@ -6,8 +6,8 @@ import std;
 
 namespace lib::lock
 {
-    void acquire_irq();
-    void release_irq();
+    export void acquire_irq();
+    export void release_irq();
 
     void acquire_preempt();
     void release_preempt();
