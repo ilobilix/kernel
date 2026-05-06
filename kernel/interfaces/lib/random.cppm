@@ -13,5 +13,5 @@ export namespace lib
     std::uint32_t get_random_u32();
     std::uint64_t get_random_u64();
 
-    std::ssize_t random_bytes(lib::maybe_uspan<std::byte> buffer);
+    std::ssize_t random_bytes(maybe_uspan<std::byte> buffer);
 } // export namespace lib
