@@ -68,11 +68,56 @@ export namespace syscall::vfs
     int unlinkat(int dirfd, const char __user *pathname, int flags);
     int unlink(const char __user *pathname);
 
+    int mknodat(int dirfd, const char __user *pathname, mode_t mode, dev_t dev);
+    int mknod(const char __user *pathname, mode_t mode, dev_t dev);
+
+    int linkat(
+        int olddirfd, const char __user *oldpath,
+        int newdirfd, const char __user *newpath, int flags
+    );
+    int link(const char __user *oldpath, const char __user *newpath);
+
     int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath);
     int symlink(const char __user *target, const char __user *linkpath);
 
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
     int rename(const char __user *oldpath, const char __user *newpath);
+
+    int mount(
+        const char __user *source, const char __user *target,
+        const char __user *fstype, unsigned long flags, const void __user *data
+    );
+
+    int setxattr(
+        const char __user *pathname, const char __user *name,
+        const void __user *value, std::size_t size, int flags
+    );
+    int lsetxattr(
+        const char __user *pathname, const char __user *name,
+        const void __user *value, std::size_t size, int flags
+    );
+    int fsetxattr(
+        int fd, const char __user *name,
+        const void __user *value, std::size_t size, int flags
+    );
+
+    std::ssize_t getxattr(
+        const char __user *pathname, const char __user *name,
+        void __user *value, std::size_t size
+    );
+    std::ssize_t lgetxattr(
+        const char __user *pathname, const char __user *name,
+        void __user *value, std::size_t size
+    );
+    std::ssize_t fgetxattr(int fd, const char __user *name, void __user *value, std::size_t size);
+
+    std::ssize_t listxattr(const char __user *pathname, char __user *list, std::size_t size);
+    std::ssize_t llistxattr(const char __user *pathname, char __user *list, std::size_t size);
+    std::ssize_t flistxattr(int fd, char __user *list, std::size_t size);
+
+    int removexattr(const char __user *pathname, const char __user *name);
+    int lremovexattr(const char __user *pathname, const char __user *name);
+    int fremovexattr(int fd, const char __user *name);
 
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
@@ -83,6 +128,8 @@ export namespace syscall::vfs
 
     int ioctl(int fd, unsigned long request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);
+
+    int flock(int fd, int operation);
 
     int dup(int oldfd);
     int dup2(int oldfd, int newfd);
@@ -125,7 +172,7 @@ export namespace syscall::vfs
         const timespec __user *timeout, const struct sigset_t __user *sigmask
     );
 
-    int fsopen(const char *fsname, unsigned int flags);
+    int fsopen(const char __user *fsname, unsigned int flags);
 
     int inotify_init1(int flags);
 } // export namespace syscall::vfs

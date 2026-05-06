@@ -1713,6 +1713,10 @@ namespace sched
             auto old_thread = current_thread();
             auto process = old_thread->proc;
 
+            const auto mount_flags = path.mnt ? path.mnt->flags : 0ul;
+            if (mount_flags & vfs::ms_noexec)
+                return -EACCES;
+
             const auto xattr_caps = vfs::getxattr(path, vfs::xattr_caps_name);
             if (has_secbit(process->cred->securebits, secbit_t::exec_restrict_file) &&
                 process->cred->euid != 0 && !xattr_caps)
@@ -1749,11 +1753,19 @@ namespace sched
             {
                 const std::unique_lock _ { inode->lock };
 
+                const bool nosuid = mount_flags & vfs::ms_nosuid;
+
                 std::optional<vfs::file_caps> fcaps;
-                if (xattr_caps)
+                if (xattr_caps && !nosuid)
                     fcaps = vfs::parse_file_caps(xattr_caps->span());
 
-                apply_exec_caps(process, inode->stat, fcaps);
+                if (nosuid)
+                {
+                    auto stat = inode->stat;
+                    stat.st_mode &= ~(s_isuid | s_isgid);
+                    apply_exec_caps(process, stat, fcaps);
+                }
+                else apply_exec_caps(process, inode->stat, fcaps);
             }
 
             auto new_pmap = std::make_shared<vmm::pagemap>();

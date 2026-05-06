@@ -15,4 +15,6 @@ export namespace syscall::misc
         int option, unsigned long arg2, unsigned long arg3,
         unsigned long arg4, unsigned long arg5
     );
+
+    int syslog(int type, char __user *buf, int len);
 } // export namespace syscall::misc
