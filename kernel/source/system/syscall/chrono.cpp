@@ -86,6 +86,11 @@ namespace syscall::chrono
         }
     }
 
+    int nanosleep(const timespec __user *time, timespec __user *remain)
+    {
+        return clock_nanosleep(static_cast<clockid_t>(chrono::monotonic), 0, time, remain);
+    }
+
     int gettimeofday(timeval __user *tv, timezone __user *tz)
     {
         const auto cur = now(chrono::realtime).to_timeval();

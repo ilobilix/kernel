@@ -67,6 +67,7 @@ export namespace syscall::vfs
 
     int unlinkat(int dirfd, const char __user *pathname, int flags);
     int unlink(const char __user *pathname);
+    int rmdir(const char __user *pathname);
 
     int mknodat(int dirfd, const char __user *pathname, mode_t mode, dev_t dev);
     int mknod(const char __user *pathname, mode_t mode, dev_t dev);

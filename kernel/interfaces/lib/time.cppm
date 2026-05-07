@@ -14,6 +14,12 @@ export
         suseconds_t tv_usec;
     };
 
+    struct itimerval
+    {
+        timeval it_interval;
+        timeval it_value;
+    };
+
     struct timezone
     {
         int tz_minuteswest;

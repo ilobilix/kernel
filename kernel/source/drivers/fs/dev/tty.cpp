@@ -1092,6 +1092,18 @@ namespace fs::dev::tty
                 }
                 return 0;
             }
+            case tcsbrk:
+            {
+                while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
+                    sched::yield();
+                if (argp.address() == 0)
+                {
+                    inst->break_ctl(true);
+                    sched::sleep_for_ns(250'000'000);
+                    inst->break_ctl(false);
+                }
+                return 0;
+            }
             case tcxonc:
             {
                 const auto termios = inst->termios.lock().value();

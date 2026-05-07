@@ -1342,13 +1342,9 @@ namespace syscall::vfs
         return mkdirat(at_fdcwd, pathname, mode);
     }
 
-    // TODO
     int unlinkat(int dirfd, const char __user *pathname, int flags)
     {
-        // if (flags & ~at_removedir)
-        //     return -EINVAL;
-
-        if (flags & at_removedir)
+        if (flags & ~at_removedir)
             return -EINVAL;
 
         const auto proc = sched::current_process();
@@ -1370,18 +1366,27 @@ namespace syscall::vfs
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
 
+        const auto target = get_target(proc, dirfd, pathname, false, false, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto &tstat = target->dentry->inode->stat;
+        const bool is_dir = tstat.type() == stat::type::s_ifdir;
+        if (flags & at_removedir)
+        {
+            if (!is_dir)
+                return -ENOTDIR;
+        }
+        else if (is_dir)
+            return -EISDIR;
+
         if ((parent_stat.st_mode & s_isvtx) != 0)
         {
-            const auto target = get_target(proc, dirfd, pathname, false, false, true);
-            if (target.has_value())
-            {
-                const auto &cred = proc->cred;
-                const auto &tstat = target->dentry->inode->stat;
-                if (cred->fsuid != tstat.st_uid &&
-                    cred->fsuid != parent_stat.st_uid &&
-                    !sched::capable(cred, sched::cap_t::fowner))
-                    return -EACCES;
-            }
+            const auto &cred = proc->cred;
+            if (cred->fsuid != tstat.st_uid &&
+                cred->fsuid != parent_stat.st_uid &&
+                !sched::capable(cred, sched::cap_t::fowner))
+                return -EACCES;
         }
 
         if (const auto ret = unlink(*parent, path.basename()); !ret)
@@ -1393,6 +1398,11 @@ namespace syscall::vfs
     int unlink(const char __user *pathname)
     {
         return unlinkat(at_fdcwd, pathname, 0);
+    }
+
+    int rmdir(const char __user *pathname)
+    {
+        return unlinkat(at_fdcwd, pathname, at_removedir);
     }
 
     int mknodat(int dirfd, const char __user *pathname, mode_t mode, dev_t dev)

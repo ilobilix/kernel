@@ -10,6 +10,7 @@ export namespace syscall::chrono
         const clockid_t clockid, int flags,
         const timespec __user *time, timespec __user *remain
     );
+    int nanosleep(const timespec __user *time, timespec __user *remain);
 
     int gettimeofday(timeval __user *tv, struct timezone __user *tz);
     int settimeofday(const timeval __user *tv, const struct timezone __user *tz);
