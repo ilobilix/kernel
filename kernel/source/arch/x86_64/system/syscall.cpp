@@ -114,6 +114,7 @@ namespace x86_64::syscall
         [133] = { "mknod", vfs::mknod },
         [140] = { "getpriority", proc::getpriority, true },
         [141] = { "setpriority", proc::setpriority },
+        [153] = { "vhangup", misc::vhangup },
         [157] = { "prctl", misc::prctl, true },
         [158] = { "arch_prctl", arch::arch_prctl },
         [160] = { "setrlimit", proc::setrlimit },

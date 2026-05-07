@@ -61,7 +61,7 @@ namespace vfs::pipe
         lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
             lib::unused(pid);
-            lib::bug_on(!file);
+            lib::bug_on(!file || !file->path.dentry || !file->path.dentry->inode);
 
             const bool rd = is_read(flags);
             const bool wr = is_write(flags);
@@ -69,8 +69,13 @@ namespace vfs::pipe
             if (!(rd ^ wr))
                 return std::unexpected { lib::err::invalid_flags };
 
-            if (!file->private_data)
-                file->private_data = std::make_shared<data>();
+            const auto &inode = file->path.dentry->inode;
+            {
+                const std::unique_lock _ { inode->lock };
+                if (!inode->private_data)
+                    inode->private_data = std::make_shared<data>();
+                file->private_data = inode->private_data;
+            }
 
             const auto pdata = std::static_pointer_cast<data>(file->private_data);
             if (rd)

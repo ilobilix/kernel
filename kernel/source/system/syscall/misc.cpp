@@ -83,6 +83,22 @@ namespace syscall::misc
         return 0;
     }
 
+    int vhangup()
+    {
+        const auto proc = sched::current_process();
+        if (!sched::capable(proc->cred, sched::cap_t::sys_tty_config))
+            return -EPERM;
+
+        std::shared_ptr<sched::ctty_base> ctty;
+        {
+            auto locked = proc->session->ctty.lock();
+            ctty = locked.value();
+        }
+        if (ctty)
+            ctty->detach(proc->session.get());
+        return 0;
+    }
+
     std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags)
     {
         constexpr unsigned int grnd_nonblock = 0x0001;

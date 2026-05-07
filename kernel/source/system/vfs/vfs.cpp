@@ -47,6 +47,21 @@ namespace vfs
             return path;
         };
 
+
+        auto resolve_real_dir(std::optional<path> anchor, lib::path dir) -> lib::expect<path>
+        {
+            auto res = resolve(anchor, dir);
+            if (!res)
+                return std::unexpected { res.error() };
+            if (res->target.dentry->inode->stat.type() != stat::type::s_iflnk)
+                return std::move(res->target);
+
+            auto reduced = reduce(res->parent, res->target);
+            if (!reduced)
+                return std::unexpected { reduced.error() };
+            return std::move(*reduced);
+        }
+
         bool is_unsupported_xattr(std::string_view name)
         {
             return name.starts_with("system.");
@@ -600,15 +615,14 @@ namespace vfs
     auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev)
         -> lib::expect<path>
     {
-        auto res = resolve(parent, _path);
-        if (res)
+        if (resolve(parent, _path))
             return std::unexpected { lib::err::already_exists };
 
-        res = resolve(parent, _path.dirname());
-        if (!res)
-            return std::unexpected { res.error() };
+        auto pres = resolve_real_dir(parent, _path.dirname());
+        if (!pres)
+            return std::unexpected { pres.error() };
 
-        const auto real_parent = res->target;
+        const auto real_parent = std::move(*pres);
         const auto name = _path.basename();
 
         auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev);
@@ -626,15 +640,14 @@ namespace vfs
 
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>
     {
-        auto res = resolve(parent, src);
-        if (res)
+        if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        res = resolve(parent, src.dirname());
-        if (!res)
-            return std::unexpected { res.error() };
+        auto pres = resolve_real_dir(parent, src.dirname());
+        if (!pres)
+            return std::unexpected { pres.error() };
 
-        const auto real_parent = res->target;
+        const auto real_parent = std::move(*pres);
         const auto name = src.basename();
 
         auto ret = real_parent.mnt->fs.lock()->symlink(real_parent.dentry->inode, name, target);
@@ -656,18 +669,17 @@ namespace vfs
         std::optional<path> tgtparent, lib::path target, bool follow_links
     ) -> lib::expect<path>
     {
-        auto res = resolve(parent, src);
-        if (res)
+        if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        res = resolve(parent, src.dirname());
-        if (!res)
-            return std::unexpected { res.error() };
+        auto pres = resolve_real_dir(parent, src.dirname());
+        if (!pres)
+            return std::unexpected { pres.error() };
 
-        const auto real_parent = std::move(res->target);
+        const auto real_parent = std::move(*pres);
         const auto name = src.basename();
 
-        res = resolve(tgtparent, target);
+        auto res = resolve(tgtparent, target);
         if (!res)
             return std::unexpected { res.error() };
 
@@ -766,20 +778,16 @@ namespace vfs
         if (!old_res)
             return std::unexpected { old_res.error() };
 
-        const auto old_pres = resolve(old_parent, old_path.dirname());
-        if (!old_pres)
-            return std::unexpected { old_pres.error() };
-
-        const auto new_pres = resolve(new_parent, new_path.dirname());
+        const auto new_pres = resolve_real_dir(new_parent, new_path.dirname());
         if (!new_pres)
             return std::unexpected { new_pres.error() };
 
-        if (old_pres->target.mnt != new_pres->target.mnt)
+        if (old_res->parent.mnt != new_pres->mnt)
             return std::unexpected { lib::err::different_filesystem };
 
         const auto &old_dentry = old_res->target.dentry;
-        const auto &old_parent_dentry = old_pres->target.dentry;
-        const auto &new_parent_dentry = new_pres->target.dentry;
+        const auto &old_parent_dentry = old_res->parent.dentry;
+        const auto &new_parent_dentry = new_pres->dentry;
 
         if (old_dentry == old_res->target.mnt->root)
             return std::unexpected { lib::err::target_is_busy };
@@ -829,7 +837,7 @@ namespace vfs
             }
         }
 
-        auto fs = old_pres->target.mnt->fs.lock();
+        auto fs = old_res->parent.mnt->fs.lock();
         const auto do_rename = [&](auto &locked_old, auto &locked_new) -> lib::expect<void> {
             const auto ret = fs->rename(
                 old_parent_dentry->inode, old_base.str(),
