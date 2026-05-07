@@ -17,3 +17,4 @@ export import system.sched;
 export import system.syscall;
 export import system.vfs;
 export import system.vfs.dev;
+export import system.vfs.pipe;
