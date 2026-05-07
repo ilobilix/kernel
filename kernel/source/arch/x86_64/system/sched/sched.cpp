@@ -85,7 +85,7 @@ namespace sched::arch
         auto [handler, vec] = *ret;
         lib::bug_on(idt::vec_sched != vec);
 
-        handler.set([](auto) { tick(); });
+        handler.set([](cpu::registers *regs) { tick(arch::in_user_mode(regs)); });
     }
 
     void init_thread(

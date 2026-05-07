@@ -233,6 +233,19 @@ namespace x86_64::output::uart8250
                 }
             }
 
+            void break_ctl(bool on) override
+            {
+                const auto idx = minor - 64;
+                if (!usable[idx])
+                    return;
+
+                const auto port = ports[idx];
+                lock();
+                const auto lcr = lib::io::in<8>(port + 3);
+                lib::io::out<8>(port + 3, on ? (lcr | 0x40) : (lcr & ~0x40));
+                unlock();
+            }
+
             serial_instance(tty::driver *drv, std::uint32_t minor)
                 : instance { drv, minor, usable[minor - 64]
                     ? std::make_shared<tty::default_ldisc>(this)

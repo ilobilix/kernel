@@ -22,10 +22,18 @@ export namespace sched
     {
         process_t *proc;
         std::uint64_t deadline_ns;
+        std::uint64_t interval_ns;
         bool armed;
         bool expired;
 
         lib::rbtree_hook<alarm_entry_t> hook;
+    };
+
+    struct cpu_itimer_t
+    {
+        std::uint64_t value_ns = 0;
+        std::uint64_t interval_ns = 0;
+        lib::spinlock_irq lock;
     };
 
     // puts entry in sleep list
@@ -44,14 +52,26 @@ export namespace sched
     void block();
 
     // arm process alarm and return previous remaining
-    std::uint64_t arm_alarm(alarm_entry_t *entry, process_t *proc, std::uint64_t ns);
+    // interval_ns > 0 makes it repeat
+    std::uint64_t arm_alarm(
+        alarm_entry_t *entry, process_t *proc,
+        std::uint64_t ns, std::uint64_t interval_ns = 0
+    );
 
     // cancel alarm and return remaining
     std::uint64_t cancel_alarm(alarm_entry_t *entry);
+
+    // get remaining ns until next fire and interval
+    struct alarm_state_t { std::uint64_t remaining_ns; std::uint64_t interval_ns; };
+    alarm_state_t alarm_state(alarm_entry_t *entry);
 } // export namespace sched
 
 namespace sched
 {
     void expire_timeouts();
     void expire_alarms();
+
+    // charge a CPU-time delta to a process's ITIMER_VIRTUAL/ITIMER_PROF;
+    // virtual is only charged when the tick interrupted user-mode code.
+    void charge_cpu_itimers(process_t *proc, std::uint64_t delta_ns, bool from_user);
 } // namespace sched

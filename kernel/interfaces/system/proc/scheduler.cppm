@@ -158,7 +158,7 @@ export namespace sched
     std::size_t process_count();
 
     // called from a timer interrupt
-    void tick();
+    void tick(bool from_user);
 
     void load_balance();
 

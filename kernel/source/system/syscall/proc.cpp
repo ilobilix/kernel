@@ -255,6 +255,141 @@ namespace syscall::proc
         return lib::div_roundup(prev_ns, 1'000'000'000ul);
     }
 
+    namespace
+    {
+        enum itimer_which : int
+        {
+            itimer_real = 0,
+            itimer_virtual = 1,
+            itimer_prof = 2,
+        };
+
+        constexpr std::uint64_t timeval_to_ns(const timeval &tv)
+        {
+            return static_cast<std::uint64_t>(tv.tv_sec) * 1'000'000'000ull +
+                static_cast<std::uint64_t>(tv.tv_usec) * 1'000ull;
+        }
+
+        constexpr timeval ns_to_timeval(std::uint64_t ns)
+        {
+            return timeval {
+                .tv_sec = static_cast<time_t>(ns / 1'000'000'000ull),
+                .tv_usec = static_cast<suseconds_t>((ns % 1'000'000'000ull) / 1'000ull),
+            };
+        }
+
+        bool valid_timeval(const timeval &tv)
+        {
+            return tv.tv_sec >= 0 && tv.tv_usec >= 0 && tv.tv_usec < 1'000'000;
+        }
+
+        itimerval read_cpu_itimer(sched::cpu_itimer_t &it)
+        {
+            const std::unique_lock _ { it.lock };
+            return itimerval {
+                .it_interval = ns_to_timeval(it.interval_ns),
+                .it_value = ns_to_timeval(it.value_ns),
+            };
+        }
+
+        itimerval write_cpu_itimer(
+            sched::cpu_itimer_t &it,
+            std::uint64_t value_ns, std::uint64_t interval_ns
+        )
+        {
+            const std::unique_lock _ { it.lock };
+            const itimerval old {
+                .it_interval = ns_to_timeval(it.interval_ns),
+                .it_value = ns_to_timeval(it.value_ns),
+            };
+            it.value_ns = value_ns;
+            it.interval_ns = (value_ns == 0) ? 0 : interval_ns;
+            return old;
+        }
+    } // namespace
+
+    int setitimer(int which, const itimerval __user *new_value, itimerval __user *old_value)
+    {
+        if (which != itimer_real && which != itimer_virtual && which != itimer_prof)
+            return -EINVAL;
+
+        itimerval new_v { };
+        if (new_value != nullptr)
+        {
+            if (!lib::copy_from_user(&new_v, new_value, sizeof(new_v)))
+                return -EFAULT;
+            if (!valid_timeval(new_v.it_value) || !valid_timeval(new_v.it_interval))
+                return -EINVAL;
+        }
+
+        const auto value_ns = timeval_to_ns(new_v.it_value);
+        const auto interval_ns = (value_ns == 0) ? 0 : timeval_to_ns(new_v.it_interval);
+
+        auto proc = sched::current_process();
+        itimerval old { };
+
+        switch (which)
+        {
+            case itimer_real:
+            {
+                const auto prev = sched::alarm_state(&proc->alarm);
+                if (value_ns == 0)
+                    sched::cancel_alarm(&proc->alarm);
+                else
+                    sched::arm_alarm(&proc->alarm, proc, value_ns, interval_ns);
+
+                old.it_value = ns_to_timeval(prev.remaining_ns);
+                old.it_interval = ns_to_timeval(prev.interval_ns);
+                break;
+            }
+            case itimer_virtual:
+                old = write_cpu_itimer(proc->itimer_virtual, value_ns, interval_ns);
+                break;
+            case itimer_prof:
+                old = write_cpu_itimer(proc->itimer_prof, value_ns, interval_ns);
+                break;
+        }
+
+        if (old_value != nullptr && !lib::copy_to_user(old_value, &old, sizeof(old)))
+            return -EFAULT;
+
+        return 0;
+    }
+
+    int getitimer(int which, itimerval __user *curr_value)
+    {
+        if (which != itimer_real && which != itimer_virtual && which != itimer_prof)
+            return -EINVAL;
+
+        if (curr_value == nullptr)
+            return -EFAULT;
+
+        auto proc = sched::current_process();
+        itimerval cur { };
+
+        switch (which)
+        {
+            case itimer_real:
+            {
+                const auto state = sched::alarm_state(&proc->alarm);
+                cur.it_value = ns_to_timeval(state.remaining_ns);
+                cur.it_interval = ns_to_timeval(state.interval_ns);
+                break;
+            }
+            case itimer_virtual:
+                cur = read_cpu_itimer(proc->itimer_virtual);
+                break;
+            case itimer_prof:
+                cur = read_cpu_itimer(proc->itimer_prof);
+                break;
+        }
+
+        if (!lib::copy_to_user(curr_value, &cur, sizeof(cur)))
+            return -EFAULT;
+
+        return 0;
+    }
+
     int kill(pid_t pid, int sig)
     {
         return sched::kill(pid, sig);
@@ -414,6 +549,15 @@ namespace syscall::proc
             return -EFAULT;
 
         return 0;
+    }
+
+    int rt_sigtimedwait(
+        const sched::sigset_t __user *uthese, sched::siginfo_t __user *uinfo,
+        const timespec __user *uts, std::size_t sigsetsize
+    )
+    {
+        lib::unused(uthese, uinfo, uts, sigsetsize);
+        return -ENOSYS;
     }
 
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss)

@@ -31,6 +31,37 @@ namespace sched
                 >
             >, lib::spinlock_irq
         > alarm_list;
+
+        bool consume_itimer(cpu_itimer_t &it, std::uint64_t delta_ns)
+        {
+            const std::unique_lock _ { it.lock };
+            if (it.value_ns == 0)
+                return false;
+
+            if (delta_ns < it.value_ns)
+            {
+                it.value_ns -= delta_ns;
+                return false;
+            }
+
+            it.value_ns = it.interval_ns;
+            return true;
+        }
+
+        void send_itimer_signal(process_t *proc, int signo)
+        {
+            siginfo_t info {
+                .signo = signo,
+                .code = si_kernel,
+                .err = 0,
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = 0,
+                .value = 0,
+            };
+            send_signal(proc, info);
+        }
     } // namespace
 
     void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns)
@@ -121,7 +152,10 @@ namespace sched
         }
     }
 
-    std::uint64_t arm_alarm(alarm_entry_t *entry, process_t *proc, std::uint64_t ns)
+    std::uint64_t arm_alarm(
+        alarm_entry_t *entry, process_t *proc,
+        std::uint64_t ns, std::uint64_t interval_ns
+    )
     {
         const auto timer = chrono::main_timer();
         const auto now = timer->ns();
@@ -138,6 +172,7 @@ namespace sched
 
         entry->proc = proc;
         entry->deadline_ns = now + ns;
+        entry->interval_ns = interval_ns;
         entry->armed = true;
         entry->expired = false;
         locked->insert(entry);
@@ -156,8 +191,34 @@ namespace sched
 
         locked->remove(entry);
         entry->armed = false;
+        entry->interval_ns = 0;
 
         return entry->deadline_ns > now ? entry->deadline_ns - now : 0;
+    }
+
+    alarm_state_t alarm_state(alarm_entry_t *entry)
+    {
+        const auto timer = chrono::main_timer();
+        const auto now = timer->ns();
+
+        auto locked = alarm_list.lock();
+        if (!entry->armed)
+            return { 0, entry->interval_ns };
+
+        const auto remaining = entry->deadline_ns > now ? entry->deadline_ns - now : 0;
+        return { remaining, entry->interval_ns };
+    }
+
+    void charge_cpu_itimers(process_t *proc, std::uint64_t delta_ns, bool from_user)
+    {
+        if (proc == nullptr || delta_ns == 0)
+            return;
+
+        if (from_user && consume_itimer(proc->itimer_virtual, delta_ns))
+            send_itimer_signal(proc, sigvtalrm);
+
+        if (consume_itimer(proc->itimer_prof, delta_ns))
+            send_itimer_signal(proc, sigprof);
     }
 
     void expire_alarms()
@@ -174,8 +235,18 @@ namespace sched
                 break;
 
             locked->remove(entry);
-            entry->armed = false;
-            entry->expired = true;
+
+            if (entry->interval_ns > 0)
+            {
+                entry->deadline_ns = now + entry->interval_ns;
+                entry->expired = false;
+                locked->insert(entry);
+            }
+            else
+            {
+                entry->armed = false;
+                entry->expired = true;
+            }
 
             siginfo_t info {
                 .signo = sigalrm,

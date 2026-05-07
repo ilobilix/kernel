@@ -285,6 +285,7 @@ export namespace fs::dev::tty
         tcsets = 0x5402,
         tcsetsw = 0x5403,
         tcsetsf = 0x5404,
+        tcsbrk = 0x5409,
         tcxonc = 0x540A,
         tcflsh = 0x540B,
         tiocgpgrp = 0x540F,
@@ -527,6 +528,11 @@ export namespace fs::dev::tty
         {
             lib::unused(current, old);
         };
+
+        virtual void break_ctl(bool on)
+        {
+            lib::unused(on);
+        }
 
         // called by hardware
         bool receive(std::span<std::byte> buffer)

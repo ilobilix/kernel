@@ -104,6 +104,8 @@ export namespace sched
         wait_queue_t vfork_done;
 
         alarm_entry_t alarm { };
+        cpu_itimer_t itimer_virtual { };
+        cpu_itimer_t itimer_prof { };
 
         recursive_mutex lock;
     };

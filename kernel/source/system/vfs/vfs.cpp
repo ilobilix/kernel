@@ -524,7 +524,9 @@ namespace vfs
                 return std::unexpected { lib::err::symloop_max };
 
             const auto ret = resolve(parent, src.dentry->symlinked_to, automount);
-            if (!ret || ret->target.dentry == src.dentry)
+            if (!ret)
+                return std::unexpected { ret.error() };
+            if (ret->target.dentry == src.dentry)
                 return std::unexpected { lib::err::invalid_symlink };
 
             parent = ret->parent;

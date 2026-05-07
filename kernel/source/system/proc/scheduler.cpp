@@ -962,8 +962,10 @@ namespace sched
         process_exit(0);
     }
 
-    void tick()
+    void tick(bool from_user)
     {
+        process_t *charge_proc = nullptr;
+        std::uint64_t cpu_delta = 0;
         {
             auto &rq = run_queue.unsafe_get();
             const std::unique_lock _ { rq.lock };
@@ -973,7 +975,15 @@ namespace sched
                 if (!curr->is_idle())
                 {
                     const auto timer = chrono::main_timer();
-                    rq.update_current(timer->ns());
+                    const auto now = timer->ns();
+                    rq.update_current(now);
+
+                    if (rq.tick_last_ns != 0 && now > rq.tick_last_ns)
+                    {
+                        cpu_delta = now - rq.tick_last_ns;
+                        charge_proc = curr->proc;
+                    }
+                    rq.tick_last_ns = now;
                 }
                 curr->set_flag(thread_flags::needs_resched);
 
@@ -984,6 +994,9 @@ namespace sched
                 }
             }
         }
+
+        if (charge_proc != nullptr && cpu_delta > 0)
+            charge_cpu_itimers(charge_proc, cpu_delta, from_user);
 
         expire_timeouts();
         expire_alarms();

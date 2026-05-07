@@ -50,6 +50,9 @@ export namespace syscall::proc
 
     unsigned int alarm(unsigned int seconds);
 
+    int setitimer(int which, const itimerval __user *new_value, itimerval __user *old_value);
+    int getitimer(int which, itimerval __user *curr_value);
+
     int kill(pid_t pid, int sig);
     int tgkill(pid_t tgid, pid_t tid, int sig);
 
@@ -62,6 +65,10 @@ export namespace syscall::proc
         sched::sigset_t __user *oldset, std::size_t sigsetsize
     );
     int rt_sigpending(sched::sigset_t __user *set, std::size_t sigsetsize);
+    int rt_sigtimedwait(
+        const sched::sigset_t __user *uthese, sched::siginfo_t __user *uinfo,
+        const timespec __user *uts, std::size_t sigsetsize
+    );
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss);
 
     std::uintptr_t rt_sigreturn();

@@ -51,6 +51,7 @@ export namespace sched
         std::uint64_t nr_switches;
 
         std::uint64_t load_update;
+        std::uint64_t tick_last_ns;
 
         // enqueue when thread becomes runnable
         void enqueue(thread_t *thread);
