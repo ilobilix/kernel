@@ -754,6 +754,11 @@ namespace sched
         return it->second;
     }
 
+    std::size_t process_count()
+    {
+        return processes.lock()->size();
+    }
+
     bool wake_up(thread_t *thread, bool preempt, bool force)
     {
         auto state = thread->state.load(std::memory_order_acquire);

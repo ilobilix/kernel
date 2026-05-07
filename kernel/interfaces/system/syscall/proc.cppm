@@ -86,6 +86,8 @@ export namespace syscall::proc
     int getrlimit(int resource, sched::rlimit __user *rlim);
     int setrlimit(int resource, const sched::rlimit __user *rlim);
 
+    int getrusage(int who, struct rusage __user *usage);
+
     long clone(
         unsigned long flags, void __user *stack, int __user *parent_tid,
         int __user *child_tid, unsigned long tls
