@@ -86,6 +86,8 @@ namespace x86_64::syscall
         [95] = { "umask", vfs::umask, true },
         [96] = { "gettimeofday", chrono::gettimeofday },
         [97] = { "getrlimit", proc::getrlimit, true },
+        [98] = { "getrusage", proc::getrusage, true },
+        [99] = { "sysinfo", misc::sysinfo, true },
         [102] = { "getuid", proc::getuid, true },
         [104] = { "getgid", proc::getgid, true },
         [105] = { "setuid", proc::setuid },

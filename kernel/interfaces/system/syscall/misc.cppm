@@ -12,6 +12,8 @@ export namespace syscall::misc
 
     int vhangup();
 
+    int sysinfo(struct sysinfo __user *info);
+
     std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags);
 
     int prctl(

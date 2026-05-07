@@ -153,8 +153,9 @@ export namespace sched
     // status reported to waitpid will have WIFSIGNALED set
     [[noreturn]] void process_exit_signal(int signo, bool core_dumped = false);
 
-    // get process with the pid
     process_t *get_process(pid_t pid);
+
+    std::size_t process_count();
 
     // called from a timer interrupt
     void tick();

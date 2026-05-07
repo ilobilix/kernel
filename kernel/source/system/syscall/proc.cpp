@@ -538,6 +538,42 @@ namespace syscall::proc
         return prlimit(0, resource, rlim, nullptr);
     }
 
+    struct rusage
+    {
+        timeval ru_utime;
+        timeval ru_stime;
+        long ru_maxrss;
+        long ru_ixrss;
+        long ru_idrss;
+        long ru_isrss;
+        long ru_minflt;
+        long ru_majflt;
+        long ru_nswap;
+        long ru_inblock;
+        long ru_oublock;
+        long ru_msgsnd;
+        long ru_msgrcv;
+        long ru_nsignals;
+        long ru_nvcsw;
+        long ru_nivcsw;
+    };
+
+    int getrusage(int who, rusage __user *usage)
+    {
+        constexpr int rusage_children = -1;
+        constexpr int rusage_self = 0;
+        constexpr int rusage_thread = 1;
+
+        if (who != rusage_self && who != rusage_children && who != rusage_thread)
+            return -EINVAL;
+
+        const rusage kbuf { };
+        // TODO
+        if (!lib::copy_to_user(usage, &kbuf, sizeof(kbuf)))
+            return -EFAULT;
+        return 0;
+    }
+
     using enum sched::clone_flags;
 
     long clone(
