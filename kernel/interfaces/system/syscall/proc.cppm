@@ -73,6 +73,8 @@ export namespace syscall::proc
 
     std::uintptr_t rt_sigreturn();
 
+    int pause();
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig);
 
     long futex(

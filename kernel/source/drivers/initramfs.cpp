@@ -12,7 +12,8 @@ namespace initramfs
 {
     namespace ustar
     {
-        constexpr std::string_view magic { "ustar", 6 };
+        constexpr std::size_t block_size = 512;
+        constexpr std::string_view magic { "ustar", 5 };
         // constexpr std::string_view version { "00", 2 };
 
         enum types : char
@@ -26,6 +27,8 @@ namespace initramfs
             directory = '5',
             fifo = '6',
             control = '7',
+            longlink = 'K',
+            longname = 'L',
             xhd = 'x',
             xgl = 'g'
         };
@@ -48,6 +51,15 @@ namespace initramfs
             char devmajor[8];
             char devminor[8];
             char prefix[155];
+
+            bool is_gnu() const { return magic[5] == ' '; }
+
+            std::byte *payload() const
+            {
+                return reinterpret_cast<std::byte *>(
+                    const_cast<header *>(this)
+                ) + block_size;
+            }
         };
 
         template<typename Type> requires std::is_array_v<Type>
@@ -58,21 +70,59 @@ namespace initramfs
             };
         }
 
+        header *advance(header *cur, std::size_t payload_size)
+        {
+            return reinterpret_cast<header *>(
+                cur->payload() + lib::align_up(payload_size, block_size)
+            );
+        }
+
         bool load(std::span<std::byte> data)
         {
             lib::info("ustar: extracting initramfs");
 
+            const auto data_end = data.data() + data.size();
+            const auto fits = [&](const header *cur) {
+                return reinterpret_cast<const std::byte *>(cur) + sizeof(header) <= data_end;
+            };
+
+            std::string long_name;
+            std::string long_linkname;
+            bool have_long_name = false;
+            bool have_long_linkname = false;
+
             auto current = reinterpret_cast<header *>(data.data());
-            while (magic == std::string_view { current->magic, 6 } &&
-                current <= reinterpret_cast<header *>(data.data() + data.size() - sizeof(header)))
+            while (fits(current) && magic == std::string_view { current->magic, 5 })
             {
                 if (current->name[0] == '\0')
                     break;
 
+                const auto payload_size = lib::oct2int<std::size_t>(current->size);
+                if (current->payload() + payload_size > data_end)
+                {
+                    lib::error("ustar: payload extends past end of archive");
+                    return false;
+                }
+
+                if (current->typeflag == types::longname || current->typeflag == types::longlink)
+                {
+                    const auto ptr = reinterpret_cast<const char *>(current->payload());
+                    const bool is_name = (current->typeflag == types::longname);
+                    auto &dst = is_name ? long_name : long_linkname;
+                    auto &flag = is_name ? have_long_name : have_long_linkname;
+                    dst.assign(ptr, std::strnlen(ptr, payload_size));
+                    flag = true;
+
+                    current = advance(current, payload_size);
+                    continue;
+                }
+
                 std::string name_buf;
                 std::string_view name;
 
-                if (current->prefix[0] != '\0')
+                if (have_long_name)
+                    name = long_name;
+                else if (!current->is_gnu() && current->prefix[0] != '\0')
                 {
                     const auto prefix = get_string(current->prefix);
                     const auto nam = get_string(current->name);
@@ -83,12 +133,15 @@ namespace initramfs
                 }
                 else name = get_string(current->name);
 
-                const auto linkname { get_string(current->linkname) };
+                const auto linkname {
+                    have_long_linkname
+                        ? std::string_view { long_linkname }
+                        : get_string(current->linkname)
+                };
 
                 const auto mode = lib::oct2int<mode_t>(current->mode);
                 const auto uid = lib::oct2int<uid_t>(current->uid);
                 const auto gid = lib::oct2int<gid_t>(current->gid);
-                const auto size = lib::oct2int<std::size_t>(current->size);
                 const auto mtim = lib::oct2int<time_t>(current->mtime);
 
                 const auto devmajor = lib::oct2int<time_t>(current->devmajor);
@@ -115,14 +168,12 @@ namespace initramfs
                             break;
                         }
 
-                        const auto data = lib::maybe_uspan<std::byte>::create(
-                            reinterpret_cast<std::byte *>(
-                                reinterpret_cast<std::uintptr_t>(current) + 512
-                            ), size
+                        const auto payload = lib::maybe_uspan<std::byte>::create(
+                            current->payload(), payload_size
                         ).value();
 
                         auto file = vfs::file::create(ret.value(), 0, 0);
-                        if (const auto res = file->pwrite(0, data); !res.has_value() || res.value() != size)
+                        if (const auto res = file->pwrite(0, payload); !res.has_value() || res.value() != payload_size)
                         {
                             lib::error(
                                 "ustar: could not write to regular file '{}': {}",
@@ -231,10 +282,11 @@ namespace initramfs
                 }
 
                 next:
-                current = reinterpret_cast<header *>(
-                    reinterpret_cast<std::uintptr_t>(current) +
-                    512 + lib::align_up(size, 512zu)
-                );
+                long_name.clear();
+                long_linkname.clear();
+                have_long_name = false;
+                have_long_linkname = false;
+                current = advance(current, payload_size);
             }
             return true;
         }

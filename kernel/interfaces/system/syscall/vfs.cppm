@@ -45,6 +45,9 @@ export namespace syscall::vfs
 
     int statx(int dirfd, const char __user *pathname, int flags, unsigned int mask, struct statx __user *statxbuf);
 
+    int statfs(const char __user *path, struct statfs __user *buf);
+    int fstatfs(int fd, struct statfs __user *buf);
+
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags);
     int faccessat(int dirfd, const char __user *pathname, int mode);
     int access(const char __user *pathname, int mode);
@@ -145,6 +148,7 @@ export namespace syscall::vfs
     int pipe(int __user *pipefd);
 
     int socket(int domain, int type, int protocol);
+    int socketpair(int domain, int type, int protocol, int __user *sv);
 
     int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
 

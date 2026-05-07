@@ -41,6 +41,7 @@ export namespace lib
         invalid_symlink = EINVAL,
         invalid_flags = EINVAL,
         invalid_type = EINVAL,
+        invalid_argument = EINVAL,
         invalid_pml_entry = EINVAL,
         invalid_length = EINVAL,
         addr_not_aligned = EINVAL,
