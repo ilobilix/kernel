@@ -56,6 +56,8 @@ namespace vfs::pipe
             return instance;
         }
 
+        bool seekable() const override { return false; }
+
         lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
         {
             lib::unused(pid);
@@ -229,12 +231,39 @@ namespace vfs::pipe
             return { };
         }
 
-        // TODO: pipe poll
-        // lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt) override
-        // {
-        //     lib::unused(file, pt);
-        //     return { 0 };
-        // }
+        lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+        {
+            lib::bug_on(!file || !file->private_data);
+            const auto pdata = std::static_pointer_cast<data>(file->private_data);
+
+            if (pt)
+            {
+                pt->add(pdata->read_wait);
+                pt->add(pdata->write_wait);
+            }
+
+            std::uint16_t mask = 0;
+            const bool reader = is_read(file->flags);
+            const bool writer = is_write(file->flags);
+
+            if (reader)
+            {
+                if (!pdata->buffer.empty())
+                    mask |= pollin;
+                if (pdata->writers.load(std::memory_order_acquire) == 0)
+                    mask |= pollhup;
+            }
+
+            if (writer)
+            {
+                if (!pdata->buffer.full())
+                    mask |= pollout;
+                if (pdata->readers.load(std::memory_order_acquire) == 0)
+                    mask |= pollerr;
+            }
+
+            return mask;
+        }
     };
 
     std::shared_ptr<vfs::ops> get_ops()

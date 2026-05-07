@@ -3,6 +3,7 @@
 module drivers.fs;
 
 import drivers.fs.devtmpfs;
+import drivers.fs.devpts;
 import drivers.fs.tmpfs;
 import lib;
 
@@ -24,7 +25,8 @@ namespace fs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
             tmpfs::registered_stage(),
-            devtmpfs::registered_stage()
+            devtmpfs::registered_stage(),
+            devpts::registered_stage()
         },
         lib::initgraph::entail { registered_stage() },
         [] { }

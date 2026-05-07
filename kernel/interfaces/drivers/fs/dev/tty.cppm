@@ -327,6 +327,8 @@ export namespace fs::dev::tty
 
         virtual void open() = 0;
 
+        virtual void shutdown() = 0;
+
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
 
@@ -423,12 +425,14 @@ export namespace fs::dev::tty
 
         sched::thread_t *worker_thread;
         std::atomic_bool should_work;
+        std::atomic_bool shut_down;
         sched::wait_queue_t hung_wq;
 
         default_ldisc(instance *inst);
         ~default_ldisc();
 
         void open() override;
+        void shutdown() override;
         void hangup() override;
 
         bool output_append(const ktermios &termios, char chr);
@@ -505,6 +509,14 @@ export namespace fs::dev::tty
 
         virtual lib::expect<void> open(std::shared_ptr<vfs::file> file) = 0;
         virtual lib::expect<void> close() = 0;
+
+        virtual lib::expect<void> permit_open(std::shared_ptr<vfs::file> file)
+        {
+            lib::unused(file);
+            return { };
+        }
+
+        virtual bool needs_close_erase() const { return true; }
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
 
@@ -602,6 +614,7 @@ export namespace fs::dev::tty
     };
 
     void register_driver(driver *drv);
+    void register_chrdev(dev_t rdev);
 
     void set_console(driver *drv, std::uint32_t minor);
     void set_console(dev_t rdev);

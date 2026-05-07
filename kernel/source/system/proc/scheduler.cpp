@@ -833,8 +833,6 @@ namespace sched
         if (!thread->saved_vmspace)
             thread->saved_vmspace = proc->vmspace;
 
-        thread->state.store(thread_state::dead, std::memory_order_release);
-
         if (thread->clear_child_tid)
         {
             const pid_t zero = 0;
@@ -927,6 +925,7 @@ namespace sched
             }
         }
 
+        thread->state.store(thread_state::dead, std::memory_order_release);
         preempt_enable();
         schedule();
         std::unreachable();

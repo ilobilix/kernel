@@ -47,6 +47,9 @@ namespace fs::dev::tty
             int flags, pid_t pid, bool inst_opened
         )
         {
+            if (const auto ret = inst->permit_open(file); !ret)
+                return ret;
+
             if (!inst_opened)
             {
                 if (const auto ret = inst->open(file); !ret)
@@ -119,6 +122,8 @@ namespace fs::dev::tty
 
         struct alias_ops : vfs::ops
         {
+            bool seekable() const override { return false; }
+
             lib::expect<void> close(vfs::file &file) override
             {
                 lib::bug_on(!file.private_data);
@@ -142,7 +147,8 @@ namespace fs::dev::tty
                             inst->ref.fetch_add(1, std::memory_order_relaxed);
                             return ret;
                         }
-                        lib::bug_on(!locked->erase(inst->minor));
+                        if (inst->needs_close_erase())
+                            locked->erase(inst->minor);
                     }
                     drv->destroy_instance(inst);
                 }
@@ -223,12 +229,33 @@ namespace fs::dev::tty
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
         raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { },
         out_buffer { }, out_wq { }, stopped { false },
-        worker_thread { }, should_work { false }, hung_wq { } { }
+        worker_thread { }, should_work { false }, shut_down { false }, hung_wq { } { }
 
     void default_ldisc::open()
     {
         should_work.store(true, std::memory_order_relaxed);
         worker_thread = sched::spawn(worker, this, -10);
+    }
+
+    void default_ldisc::shutdown()
+    {
+        if (shut_down.exchange(true, std::memory_order_acq_rel))
+            return;
+
+        if (!should_work.load(std::memory_order_relaxed))
+            return;
+
+        if constexpr (debug)
+            lib::debug("tty: stopping worker thread in ({}, {})", inst->drv->major, inst->minor);
+
+        should_work.store(false, std::memory_order_relaxed);
+
+        while (!should_work.load(std::memory_order_relaxed))
+        {
+            raw_wq.wake_all();
+            hung_wq.wake_all();
+            sched::yield();
+        }
     }
 
     void default_ldisc::hangup()
@@ -240,21 +267,7 @@ namespace fs::dev::tty
 
     default_ldisc::~default_ldisc()
     {
-        if (!should_work.load(std::memory_order_relaxed))
-        {
-            lib::bug_on(worker_thread != nullptr);
-            return;
-        }
-
-        if constexpr (debug)
-            lib::debug("tty: stopping worker thread in ({}, {})", inst->drv->major, inst->minor);
-
-        should_work.store(false, std::memory_order_relaxed);
-        raw_wq.wake_one();
-        if (inst->hung_up.load(std::memory_order_relaxed))
-            hung_wq.wake_one();
-        while (!should_work.load(std::memory_order_relaxed)) // ehhhhhh
-            sched::yield();
+        shutdown();
     }
 
     bool default_ldisc::output_append(const ktermios &termios, char chr)
@@ -374,26 +387,23 @@ namespace fs::dev::tty
                 sched::thread_exit(0);
             }
 
-            if (self->inst->hung_up.load(std::memory_order_relaxed))
-            {
-                if constexpr (debug)
-                {
-                    lib::debug(
-                        "tty: hung up! worker thread in ({}, {}) is waiting for sweet release of death",
-                        self->inst->drv->major, self->inst->minor
-                    );
-                }
-                // presumably SIGHUP will be sent to everything that has this tty open
-                // and once said ttys are closed, this ldisc will be destructed and worker - killed
-                self->hung_wq.wait();
-                continue;
-            }
-
             auto ret = self->raw_buffer.pop();
             if (!ret.has_value())
             {
                 self->output_flush();
-                self->raw_wq.wait();
+
+                if (self->inst->hung_up.load(std::memory_order_relaxed))
+                {
+                    if constexpr (debug)
+                    {
+                        lib::debug(
+                            "tty: hung up! worker thread in ({}, {}) is waiting for sweet release of death",
+                            self->inst->drv->major, self->inst->minor
+                        );
+                    }
+                    self->hung_wq.wait();
+                }
+                else self->raw_wq.wait();
                 continue;
             }
             auto chr = static_cast<char>(ret.value());
@@ -702,6 +712,10 @@ namespace fs::dev::tty
         // vtime resolution is 100ms
         const auto ms = time * 100;
 
+        const auto pipeline_empty = [&] {
+            return raw_buffer.empty() && inst->raw_buffer.empty();
+        };
+
         if (nonblock)
         {
             // if nonblock is set, return immediately
@@ -710,7 +724,11 @@ namespace fs::dev::tty
             auto in_locked = in_buffer.lock();
             const auto available = get_available(in_locked);
             if (available == 0)
+            {
+                if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
+                    return 0;
                 return std::unexpected { lib::err::try_again };
+            }
 
             return copy(in_locked, available, 0);
         }
@@ -723,7 +741,7 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available == 0)
                 {
-                    if (inst->hung_up.load(std::memory_order_relaxed))
+                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
                     in_locked.unlock();
@@ -782,7 +800,7 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available < min)
                 {
-                    if (inst->hung_up.load(std::memory_order_relaxed))
+                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
                     in_locked.unlock();
@@ -802,7 +820,7 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 if (available == 0)
                 {
-                    if (inst->hung_up.load(std::memory_order_relaxed))
+                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
                     in_locked.unlock();
@@ -828,7 +846,7 @@ namespace fs::dev::tty
                 auto available = get_available(in_locked);
                 while (available == 0)
                 {
-                    if (inst->hung_up.load(std::memory_order_relaxed))
+                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
                     in_locked.unlock();
@@ -1249,11 +1267,7 @@ namespace fs::dev::tty
             pt->add(out_wq);
         }
 
-        if (inst->hung_up.load(std::memory_order_relaxed))
-        {
-            mask |= (pollhup | pollin | pollout);
-            return mask;
-        }
+        const bool hung_up = inst->hung_up.load(std::memory_order_relaxed);
 
         const auto termios = inst->termios.lock().value();
         const bool is_cooked = (termios.c_lflag & ktermios::lflag::icanon) != 0;
@@ -1266,11 +1280,14 @@ namespace fs::dev::tty
                 : (in_locked->read_head - in_locked->read_tail);
         }
 
-        if (available > 0)
+        if (hung_up || available > 0 || !raw_buffer.empty() || !inst->raw_buffer.empty())
             mask |= pollin;
 
-        if (!out_buffer.full())
+        if (!hung_up && !out_buffer.full())
             mask |= pollout;
+
+        if (hung_up)
+            mask |= pollhup;
 
         return mask;
     }
@@ -1496,6 +1513,11 @@ namespace fs::dev::tty
             return;
         }
         set_console(drv, minor(rdev));
+    }
+
+    void register_chrdev(dev_t rdev)
+    {
+        vfs::dev::register_dev_ops(rdev, ops::singleton());
     }
 
     void register_driver(driver *drv)

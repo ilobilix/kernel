@@ -224,6 +224,8 @@ export namespace vfs
         virtual lib::expect<std::size_t> write(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
 
+        virtual bool seekable() const { return true; }
+
         virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt)
         {
             lib::unused(file, pt);

@@ -63,6 +63,24 @@ namespace syscall::vfs
             return std::move(*res);
         }
 
+        lib::expect<path> resolve_parent_dir(
+            sched::process_t *proc, int dirfd, lib::path_view path
+        )
+        {
+            auto res = resolve_from(proc, dirfd, path);
+            if (!res.has_value())
+                return std::unexpected { res.error() };
+
+            if (res->target.dentry->inode->stat.type() == stat::type::s_iflnk)
+            {
+                auto reduced = reduce(res->parent, res->target);
+                if (!reduced.has_value())
+                    return std::unexpected { reduced.error() };
+                return std::move(*reduced);
+            }
+            return std::move(res->target);
+        }
+
         lib::expect<lib::path> get_path(const char __user *pathname)
         {
             if (pathname == nullptr)
@@ -239,22 +257,22 @@ namespace syscall::vfs
             if ((flags & o_creat) == 0)
                 return -lib::map_error(res.error());
 
-            const auto parent = resolve_from(proc, dirfd, pathstr.dirname());
+            const auto parent = resolve_parent_dir(proc, dirfd, pathstr.dirname());
             if (!parent.has_value())
                 return -lib::map_error(parent.error());
 
-            const auto &parent_stat = parent->target.dentry->inode->stat;
+            const auto &parent_stat = parent->dentry->inode->stat;
             if (parent_stat.type() != stat::type::s_ifdir)
                 return -ENOTDIR;
 
-            if (readonly_mount(parent->target))
+            if (readonly_mount(*parent))
                 return -EROFS;
 
             if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
                 return -EACCES;
 
             const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
-            auto created = create(parent->target, pathstr.basename(), cmode);
+            auto created = create(*parent, pathstr.basename(), cmode);
             if (!created.has_value())
                 return -lib::map_error(created.error());
 
@@ -872,6 +890,9 @@ namespace syscall::vfs
         if (type == stat::s_ifsock || type == stat::s_ififo)
             return -ESPIPE;
 
+        if (const auto ops_res = file->get_ops(); !ops_res || !(*ops_res)->seekable())
+            return -ESPIPE;
+
         std::size_t new_offset = 0;
         switch (whence)
         {
@@ -1280,22 +1301,22 @@ namespace syscall::vfs
         if (resolve_from(proc, dirfd, path).has_value())
             return -EEXIST;
 
-        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        const auto parent = resolve_parent_dir(proc, dirfd, path.dirname());
         if (!parent.has_value())
             return -lib::map_error(parent.error());
 
-        const auto &parent_stat = parent->target.dentry->inode->stat;
+        const auto &parent_stat = parent->dentry->inode->stat;
         if (parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (readonly_mount(parent->target))
+        if (readonly_mount(*parent))
             return -EROFS;
 
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
 
         const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifdir;
-        auto created = create(parent->target, path.basename(), cmode);
+        auto created = create(*parent, path.basename(), cmode);
         if (!created.has_value())
             return -lib::map_error(created.error());
 
@@ -1338,14 +1359,14 @@ namespace syscall::vfs
 
         const auto path = std::move(*val);
 
-        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        const auto parent = resolve_parent_dir(proc, dirfd, path.dirname());
         if (!parent.has_value())
             return -lib::map_error(parent.error());
 
-        if (readonly_mount(parent->target))
+        if (readonly_mount(*parent))
             return -EROFS;
 
-        const auto &parent_stat = parent->target.dentry->inode->stat;
+        const auto &parent_stat = parent->dentry->inode->stat;
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
             return -EACCES;
 
@@ -1363,7 +1384,7 @@ namespace syscall::vfs
             }
         }
 
-        if (const auto ret = unlink(parent->target, path.basename()); !ret)
+        if (const auto ret = unlink(*parent, path.basename()); !ret)
             return -lib::map_error(ret.error());
 
         return 0;
@@ -1407,15 +1428,15 @@ namespace syscall::vfs
         if (resolve_from(proc, dirfd, path).has_value())
             return -EEXIST;
 
-        const auto parent = resolve_from(proc, dirfd, path.dirname());
+        const auto parent = resolve_parent_dir(proc, dirfd, path.dirname());
         if (!parent.has_value())
             return -lib::map_error(parent.error());
 
-        const auto &parent_stat = parent->target.dentry->inode->stat;
+        const auto &parent_stat = parent->dentry->inode->stat;
         if (parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (readonly_mount(parent->target))
+        if (readonly_mount(*parent))
             return -EROFS;
 
         if (!sched::check_perms(cred, parent_stat, sched::access_mode::write))
@@ -1424,7 +1445,7 @@ namespace syscall::vfs
         const auto perm = (mode & ~proc->vfs->umask) &
             (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
-        auto created = create(parent->target, path.basename(), perm | kind, is_dev ? dev : 0);
+        auto created = create(*parent, path.basename(), perm | kind, is_dev ? dev : 0);
         if (!created.has_value())
             return -lib::map_error(created.error());
 
@@ -1474,14 +1495,14 @@ namespace syscall::vfs
         if (!new_anchor.has_value())
             return -lib::map_error(new_anchor.error());
 
-        const auto new_parent = resolve_from(proc, newdirfd, new_path.dirname());
+        const auto new_parent = resolve_parent_dir(proc, newdirfd, new_path.dirname());
         if (!new_parent.has_value())
             return -lib::map_error(new_parent.error());
 
-        if (readonly_mount(new_parent->target))
+        if (readonly_mount(*new_parent))
             return -EROFS;
 
-        const auto &new_parent_stat = new_parent->target.dentry->inode->stat;
+        const auto &new_parent_stat = new_parent->dentry->inode->stat;
         if (new_parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
@@ -1520,11 +1541,20 @@ namespace syscall::vfs
         if (!parent_res.has_value())
             return -lib::map_error(parent_res.error());
 
-        const auto &parent_stat = parent_res->target.dentry->inode->stat;
+        auto parent_dir = parent_res->target;
+        if (parent_dir.dentry->inode->stat.type() == stat::type::s_iflnk)
+        {
+            auto reduced = reduce(parent_res->parent, parent_dir);
+            if (!reduced.has_value())
+                return -lib::map_error(reduced.error());
+            parent_dir = std::move(*reduced);
+        }
+
+        const auto &parent_stat = parent_dir.dentry->inode->stat;
         if (parent_stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (readonly_mount(parent_res->target))
+        if (readonly_mount(parent_dir))
             return -EROFS;
 
         if (!sched::check_perms(proc->cred, parent_stat, sched::access_mode::write))
@@ -1636,19 +1666,19 @@ namespace syscall::vfs
         if (!new_anchor.has_value())
             return -lib::map_error(new_anchor.error());
 
-        const auto old_parent = resolve_from(proc, olddirfd, old_path.dirname());
+        const auto old_parent = resolve_parent_dir(proc, olddirfd, old_path.dirname());
         if (!old_parent.has_value())
             return -lib::map_error(old_parent.error());
 
-        const auto new_parent = resolve_from(proc, newdirfd, new_path.dirname());
+        const auto new_parent = resolve_parent_dir(proc, newdirfd, new_path.dirname());
         if (!new_parent.has_value())
             return -lib::map_error(new_parent.error());
 
-        if (readonly_mount(old_parent->target) || readonly_mount(new_parent->target))
+        if (readonly_mount(*old_parent) || readonly_mount(*new_parent))
             return -EROFS;
 
-        const auto &old_parent_stat = old_parent->target.dentry->inode->stat;
-        const auto &new_parent_stat = new_parent->target.dentry->inode->stat;
+        const auto &old_parent_stat = old_parent->dentry->inode->stat;
+        const auto &new_parent_stat = new_parent->dentry->inode->stat;
         if (!sched::check_perms(proc->cred, old_parent_stat, sched::access_mode::write) ||
             !sched::check_perms(proc->cred, new_parent_stat, sched::access_mode::write))
             return -EACCES;
@@ -1666,12 +1696,12 @@ namespace syscall::vfs
 
         if (const auto tgt = resolve_from(proc, olddirfd, old_path); tgt.has_value())
         {
-            if (!sticky_ok(old_parent->target, tgt->target))
+            if (!sticky_ok(*old_parent, tgt->target))
                 return -EACCES;
         }
         if (const auto tgt = resolve_from(proc, newdirfd, new_path); tgt.has_value())
         {
-            if (!sticky_ok(new_parent->target, tgt->target))
+            if (!sticky_ok(*new_parent, tgt->target))
                 return -EACCES;
         }
 
@@ -1836,12 +1866,37 @@ namespace syscall::vfs
 
     int ioctl(int fd, unsigned long request, void __user *argp)
     {
+        constexpr unsigned long fionbio = 0x5421;
+        constexpr unsigned long fioclex = 0x5451;
+        constexpr unsigned long fionclex = 0x5450;
+
         const auto proc = sched::current_process();
 
         const auto fdesc_res = get_fd(proc, fd);
         if (!fdesc_res)
             return -lib::map_error(fdesc_res.error());
         const auto &fdesc = *fdesc_res;
+
+        switch (request)
+        {
+            case fionbio:
+            {
+                int value = 0;
+                if (!lib::copy_from_user(&value, argp, sizeof(value)))
+                    return -EFAULT;
+                if (value)
+                    fdesc->file->flags |= o_nonblock;
+                else
+                    fdesc->file->flags &= ~o_nonblock;
+                return 0;
+            }
+            case fioclex:
+                fdesc->closexec.store(true, std::memory_order_relaxed);
+                return 0;
+            case fionclex:
+                fdesc->closexec.store(false, std::memory_order_relaxed);
+                return 0;
+        }
 
         const auto ret = fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
         if (!ret.has_value())
@@ -2096,7 +2151,7 @@ namespace syscall::vfs
     int socket(int domain, int type, int protocol)
     {
         lib::unused(domain, type, protocol);
-        return -ENOSYS;
+        return -EAFNOSUPPORT;
     }
 
     int getdents64(int fd, dirent64 __user *buf, std::size_t count)
