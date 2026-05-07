@@ -1039,6 +1039,20 @@ namespace syscall::vfs
         return 0;
     }
 
+    int statfs(const char __user *path, struct statfs __user *buf)
+    {
+        // TODO
+        lib::unused(path, buf);
+        return -ENOSYS;
+    }
+
+    int fstatfs(int fd, struct statfs __user *buf)
+    {
+        // TODO
+        lib::unused(fd, buf);
+        return -ENOSYS;
+    }
+
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
     {
         if ((mode & ~(f_ok | x_ok | w_ok | r_ok)) != 0)
@@ -2160,6 +2174,13 @@ namespace syscall::vfs
     int socket(int domain, int type, int protocol)
     {
         lib::unused(domain, type, protocol);
+        return -EAFNOSUPPORT;
+    }
+
+    int socketpair(int domain, int type, int protocol, int __user *sv)
+    {
+        // TODO
+        lib::unused(domain, type, protocol, sv);
         return -EAFNOSUPPORT;
     }
 

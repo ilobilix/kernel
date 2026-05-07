@@ -280,7 +280,9 @@ export namespace fs::dev::tty
 
     enum ioctl
     {
+        kdgkbtype = 0x4B33,
         kdgkbmode = 0x4B44,
+        kdsigaccept = 0x4B4E,
         tcgets = 0x5401,
         tcsets = 0x5402,
         tcsetsw = 0x5403,

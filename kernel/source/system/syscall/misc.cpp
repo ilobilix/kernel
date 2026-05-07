@@ -44,19 +44,48 @@ namespace syscall::misc
         char _f[20 - 2 * sizeof(long) - sizeof(int)];
     };
 
+    namespace
+    {
+        constexpr std::size_t hostname_max = 64;
+        lib::spinlock hostname_lock;
+        char hostname_buf[hostname_max + 1] = "ilobilix";
+    } // namespace
+
     int uname(struct utsname __user *buf)
     {
         utsname kbuf
         {
             .sysname = "Ilobilix",
-            .nodename = "ilobilix",
+            .nodename = { },
             .release = ILOBILIX_RELEASE,
             .version = __DATE__ " " __TIME__,
             .machine = ILOBILIX_ARCH,
             .domainname = "(none)"
         };
+        {
+            const std::unique_lock _ { hostname_lock };
+            std::memcpy(kbuf.nodename, hostname_buf, sizeof(kbuf.nodename));
+        }
         if (!lib::copy_to_user(buf, &kbuf, sizeof(utsname)))
             return -EFAULT;
+        return 0;
+    }
+
+    int sethostname(const char __user *name, std::size_t len)
+    {
+        const auto proc = sched::current_process();
+        if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
+            return -EPERM;
+        if (len > hostname_max)
+            return -EINVAL;
+
+        char tmp[hostname_max + 1] = { };
+        if (!lib::copy_from_user(tmp, name, len))
+            return -EFAULT;
+
+        const std::unique_lock _ { hostname_lock };
+        std::memset(hostname_buf, 0, sizeof(hostname_buf));
+        std::memcpy(hostname_buf, tmp, len);
         return 0;
     }
 

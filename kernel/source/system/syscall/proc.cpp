@@ -572,6 +572,18 @@ namespace syscall::proc
         return sched::sigreturn();
     }
 
+    int pause()
+    {
+        sched::wait_queue_t queue;
+        while (true)
+        {
+            queue.wait();
+            if (sched::consume_pending_stops())
+                continue;
+            return -EINTR;
+        }
+    }
+
     int rseq(struct rseq __user *rseq, std::uint32_t rseq_len, int flags, std::uint32_t sig)
     {
         // TODO

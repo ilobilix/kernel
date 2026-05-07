@@ -150,6 +150,8 @@ namespace fs::dev::tty
                         if (inst->needs_close_erase())
                             locked->erase(inst->minor);
                     }
+                    if (auto ldisc = inst->ldisc.lock().value())
+                        ldisc->shutdown();
                     drv->destroy_instance(inst);
                 }
                 file.private_data.reset();
@@ -958,6 +960,23 @@ namespace fs::dev::tty
             case kdgkbmode:
                 // TODO
                 return std::unexpected { lib::err::inappropriate_ioctl };
+            case kdgkbtype:
+            {
+                // TODO: keyboard type
+                constexpr std::uint8_t kb_101 = 0x02;
+                if (!argp.write(kb_101))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case kdsigaccept:
+            {
+                // TODO: magic keys
+                const auto sig = static_cast<int>(argp.address());
+                if (sig < 1 || sig > static_cast<int>(sched::nsig) ||
+                    sig == sched::sigkill || sig == sched::sigstop)
+                    return std::unexpected { lib::err::invalid_argument };
+                return 0;
+            }
             case vt_getstate:
                 // TODO
                 return std::unexpected { lib::err::inappropriate_ioctl };

@@ -8,6 +8,7 @@ import std;
 export namespace syscall::misc
 {
     int uname(struct utsname __user *buf);
+    int sethostname(const char __user *name, std::size_t len);
     int reboot(int magic, int magic2, int op, void __user *arg);
 
     int vhangup();
