@@ -293,6 +293,7 @@ export namespace fs::dev::tty
         tiocswinsz = 0x5414,
         tiocnotty = 0x5422,
         tiocsctty = 0x540E,
+        tiocgsid = 0x5429,
         tiocglcktrmios = 0x5456,
         tiocslcktrmios = 0x5457,
         vt_getstate = 0x5603,

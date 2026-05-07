@@ -2126,7 +2126,6 @@ namespace syscall::vfs
             return fds[1];
         }
 
-        wfdesc->file->private_data = rfdesc->file->private_data;
         if (const auto ret = wfdesc->file->open(flags | o_wronly, proc->pid); !ret)
         {
             close_fd(proc, fds[0]);

@@ -976,6 +976,19 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             }
+            case tiocgsid:
+            {
+                const auto proc = sched::current_process();
+
+                auto locked = inst->ctrl.lock();
+                const auto tty_session = locked->session.lock();
+                if (!tty_session || tty_session != proc->session)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+
+                if (!argp.write(tty_session->sid))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
             case tiocspgrp:
             {
                 pid_t pgid;

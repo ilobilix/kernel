@@ -9,6 +9,9 @@ export namespace syscall::misc
 {
     int uname(struct utsname __user *buf);
     int reboot(int magic, int magic2, int op, void __user *arg);
+
+    int vhangup();
+
     std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags);
 
     int prctl(

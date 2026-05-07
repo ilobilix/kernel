@@ -374,6 +374,8 @@ export namespace vfs
             std::string,
             lib::membuffer
         > xattrs;
+
+        std::shared_ptr<void> private_data;
     };
 
     struct dentry : std::enable_shared_from_this<dentry>
