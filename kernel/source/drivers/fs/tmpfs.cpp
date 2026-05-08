@@ -9,6 +9,7 @@ import system.sched;
 import system.chrono;
 import system.vfs.dev;
 import system.vfs;
+import fmt;
 import lib;
 import std;
 
@@ -257,13 +258,13 @@ namespace fs::tmpfs
 
     auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
     {
-        inode->dirty = false;
+        lib::unused(inode);
         return { };
     }
 
     auto fs::instance::dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
     {
-        inode->dirty = true;
+        lib::unused(inode);
         return { };
     }
 
@@ -273,6 +274,45 @@ namespace fs::tmpfs
     {
         lib::panic("todo: tmpfs::unmount");
         return false;
+    }
+
+    std::string fs::instance::mount_options() const
+    {
+        constexpr auto none = std::numeric_limits<std::size_t>::max();
+        constexpr mode_t default_mode = 0777 | s_isvtx;
+
+        std::string out;
+        const auto sep = [&] {
+            if (!out.empty())
+                out.append(",");
+        };
+
+        if (max_size != none)
+        {
+            sep();
+            out.append(fmt::format("size={}k", max_size / 1024));
+        }
+        if (max_inodes != none)
+        {
+            sep();
+            out.append(fmt::format("nr_inodes={}", max_inodes));
+        }
+        if (opt_mode != default_mode)
+        {
+            sep();
+            out.append(fmt::format("mode={:03o}", opt_mode));
+        }
+        if (opt_uid != 0)
+        {
+            sep();
+            out.append(fmt::format("uid={}", opt_uid));
+        }
+        if (opt_gid != 0)
+        {
+            sep();
+            out.append(fmt::format("gid={}", opt_gid));
+        }
+        return out;
     }
 
     auto fs::mount(
@@ -338,6 +378,9 @@ namespace fs::tmpfs
                 locked->max_size = max;
 
             locked->max_inodes = args.get<"nr_inodes">().value() ?: max;
+            locked->opt_mode = args.get<"mode">().value() & (0777 | s_isvtx | s_isgid | s_isuid);
+            locked->opt_uid = args.get<"uid">().value();
+            locked->opt_gid = args.get<"gid">().value();
         }
 
         auto root = std::make_shared<vfs::dentry>();
@@ -345,11 +388,10 @@ namespace fs::tmpfs
         locked->current_inodes.fetch_add(1, std::memory_order_relaxed);
         root->inode = std::make_shared<inode>(
             locked.get(), locked->dev_id, 0, locked->next_inode++,
-            static_cast<mode_t>(stat::type::s_ifdir) |
-            (args.get<"mode">().value() & (0777 | s_isvtx | s_isgid | s_isuid))
+            static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode
         );
-        root->inode->stat.st_uid = args.get<"uid">().value();
-        root->inode->stat.st_gid = args.get<"gid">().value();
+        root->inode->stat.st_uid = locked->opt_uid;
+        root->inode->stat.st_gid = locked->opt_gid;
         root->parent = root;
 
         vfs::dev::register_fs_ops(locked->dev_id, ops::singleton());
@@ -357,16 +399,6 @@ namespace fs::tmpfs
         auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
         mounts.push_back(mount);
         return mount;
-    }
-
-    std::unique_ptr<vfs::filesystem> init()
-    {
-        static bool once_flag = false;
-        if (once_flag)
-            lib::panic("tmpfs: tried to initialise twice");
-
-        once_flag = true;
-        return std::unique_ptr<vfs::filesystem> { new fs { } };
     }
 
     lib::initgraph::stage *registered_stage()
@@ -385,7 +417,7 @@ namespace fs::tmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(tmpfs::init()));
+            lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { new fs { } }));
         }
     };
 } // namespace fs::tmpfs

@@ -347,7 +347,7 @@ namespace syscall::vfs
                 acc |= sched::access_mode::read;
             if (is_write(flags) || trunc)
                 acc |= sched::access_mode::write;
-            if (!sched::check_perms(proc->cred, stat, acc))
+            if (!vfs::check_access(target, proc->cred, static_cast<std::uint32_t>(acc)))
                 return -EACCES;
         }
 
@@ -1095,8 +1095,7 @@ namespace syscall::vfs
         }
         else cred = proc->cred;
 
-        const auto &stat = target->dentry->inode->stat;
-        if (!sched::check_perms(cred, stat, desired))
+        if (!vfs::check_access(*target, cred, static_cast<std::uint32_t>(desired)))
             return -EACCES;
 
         return 0;
@@ -1286,7 +1285,17 @@ namespace syscall::vfs
         if (target->dentry->inode->stat.type() != stat::type::s_iflnk)
             return -EINVAL;
 
-        const auto link = target->dentry->symlinked_to;
+        if (!target->mnt)
+            return -EINVAL;
+        auto fs = target->mnt->fs.lock();
+        if (fs.get() == nullptr)
+            return -EIO;
+
+        const auto link_res = fs->readlink(target->dentry);
+        if (!link_res)
+            return -lib::map_error(link_res.error());
+
+        const auto &link = *link_res;
         const auto to_copy = static_cast<std::size_t>(std::min<std::size_t>(bufsiz, link.size()));
 
         if (to_copy > 0)
@@ -1793,7 +1802,8 @@ namespace syscall::vfs
                 return -EPERM;
         }
         else if (!is_owner && !has_fowner &&
-            !sched::check_perms(proc->cred, stat, sched::access_mode::write))
+            !vfs::check_access(*target, proc->cred,
+                static_cast<std::uint32_t>(sched::access_mode::write)))
             return -EACCES;
 
         for (auto &ktime : ktimes)
@@ -1862,7 +1872,8 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        if (!sched::check_perms(proc->cred, target->dentry->inode->stat, sched::access_mode::write))
+        if (!vfs::check_access(*target, proc->cred,
+            static_cast<std::uint32_t>(sched::access_mode::write)))
             return -EACCES;
 
         return do_trunc(*target, length);
@@ -2058,7 +2069,8 @@ namespace syscall::vfs
         if (stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
+        if (!vfs::check_access(*target, proc->cred,
+            static_cast<std::uint32_t>(sched::access_mode::exec)))
             return -EACCES;
 
         proc->vfs->cwd = *target;
@@ -2077,7 +2089,8 @@ namespace syscall::vfs
         if (stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (!sched::check_perms(proc->cred, stat, sched::access_mode::exec))
+        if (!vfs::check_access(*target, proc->cred,
+            static_cast<std::uint32_t>(sched::access_mode::exec)))
             return -EACCES;
 
         proc->vfs->cwd = *target;
@@ -2094,6 +2107,7 @@ namespace syscall::vfs
 
         auto shared_inode = std::make_shared<inode>();
         {
+            shared_inode->stat.st_ino = vfs::next_anon_ino();
             shared_inode->stat.st_blksize = 0x1000;
             shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
             shared_inode->stat.st_uid = proc->cred->euid;

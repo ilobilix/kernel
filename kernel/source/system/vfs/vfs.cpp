@@ -6,6 +6,8 @@ import system.cpu.local;
 import system.vfs.dev;
 import system.sched;
 import drivers.fs;
+import drivers.fs.procfs;
+import fmt;
 import lib;
 import std;
 
@@ -29,6 +31,11 @@ namespace vfs
                 std::unique_ptr<filesystem>
             >, sched::mutex
         > filesystems;
+
+        lib::locker<
+            lib::list<std::weak_ptr<struct mount>>,
+            sched::mutex
+        > mounts;
 
         std::atomic<dev_t> next_dev = 1;
         dev_t allocate_dev()
@@ -90,6 +97,44 @@ namespace vfs
     } // namespace
 
     filesystem::instance::instance() : dev_id { allocate_dev() } { }
+
+    auto filesystem::instance::readlink(std::shared_ptr<dentry> dentry) -> lib::expect<lib::path>
+    {
+        if (!dentry || dentry->symlinked_to.empty())
+            return std::unexpected { lib::err::invalid_symlink };
+        return dentry->symlinked_to;
+    }
+
+    bool filesystem::instance::permission(
+        std::shared_ptr<dentry> dentry,
+        const std::shared_ptr<sched::cred_t> &cred,
+        std::uint32_t mode
+    )
+    {
+        return sched::check_perms(cred, dentry->inode->stat, static_cast<sched::access_mode>(mode));
+    }
+
+    bool check_access(
+        const path &target,
+        const std::shared_ptr<sched::cred_t> &cred,
+        std::uint32_t mode
+    )
+    {
+        if (!target.dentry || !target.dentry->inode)
+            return false;
+
+        if (target.mnt)
+        {
+            auto fs = target.mnt->fs.lock();
+            return fs->permission(target.dentry, cred, mode);
+        }
+        return sched::check_perms(cred, target.dentry->inode->stat, static_cast<sched::access_mode>(mode));
+    }
+
+    bool check_access(const path &target, std::uint32_t mode)
+    {
+        return check_access(target, sched::current_process()->cred, mode);
+    }
 
     auto file::get_ops() const -> lib::expect<std::shared_ptr<ops>>
     {
@@ -371,12 +416,10 @@ namespace vfs
 
         lib::bug_on(parent->mnt == nullptr);
 
-        auto check_search = [&](const auto &parent) {
-            const auto &stat = parent->inode->stat;
-            return sched::check_perms(stat, sched::access_mode::exec);
-        };
-
         auto current = parent.value();
+        const auto check_search = [] (const path &path) {
+            return check_access(path, static_cast<std::uint32_t>(sched::access_mode::exec));
+        };
 
         auto split = std::views::split(_path.str(), '/');
         const std::size_t size = std::ranges::distance(split);
@@ -416,10 +459,19 @@ namespace vfs
                 continue;
             }
 
-            if (!check_search(current.dentry))
+            if (!check_search(current))
                 return std::unexpected { lib::err::permission_denied };
 
             auto dentry = current.dentry->children.lock()->lookup(segment);
+            if (dentry != nullptr)
+            {
+                auto fs = current.mnt->fs.lock();
+                if (fs.get() != nullptr && !fs->revalidate(dentry))
+                {
+                    current.dentry->children.lock()->erase(segment);
+                    dentry = nullptr;
+                }
+            }
             if (dentry == nullptr)
             {
                 auto found = [&] -> lib::expect<std::optional<dir_entry>> {
@@ -509,9 +561,7 @@ namespace vfs
         const auto is_symlink = [&src]
         {
             const auto &dentry = src.dentry;
-            return
-                dentry->inode->stat.type() == stat::type::s_iflnk &&
-                !dentry->symlinked_to.empty();
+            return dentry->inode->stat.type() == stat::type::s_iflnk;
         };
 
         const auto og = symlink_depth;
@@ -523,7 +573,23 @@ namespace vfs
             if (src.mnt && (src.mnt->flags & ms_nosymfollow))
                 return std::unexpected { lib::err::symloop_max };
 
-            const auto ret = resolve(parent, src.dentry->symlinked_to, automount);
+            lib::path target;
+            if (src.mnt)
+            {
+                auto fs = src.mnt->fs.lock();
+                if (fs.get() == nullptr)
+                    return std::unexpected { lib::err::io_error };
+                auto link = fs->readlink(src.dentry);
+                if (!link)
+                    return std::unexpected { link.error() };
+                target = std::move(*link);
+            }
+            else if (!src.dentry->symlinked_to.empty())
+                target = src.dentry->symlinked_to;
+            else
+                return std::unexpected { lib::err::invalid_symlink };
+
+            const auto ret = resolve(parent, target, automount);
             if (!ret)
                 return std::unexpected { ret.error() };
             if (ret->target.dentry == src.dentry)
@@ -600,12 +666,45 @@ namespace vfs
 
         mnt.value()->mounted_on = target;
         mnt.value()->flags = flags;
+        mnt.value()->fstype = fstype;
+        mnt.value()->source = source_path.str();
         target.dentry->child_mounts.lock()->push_back(mnt.value());
+        mounts.lock()->push_back(mnt.value());
 
         if (!(flags & ms_silent))
             lib::info("vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags);
 
         return { };
+    }
+
+    void for_each_mount(std::function<bool (const std::shared_ptr<struct mount> &)> func)
+    {
+        std::vector<std::shared_ptr<struct mount>> snapshot;
+        std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
+        {
+            auto locked = mounts.lock();
+            snapshot.reserve(locked->size());
+            for (auto it = locked->begin(); it != locked->end(); it++)
+            {
+                if (auto strong = it->lock())
+                    snapshot.push_back(std::move(strong));
+                else
+                    dead.push_back(it);
+            }
+            for (auto it : dead)
+                locked->erase(it);
+        }
+        for (const auto &mnt : snapshot)
+        {
+            if (!func(mnt))
+                break;
+        }
+    }
+
+    ino_t next_anon_ino()
+    {
+        static std::atomic<ino_t> counter { 1 };
+        return counter.fetch_add(1, std::memory_order_relaxed);
     }
 
     auto unmount(lib::path target) -> lib::expect<void>
@@ -1178,4 +1277,73 @@ lib::initgraph::stage *root_mounted_stage()
             lib::bug_on(!mount("", "/", "tmpfs", 0));
         }
     };
+
+    namespace
+    {
+        lib::initgraph::task procfs_register_task
+        {
+            "vfs.procfs.register-mounts",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { fs::procfs::registered_stage() },
+            [] {
+                fs::procfs::register_global("mounts",
+                    [](auto) {
+                        std::string out;
+                        for_each_mount([&](const std::shared_ptr<struct mount> &mnt) {
+                            if (!mnt->mounted_on || !mnt->mounted_on->dentry)
+                                return true;
+                            if (mnt->fstype.empty())
+                                return true;
+
+                            const auto mountpoint = pathname_from(*mnt->mounted_on);
+                            if (mountpoint.empty())
+                                return true;
+
+                            const std::string_view source = mnt->source.empty()
+                                ? std::string_view { mnt->fstype }
+                                : mnt->source;
+                            const auto flags = mnt->flags;
+
+                            std::string opts { (flags & ms_rdonly) ? "ro" : "rw" };
+                            if (flags & ms_nosuid)
+                                opts.append(",nosuid");
+                            if (flags & ms_nodev)
+                                opts.append(",nodev");
+                            if (flags & ms_noexec)
+                                opts.append(",noexec");
+                            if (flags & ms_synchronous)
+                                opts.append(",sync");
+                            if (flags & ms_dirsync)
+                                opts.append(",dirsync");
+                            if (flags & ms_noatime)
+                                opts.append(",noatime");
+                            if (flags & ms_nodiratime)
+                                opts.append(",nodiratime");
+                            if (flags & ms_relatime)
+                                opts.append(",relatime");
+                            if (flags & ms_strictatime)
+                                opts.append(",strictatime");
+                            if (flags & ms_lazytime)
+                                opts.append(",lazytime");
+
+                            {
+                                const auto fs = mnt->fs.lock();
+                                const auto fs_opts = fs->mount_options();
+                                if (!fs_opts.empty())
+                                {
+                                    opts.append(",");
+                                    opts.append(fs_opts);
+                                }
+                            }
+
+                            out.append(fmt::format("{} {} {} {} 0 0\n",
+                                source, mountpoint, mnt->fstype, opts
+                            ));
+                            return true;
+                        });
+                        return out;
+                    }, 0444);
+            }
+        };
+    } // namespace
 } // namespace vfs

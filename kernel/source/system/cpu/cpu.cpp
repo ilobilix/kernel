@@ -2,6 +2,7 @@
 
 module system.cpu;
 
+import drivers.fs.procfs;
 import system.cpu.local;
 import system.memory;
 import system.chrono;
@@ -9,6 +10,7 @@ import boot;
 import arch;
 import lib;
 import std;
+import fmt;
 
 namespace cpu
 {
@@ -102,4 +104,32 @@ namespace cpu
         mp::boot_cores(local::request);
 #endif
     }
+
+    lib::initgraph::task procfs_register_task
+    {
+        "cpu.procfs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { ::fs::procfs::registered_stage() },
+        [] {
+            ::fs::procfs::register_global("cpuinfo",
+                [](auto) {
+                    // TODO: real vendor_id/model name/flags/cache info/cpu mhz
+                    constexpr std::string_view tail =
+                        "vendor_id\t: ilobilix\n"
+                        "model name\t: " ILOBILIX_ARCH "\n"
+                        "\n";
+
+                    const auto num = count();
+                    std::string out;
+                    out.reserve(num * (tail.size() + 32));
+                    for (std::size_t idx = 0; idx < num; idx++)
+                    {
+                        out.append(fmt::format("processor\t: {}\n", idx));
+                        out.append(tail);
+                    }
+                    return out;
+                }, 0444
+            );
+        }
+    };
 } // namespace cpu
