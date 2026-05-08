@@ -7,6 +7,7 @@ import system.vfs;
 import system.memory.virt;
 import system.cpu.regs;
 import system.cpu.arch;
+import system.cpu;
 import magic_enum;
 import arch;
 
@@ -1052,6 +1053,101 @@ namespace syscall::proc
             return -EFAULT;
 
         return ret;
+    }
+
+    int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask)
+    {
+        if (pid < 0)
+            return -EINVAL;
+
+        if (mask == nullptr)
+            return -EFAULT;
+
+        if (cpusetsize == 0 || (cpusetsize & (sizeof(unsigned long) - 1)) != 0)
+            return -EINVAL;
+
+        const auto ncpus = cpu::count();
+        const auto kernel_bytes = lib::div_roundup(ncpus, 8u);
+        const auto read_bytes = std::min(cpusetsize, kernel_bytes);
+
+        lib::bitmap bm { ncpus };
+        if (!lib::copy_from_user(bm.data(), mask, read_bytes))
+            return -EFAULT;
+
+        const auto trailing = ncpus % 8;
+        if (trailing != 0)
+            bm.data()[kernel_bytes - 1] &= static_cast<std::uint8_t>((1u << trailing) - 1);
+
+        if (bm.empty())
+            return -EINVAL;
+
+        sched::process_t *target_proc = nullptr;
+        sched::thread_t *target_thread = nullptr;
+        if (pid == 0)
+        {
+            target_thread = sched::current_thread();
+            target_proc = sched::current_process();
+        }
+        else
+        {
+            target_thread = sched::get_thread(pid);
+            if (!target_thread)
+                return -ESRCH;
+            target_proc = target_thread->proc;
+        }
+
+        const auto cred = sched::current_process()->cred;
+        const auto tcred = target_proc->cred;
+        const bool perm_ok = sched::capable(cred, sched::cap_t::sys_nice) ||
+            (tcred && (cred->euid == tcred->ruid || cred->euid == tcred->suid));
+
+        if (!perm_ok)
+            return -EPERM;
+
+        target_thread->affinity = std::move(bm);
+        if (target_thread->state.load(std::memory_order_acquire) == sched::thread_state::running &&
+            !target_thread->affinity.get(target_thread->running_on->idx))
+            target_thread->set_flag(sched::thread_flags::needs_resched);
+
+        return 0;
+    }
+
+    int sched_getaffinity(pid_t pid, std::size_t cpusetsize, std::uint8_t __user *mask)
+    {
+        if (pid < 0)
+            return -EINVAL;
+
+        if (mask == nullptr)
+            return -EFAULT;
+
+        if (cpusetsize == 0 || (cpusetsize & (sizeof(unsigned long) - 1)) != 0)
+            return -EINVAL;
+
+        const auto ncpus = cpu::count();
+        const auto kernel_bytes = lib::div_roundup(ncpus, 8u);
+        constexpr auto ulong_size = sizeof(unsigned long);
+        const auto kernel_bytes_aligned = (kernel_bytes + ulong_size - 1) & ~(ulong_size - 1);
+
+        if (cpusetsize < kernel_bytes_aligned)
+            return -EINVAL;
+
+        sched::thread_t *target_thread = nullptr;
+        if (pid != 0)
+        {
+            target_thread = sched::get_thread(pid);
+            if (!target_thread)
+                return -ESRCH;
+        }
+        else target_thread = sched::current_thread();
+
+        const auto &bm = target_thread->affinity;
+        const auto first = std::min(kernel_bytes, cpusetsize);
+        if (!lib::copy_to_user(mask, bm.data(), first))
+            return -EFAULT;
+        if (cpusetsize > first && !lib::fill_user(mask + first, 0, cpusetsize - first))
+            return -EFAULT;
+
+        return static_cast<int>(kernel_bytes_aligned);
     }
 
     [[noreturn]] void exit_group(int status)

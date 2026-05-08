@@ -8,6 +8,7 @@ module drivers.fs.procfs;
 
 import system.memory.virt;
 import system.sched.mutex;
+import system.sysctl;
 import system.vfs.dev;
 import system.vfs;
 import fmt;
@@ -74,7 +75,9 @@ namespace fs::procfs
         file,
         symlink,
         fd_dir,
-        fd_link
+        fd_link,
+        sysctl_dir,
+        sysctl_file
     };
 
     struct inode : vfs::inode
@@ -83,17 +86,19 @@ namespace fs::procfs
         pid_t pid;
         int fd;
         gen_fn gen;
+        std::string sysctl_path;
 
         inode(kind knd, pid_t pid, int fd, gen_fn gen, dev_t dev, ino_t ino, mode_t mode)
             : vfs::inode { }, knd { knd }, pid { pid }, fd { fd }, gen { gen }
         {
             const bool is_link = (knd == kind::symlink || knd == kind::fd_link);
+            const bool is_file = (knd == kind::file || knd == kind::sysctl_file);
 
             stat.st_dev = dev;
             stat.st_rdev = 0;
             stat.st_ino = ino;
             stat.st_mode = mode;
-            stat.st_nlink = (knd == kind::file || is_link) ? 1 : 2;
+            stat.st_nlink = (is_file || is_link) ? 1 : 2;
             stat.st_uid = 0;
             stat.st_gid = 0;
             stat.st_size = 0;
@@ -137,6 +142,12 @@ namespace fs::procfs
             return instance;
         }
 
+        static bool is_readable(const inode *inod)
+        {
+            return (inod->knd == kind::file && inod->gen) ||
+                inod->knd == kind::sysctl_file;
+        }
+
         static auto cache(std::shared_ptr<vfs::file> &file, inode *inod)
             -> lib::expect<std::shared_ptr<std::string>>
         {
@@ -144,14 +155,24 @@ namespace fs::procfs
             if (contents)
                 return contents;
 
-            sched::process_t *proc = nullptr;
-            if (inod->pid >= 0)
+            if (inod->knd == kind::sysctl_file)
             {
-                proc = sched::get_process(inod->pid);
-                if (!proc)
+                const auto entry = sysctl::find(inod->sysctl_path);
+                if (!entry || !entry->read)
                     return std::unexpected { lib::err::not_found };
+                contents = std::make_shared<std::string>(entry->read());
             }
-            contents = std::make_shared<std::string>(inod->gen(proc));
+            else
+            {
+                sched::process_t *proc = nullptr;
+                if (inod->pid >= 0)
+                {
+                    proc = sched::get_process(inod->pid);
+                    if (!proc)
+                        return std::unexpected { lib::err::not_found };
+                }
+                contents = std::make_shared<std::string>(inod->gen(proc));
+            }
             file->private_data = contents;
             return contents;
         }
@@ -160,7 +181,7 @@ namespace fs::procfs
         {
             lib::unused(flags, pid);
             auto inod = static_cast<inode *>(file->path.dentry->inode.get());
-            if (inod->knd != kind::file || !inod->gen)
+            if (!is_readable(inod))
                 return { };
 
             if (const auto ret = cache(file, inod); !ret)
@@ -174,7 +195,7 @@ namespace fs::procfs
         ) override
         {
             auto inod = static_cast<inode *>(file->path.dentry->inode.get());
-            if (inod->knd != kind::file || !inod->gen)
+            if (!is_readable(inod))
                 return std::unexpected { lib::err::not_supported };
 
             auto cached = cache(file, inod);
@@ -202,13 +223,38 @@ namespace fs::procfs
             lib::maybe_uspan<std::byte> buffer
         ) override
         {
-            lib::unused(file, offset, buffer);
-            return std::unexpected { lib::err::read_only_fs };
+            lib::unused(offset);
+            auto inod = static_cast<inode *>(file->path.dentry->inode.get());
+            if (inod->knd != kind::sysctl_file)
+                return std::unexpected { lib::err::read_only_fs };
+
+            const auto entry = sysctl::find(inod->sysctl_path);
+            if (!entry)
+                return std::unexpected { lib::err::not_found };
+            if (!entry->write)
+                return std::unexpected { lib::err::read_only_fs };
+
+            std::string data(buffer.size(), '\0');
+            if (!buffer.copy_to(reinterpret_cast<std::byte *>(data.data())))
+                return std::unexpected { lib::err::invalid_address };
+
+            const auto ret = entry->write(data);
+            if (!ret)
+                return std::unexpected { ret.error() };
+
+            file->private_data.reset();
+            return buffer.size();
         }
 
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
-            lib::unused(file, size);
+            lib::unused(size);
+            auto inod = static_cast<inode *>(file->path.dentry->inode.get());
+            if (inod->knd == kind::sysctl_file)
+            {
+                file->private_data.reset();
+                return { };
+            }
             return std::unexpected { lib::err::read_only_fs };
         }
 
@@ -304,6 +350,28 @@ namespace fs::procfs
                 return ret;
             }
 
+            std::shared_ptr<inode> make_sysctl_dir_inode(std::string path)
+            {
+                auto ret = std::make_shared<inode>(
+                    kind::sysctl_dir, -1, -1, nullptr,
+                    dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_ifdir) | 0555
+                );
+                ret->sysctl_path = std::move(path);
+                return ret;
+            }
+
+            std::shared_ptr<inode> make_sysctl_file_inode(std::string path, mode_t mode)
+            {
+                auto ret = std::make_shared<inode>(
+                    kind::sysctl_file, -1, -1, nullptr,
+                    dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_ifreg) | mode
+                );
+                ret->sysctl_path = std::move(path);
+                return ret;
+            }
+
             auto make_entry_inode(pid_t pid, const entry &ent) -> std::shared_ptr<inode>
             {
                 if (ent.is_symlink)
@@ -364,6 +432,8 @@ namespace fs::procfs
                     return readdir_pid_dir(inod->pid, cookie);
                 if (inod->knd == kind::fd_dir)
                     return readdir_fd_dir(inod->pid, cookie);
+                if (inod->knd == kind::sysctl_dir)
+                    return readdir_sysctl_dir(inod->sysctl_path, cookie);
                 return std::unexpected { lib::err::not_a_dir };
             }
 
@@ -374,6 +444,13 @@ namespace fs::procfs
 
                 if (inod->knd == kind::root_dir)
                 {
+                    if (name == "sys")
+                    {
+                        return vfs::dir_entry {
+                            std::string { name },
+                            make_sysctl_dir_inode({ }), 0
+                        };
+                    }
                     if (auto ent = find_in(global_registry, name))
                     {
                         return vfs::dir_entry {
@@ -388,6 +465,30 @@ namespace fs::procfs
                         return vfs::dir_entry {
                             std::string { name },
                             make_pid_dir_inode(*pid), 0
+                        };
+                    }
+                    return std::nullopt;
+                }
+
+                if (inod->knd == kind::sysctl_dir)
+                {
+                    std::string child = inod->sysctl_path;
+                    if (!child.empty())
+                        child += '/';
+                    child.append(name);
+
+                    if (const auto entry = sysctl::find(child))
+                    {
+                        return vfs::dir_entry {
+                            std::string { name },
+                            make_sysctl_file_inode(std::move(child), entry->mode), 0
+                        };
+                    }
+                    if (sysctl::dir_exists(child))
+                    {
+                        return vfs::dir_entry {
+                            std::string { name },
+                            make_sysctl_dir_inode(std::move(child)), 0
                         };
                     }
                     return std::nullopt;
@@ -536,13 +637,24 @@ namespace fs::procfs
                 constexpr std::size_t max_batch = 256;
                 lib::list<vfs::dir_entry> result;
 
-                const auto entries = snapshot(global_registry);
-                const std::size_t cookie_first_pid = cookie_base + entries.size();
                 std::size_t idx = std::max<std::size_t>(cookie, cookie_base);
+
+                if (idx == cookie_base)
+                {
+                    result.push_back({
+                        std::string { "sys" },
+                        make_sysctl_dir_inode({ }),
+                        idx
+                    });
+                    idx++;
+                }
+
+                const auto entries = snapshot(global_registry);
+                const std::size_t cookie_first_pid = cookie_base + 1 + entries.size();
 
                 while (idx < cookie_first_pid && result.size() < max_batch)
                 {
-                    const auto &ent = entries[idx - cookie_base];
+                    const auto &ent = entries[idx - cookie_base - 1];
                     auto child = make_entry_inode(-1, ent);
                     result.push_back({ ent.name, child, idx });
                     idx++;
@@ -638,6 +750,35 @@ namespace fs::procfs
                     auto child = make_fd_link_inode(pid, fd);
                     result.push_back({ fmt::format("{}", fd), child, base + fd_idx });
                     fd_idx++;
+                }
+                return result;
+            }
+
+            auto readdir_sysctl_dir(std::string_view path, std::size_t cookie)
+                -> lib::expect<lib::list<vfs::dir_entry>>
+            {
+                lib::list<vfs::dir_entry> result;
+                auto entries = sysctl::list(path);
+
+                std::size_t entry_idx = cookie > cookie_base ? cookie - cookie_base : 0;
+                constexpr std::size_t max_batch = 256;
+                while (entry_idx < entries.size() && result.size() < max_batch)
+                {
+                    auto &ent = entries[entry_idx];
+                    std::string full = std::string { path };
+                    if (!full.empty())
+                        full += '/';
+                    full.append(ent.name);
+
+                    std::shared_ptr<inode> child;
+                    if (ent.is_dir)
+                        child = make_sysctl_dir_inode(std::move(full));
+                    else if (const auto sct = sysctl::find(full))
+                        child = make_sysctl_file_inode(std::move(full), sct->mode);
+
+                    if (child)
+                        result.push_back({ std::move(ent.name), std::move(child), cookie_base + entry_idx });
+                    entry_idx++;
                 }
                 return result;
             }

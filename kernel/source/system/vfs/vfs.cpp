@@ -424,7 +424,7 @@ namespace vfs
         lib::bug_on(parent->mnt == nullptr);
 
         auto current = parent.value();
-        const auto check_search = [] (const path &path) {
+        const auto check_search = [](const path &path) {
             return check_access(path, static_cast<std::uint32_t>(sched::access_mode::exec));
         };
 
@@ -684,30 +684,6 @@ namespace vfs
             lib::info("vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags);
 
         return { };
-    }
-
-    void for_each_mount(std::function<bool (const std::shared_ptr<struct mount> &)> func)
-    {
-        std::vector<std::shared_ptr<struct mount>> snapshot;
-        std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
-        {
-            auto locked = mounts.lock();
-            snapshot.reserve(locked->size());
-            for (auto it = locked->begin(); it != locked->end(); it++)
-            {
-                if (auto strong = it->lock())
-                    snapshot.push_back(std::move(strong));
-                else
-                    dead.push_back(it);
-            }
-            for (auto it : dead)
-                locked->erase(it);
-        }
-        for (const auto &mnt : snapshot)
-        {
-            if (!func(mnt))
-                break;
-        }
     }
 
     ino_t next_anon_ino()
@@ -1297,16 +1273,33 @@ lib::initgraph::stage *root_mounted_stage()
             [] {
                 fs::procfs::register_global("mounts",
                     [](auto) {
+                        std::vector<std::shared_ptr<struct mount>> snapshot;
+                        std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
+                        {
+                            auto locked = mounts.lock();
+                            snapshot.reserve(locked->size());
+                            for (auto it = locked->begin(); it != locked->end(); it++)
+                            {
+                                if (auto strong = it->lock())
+                                    snapshot.push_back(std::move(strong));
+                                else
+                                    dead.push_back(it);
+                            }
+                            for (auto it : dead)
+                                locked->erase(it);
+                        }
+
                         std::string out;
-                        for_each_mount([&](const std::shared_ptr<struct mount> &mnt) {
+                        for (const auto &mnt : snapshot)
+                        {
                             if (!mnt->mounted_on || !mnt->mounted_on->dentry)
-                                return true;
+                                continue;
                             if (mnt->fstype.empty())
-                                return true;
+                                continue;
 
                             const auto mountpoint = pathname_from(*mnt->mounted_on);
                             if (mountpoint.empty())
-                                return true;
+                                continue;
 
                             const std::string_view source = mnt->source.empty()
                                 ? std::string_view { mnt->fstype }
@@ -1348,8 +1341,20 @@ lib::initgraph::stage *root_mounted_stage()
                             out.append(fmt::format("{} {} {} {} 0 0\n",
                                 source, mountpoint, mnt->fstype, opts
                             ));
-                            return true;
-                        });
+                        }
+                        return out;
+                    }, 0444
+                );
+
+                fs::procfs::register_global("filesystems",
+                    [](auto) {
+                        std::string out;
+                        for (const auto &[name, fs] : *filesystems.lock())
+                        {
+                            out.append(fmt::format("{}\t{}\n",
+                                !fs->requires_dev ? "nodev" : "", name
+                            ));
+                        }
                         return out;
                     }, 0444
                 );

@@ -987,6 +987,17 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             }
+            case kdgkbled:
+            {
+                // TODO
+                constexpr std::uint8_t no_locks = 0;
+                if (!argp.write(no_locks))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case kdskbled:
+                // TODO
+                return 0;
             case kdsigaccept:
             {
                 // TODO: magic keys

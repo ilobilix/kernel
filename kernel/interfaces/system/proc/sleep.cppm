@@ -71,7 +71,5 @@ namespace sched
     void expire_timeouts();
     void expire_alarms();
 
-    // charge a CPU-time delta to a process's ITIMER_VIRTUAL/ITIMER_PROF;
-    // virtual is only charged when the tick interrupted user-mode code.
     void charge_cpu_itimers(process_t *proc, std::uint64_t delta_ns, bool from_user);
 } // namespace sched

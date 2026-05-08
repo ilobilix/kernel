@@ -15,6 +15,12 @@ namespace vmm
 
     namespace
     {
+        std::array<std::atomic<std::size_t>, 2> stats { };
+        std::atomic<std::size_t> &stats_for(object_type type)
+        {
+            return stats[static_cast<std::size_t>(type)];
+        }
+
         constexpr std::size_t num_waitqueues = 256;
         sched::wait_queue_t waitqueues[num_waitqueues];
 
@@ -60,6 +66,11 @@ namespace vmm
                 address <= vmspace::vspace_top - length;
         }
     } // namespace
+
+    std::size_t cached_pages(object_type type)
+    {
+        return stats_for(type).load(std::memory_order_relaxed);
+    }
 
     page *page_for(std::uintptr_t addr)
     {
@@ -139,6 +150,7 @@ namespace vmm
                         if (in_cache)
                         {
                             locked->erase(it);
+                            stats_for(type).fetch_sub(1, std::memory_order_relaxed);
                             pg->obj_ptr = nullptr;
                         }
 
@@ -162,6 +174,7 @@ namespace vmm
                 pg->flags.store(page::flag::file | page::flag::busy, std::memory_order_relaxed);
 
                 locked->insert({ start_idx + i, pg });
+                stats_for(type).fetch_add(1, std::memory_order_relaxed);
                 pages[i] = pg;
                 needs_fetch[i] = true;
             }
@@ -202,6 +215,7 @@ namespace vmm
                     if (in_cache)
                     {
                         locked->erase(it);
+                        stats_for(type).fetch_sub(1, std::memory_order_relaxed);
                         pg->obj_ptr = nullptr;
                     }
 
@@ -482,7 +496,11 @@ namespace vmm
         const auto npsize = pagemap::from_page_size(psize);
         const auto num_alloc_pages = npsize / pmm::page_size;
 
-        for (auto &[_, page] : *cache.lock())
+        auto locked = cache.lock();
+        if (!locked->empty())
+            stats_for(type).fetch_sub(locked->size(), std::memory_order_relaxed);
+
+        for (auto &[_, page] : *locked)
         {
             if (page && page->unref())
                 pmm::free(paddr_from(page), num_alloc_pages);
@@ -532,7 +550,7 @@ namespace vmm
             target_amap->slots = std::make_unique<anon::ptr []>(target_amap->nslots);
         }
         else if ((flags & flag::shared) && (flags & flag::anonymous))
-            target_obj = new memobject { };
+            target_obj = new memobject { object_type::shmem };
 
         std::uintptr_t startp = 0;
         std::uintptr_t endp = 0;

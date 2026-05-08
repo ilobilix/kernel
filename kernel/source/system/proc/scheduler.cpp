@@ -53,6 +53,13 @@ namespace sched
             >, mutex
         > processes;
 
+        lib::locker<
+            lib::map::flat_hash<
+                pid_t,
+                thread_t *
+            >, mutex
+        > threads;
+
         constinit process_t *kernel_proc = nullptr;
 
         lib::locker<
@@ -226,6 +233,7 @@ namespace sched
             {
                 auto thread = to_kill.pop_back();
                 lib::bug_on(locked->erase(thread->tid) != 1);
+                threads.lock()->erase(thread->tid);
                 process->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
 
                 if (!thread->saved_vmspace)
@@ -392,6 +400,7 @@ namespace sched
         arch::init_core(rq.current);
 
         (*kernel_proc->threads.lock())[rq.idle->tid] = rq.idle;
+        (*threads.lock())[rq.idle->tid] = rq.idle;
         kernel_proc->alive_threads.fetch_add(1, std::memory_order_relaxed);
 
         {
@@ -634,6 +643,7 @@ namespace sched
         arch::init_thread(thread, ip, arg, false, false);
 
         (*proc->threads.lock())[thread->tid] = thread;
+        (*threads.lock())[thread->tid] = thread;
         proc->alive_threads.fetch_add(1, std::memory_order_relaxed);
 
         return thread;
@@ -702,6 +712,7 @@ namespace sched
         arch::init_thread(thread, ip, arg, is_trampoline, is_clone);
 
         (*proc->threads.lock())[thread->tid] = thread;
+        (*threads.lock())[thread->tid] = thread;
         proc->alive_threads.fetch_add(1, std::memory_order_relaxed);
 
         return thread;
@@ -752,6 +763,18 @@ namespace sched
 
         auto locked = processes.lock();
         auto it = locked->find(pid);
+        if (it == locked->end())
+            return nullptr;
+        return it->second;
+    }
+
+    thread_t *get_thread(pid_t tid)
+    {
+        if (tid < 0)
+            return nullptr;
+
+        auto locked = threads.lock();
+        auto it = locked->find(tid);
         if (it == locked->end())
             return nullptr;
         return it->second;
@@ -867,6 +890,7 @@ namespace sched
         }
 
         proc->threads.lock()->erase(thread->tid);
+        threads.lock()->erase(thread->tid);
         if (proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
             lib::panic_if(proc->pid == 0, "attempted to kill kernel process");
@@ -1139,55 +1163,6 @@ namespace sched
         first->lock.unlock();
 
         preempt_enable();
-    }
-
-    void set_affinity(pid_t pid, lib::bitmap mask)
-    {
-        if (mask.empty())
-            return;
-
-        if (pid == 0)
-        {
-            auto thread = current_thread();
-            thread->affinity = std::move(mask);
-
-            if (!thread->affinity.get(thread->running_on->idx))
-                thread->set_flag(thread_flags::needs_resched);
-            return;
-        }
-
-        auto proc = get_process(pid);
-        if (!proc)
-            return;
-
-        auto locked = proc->threads.lock();
-        if (locked->empty())
-            return;
-
-        for (auto &[tid, thread] : *locked)
-        {
-            thread->affinity = mask;
-            if (thread->state.load(std::memory_order_acquire) == thread_state::running &&
-                !thread->affinity.get(thread->running_on->idx))
-                thread->set_flag(thread_flags::needs_resched);
-        }
-    }
-
-    lib::bitmap get_affinity(pid_t pid)
-    {
-        if (pid == 0)
-            return current_thread()->affinity;
-
-        auto proc = get_process(pid);
-        if (!proc)
-            return 0;
-
-        auto locked = proc->threads.lock();
-        if (locked->empty())
-            return 0;
-
-        // return first thread affinity
-        return locked->begin()->second->affinity;
     }
 
     int set_priority(int which, int who, int prio)
@@ -1622,6 +1597,7 @@ namespace sched
                 {
                     target_proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
                     target_proc->threads.lock()->erase(target_thread->tid);
+                    threads.lock()->erase(target_thread->tid);
                 }
             }
         };
@@ -1813,6 +1789,7 @@ namespace sched
             preempt_disable();
 
             process->threads.lock()->erase(old_thread->tid);
+            threads.lock()->erase(old_thread->tid);
             process->alive_threads.fetch_sub(1, std::memory_order_acq_rel);
 
             auto old_vmspace = process->vmspace;
@@ -1834,6 +1811,7 @@ namespace sched
             {
                 process->alive_threads.fetch_add(1, std::memory_order_relaxed);
                 (*process->threads.lock())[old_thread->tid] = old_thread;
+                (*threads.lock())[old_thread->tid] = old_thread;
 
                 process->vmspace = std::move(old_vmspace);
                 process->pathname = std::move(saved_pathname);

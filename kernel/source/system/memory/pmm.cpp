@@ -626,16 +626,33 @@ namespace pmm
         [] {
             fs::procfs::register_global("meminfo",
                 [](auto) {
-                    // TODO: Buffers/Cached/Active/Inactive/Slab/Swap/correct MemAvailable
+                    // TODO: Active/Inactive/Slab/AnonPages/Mapped/correct MemAvailable
                     const auto mem = info();
                     const auto kb = [](std::size_t bytes) { return bytes / 1024; };
+
+                    const auto shmem_pages = vmm::cached_pages(vmm::object_type::shmem);
+                    const auto file_pages = vmm::cached_pages(vmm::object_type::file);
+                    const auto shmem_bytes = shmem_pages * pmm::page_size;
+                    const auto cached_bytes = (shmem_pages + file_pages) * pmm::page_size;
+                    const auto free_bytes = mem.usable - mem.used;
+
                     return fmt::format(
                         "MemTotal:       {} kB\n"
                         "MemFree:        {} kB\n"
-                        "MemAvailable:   {} kB\n",
+                        "MemAvailable:   {} kB\n"
+                        "Buffers:        {} kB\n"
+                        "Cached:         {} kB\n"
+                        "Shmem:          {} kB\n"
+                        "SwapTotal:      {} kB\n"
+                        "SwapFree:       {} kB\n",
                         kb(mem.usable),
-                        kb(mem.usable - mem.used),
-                        kb(mem.usable - mem.used)
+                        kb(free_bytes),
+                        kb(free_bytes + cached_bytes),
+                        0uz,
+                        kb(cached_bytes),
+                        kb(shmem_bytes),
+                        0uz,
+                        0uz
                     );
                 }, 0444
             );
