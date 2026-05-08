@@ -37,11 +37,13 @@ namespace fs::devtmpfs
             instance = lib::make_locked<tmpfs::fs::instance, sched::mutex>();
             auto locked = instance.lock();
 
+            locked->opt_mode = 0755;
+
             root = std::make_shared<vfs::dentry>();
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked.get(), locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir) | 0755
+                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode
             );
             root->parent = root;
 
@@ -93,14 +95,6 @@ namespace fs::devtmpfs
         return { };
     }
 
-    std::unique_ptr<vfs::filesystem> init()
-    {
-        if (main != nullptr)
-            lib::panic("devtmpfs: tried to initialise twice");
-
-        return std::unique_ptr<vfs::filesystem> { main = new fs };
-    }
-
     lib::initgraph::stage *registered_stage()
     {
         static lib::initgraph::stage stage
@@ -127,7 +121,7 @@ namespace fs::devtmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(devtmpfs::init()));
+            lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { main = new fs }));
         }
     };
 

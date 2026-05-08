@@ -56,6 +56,12 @@ namespace vmm
                 ret |= pflag::exec;
             return ret;
         }
+
+        bool valid_user_range(std::uintptr_t address, std::size_t length)
+        {
+            return length <= vmspace::vspace_top && address >= vmspace::mmap_min &&
+                address <= vmspace::vspace_top - length;
+        }
     } // namespace
 
     page *page_for(std::uintptr_t addr)
@@ -508,7 +514,10 @@ namespace vmm
 
         const auto offp = offset / npsize;
 
+        const auto orig_length = length;
         length = lib::align_up(length, npsize);
+        if (length < orig_length)
+            return std::unexpected { lib::err::invalid_length };
 
         object::ptr target_obj;
         anon_map::ptr target_amap;
@@ -538,7 +547,7 @@ namespace vmm
             if (hint % npsize)
                 return std::unexpected { lib::err::addr_not_aligned };
 
-            if (hint < mmap_min || hint + length > vspace_top)
+            if (!valid_user_range(hint, length))
                 return std::unexpected { lib::err::addr_out_of_bounds };
 
             startp = hint / npsize;
@@ -644,9 +653,12 @@ namespace vmm
         if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
 
+        const auto orig_length = length;
         length = lib::align_up(length, npsize);
+        if (length < orig_length)
+            return std::unexpected { lib::err::invalid_length };
 
-        if (address < mmap_min || address + length > vspace_top)
+        if (!valid_user_range(address, length))
             return std::unexpected { lib::err::addr_out_of_bounds };
 
         const auto startp = address / npsize;
@@ -739,9 +751,12 @@ namespace vmm
         if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
 
+        const auto orig_length = length;
         length = lib::align_up(length, npsize);
+        if (length < orig_length)
+            return std::unexpected { lib::err::invalid_length };
 
-        if (address < mmap_min || address + length > vspace_top)
+        if (!valid_user_range(address, length))
             return std::unexpected { lib::err::addr_out_of_bounds };
 
         auto startp = address / npsize;
@@ -856,6 +871,242 @@ namespace vmm
         }
 
         return { };
+    }
+
+    lib::expect<std::uintptr_t> vmspace::remap(const remap_options &opts)
+    {
+        if (opts.old_len == 0 || opts.new_len == 0)
+            return std::unexpected { lib::err::invalid_length };
+
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+
+        if (opts.old_addr % npsize)
+            return std::unexpected { lib::err::addr_not_aligned };
+        if (opts.fixed && opts.new_addr % npsize)
+            return std::unexpected { lib::err::addr_not_aligned };
+
+        const auto old_len = lib::align_up(opts.old_len, npsize);
+        const auto new_len = lib::align_up(opts.new_len, npsize);
+        if (old_len < opts.old_len || new_len < opts.new_len)
+            return std::unexpected { lib::err::invalid_length };
+
+        if (!valid_user_range(opts.old_addr, old_len))
+            return std::unexpected { lib::err::addr_out_of_bounds };
+        if (opts.fixed && !valid_user_range(opts.new_addr, new_len))
+            return std::unexpected { lib::err::addr_out_of_bounds };
+
+        if (opts.fixed && !opts.may_move)
+            return std::unexpected { lib::err::invalid_flags };
+
+        const auto old_startp = opts.old_addr / npsize;
+        const auto old_endp = (opts.old_addr + old_len) / npsize;
+
+        auto locked = tree.lock();
+        entry *src = nullptr;
+        {
+            auto overlapping = locked->overlapping(old_startp, old_endp);
+            auto it = overlapping.begin();
+            if (it == overlapping.end())
+                return std::unexpected { lib::err::invalid_address };
+
+            src = it.value();
+            it++;
+            if (it != overlapping.end())
+                return std::unexpected { lib::err::invalid_address };
+            if (src->startp != old_startp || src->endp != old_endp)
+                return std::unexpected { lib::err::invalid_address };
+            if (src->flags & flag::untouchable)
+                return std::unexpected { lib::err::not_permitted };
+        }
+
+        if (new_len == old_len && !opts.fixed)
+            return opts.old_addr;
+
+        if (new_len < old_len)
+        {
+            const auto drop_start = old_startp + (new_len / npsize);
+            const auto drop_pages = old_endp - drop_start;
+            const auto vaddr = drop_start * npsize;
+            const auto length = drop_pages * npsize;
+
+            if (const auto ret = pmap->unmap(vaddr, length, psize); !ret)
+                return std::unexpected { ret.error() };
+
+            locked->remove(src);
+            src->endp = drop_start;
+            locked->insert(src);
+
+            return opts.old_addr;
+        }
+
+        std::uintptr_t dst_startp = 0;
+        if (opts.fixed)
+        {
+            const auto target_startp = opts.new_addr / npsize;
+            const auto target_endp = (opts.new_addr + new_len) / npsize;
+
+            if (target_startp < old_endp && target_endp > old_startp)
+                return std::unexpected { lib::err::invalid_argument };
+
+            {
+                const auto overlap = locked->overlapping(target_startp, target_endp);
+                for (const auto &ent : overlap)
+                {
+                    if (ent.flags & flag::untouchable)
+                        return std::unexpected { lib::err::not_permitted };
+                }
+            }
+
+            while (true)
+            {
+                const auto overlap = locked->overlapping(target_startp, target_endp);
+                auto it = overlap.begin();
+                if (it == overlap.end())
+                    break;
+                auto ent = it.value();
+
+                const auto ovs = std::max(target_startp, ent->startp);
+                const auto ove = std::min(target_endp, ent->endp);
+
+                const auto unmap_vaddr = ovs * npsize;
+                const auto unmap_length = (ove - ovs) * npsize;
+
+                if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
+                    return std::unexpected { ret.error() };
+
+                locked->remove(ent);
+
+                if (ent->endp > target_endp)
+                {
+                    const auto pages = target_endp - ent->startp;
+                    const auto obj_offp = ent->obj ? ent->offp + pages : 0;
+                    const auto anon_idx = ent->amap ? ent->anon_idx + pages : 0;
+                    locked->insert(new entry {
+                        .startp = target_endp,
+                        .endp = ent->endp,
+                        .obj = ent->obj,
+                        .offp = obj_offp,
+                        .amap = ent->amap,
+                        .anon_idx = anon_idx,
+                        .prot = ent->prot,
+                        .max_prot = ent->max_prot,
+                        .flags = ent->flags,
+                        .hook = { },
+                        .interval = { }
+                    });
+                }
+                if (ent->startp < target_startp)
+                {
+                    ent->endp = target_startp;
+                    locked->insert(ent);
+                }
+                else delete ent;
+            }
+            dst_startp = target_startp;
+        }
+        else if (!opts.may_move)
+        {
+            const auto grow_addr = opts.old_addr + old_len;
+            const auto grow_bytes = new_len - old_len;
+            if (!valid_user_range(grow_addr, grow_bytes))
+                return std::unexpected { lib::err::addr_out_of_bounds };
+
+            const auto grow_pages = grow_bytes / npsize;
+            const auto grow_start = old_endp;
+            const auto grow_end = old_endp + grow_pages;
+
+            const auto overlap = locked->overlapping(grow_start, grow_end);
+            if (!overlap.empty())
+                return std::unexpected { lib::err::no_space_left };
+
+            if (src->obj && !src->amap)
+            {
+                locked->remove(src);
+                src->endp = grow_end;
+                locked->insert(src);
+            }
+            else
+            {
+                anon_map::ptr tail_amap { new anon_map { } };
+                tail_amap->nslots = grow_pages;
+                tail_amap->slots = std::make_unique<anon::ptr []>(grow_pages);
+
+                const auto tail_offp = (src->obj && src->amap)
+                    ? src->offp + (old_len / npsize) : 0;
+
+                locked->insert(new entry {
+                    .startp = grow_start,
+                    .endp = grow_end,
+                    .obj = (src->obj && src->amap) ? src->obj : object::ptr { },
+                    .offp = tail_offp,
+                    .amap = std::move(tail_amap),
+                    .anon_idx = 0,
+                    .prot = src->prot,
+                    .max_prot = src->max_prot,
+                    .flags = src->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+            return opts.old_addr;
+        }
+        else
+        {
+            const auto found = find_free_region_internal(locked, new_len);
+            if (!found)
+                return std::unexpected { lib::err::out_of_memory };
+            dst_startp = *found / npsize;
+        }
+
+        const auto src_pages = old_len / npsize;
+        const auto dst_endp = dst_startp + new_len / npsize;
+        const auto dst_old_endp = dst_startp + src_pages;
+
+        if (const auto ret = pmap->unmap(opts.old_addr, old_len, psize); !ret)
+            return std::unexpected { ret.error() };
+
+        locked->remove(src);
+        src->startp = dst_startp;
+        src->endp = dst_old_endp;
+        locked->insert(src);
+
+        if (new_len > old_len)
+        {
+            const auto tail_pages = (new_len - old_len) / npsize;
+
+            if (src->obj && !src->amap)
+            {
+                locked->remove(src);
+                src->endp = dst_endp;
+                locked->insert(src);
+            }
+            else
+            {
+                anon_map::ptr tail_amap { new anon_map { } };
+                tail_amap->nslots = tail_pages;
+                tail_amap->slots = std::make_unique<anon::ptr []>(tail_pages);
+
+                const auto tail_offp = (src->obj && src->amap)
+                    ? src->offp + src_pages : 0;
+
+                locked->insert(new entry {
+                    .startp = dst_old_endp,
+                    .endp = dst_endp,
+                    .obj = (src->obj && src->amap) ? src->obj : object::ptr { },
+                    .offp = tail_offp,
+                    .amap = std::move(tail_amap),
+                    .anon_idx = 0,
+                    .prot = src->prot,
+                    .max_prot = src->max_prot,
+                    .flags = src->flags,
+                    .hook = { },
+                    .interval = { }
+                });
+            }
+        }
+
+        return dst_startp * npsize;
     }
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)

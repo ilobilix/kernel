@@ -100,6 +100,9 @@ export namespace sched
         int pending_stop_sig = 0;
         lib::spinlock report_lock;
 
+        std::string pathname;
+        std::vector<std::string> argv;
+
         wait_queue_t wait_child;
         wait_queue_t vfork_done;
 

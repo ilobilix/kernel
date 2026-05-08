@@ -209,6 +209,17 @@ export namespace vmm
         lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
         lib::expect<void> protect(std::uintptr_t address, std::size_t length, prot_t prot);
 
+        struct remap_options
+        {
+            std::uintptr_t old_addr;
+            std::size_t old_len;
+            std::size_t new_len;
+            bool may_move;
+            bool fixed;
+            std::uintptr_t new_addr;
+        };
+        lib::expect<std::uintptr_t> remap(const remap_options &opts);
+
         lib::expect<std::uintptr_t> find_free_region(std::size_t length);
 
         std::shared_ptr<vmspace> fork(std::shared_ptr<vmm::pagemap> cpmap);

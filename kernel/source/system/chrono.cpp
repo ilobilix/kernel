@@ -2,7 +2,9 @@
 
 module system.chrono;
 
+import drivers.fs.procfs;
 import frigg;
+import fmt;
 import arch;
 import boot;
 import lib;
@@ -110,4 +112,24 @@ namespace chrono
 
         return boot::time() * 1'000'000'000ul + main->ns();
     }
+
+    lib::initgraph::task procfs_register_task
+    {
+        "chrono.procfs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        [] {
+            fs::procfs::register_global("uptime",
+                [](auto) {
+                    // TODO: second field should be sum of idle time across all cpus
+                    const auto t = now(monotonic);
+                    const auto centi = (t.to_ms() / 10) % 100;
+                    return fmt::format(
+                        "{}.{:02} {}.{:02}\n",
+                        t.tv_sec, centi, t.tv_sec, centi
+                    );
+                }, 0444
+            );
+        }
+    };
 } // namespace chrono

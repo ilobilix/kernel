@@ -41,6 +41,10 @@ export namespace fs::tmpfs
             std::atomic<std::size_t> current_size = 0;
             std::atomic<std::size_t> current_inodes = 0;
 
+            mode_t opt_mode = 0777 | s_isvtx;
+            uid_t opt_uid = 0;
+            gid_t opt_gid = 0;
+
             auto create(
                 std::shared_ptr<vfs::inode> &parent,
                 std::string_view name, mode_t mode, dev_t rdev
@@ -76,6 +80,8 @@ export namespace fs::tmpfs
             bool sync() override;
 
             bool unmount(std::shared_ptr<struct vfs::mount>) override;
+
+            std::string mount_options() const override;
 
             ~instance() = default;
         };

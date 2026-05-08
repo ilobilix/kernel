@@ -10,12 +10,16 @@ import std;
 
 namespace syscall::memory
 {
+    namespace
+    {
+        void *err_ptr(errnos err)
+        {
+            return reinterpret_cast<void *>(-static_cast<std::intptr_t>(err));
+        }
+    } // namespace
+
     void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset)
     {
-        const auto err_ptr = [](errnos err) {
-            return reinterpret_cast<void *>(-static_cast<std::intptr_t>(err));
-        };
-
         const bool priv = (flags & vmm::flag::private_);
         const bool shared = (flags & vmm::flag::shared);
         const bool anon = (flags & vmm::flag::anonymous);
@@ -117,6 +121,40 @@ namespace syscall::memory
         );
 
         return res ? 0 : -lib::map_error(res.error());
+    }
+
+    void *mremap(void *old_addr, std::size_t old_size, std::size_t new_size, int flags, void *new_addr)
+    {
+        constexpr int mremap_maymove = 1;
+        constexpr int mremap_fixed = 2;
+        constexpr int mremap_dontunmap = 4;
+
+        if (flags & ~(mremap_maymove | mremap_fixed | mremap_dontunmap))
+            return err_ptr(EINVAL);
+        if (flags & mremap_dontunmap)
+            return err_ptr(EINVAL);
+        if ((flags & mremap_fixed) && !(flags & mremap_maymove))
+            return err_ptr(EINVAL);
+        if (old_size == 0 || new_size == 0)
+            return err_ptr(EINVAL);
+
+        const auto proc = sched::current_process();
+        const auto &vmspace = proc->vmspace;
+
+        const vmm::vmspace::remap_options opts {
+            .old_addr = reinterpret_cast<std::uintptr_t>(old_addr),
+            .old_len = old_size,
+            .new_len = new_size,
+            .may_move = (flags & mremap_maymove) != 0,
+            .fixed = (flags & mremap_fixed) != 0,
+            .new_addr = reinterpret_cast<std::uintptr_t>(new_addr)
+        };
+
+        const auto ret = vmspace->remap(opts);
+        if (!ret.has_value())
+            return err_ptr(lib::map_error(ret.error()));
+
+        return reinterpret_cast<void *>(ret.value());
     }
 
     void *brk(void *addr)

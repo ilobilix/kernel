@@ -2,6 +2,7 @@
 
 module system.memory.phys;
 
+import drivers.fs.procfs;
 import drivers.initramfs;
 import system.memory.virt;
 import magic_enum;
@@ -9,6 +10,7 @@ import frigg;
 import boot;
 import lib;
 import std;
+import fmt;
 
 namespace pmm
 {
@@ -616,4 +618,28 @@ namespace pmm
 
         bootstrap_memmap_idx = -1;
     }
+
+    lib::initgraph::task procfs_register_task
+    {
+        "pmm.procfs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        [] {
+            fs::procfs::register_global("meminfo",
+                [](auto) {
+                    // TODO: Buffers/Cached/Active/Inactive/Slab/Swap/correct MemAvailable
+                    const auto mem = info();
+                    const auto kb = [](std::size_t bytes) { return bytes / 1024; };
+                    return fmt::format(
+                        "MemTotal:       {} kB\n"
+                        "MemFree:        {} kB\n"
+                        "MemAvailable:   {} kB\n",
+                        kb(mem.usable),
+                        kb(mem.usable - mem.used),
+                        kb(mem.usable - mem.used)
+                    );
+                }, 0444
+            );
+        }
+    };
 } // namespace pmm

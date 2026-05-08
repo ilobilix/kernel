@@ -2,6 +2,7 @@
 
 module system.cmdline;
 
+import drivers.fs.procfs;
 import boot;
 
 namespace cmdline
@@ -56,6 +57,20 @@ namespace cmdline
             data.emplace(raw());
             for (const auto &[key, val] : lib::kvparse_view{ *data, ' ' })
                 cache.emplace_back(key, val);
+        }
+    };
+
+    lib::initgraph::task procfs_register_task
+    {
+        "cmdline.procfs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        [] {
+            fs::procfs::register_global("cmdline",
+                [](auto) {
+                    return std::string { raw() } + '\n';
+                }, 0444
+            );
         }
     };
 } // namespace cmdline

@@ -65,12 +65,14 @@ export namespace lib
         io_error = EIO,
 
         addr_in_use = EADDRINUSE,
-        out_of_memory = ENOMEDIUM,
+        out_of_memory = ENOMEM,
 
         not_permitted = EPERM,
         permission_denied = EACCES,
 
-        not_supported = ENOTSUP
+        not_supported = ENOTSUP,
+
+        read_only_fs = EROFS
     };
 
     template<typename Type>

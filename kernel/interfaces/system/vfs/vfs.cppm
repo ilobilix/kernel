@@ -305,6 +305,22 @@ export namespace vfs
             virtual auto lookup(std::shared_ptr<dentry> dir,std::string_view name)
                 -> lib::expect<std::optional<dir_entry>>;
 
+            virtual auto readlink(std::shared_ptr<dentry> dentry) -> lib::expect<lib::path>;
+
+            virtual bool revalidate(std::shared_ptr<dentry> dentry)
+            {
+                lib::unused(dentry);
+                return true;
+            }
+
+            virtual bool permission(
+                std::shared_ptr<dentry> dentry,
+                const std::shared_ptr<sched::cred_t> &cred,
+                std::uint32_t mode
+            );
+
+            virtual std::string mount_options() const { return { }; }
+
             virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
             virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
@@ -362,6 +378,9 @@ export namespace vfs
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
         unsigned long flags = 0;
+
+        std::string fstype;
+        std::string source;
     };
 
     struct inode
@@ -696,6 +715,18 @@ export namespace vfs
         std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
+
+    void for_each_mount(std::function<bool (const std::shared_ptr<struct mount> &)> func);
+
+    ino_t next_anon_ino();
+
+    bool check_access(
+        const path &target,
+        const std::shared_ptr<sched::cred_t> &cred,
+        std::uint32_t mode
+    );
+
+    bool check_access(const path &target, std::uint32_t mode);
 
     auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0)
         -> lib::expect<path>;

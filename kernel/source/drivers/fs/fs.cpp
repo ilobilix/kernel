@@ -2,11 +2,6 @@
 
 module drivers.fs;
 
-import drivers.fs.devtmpfs;
-import drivers.fs.devpts;
-import drivers.fs.tmpfs;
-import lib;
-
 namespace fs
 {
     lib::initgraph::stage *registered_stage()
@@ -26,7 +21,8 @@ namespace fs
         lib::initgraph::require {
             tmpfs::registered_stage(),
             devtmpfs::registered_stage(),
-            devpts::registered_stage()
+            devpts::registered_stage(),
+            procfs::registered_stage()
         },
         lib::initgraph::entail { registered_stage() },
         [] { }
