@@ -720,8 +720,6 @@ export namespace vfs
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
 
-    void for_each_mount(std::function<bool (const std::shared_ptr<struct mount> &)> func);
-
     ino_t next_anon_ino();
 
     bool check_access(

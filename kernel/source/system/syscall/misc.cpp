@@ -11,6 +11,7 @@ import system.memory.phys;
 import system.random;
 import system.chrono;
 import system.sched;
+import system.sysctl;
 
 namespace syscall::misc
 {
@@ -47,6 +48,32 @@ namespace syscall::misc
         constexpr std::size_t hostname_max = 64;
         lib::spinlock hostname_lock;
         char hostname_buf[hostname_max + 1] = "ilobilix";
+
+        lib::initgraph::task sysctl_hostname_task
+        {
+            "sysctl.register-hostname",
+            lib::initgraph::postsched_init_engine,
+            [] {
+                sysctl::register_entry("kernel/hostname",
+                    [] {
+                        const std::unique_lock _ { hostname_lock };
+                        return std::string { hostname_buf } + '\n';
+                    },
+                    [](std::string_view data) -> lib::expect<void> {
+                        auto trimmed = data;
+                        while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == '\r'))
+                            trimmed.remove_suffix(1);
+                        if (trimmed.size() > hostname_max)
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        const std::unique_lock _ { hostname_lock };
+                        std::memset(hostname_buf, 0, sizeof(hostname_buf));
+                        std::memcpy(hostname_buf, trimmed.data(), trimmed.size());
+                        return { };
+                    }, 0644
+                );
+            }
+        };
     } // namespace
 
     int uname(struct utsname __user *buf)

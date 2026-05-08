@@ -107,6 +107,14 @@ export namespace vmm
     };
     static_assert(sizeof(page) == 64);
 
+    enum class object_type : std::uint8_t
+    {
+        shmem,
+        file
+    };
+
+    std::size_t cached_pages(object_type type);
+
     struct object
     {
         static constexpr std::size_t max_readahead = 32;
@@ -125,6 +133,7 @@ export namespace vmm
         std::size_t apply_func(std::uint64_t offset, std::size_t size, auto func);
 
         public:
+        object_type type;
         lib::intrusive_ptr_hook hook;
 
         lib::expect<void> read_pages(std::uint64_t offp, std::span<page *> pages, std::size_t idx);
@@ -134,7 +143,7 @@ export namespace vmm
         std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
-        object() = default;
+        explicit object(object_type type = object_type::file) : type { type } { }
         virtual ~object();
 
         using ptr = lib::intrusive_ptr<object, &object::hook>;
@@ -142,6 +151,8 @@ export namespace vmm
 
     struct memobject : object
     {
+        explicit memobject(object_type type = object_type::shmem) : object { type } { }
+
         private:
         lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) override
         {

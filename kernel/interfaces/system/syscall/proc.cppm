@@ -121,5 +121,8 @@ export namespace syscall::proc
 
     pid_t wait4(pid_t pid, int __user *wstatus, int options, struct rusage __user *rusage);
 
+    int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask);
+    int sched_getaffinity(pid_t pid, std::size_t cpusetsize, std::uint8_t __user *mask);
+
     [[noreturn]] void exit_group(int status);
 } // export namespace syscall::proc

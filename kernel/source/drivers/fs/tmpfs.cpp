@@ -31,7 +31,7 @@ namespace fs::tmpfs
     }
 
     inode::inode(fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
-        : vfs::inode { }, owner { owner }, memory { new vmm::memobject { } }
+        : vfs::inode { }, owner { owner }, memory { new vmm::memobject { vmm::object_type::shmem } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;

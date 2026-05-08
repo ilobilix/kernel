@@ -154,6 +154,7 @@ export namespace sched
     [[noreturn]] void process_exit_signal(int signo, bool core_dumped = false);
 
     process_t *get_process(pid_t pid);
+    thread_t *get_thread(pid_t tid);
 
     std::size_t process_count();
 
@@ -163,9 +164,6 @@ export namespace sched
     void tick(bool from_user);
 
     void load_balance();
-
-    void set_affinity(pid_t pid, lib::bitmap mask);
-    lib::bitmap get_affinity(pid_t pid);
 
     enum priority_which
     {

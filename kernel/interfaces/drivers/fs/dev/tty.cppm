@@ -284,6 +284,8 @@ export namespace fs::dev::tty
         kdgkbmode = 0x4B44,
         kdskbmode = 0x4B45,
         kdsigaccept = 0x4B4E,
+        kdgkbled = 0x4B64,
+        kdskbled = 0x4B65,
         tcgets = 0x5401,
         tcsets = 0x5402,
         tcsetsw = 0x5403,

@@ -151,6 +151,8 @@ namespace x86_64::syscall
         [199] = { "fremovexattr", vfs::fremovexattr },
         [201] = { "time", chrono::time, true },
         [202] = { "futex", proc::futex },
+        [203] = { "sched_setaffinity", proc::sched_setaffinity },
+        [204] = { "sched_getaffinity", proc::sched_getaffinity },
         [217] = { "getdents64", vfs::getdents64, true },
         [218] = { "set_tid_address", proc::set_tid_address, true },
         [221] = { "fadvise64", vfs::fadvise64 },

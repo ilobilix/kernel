@@ -159,6 +159,23 @@ export namespace lib
             return _count;
         }
 
+        constexpr std::size_t size_bytes() const
+        {
+            return div_roundup(_count, 8u);
+        }
+
+        constexpr std::uint8_t *data()
+        {
+            lib::bug_on(!_initialised);
+            return _data;
+        }
+
+        constexpr const std::uint8_t *data() const
+        {
+            lib::bug_on(!_initialised);
+            return _data;
+        }
+
         constexpr std::size_t popcount() const
         {
             lib::bug_on(!_initialised);
