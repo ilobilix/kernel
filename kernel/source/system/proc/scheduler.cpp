@@ -2070,7 +2070,9 @@ namespace sched
 
         std::string proc_comm(process_t *proc)
         {
-            // TODO: prctl(PR_SET_NAME)
+            if (!proc->comm.empty())
+                return proc->comm;
+
             if (proc->pathname.empty())
                 return fmt::format("pid_{}", proc->pid);
 

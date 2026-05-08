@@ -652,7 +652,7 @@ namespace vfs
                 return std::unexpected { lib::err::not_a_block };
         }
 
-        auto ret = path_for(target_path);
+        auto ret = resolve_real_dir(std::nullopt, target_path);
         if (!ret)
             return std::unexpected { ret.error() };
 
