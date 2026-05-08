@@ -4,7 +4,6 @@ module system.syscall.chrono;
 
 import system.chrono;
 import system.sched;
-import lib;
 import std;
 
 namespace syscall::chrono

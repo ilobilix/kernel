@@ -2,10 +2,6 @@
 
 module system.memory.va;
 
-import system.memory.phys;
-import lib;
-import std;
-
 namespace vmm::va
 {
     namespace

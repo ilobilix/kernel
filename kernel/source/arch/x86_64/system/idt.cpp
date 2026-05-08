@@ -7,15 +7,12 @@ import x86_64.system.ioapic;
 import x86_64.system.lapic;
 import x86_64.system.pic;
 import system.memory.virt;
-import system.interrupts;
 import system.random;
 import system.sched;
-import system.cpu.local;
 import system.cpu;
 import frigg;
 import arch;
 import lib;
-import std;
 
 namespace x86_64::idt
 {

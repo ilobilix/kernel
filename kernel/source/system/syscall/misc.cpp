@@ -11,8 +11,6 @@ import system.memory.phys;
 import system.random;
 import system.chrono;
 import system.sched;
-import lib;
-import std;
 
 namespace syscall::misc
 {

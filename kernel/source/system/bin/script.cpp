@@ -2,10 +2,6 @@
 
 module system.bin.exec;
 
-import system.vfs;
-import lib;
-import std;
-
 namespace bin::script
 {
     namespace

@@ -8,8 +8,6 @@ import system.sched;
 import drivers.fs;
 import drivers.fs.procfs;
 import fmt;
-import lib;
-import std;
 
 namespace vfs
 {
@@ -53,7 +51,6 @@ namespace vfs
             }
             return path;
         };
-
 
         auto resolve_real_dir(std::optional<path> anchor, lib::path dir) -> lib::expect<path>
         {
@@ -507,7 +504,9 @@ namespace vfs
 
             auto mnt = current.mnt;
 
-            while (automount || !last)
+            // while (automount || !last)
+            lib::unused(automount);
+            while (true)
             {
                 std::shared_ptr<struct mount> next_mnt;
                 {

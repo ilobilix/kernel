@@ -5,9 +5,6 @@ module drivers.fs.devtmpfs;
 import drivers.fs.tmpfs;
 import system.sched.mutex;
 import system.vfs.dev;
-import system.vfs;
-import lib;
-import std;
 
 namespace fs::devtmpfs
 {

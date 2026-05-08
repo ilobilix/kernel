@@ -22,7 +22,7 @@ namespace fs
             devpts::registered_stage(),
             devtmpfs::registered_stage(),
             procfs::registered_stage(),
-            securityfs::registered_stage(),
+            stubs::registered_stage(),
             tmpfs::registered_stage()
         },
         lib::initgraph::entail { registered_stage() },

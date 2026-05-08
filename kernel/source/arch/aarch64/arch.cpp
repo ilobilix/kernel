@@ -5,9 +5,7 @@ module arch;
 import system.sched;
 import drivers.timers;
 import drivers.output;
-import system.cpu;
 import system.cpu.local;
-import std;
 
 namespace arch
 {

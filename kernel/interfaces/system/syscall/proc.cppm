@@ -46,6 +46,9 @@ export namespace syscall::proc
     int getgroups(int size, gid_t __user *list);
     int setgroups(std::size_t size, const gid_t __user *list);
 
+    int capget(struct cap_user_header __user *header, struct cap_user_data __user *data);
+    int capset(struct cap_user_header __user *header, const struct cap_user_data __user *data);
+
     int set_tid_address(int __user *tidptr);
 
     unsigned int alarm(unsigned int seconds);

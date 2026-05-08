@@ -282,6 +282,7 @@ export namespace fs::dev::tty
     {
         kdgkbtype = 0x4B33,
         kdgkbmode = 0x4B44,
+        kdskbmode = 0x4B45,
         kdsigaccept = 0x4B4E,
         tcgets = 0x5401,
         tcsets = 0x5402,
@@ -465,6 +466,7 @@ export namespace fs::dev::tty
         std::atomic<std::uint32_t> ref;
 
         std::atomic_bool hung_up;
+        std::atomic<int> kbmode;
 
         lib::locker<std::shared_ptr<line_discipline>, sched::mutex> ldisc;
 

@@ -2,7 +2,6 @@
 
 module system.sched;
 
-import system.sched.wait_queue;
 import system.chrono;
 
 namespace sched

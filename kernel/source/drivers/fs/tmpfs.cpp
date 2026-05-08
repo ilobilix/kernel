@@ -2,16 +2,12 @@
 
 module drivers.fs.tmpfs;
 
-import system.memory.virt;
 import system.memory.phys;
 import system.sched.mutex;
 import system.sched;
 import system.chrono;
 import system.vfs.dev;
-import system.vfs;
 import fmt;
-import lib;
-import std;
 
 namespace fs::tmpfs
 {

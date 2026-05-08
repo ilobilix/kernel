@@ -4,12 +4,9 @@ module x86_64.drivers.timers.tsc;
 
 import x86_64.drivers.timers.kvm;
 import drivers.timers;
-import system.cpu.local;
 import system.cpu;
 import system.chrono;
 import arch;
-import lib;
-import std;
 
 namespace x86_64::timers::tsc
 {

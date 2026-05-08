@@ -4,9 +4,6 @@ module system.vfs.pipe;
 
 import system.sched;
 import system.sched.wait_queue;
-import system.vfs;
-import lib;
-import std;
 
 // TODO: rewrite and fix pipes
 

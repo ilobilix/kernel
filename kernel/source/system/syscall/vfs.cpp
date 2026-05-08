@@ -4,14 +4,10 @@ module system.syscall.vfs;
 
 import system.memory.virt;
 import system.chrono;
-import system.sched;
-import system.vfs;
 import system.vfs.pipe;
 import system.vfs.dev;
 import magic_enum;
 import arch;
-import lib;
-import std;
 
 namespace syscall::vfs
 {
@@ -981,6 +977,7 @@ namespace syscall::vfs
         constexpr std::uint32_t statx_btime = 0x00000800u;
         constexpr std::uint32_t statx_mnt_id = 0x00001000u;
         constexpr std::uint32_t statx_reserved = 0x80000000u;
+        constexpr std::uint64_t statx_attr_mount_root = 0x00002000u;
 
         if (mask & statx_reserved)
             return -EINVAL;
@@ -1027,10 +1024,14 @@ namespace syscall::vfs
         ret.stx_dev_major = dev::major(val.st_dev);
         ret.stx_dev_minor = dev::minor(val.st_dev);
 
-        if ((mask & statx_mnt_id) != 0 && target->mnt != nullptr)
+        if (target->mnt != nullptr)
         {
             ret.stx_mask |= statx_mnt_id;
             ret.stx_mnt_id = target->mnt->fs.lock()->dev_id;
+
+            ret.stx_attributes_mask |= statx_attr_mount_root;
+            if (target->dentry == target->mnt->root)
+                ret.stx_attributes |= statx_attr_mount_root;
         }
 
         if (!lib::copy_to_user(statxbuf, &ret, sizeof(struct statx)))

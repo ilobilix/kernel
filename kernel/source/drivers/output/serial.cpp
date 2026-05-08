@@ -2,10 +2,8 @@
 
 module drivers.output.serial;
 
-import drivers.fs.dev.tty;
 import system.vfs;
 import lib;
-import std;
 
 namespace output::serial
 {

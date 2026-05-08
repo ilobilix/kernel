@@ -2,11 +2,9 @@
 
 module x86_64.system.gdt;
 
-import system.cpu.local;
 import system.memory;
 import boot;
 import lib;
-import std;
 
 namespace x86_64::gdt
 {

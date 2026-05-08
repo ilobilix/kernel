@@ -3,7 +3,6 @@
 module system.interrupts;
 
 import lib;
-import std;
 
 namespace interrupts
 {

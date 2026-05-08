@@ -5,7 +5,6 @@ module drivers.initramfs;
 import system.vfs;
 import system.vfs.dev;
 import boot;
-import lib;
 import std;
 
 namespace initramfs

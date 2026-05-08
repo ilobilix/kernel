@@ -7,9 +7,6 @@ import system.cpu;
 import system.chrono;
 import drivers.timers;
 
-import lib;
-import std;
-
 namespace aarch64::timers::generic
 {
     // namespace

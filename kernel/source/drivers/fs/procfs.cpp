@@ -11,8 +11,6 @@ import system.sched.mutex;
 import system.vfs.dev;
 import system.vfs;
 import fmt;
-import lib;
-import std;
 
 namespace fs::procfs
 {
@@ -704,7 +702,7 @@ namespace fs::procfs
             return mount;
         }
 
-        fs() : vfs::filesystem { "procfs" }
+        fs() : vfs::filesystem { "proc" }
         {
             inst = lib::make_locked<instance, sched::mutex>();
             auto locked = inst.lock();
@@ -784,7 +782,7 @@ namespace fs::procfs
                 );
             }
 
-            if (const auto merr = vfs::mount("", "/proc", "procfs",
+            if (const auto merr = vfs::mount("", "/proc", "proc",
                 vfs::ms_nosuid | vfs::ms_nodev | vfs::ms_noexec); !merr)
             {
                 lib::panic(

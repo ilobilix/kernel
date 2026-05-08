@@ -2,11 +2,8 @@
 
 module system.memory.virt;
 
-import system.memory.phys;
 import system.cpu;
 import boot;
-import lib;
-import std;
 
 import :pagemap;
 
