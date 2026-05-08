@@ -10,8 +10,6 @@ import system.chrono;
 import system.cpu;
 import drivers.timers;
 import arch;
-import lib;
-import std;
 
 namespace x86_64::timers::tsc
 {

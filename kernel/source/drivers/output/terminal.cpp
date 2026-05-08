@@ -7,10 +7,7 @@ module;
 
 module drivers.output.terminal;
 
-import drivers.output.framebuffer;
 import boot;
-import lib;
-import std;
 
 namespace output::term
 {

@@ -4,7 +4,6 @@ module arch.drivers.timers;
 
 import drivers.timers;
 import arch;
-import lib;
 
 namespace timers::arch
 {

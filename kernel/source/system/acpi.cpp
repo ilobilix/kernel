@@ -23,8 +23,6 @@ import drivers.output;
 import system.pci;
 import arch;
 import boot;
-import lib;
-import std;
 
 namespace acpi
 {

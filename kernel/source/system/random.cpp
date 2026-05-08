@@ -8,7 +8,6 @@ import system.cpu;
 import system.cpu.local;
 import boot;
 import arch;
-import std;
 
 namespace random
 {

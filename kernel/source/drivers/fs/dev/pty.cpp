@@ -7,10 +7,7 @@ import drivers.fs.devpts;
 import drivers.fs.dev.tty;
 import system.sched.mutex;
 import system.sched;
-import system.vfs;
 import system.vfs.dev;
-import lib;
-import std;
 import fmt;
 
 namespace fs::dev::pty

@@ -232,7 +232,6 @@ export namespace lib
                     search(root, state::left);
             }
 
-
             constexpr overlapping_iterator_base(const interval_tree *tree, Type *root, IType lb, IType ub)
                 : overlapping_iterator_base { const_cast<interval_tree *>(tree), root, lb, ub } { }
 

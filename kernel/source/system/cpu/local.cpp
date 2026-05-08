@@ -7,7 +7,6 @@ import system.cpu;
 import system.memory;
 import boot;
 import lib;
-import std;
 
 namespace cpu
 {

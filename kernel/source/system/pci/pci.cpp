@@ -5,8 +5,6 @@ module system.pci;
 import system.memory;
 import system.acpi;
 import magic_enum;
-import lib;
-import std;
 
 namespace pci
 {

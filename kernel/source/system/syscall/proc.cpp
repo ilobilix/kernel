@@ -4,14 +4,11 @@ module system.syscall.proc;
 
 import system.syscall.vfs;
 import system.vfs;
-import system.sched;
 import system.memory.virt;
 import system.cpu.regs;
 import system.cpu.arch;
 import magic_enum;
 import arch;
-import lib;
-import std;
 
 namespace syscall::proc
 {
@@ -229,6 +226,126 @@ namespace syscall::proc
 
         const auto ret = sched::setgroups(*uspan);
         if (!ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
+    namespace
+    {
+        constexpr std::uint32_t cap_version_1 = 0x19980330;
+        constexpr std::uint32_t cap_version_2 = 0x20071026;
+        constexpr std::uint32_t cap_version_3 = 0x20080522;
+        constexpr std::uint32_t cap_kernel_version = cap_version_3;
+
+        std::size_t cap_data_count(std::uint32_t version)
+        {
+            return version == cap_version_1 ? 1 : 2;
+        }
+    } // namespace
+
+    struct cap_user_header
+    {
+        std::uint32_t version;
+        int pid;
+    };
+
+    struct cap_user_data
+    {
+        std::uint32_t effective;
+        std::uint32_t permitted;
+        std::uint32_t inheritable;
+    };
+
+    int capget(cap_user_header __user *header, cap_user_data __user *data)
+    {
+        if (header == nullptr)
+            return -EFAULT;
+
+        cap_user_header hdr { };
+        if (!lib::copy_from_user(&hdr, header, sizeof(hdr)))
+            return -EFAULT;
+
+        if (hdr.version != cap_version_1 && hdr.version != cap_version_2 &&
+            hdr.version != cap_version_3)
+        {
+            const auto supported = cap_kernel_version;
+            if (!lib::copy_to_user(&header->version, &supported, sizeof(supported)))
+                return -EFAULT;
+            return -EINVAL;
+        }
+
+        if (data == nullptr)
+            return 0;
+
+        if (hdr.pid < 0)
+            return -EINVAL;
+
+        sched::cap_user_data_t kdata { };
+        if (const auto ret = sched::capget(hdr.pid, &kdata); !ret)
+            return -lib::map_error(ret.error());
+
+        const auto effective = static_cast<std::uint64_t>(kdata.effective);
+        const auto permitted = static_cast<std::uint64_t>(kdata.permitted);
+        const auto inheritable = static_cast<std::uint64_t>(kdata.inheritable);
+
+        const std::size_t count = cap_data_count(hdr.version);
+        std::array<cap_user_data, 2> out { };
+
+        out[0].effective = static_cast<std::uint32_t>(effective);
+        out[0].permitted = static_cast<std::uint32_t>(permitted);
+        out[0].inheritable = static_cast<std::uint32_t>(inheritable);
+        if (count > 1)
+        {
+            out[1].effective = static_cast<std::uint32_t>(effective >> 32);
+            out[1].permitted = static_cast<std::uint32_t>(permitted >> 32);
+            out[1].inheritable = static_cast<std::uint32_t>(inheritable >> 32);
+        }
+
+        if (!lib::copy_to_user(data, out.data(), sizeof(cap_user_data) * count))
+            return -EFAULT;
+        return 0;
+    }
+
+    int capset(cap_user_header __user *header, const cap_user_data __user *data)
+    {
+        if (header == nullptr || data == nullptr)
+            return -EFAULT;
+
+        cap_user_header hdr { };
+        if (!lib::copy_from_user(&hdr, header, sizeof(hdr)))
+            return -EFAULT;
+
+        if (hdr.version != cap_version_1 && hdr.version != cap_version_2 &&
+            hdr.version != cap_version_3)
+        {
+            const auto supported = cap_kernel_version;
+            if (!lib::copy_to_user(&header->version, &supported, sizeof(supported)))
+                return -EFAULT;
+            return -EINVAL;
+        }
+
+        const std::size_t count = cap_data_count(hdr.version);
+        std::array<cap_user_data, 2> in { };
+        if (!lib::copy_from_user(in.data(), data, sizeof(cap_user_data) * count))
+            return -EFAULT;
+
+        std::uint64_t effective = in[0].effective;
+        std::uint64_t permitted = in[0].permitted;
+        std::uint64_t inheritable = in[0].inheritable;
+        if (count > 1)
+        {
+            effective |= static_cast<std::uint64_t>(in[1].effective) << 32;
+            permitted |= static_cast<std::uint64_t>(in[1].permitted) << 32;
+            inheritable |= static_cast<std::uint64_t>(in[1].inheritable) << 32;
+        }
+
+        sched::cap_user_data_t kdata {
+            .effective = static_cast<sched::cap_t>(effective),
+            .permitted = static_cast<sched::cap_t>(permitted),
+            .inheritable = static_cast<sched::cap_t>(inheritable)
+        };
+
+        if (const auto ret = sched::capset(hdr.pid, &kdata); !ret)
             return -lib::map_error(ret.error());
         return 0;
     }

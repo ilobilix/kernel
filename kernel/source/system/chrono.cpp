@@ -3,12 +3,9 @@
 module system.chrono;
 
 import drivers.fs.procfs;
-import frigg;
 import fmt;
 import arch;
 import boot;
-import lib;
-import std;
 
 namespace chrono
 {

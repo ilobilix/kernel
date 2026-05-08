@@ -4,12 +4,8 @@ module drivers.fs.dev.tty;
 
 import drivers.fs.devtmpfs;
 import system.memory.virt;
-import system.sched;
-import system.vfs;
 import system.vfs.dev;
 import arch;
-import lib;
-import std;
 import fmt;
 
 namespace fs::dev::tty
@@ -958,8 +954,31 @@ namespace fs::dev::tty
         switch (request)
         {
             case kdgkbmode:
+            {
                 // TODO
-                return std::unexpected { lib::err::inappropriate_ioctl };
+                const auto mode = inst->kbmode.load(std::memory_order_relaxed);
+                if (!argp.write(mode))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case kdskbmode:
+            {
+                // TODO
+                const auto mode = static_cast<int>(argp.address());
+                switch (mode)
+                {
+                    case 0x00: // K_RAW
+                    case 0x01: // K_XLATE
+                    case 0x02: // K_MEDIUMRAW
+                    case 0x03: // K_UNICODE
+                    case 0x04: // K_OFF
+                        break;
+                    default:
+                        return std::unexpected { lib::err::invalid_argument };
+                }
+                inst->kbmode.store(mode, std::memory_order_relaxed);
+                return 0;
+            }
             case kdgkbtype:
             {
                 // TODO: keyboard type
@@ -1337,9 +1356,10 @@ namespace fs::dev::tty
     }
 
     instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ld)
-        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { ld },
-          termios { drv->init_termios }, termios_locked { ktermios { } }, winsize { winsize::standard() }, ctrl { },
-          raw_buffer { }, raw_wq { }, worker_thread { nullptr }, raw_should_work { ld != nullptr }
+        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, kbmode { 0x01 /* K_XLATE */ },
+          ldisc { ld }, termios { drv->init_termios }, termios_locked { ktermios { } },
+          winsize { winsize::standard() }, ctrl { }, raw_buffer { }, raw_wq { },
+          worker_thread { nullptr }, raw_should_work { ld != nullptr }
     {
         lib::bug_on(drv == nullptr);
         if (ld)

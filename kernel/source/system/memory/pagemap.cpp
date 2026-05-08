@@ -6,15 +6,12 @@ module;
 
 module system.memory.virt;
 
-import system.memory.phys;
 import system.memory.va;
 import system.cpu.local;
 import system.sched;
 import magic_enum;
 import frigg;
 import boot;
-import lib;
-import std;
 
 import :pagemap;
 
@@ -525,7 +522,6 @@ namespace vmm
             lib::panic("vmm: could not allocate 0x{:X} bytes of virtual address space", length);
         return *ret * npsize;
     }
-
 
     void free_vspace(std::uintptr_t addr, std::size_t length)
     {

@@ -9,7 +9,6 @@ import system.chrono;
 import boot;
 import arch;
 import lib;
-import std;
 import fmt;
 
 namespace cpu

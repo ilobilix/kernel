@@ -2,12 +2,9 @@
 
 module system.memory.virt;
 
-import system.memory.phys;
 import system.cpu;
 import system.cpu.local;
 import magic_enum;
-import lib;
-import std;
 
 import :pagemap;
 

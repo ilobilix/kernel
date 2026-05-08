@@ -11,7 +11,6 @@ import system.chrono;
 import system.acpi;
 import arch;
 import lib;
-import std;
 
 #if !ILOBILIX_LIMINE_MP
 

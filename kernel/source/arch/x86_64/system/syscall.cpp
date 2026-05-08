@@ -118,6 +118,8 @@ namespace x86_64::syscall
         [122] = { "setfsuid", proc::setfsuid, true },
         [123] = { "setfsgid", proc::setfsgid, true },
         [124] = { "getsid", proc::getsid, true },
+        [125] = { "capget", proc::capget },
+        [126] = { "capset", proc::capset },
         [127] = { "rt_sigpending", proc::rt_sigpending },
         [128] = { "rt_sigtimedwait", proc::rt_sigtimedwait },
         [131] = { "sigaltstack", proc::sigaltstack },

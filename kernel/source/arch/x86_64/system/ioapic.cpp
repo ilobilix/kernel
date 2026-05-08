@@ -12,7 +12,6 @@ import system.memory;
 import system.acpi;
 import system.cpu;
 import lib;
-import std;
 
 namespace x86_64::apic::io
 {

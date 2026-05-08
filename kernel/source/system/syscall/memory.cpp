@@ -5,8 +5,6 @@ module system.syscall.memory;
 import system.memory.virt;
 import system.sched;
 import system.vfs;
-import lib;
-import std;
 
 namespace syscall::memory
 {

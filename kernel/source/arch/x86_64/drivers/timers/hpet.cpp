@@ -14,8 +14,6 @@ import system.acpi;
 import drivers.timers;
 import boot;
 import arch;
-import lib;
-import std;
 
 namespace x86_64::timers::hpet
 {

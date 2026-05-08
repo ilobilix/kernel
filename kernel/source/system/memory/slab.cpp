@@ -6,7 +6,6 @@ import system.memory.phys;
 import system.memory.virt;
 import frigg;
 import lib;
-import std;
 
 namespace slab
 {

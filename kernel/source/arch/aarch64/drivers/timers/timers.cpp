@@ -3,7 +3,6 @@
 module arch.drivers.timers;
 
 import drivers.timers;
-import lib;
 
 namespace timers::arch
 {

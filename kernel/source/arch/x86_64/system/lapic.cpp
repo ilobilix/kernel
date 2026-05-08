@@ -15,7 +15,6 @@ import system.acpi;
 import system.cpu.local;
 import system.cpu;
 import lib;
-import std;
 
 namespace x86_64::apic
 {

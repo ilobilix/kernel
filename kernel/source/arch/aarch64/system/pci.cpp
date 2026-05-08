@@ -2,9 +2,6 @@
 
 module system.pci;
 
-import lib;
-import std;
-
 namespace pci
 {
     namespace arch

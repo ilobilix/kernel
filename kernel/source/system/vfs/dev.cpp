@@ -4,9 +4,6 @@ module system.vfs.dev;
 
 import drivers.initramfs;
 import system.vfs.pipe;
-import system.vfs;
-import lib;
-import std;
 
 namespace vfs::dev
 {

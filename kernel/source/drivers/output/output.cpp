@@ -2,10 +2,6 @@
 
 module drivers.output;
 
-import drivers.output.framebuffer;
-import drivers.output.terminal;
-import lib;
-
 namespace output
 {
     lib::initgraph::stage *initialised_stage()
