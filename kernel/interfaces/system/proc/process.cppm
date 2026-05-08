@@ -102,6 +102,7 @@ export namespace sched
 
         std::string pathname;
         std::vector<std::string> argv;
+        std::string comm;
 
         wait_queue_t wait_child;
         wait_queue_t vfork_done;

@@ -19,10 +19,11 @@ namespace fs
         "vfs.fs.register",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
-            tmpfs::registered_stage(),
-            devtmpfs::registered_stage(),
             devpts::registered_stage(),
-            procfs::registered_stage()
+            devtmpfs::registered_stage(),
+            procfs::registered_stage(),
+            securityfs::registered_stage(),
+            tmpfs::registered_stage()
         },
         lib::initgraph::entail { registered_stage() },
         [] { }
