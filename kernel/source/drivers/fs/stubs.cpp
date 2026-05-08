@@ -14,13 +14,19 @@ namespace fs::stubs
 {
     namespace
     {
-        constexpr std::array stub_names {
-            "bpf"sv,
-            "cgroup2"sv,
-            "pstore"sv,
-            "securityfs"sv,
-            "sysfs"sv
+        struct entry
+        {
+            std::string_view name;
+            std::uint32_t magic;
         };
+
+        constexpr std::array<entry, 5> stubs {{
+            { "bpf"sv, 0xCAFE4A11 },
+            { "cgroup2"sv, 0x63677270 },
+            { "pstore"sv, 0x6165676C },
+            { "securityfs"sv, 0x73636673 },
+            { "sysfs"sv, 0x62656572 }
+        }};
 
         struct stub_fs : vfs::filesystem
         {
@@ -41,11 +47,13 @@ namespace fs::stubs
                 return mount;
             }
 
-            explicit stub_fs(std::string name) : vfs::filesystem { std::move(name) }
+            stub_fs(std::string name, std::uint32_t magic)
+                : vfs::filesystem { std::move(name), magic }
             {
                 instance = lib::make_locked<tmpfs::fs::instance, sched::mutex>();
                 auto locked = instance.lock();
 
+                locked->fs = this;
                 locked->opt_mode = 0755;
 
                 root = std::make_shared<vfs::dentry>();
@@ -77,8 +85,8 @@ namespace fs::stubs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            for (const auto name : stub_names)
-                lib::bug_on(!vfs::register_fs(std::make_unique<stub_fs>(std::string { name })));
+            for (const auto &[name, magic] : stubs)
+                lib::bug_on(!vfs::register_fs(std::make_unique<stub_fs>(std::string { name }, magic)));
         }
     };
 } // namespace fs::stubs

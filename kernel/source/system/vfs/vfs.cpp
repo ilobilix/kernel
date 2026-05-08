@@ -111,6 +111,16 @@ namespace vfs
         return sched::check_perms(cred, dentry->inode->stat, static_cast<sched::access_mode>(mode));
     }
 
+    void filesystem::instance::statfs(struct ::statfs &out)
+    {
+        out.f_type = fs ? static_cast<std::int64_t>(fs->magic) : 0;
+        out.f_bsize = 4096;
+        out.f_namelen = 255;
+        out.f_frsize = 4096;
+        out.f_fsid.val[0] = static_cast<std::int32_t>(dev_id);
+        out.f_fsid.val[1] = static_cast<std::int32_t>(dev_id >> 32);
+    }
+
     bool check_access(
         const path &target,
         const std::shared_ptr<sched::cred_t> &cred,
@@ -1341,7 +1351,8 @@ lib::initgraph::stage *root_mounted_stage()
                             return true;
                         });
                         return out;
-                    }, 0444);
+                    }, 0444
+                );
             }
         };
     } // namespace

@@ -269,10 +269,12 @@ export namespace vfs
     struct filesystem
     {
         std::string name;
+        std::uint32_t magic = 0;
         bool requires_dev = false;
 
         struct instance
         {
+            filesystem *fs = nullptr;
             std::atomic<ino_t> next_inode = 1;
             dev_t dev_id;
 
@@ -321,6 +323,8 @@ export namespace vfs
 
             virtual std::string mount_options() const { return { }; }
 
+            virtual void statfs(struct ::statfs &out);
+
             virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
             virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
 
@@ -367,8 +371,8 @@ export namespace vfs
             std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<mount>> = 0;
 
-        filesystem(std::string_view name, bool requires_dev = false)
-            : name { name }, requires_dev { requires_dev } { }
+        filesystem(std::string_view name, std::uint32_t magic = 0, bool requires_dev = false)
+            : name { name }, magic { magic }, requires_dev { requires_dev } { }
         virtual ~filesystem() = default;
     };
 
