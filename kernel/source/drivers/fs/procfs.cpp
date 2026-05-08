@@ -702,10 +702,11 @@ namespace fs::procfs
             return mount;
         }
 
-        fs() : vfs::filesystem { "proc" }
+        fs() : vfs::filesystem { "proc", 0x9FA0 }
         {
             inst = lib::make_locked<instance, sched::mutex>();
             auto locked = inst.lock();
+            locked->fs = this;
 
             root = std::make_shared<vfs::dentry>();
             root->name = "procfs root";

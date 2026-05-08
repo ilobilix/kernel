@@ -82,6 +82,7 @@ export namespace fs::tmpfs
             bool unmount(std::shared_ptr<struct vfs::mount>) override;
 
             std::string mount_options() const override;
+            void statfs(struct ::statfs &out) override;
 
             ~instance() = default;
         };
@@ -92,7 +93,7 @@ export namespace fs::tmpfs
             std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override;
 
-        fs() : vfs::filesystem { "tmpfs" } { }
+        fs() : vfs::filesystem { "tmpfs", 0x01021994 } { }
     };
 
     struct inode : vfs::inode

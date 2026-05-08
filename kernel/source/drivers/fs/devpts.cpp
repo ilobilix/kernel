@@ -31,11 +31,12 @@ namespace fs::devpts
             return mount;
         }
 
-        fs() : vfs::filesystem { "devpts" }
+        fs() : vfs::filesystem { "devpts", 0x1CD1 }
         {
             instance = lib::make_locked<tmpfs::fs::instance, sched::mutex>();
             auto locked = instance.lock();
 
+            locked->fs = this;
             locked->opt_mode = 0755;
 
             root = std::make_shared<vfs::dentry>();

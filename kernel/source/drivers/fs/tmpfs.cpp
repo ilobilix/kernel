@@ -311,6 +311,25 @@ namespace fs::tmpfs
         return out;
     }
 
+    void fs::instance::statfs(struct ::statfs &out)
+    {
+        vfs::filesystem::instance::statfs(out);
+
+        const auto cur_size = current_size.load(std::memory_order_relaxed);
+        const auto cur_inodes = current_inodes.load(std::memory_order_relaxed);
+
+        const auto blocks = max_size / pmm::page_size;
+        const auto used_blocks = (cur_size + pmm::page_size - 1) / pmm::page_size;
+
+        out.f_bsize = pmm::page_size;
+        out.f_frsize = pmm::page_size;
+        out.f_blocks = blocks;
+        out.f_bfree = blocks > used_blocks ? blocks - used_blocks : 0;
+        out.f_bavail = out.f_bfree;
+        out.f_files = max_inodes;
+        out.f_ffree = max_inodes > cur_inodes ? max_inodes - cur_inodes : 0;
+    }
+
     auto fs::mount(
         std::shared_ptr<vfs::dentry> src,
         std::optional<lib::maybe_uspan<const std::byte>> data
@@ -354,6 +373,7 @@ namespace fs::tmpfs
 
         auto instance = lib::make_locked<fs::instance, sched::mutex>();
         auto locked = instance.lock();
+        locked->fs = const_cast<fs *>(this);
         {
             constexpr auto max = std::numeric_limits<std::size_t>::max();
 

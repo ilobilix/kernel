@@ -1040,18 +1040,47 @@ namespace syscall::vfs
         return 0;
     }
 
+    namespace
+    {
+        int do_statfs(const path &target, struct statfs __user *buf)
+        {
+            if (!target.mnt)
+                return -ENOSYS;
+
+            struct statfs out { };
+            {
+                auto fs = target.mnt->fs.lock();
+                fs->statfs(out);
+            }
+
+            constexpr unsigned long flag_mask = ms_rdonly | ms_nosuid | ms_nodev | ms_noexec |
+                ms_synchronous | ms_mandlock | ms_noatime | ms_nodiratime | ms_relatime;
+            out.f_flags = static_cast<std::int64_t>(target.mnt->flags & flag_mask);
+
+            if (!lib::copy_to_user(buf, &out, sizeof(out)))
+                return -EFAULT;
+            return 0;
+        }
+    } // namespace
+
     int statfs(const char __user *path, struct statfs __user *buf)
     {
-        // TODO
-        lib::unused(path, buf);
-        return -ENOSYS;
+        const auto proc = sched::current_process();
+        const auto target = get_target(proc, at_fdcwd, path, true, false, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+        return do_statfs(*target, buf);
     }
 
     int fstatfs(int fd, struct statfs __user *buf)
     {
-        // TODO
-        lib::unused(fd, buf);
-        return -ENOSYS;
+        const auto proc = sched::current_process();
+        auto fdesc = get_fd(proc, fd);
+        if (!fdesc)
+            return -lib::map_error(fdesc.error());
+        if (!(*fdesc)->file)
+            return -EBADF;
+        return do_statfs((*fdesc)->file->path, buf);
     }
 
     int faccessat2(int dirfd, const char __user *pathname, int mode, int flags)
@@ -1633,6 +1662,10 @@ namespace syscall::vfs
         auto target_val = get_path(target);
         if (!target_val.has_value())
             return -lib::map_error(target_val.error());
+
+        // TODO
+        if (flags & (ms_shared | ms_private | ms_slave | ms_unbindable))
+            return 0;
 
         std::optional<std::string> fstype_str;
         if (fstype != nullptr)

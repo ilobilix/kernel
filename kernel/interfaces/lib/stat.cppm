@@ -137,4 +137,25 @@ export
         std::uint32_t __spare2[1];
         std::uint64_t __spare3[8];
     };
+
+    struct kernel_fsid_t
+    {
+        std::int32_t val[2];
+    };
+
+    struct statfs
+    {
+        std::int64_t f_type;
+        std::int64_t f_bsize;
+        std::uint64_t f_blocks;
+        std::uint64_t f_bfree;
+        std::uint64_t f_bavail;
+        std::uint64_t f_files;
+        std::uint64_t f_ffree;
+        kernel_fsid_t f_fsid;
+        std::int64_t f_namelen;
+        std::int64_t f_frsize;
+        std::int64_t f_flags;
+        std::int64_t f_spare[4];
+    };
 } // export
