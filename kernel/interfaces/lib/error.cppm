@@ -51,6 +51,7 @@ export namespace lib
         path_too_long = ENAMETOOLONG,
 
         invalid_fd = EBADF,
+        too_many_files = EMFILE,
 
         invalid_address = EFAULT,
         not_mapped = EFAULT,

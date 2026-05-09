@@ -4,6 +4,7 @@ export module system.syscall.vfs;
 
 import system.sched;
 import system.vfs;
+import system.vfs.socket;
 import lib;
 import std;
 
@@ -22,7 +23,7 @@ export namespace syscall::vfs
     int creat(const char __user *pathname, mode_t mode);
 
     int close(int fd);
-    int close_range(unsigned int first, unsigned int last, unsigned int flags);
+    int close_range(std::uint32_t first, std::uint32_t last, std::uint32_t flags);
 
     std::ssize_t read(int fd, void __user *buf, std::size_t count);
     std::ssize_t write(int fd, const void __user *buf, std::size_t count);
@@ -43,7 +44,7 @@ export namespace syscall::vfs
     int fstat(int fd, struct stat __user *statbuf);
     int lstat(const char __user *pathname, struct stat __user *statbuf);
 
-    int statx(int dirfd, const char __user *pathname, int flags, unsigned int mask, struct statx __user *statxbuf);
+    int statx(int dirfd, const char __user *pathname, int flags, std::uint32_t mask, struct statx __user *statxbuf);
 
     int statfs(const char __user *path, struct statfs __user *buf);
     int fstatfs(int fd, struct statfs __user *buf);
@@ -89,7 +90,7 @@ export namespace syscall::vfs
 
     int mount(
         const char __user *source, const char __user *target,
-        const char __user *fstype, unsigned long flags, const void __user *data
+        const char __user *fstype, std::uint64_t flags, const void __user *data
     );
 
     int setxattr(
@@ -130,7 +131,7 @@ export namespace syscall::vfs
     int truncate(const char __user *pathname, off_t length);
     int ftruncate(int fd, off_t length);
 
-    int ioctl(int fd, unsigned long request, void __user *argp);
+    int ioctl(int fd, std::uint64_t request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);
 
     int flock(int fd, int operation);
@@ -148,7 +149,27 @@ export namespace syscall::vfs
     int pipe(int __user *pipefd);
 
     int socket(int domain, int type, int protocol);
-    int socketpair(int domain, int type, int protocol, int __user *sv);
+    int connect(int sockfd, const sockaddr __user *addr, socklen_t addrlen);
+    int accept(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
+    std::ssize_t sendto(
+        int sockfd, const void __user *buf, std::size_t len,
+        std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
+    );
+    std::ssize_t recvfrom(
+        int sockfd, void __user *buf, std::size_t size,
+        std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
+    );
+    std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags);
+    std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags);
+    int shutdown(int sockfd, int how);
+    int bind(int sockfd, const sockaddr __user *addr, socklen_t addrlen);
+    int listen(int sockfd, int backlog);
+    int getsockname(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
+    int getpeername(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
+    int socketpair(int family, int type, int protocol, int __user *sv);
+    int setsockopt(int sockfd, int level, int optname, const char __user *optval, socklen_t optlen);
+    int getsockopt(int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen);
+    int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags);
 
     int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
 
@@ -177,7 +198,7 @@ export namespace syscall::vfs
         const timespec __user *timeout, const struct sigset_t __user *sigmask
     );
 
-    int fsopen(const char __user *fsname, unsigned int flags);
+    int fsopen(const char __user *fsname, std::uint32_t flags);
 
     int inotify_init1(int flags);
 } // export namespace syscall::vfs

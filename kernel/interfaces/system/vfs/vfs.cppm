@@ -104,7 +104,7 @@ export namespace vfs
         r_ok = 4
     };
 
-    enum mountflags : unsigned long
+    enum mountflags : std::uint64_t
     {
         ms_rdonly      = 1ul << 0,
         ms_nosuid      = 1ul << 1,
@@ -390,7 +390,7 @@ export namespace vfs
         lib::locked_ptr<filesystem::instance, sched::mutex> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
-        unsigned long flags = 0;
+        std::uint64_t flags = 0;
 
         std::string fstype;
         std::string source;
@@ -689,8 +689,8 @@ export namespace vfs
         std::shared_ptr<vfs::filedesc> get(int fd);
         bool close(int fd);
 
-        int alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
-        int dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
+        lib::expect<int> alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
+        lib::expect<int> dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
 
         void close_on_exec();
 
@@ -724,7 +724,7 @@ export namespace vfs
 
     auto mount(
         lib::path source_path, lib::path target_path,
-        std::string_view fstype, unsigned long flags,
+        std::string_view fstype, std::uint64_t flags,
         std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
