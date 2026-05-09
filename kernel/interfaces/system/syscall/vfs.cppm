@@ -202,3 +202,31 @@ export namespace syscall::vfs
 
     int inotify_init1(int flags);
 } // export namespace syscall::vfs
+
+namespace syscall::vfs::detail
+{
+    using namespace ::vfs;
+
+    lib::expect<std::shared_ptr<filedesc>> get_fd(sched::process_t *proc, int fdnum);
+
+    lib::expect<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path);
+
+    lib::expect<resolve_res> resolve_from(
+        sched::process_t *proc, int dirfd,
+        lib::path_view path, bool automount = true
+    );
+
+    lib::expect<path> resolve_parent_dir(
+        sched::process_t *proc, int dirfd, lib::path_view path
+    );
+
+    lib::expect<lib::path> get_path(const char __user *pathname);
+
+    int close_fd(sched::process_t *proc, int fd, bool was_opened = true);
+
+    std::uint64_t mount_flags(const path &path);
+    bool readonly_mount(const path &path);
+    bool should_update_atime(const path &path, const kstat &stat, int file_flags = 0);
+
+    int touch_atime(const std::shared_ptr<vfs::file> &file);
+} // namespace syscall::vfs::detail
