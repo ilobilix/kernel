@@ -14,6 +14,10 @@ namespace fs::dev::pty
 {
     namespace
     {
+        constexpr std::size_t master_count = 8;
+        constexpr std::uint32_t master_major = 128;
+        constexpr std::uint32_t slave_major = master_major + master_count;
+
         constexpr std::uint64_t tiocgptn = 0x80045430;
         constexpr std::uint64_t tiocsptlck = 0x40045431;
         constexpr std::uint64_t tiocgptlck = 0x80045439;
