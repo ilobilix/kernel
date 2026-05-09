@@ -220,8 +220,14 @@ export namespace vfs
             return { };
         }
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual lib::expect<std::size_t> write(std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> read(
+            std::shared_ptr<file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) = 0;
+        virtual lib::expect<std::size_t> write(
+            std::shared_ptr<file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) = 0;
         virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
 
         virtual bool seekable() const { return true; }
@@ -232,7 +238,10 @@ export namespace vfs
             return pollin | pollout;
         }
 
-        virtual lib::expect<int> ioctl(std::shared_ptr<file> file, std::uint64_t request, lib::uptr_or_addr argp)
+        virtual lib::expect<int> ioctl(
+            std::shared_ptr<file> file, std::uint64_t request,
+            lib::uptr_or_addr argp
+        )
         {
             lib::unused(file, request, argp);
             return std::unexpected { lib::err::inappropriate_ioctl };

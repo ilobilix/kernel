@@ -47,6 +47,8 @@ export namespace lib
             : _span { span }, _is_user { is_user } { }
 
         public:
+        maybe_uspan() : _span { }, _is_user { false } { }
+
         static std::optional<maybe_uspan<Type>> create(Type __user *ptr, std::size_t len)
         {
             if (len == 0)

@@ -19,3 +19,5 @@ export import system.sysctl;
 export import system.vfs;
 export import system.vfs.dev;
 export import system.vfs.pipe;
+export import system.vfs.socket;
+export import system.vfs.socket.unix;

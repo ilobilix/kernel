@@ -4,32 +4,33 @@ module system.vfs.pipe;
 
 import system.sched;
 import system.sched.wait_queue;
+import lib;
 
 // TODO: rewrite and fix pipes
 
-namespace
-{
-    void raise_sigpipe()
-    {
-        const auto thread = sched::current_thread();
-        lib::bug_on(!thread);
-
-        const sched::siginfo_t info {
-            .signo = sched::sigpipe,
-            .code = sched::si_kernel,
-            .err = 0,
-            .pid = 0,
-            .uid = 0,
-            .status = 0,
-            .addr = 0,
-            .value = 0
-        };
-        sched::send_signal(thread, info);
-    }
-} // namespace
-
 namespace vfs::pipe
 {
+    namespace
+    {
+        void raise_sigpipe()
+        {
+            const auto thread = sched::current_thread();
+            lib::bug_on(!thread);
+
+            const sched::siginfo_t info {
+                .signo = sched::sigpipe,
+                .code = sched::si_kernel,
+                .err = 0,
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = 0,
+                .value = 0
+            };
+            sched::send_signal(thread, info);
+        }
+    } // namespace
+
     struct data
     {
         static constexpr std::size_t buffer_size = 65536;

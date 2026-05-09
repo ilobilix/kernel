@@ -4,6 +4,7 @@ module system.vfs.dev;
 
 import drivers.initramfs;
 import system.vfs.pipe;
+import system.vfs.socket;
 
 namespace vfs::dev
 {
@@ -76,7 +77,7 @@ namespace vfs::dev
             case stat::type::s_ififo:
                 return pipe::get_ops();
             case stat::type::s_ifsock:
-                return std::unexpected { lib::err::todo };
+                return socket::get_ops();
             case stat::type::s_ifreg:
             case stat::type::s_ifdir:
             {
