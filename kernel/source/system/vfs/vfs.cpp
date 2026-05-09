@@ -617,11 +617,11 @@ namespace vfs
 
     auto mount(
         lib::path source_path, lib::path target_path,
-        std::string_view fstype, unsigned long flags,
+        std::string_view fstype, std::uint64_t flags,
         std::optional<lib::maybe_uspan<const std::byte>> data
     ) -> lib::expect<void>
     {
-        if (flags & ~static_cast<unsigned long>(ms_supported))
+        if (flags & ~std::to_underlying(ms_supported))
             return std::unexpected { lib::err::invalid_flags };
 
         if (flags & ms_remount)
@@ -634,7 +634,7 @@ namespace vfs
             if (!target.mnt || target.dentry != target.mnt->root)
                 return std::unexpected { lib::err::invalid_path };
 
-            target.mnt->flags = flags & ~static_cast<unsigned long>(ms_remount);
+            target.mnt->flags = flags & ~std::to_underlying(ms_remount);
 
             if (!(flags & ms_silent))
                 lib::info("vfs: remount('{}', 0x{:X})", target_path, flags);
@@ -1169,7 +1169,7 @@ namespace vfs
         return it->second;
     }
 
-    int fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
+    lib::expect<int> fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
     {
         auto wlocked = fds.write_lock();
         if (wlocked->contains(fd))
@@ -1185,19 +1185,19 @@ namespace vfs
         }
 
         if (static_cast<rlim_t>(fd) >= max_fd)
-            return -EMFILE;
+            return std::unexpected { lib::err::too_many_files };
 
         wlocked.value()[fd] = std::move(desc);
         return fd;
     }
 
-    int fdtable::dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd)
+    lib::expect<int> fdtable::dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd)
     {
         if (oldfd < 0 || newfd < 0)
-            return -EBADF;
+            return std::unexpected { lib::err::invalid_fd };
         auto fdesc = get(oldfd);
         if (!fdesc)
-            return -EBADF;
+            return std::unexpected { lib::err::invalid_fd };
 
         auto newfdesc = std::make_shared<vfs::filedesc>(fdesc->file, closexec);
         return alloc(std::move(newfdesc), newfd, force, max_fd);

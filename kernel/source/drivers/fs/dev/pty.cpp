@@ -195,6 +195,7 @@ namespace fs::dev::pty
                 int value = 0;
                 if (!argp.read(value))
                     return std::unexpected { lib::err::invalid_address };
+
                 const auto pty_pair = find_pair(minor);
                 if (!pty_pair)
                     return std::unexpected { lib::err::no_such_device };
@@ -206,6 +207,7 @@ namespace fs::dev::pty
                 const auto pty_pair = find_pair(minor);
                 if (!pty_pair)
                     return std::unexpected { lib::err::no_such_device };
+
                 const int value = pty_pair->locked.load(std::memory_order_acquire) ? 1 : 0;
                 if (!argp.write(value))
                     return std::unexpected { lib::err::invalid_address };
@@ -223,19 +225,19 @@ namespace fs::dev::pty
                     return std::unexpected { resolved.error() };
 
                 auto slave_fdesc = vfs::filedesc::create(resolved->target, open_flags);
-                const auto fd_num = proc->fdt->alloc(
+                const auto fdres = proc->fdt->alloc(
                     slave_fdesc, 0, false,
                     proc->rlimits->get(sched::rlimit_nofile).cur
                 );
-                if (fd_num < 0)
-                    return fd_num;
+                if (!fdres.has_value())
+                    return fdres;
 
                 if (const auto open_res = slave_fdesc->file->open(open_flags, proc->pid); !open_res)
                 {
-                    proc->fdt->close(fd_num);
+                    proc->fdt->close(*fdres);
                     return std::unexpected { open_res.error() };
                 }
-                return fd_num;
+                return *fdres;
             }
             case tty::ioctl::tcgets:
             case tty::ioctl::tcsets:
@@ -256,6 +258,7 @@ namespace fs::dev::pty
                 const auto base_res = tty::instance::ioctl(request, argp);
                 if (!base_res.has_value())
                     return base_res;
+
                 if (auto peer = link.lock())
                 {
                     propagate_winsize(*this, *peer);
