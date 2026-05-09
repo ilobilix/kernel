@@ -1995,6 +1995,20 @@ namespace syscall::vfs
                 fdesc->file->flags = (fdesc->file->flags & ~changeable_status_flags) | new_flags;
                 break;
             }
+            case 1031: // F_SETPIPE_SZ
+            {
+                const auto ret = vfs::pipe::set_size(fdesc->file, static_cast<std::size_t>(arg));
+                if (!ret)
+                    return -lib::map_error(ret.error());
+                return static_cast<int>(*ret);
+            }
+            case 1032: // F_GETPIPE_SZ
+            {
+                const auto ret = vfs::pipe::get_size(fdesc->file);
+                if (!ret)
+                    return -lib::map_error(ret.error());
+                return static_cast<int>(*ret);
+            }
             // TODO: flock
             case 6: // F_SETLK
             case 7: // F_SETLKW
@@ -2130,7 +2144,7 @@ namespace syscall::vfs
         const auto proc = sched::current_process();
         auto &fdt = proc->fdt;
 
-        if (flags & ~(o_closexec | o_direct | o_nonblock))
+        if (flags & ~(o_closexec | o_nonblock))
             return -EINVAL;
 
         auto shared_inode = std::make_shared<inode>();
@@ -2148,6 +2162,8 @@ namespace syscall::vfs
                 kstat::time::birth
             );
         }
+
+        vfs::pipe::prep_anon(shared_inode);
 
         std::array<int, 2> fds;
 

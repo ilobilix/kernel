@@ -4,7 +4,6 @@ module system.vfs.socket;
 
 namespace vfs::socket
 {
-
     struct ops : vfs::ops
     {
         static std::shared_ptr<ops> singleton()

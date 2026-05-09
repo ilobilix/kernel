@@ -57,10 +57,18 @@ namespace sched
         entry_ref.store(nullptr, std::memory_order_relaxed);
     }
 
+    std::size_t wait_queue_t::snapshot_gen() const
+    {
+        return generation.load(std::memory_order_acquire);
+    }
+
     bool wait_queue_t::wait(std::uint64_t ns)
     {
-        const auto gen = generation.load(std::memory_order_acquire);
+        return wait_prepared(snapshot_gen(), ns);
+    }
 
+    bool wait_queue_t::wait_prepared(std::size_t gen, std::uint64_t ns)
+    {
         if (try_dec_pending())
             return false;
 

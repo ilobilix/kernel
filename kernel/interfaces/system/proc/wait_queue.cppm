@@ -50,6 +50,9 @@ export namespace sched
         bool wait(std::uint64_t ns = 0);
         void wait_unint(std::uint64_t ns = 0);
 
+        std::size_t snapshot_gen() const;
+        bool wait_prepared(std::size_t gen, std::uint64_t ns = 0);
+
         void wake_one(bool drop = false);
         void wake_all();
     };
