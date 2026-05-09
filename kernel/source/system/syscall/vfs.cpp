@@ -2388,7 +2388,7 @@ namespace syscall::vfs
 
     std::ssize_t sendto(
         int sockfd, const void __user *buf, std::size_t len,
-        std::uint32_t flags, sockaddr __user *addr, socklen_t addrlen
+        std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
     )
     {
         const auto proc = sched::current_process();
