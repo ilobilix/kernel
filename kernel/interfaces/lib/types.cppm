@@ -112,5 +112,13 @@ export
     using blksize_t = std::int64_t;
     using blkcnt_t = std::int64_t;
 
+    using socklen_t = std::uint32_t;
+
     constexpr auto rlim_inf = ~static_cast<rlim_t>(0);
+
+    struct iovec
+    {
+        void __user *iov_base;
+        std::size_t iov_len;
+    };
 } // export

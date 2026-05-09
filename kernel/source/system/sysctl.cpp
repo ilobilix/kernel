@@ -22,7 +22,13 @@ namespace sysctl
             }
         };
 
-        lib::locker<lib::btree::map<std::string, entry, path_less>, sched::mutex> registry;
+        lib::locker<
+            lib::btree::map<
+                std::string,
+                entry,
+                path_less
+            >, sched::mutex
+        > registry;
 
         std::string_view first_segment(std::string_view path)
         {
@@ -99,11 +105,10 @@ namespace sysctl
         return register_int(
             std::move(path),
             [storage] { return storage->load(std::memory_order_relaxed); },
-            [storage] (int val) -> lib::expect<void> {
+            [storage](int val) -> lib::expect<void> {
                 storage->store(val, std::memory_order_relaxed);
                 return { };
-            },
-            mode
+            }, mode
         );
     }
 
@@ -141,6 +146,7 @@ namespace sysctl
     {
         if (path.empty())
             return true;
+
         const auto locked = registry.lock();
         for (const auto &[full, _] : *locked)
         {

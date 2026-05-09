@@ -72,7 +72,20 @@ export namespace lib
 
         not_supported = ENOTSUP,
 
-        read_only_fs = EROFS
+        read_only_fs = EROFS,
+
+        illegal_seek = ESPIPE,
+
+        address_family_unsupported = EAFNOSUPPORT,
+        protocol_unsupported = EPROTONOSUPPORT,
+        socket_unsupported = ESOCKTNOSUPPORT,
+        operation_unsupported = EOPNOTSUPP,
+        wrong_protocol = EPROTOTYPE,
+        not_a_socket = ENOTSOCK,
+        already_connected = EISCONN,
+        not_connected = ENOTCONN,
+        connection_refused = ECONNREFUSED,
+        message_too_long = EMSGSIZE
     };
 
     template<typename Type>

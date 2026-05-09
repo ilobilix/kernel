@@ -3,7 +3,6 @@
 export module system.vfs.pipe;
 
 import system.vfs;
-import lib;
 import std;
 
 export namespace vfs::pipe

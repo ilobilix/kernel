@@ -627,12 +627,6 @@ namespace syscall::vfs
         return *ret;
     }
 
-    struct iovec
-    {
-        void __user *iov_base;
-        std::size_t iov_len;
-    };
-
     std::ssize_t readv(int fd, const iovec __user *iov, int iovcnt)
     {
         const auto proc = sched::current_process();

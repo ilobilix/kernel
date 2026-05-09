@@ -56,6 +56,24 @@ namespace fs::procfs
             locked->push_back({ std::move(name), gen, mode, is_symlink });
             return true;
         }
+
+        constexpr std::size_t max_readdir_batch = 256;
+        constexpr std::size_t cookie_base = 3;
+
+        std::optional<pid_t> parse_pid(std::string_view name)
+        {
+            if (name.empty())
+                return std::nullopt;
+
+            pid_t value = 0;
+            for (char chr : name)
+            {
+                if (chr < '0' || chr > '9')
+                    return std::nullopt;
+                value = value * 10 + (chr - '0');
+            }
+            return value;
+        }
     } // namespace
 
     bool register_global(std::string name, gen_fn gen, mode_t mode, bool is_symlink)
@@ -114,26 +132,6 @@ namespace fs::procfs
         }
     };
 
-    namespace
-    {
-        constexpr std::size_t cookie_base = 3;
-
-        std::optional<pid_t> parse_pid(std::string_view name)
-        {
-            if (name.empty())
-                return std::nullopt;
-
-            pid_t value = 0;
-            for (char chr : name)
-            {
-                if (chr < '0' || chr > '9')
-                    return std::nullopt;
-                value = value * 10 + (chr - '0');
-            }
-            return value;
-        }
-    } // namespace
-
     struct ops : vfs::ops
     {
         static std::shared_ptr<ops> singleton()
@@ -144,8 +142,7 @@ namespace fs::procfs
 
         static bool is_readable(const inode *inod)
         {
-            return (inod->knd == kind::file && inod->gen) ||
-                inod->knd == kind::sysctl_file;
+            return (inod->knd == kind::file && inod->gen) || inod->knd == kind::sysctl_file;
         }
 
         static auto cache(std::shared_ptr<vfs::file> &file, inode *inod)
@@ -634,11 +631,9 @@ namespace fs::procfs
 
             auto readdir_root(std::size_t cookie) -> lib::expect<lib::list<vfs::dir_entry>>
             {
-                constexpr std::size_t max_batch = 256;
                 lib::list<vfs::dir_entry> result;
 
                 std::size_t idx = std::max<std::size_t>(cookie, cookie_base);
-
                 if (idx == cookie_base)
                 {
                     result.push_back({
@@ -652,7 +647,7 @@ namespace fs::procfs
                 const auto entries = snapshot(global_registry);
                 const std::size_t cookie_first_pid = cookie_base + 1 + entries.size();
 
-                while (idx < cookie_first_pid && result.size() < max_batch)
+                while (idx < cookie_first_pid && result.size() < max_readdir_batch)
                 {
                     const auto &ent = entries[idx - cookie_base - 1];
                     auto child = make_entry_inode(-1, ent);
@@ -660,7 +655,7 @@ namespace fs::procfs
                     idx++;
                 }
 
-                if (result.size() >= max_batch)
+                if (result.size() >= max_readdir_batch)
                     return result;
 
                 std::vector<pid_t> pids;
@@ -675,7 +670,7 @@ namespace fs::procfs
                 if (idx > cookie_first_pid)
                     pid_idx = idx - cookie_first_pid;
 
-                while (pid_idx < pids.size() && result.size() < max_batch)
+                while (pid_idx < pids.size() && result.size() < max_readdir_batch)
                 {
                     const auto pid = pids[pid_idx];
                     auto child = make_pid_dir_inode(pid);
@@ -707,8 +702,7 @@ namespace fs::procfs
                     idx++;
                 }
 
-                const auto fd_cookie = cookie_base + entries.size();
-                if (idx <= fd_cookie)
+                if (const auto fd_cookie = cookie_base + entries.size(); idx <= fd_cookie)
                 {
                     result.push_back({
                         std::string { "fd" },
@@ -743,8 +737,7 @@ namespace fs::procfs
                 std::size_t idx = std::max<std::size_t>(cookie, base);
                 std::size_t fd_idx = idx - base;
 
-                constexpr std::size_t max_batch = 256;
-                while (fd_idx < fds.size() && result.size() < max_batch)
+                while (fd_idx < fds.size() && result.size() < max_readdir_batch)
                 {
                     const int fd = fds[fd_idx];
                     auto child = make_fd_link_inode(pid, fd);
@@ -761,8 +754,7 @@ namespace fs::procfs
                 auto entries = sysctl::list(path);
 
                 std::size_t entry_idx = cookie > cookie_base ? cookie - cookie_base : 0;
-                constexpr std::size_t max_batch = 256;
-                while (entry_idx < entries.size() && result.size() < max_batch)
+                while (entry_idx < entries.size() && result.size() < max_readdir_batch)
                 {
                     auto &ent = entries[entry_idx];
                     std::string full = std::string { path };
@@ -777,7 +769,13 @@ namespace fs::procfs
                         child = make_sysctl_file_inode(std::move(full), sct->mode);
 
                     if (child)
-                        result.push_back({ std::move(ent.name), std::move(child), cookie_base + entry_idx });
+                    {
+                        result.push_back({
+                            std::move(ent.name),
+                            std::move(child),
+                            cookie_base + entry_idx
+                        });
+                    }
                     entry_idx++;
                 }
                 return result;
