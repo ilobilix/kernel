@@ -24,7 +24,7 @@ namespace syscall::vfs
             return inode->stat.type() == stat::s_ifsock;
         }
 
-        auto get_socket(sched::process_t *proc, int sockfd)
+        auto get_socket(sched::process_t *proc, int sockfd, int *flags = nullptr)
             -> lib::expect<std::shared_ptr<socket::socket_t>>
         {
             const auto fdesc_res = detail::get_fd(proc, sockfd);
@@ -34,6 +34,9 @@ namespace syscall::vfs
             const auto &fdesc = *fdesc_res;
             if (!is_socket(fdesc))
                 return std::unexpected { lib::err::not_a_socket };
+
+            if (flags)
+                *flags = fdesc->file->flags;
 
             return socket::from_file(*fdesc->file);
         }
@@ -46,6 +49,14 @@ namespace syscall::vfs
                 ret |= o_closexec;
             if (flags & sock_nonblock)
                 ret |= o_nonblock;
+            return ret;
+        }
+
+        int effective_flags(int fflags)
+        {
+            int ret = 0;
+            if (fflags & o_nonblock)
+                ret |= msg_dontwait;
             return ret;
         }
 
@@ -136,7 +147,8 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        int fflags;
+        auto sockres = get_socket(proc, sockfd, &fflags);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -156,7 +168,7 @@ namespace syscall::vfs
         }
 
         std::span<lib::maybe_uspan<std::byte>> iovs { std::addressof(*bufuspan), 1 };
-        const socket::msg_header_t hdr {
+        socket::msg_header_t hdr {
             .name = nameuspan,
             .iovs = iovs,
             .msgctrl = { },
@@ -165,7 +177,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->sendmsg(hdr, flags);
+        const auto res = sock->sendmsg(hdr, flags | effective_flags(fflags));
         if (!res)
             return -lib::map_error(res.error());
         return *res;
@@ -178,7 +190,8 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        int fflags;
+        auto sockres = get_socket(proc, sockfd, &fflags);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -202,7 +215,7 @@ namespace syscall::vfs
         }
 
         std::span<lib::maybe_uspan<std::byte>> iovs { std::addressof(*bufuspan), 1 };
-        const socket::msg_header_t hdr {
+        socket::msg_header_t hdr {
             .name = nameuspan,
             .iovs = iovs,
             .msgctrl = { },
@@ -211,7 +224,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->recvmsg(hdr, flags);
+        const auto res = sock->recvmsg(hdr, flags | effective_flags(fflags));
         if (!res)
             return -lib::map_error(res.error());
 
@@ -224,7 +237,8 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        int fflags;
+        auto sockres = get_socket(proc, sockfd, &fflags);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -259,7 +273,7 @@ namespace syscall::vfs
             return -EFAULT;
 
         std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
-        const socket::msg_header_t hdr {
+        socket::msg_header_t hdr {
             .name = nameuspan,
             .iovs = iovs,
             .msgctrl = ctrluspan,
@@ -268,7 +282,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->sendmsg(hdr, flags);
+        const auto res = sock->sendmsg(hdr, flags | effective_flags(fflags));
         if (!res)
             return -lib::map_error(res.error());
         return *res;
@@ -278,7 +292,8 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        int fflags;
+        auto sockres = get_socket(proc, sockfd, &fflags);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -313,7 +328,7 @@ namespace syscall::vfs
             return -EFAULT;
 
         std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
-        const socket::msg_header_t hdr {
+        socket::msg_header_t hdr {
             .name = nameuspan,
             .iovs = iovs,
             .msgctrl = ctrluspan,
@@ -322,7 +337,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->recvmsg(hdr, flags);
+        const auto res = sock->recvmsg(hdr, flags | effective_flags(fflags));
         if (!res)
             return -lib::map_error(res.error());
 
@@ -540,7 +555,8 @@ namespace syscall::vfs
 
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        int fflags;
+        auto sockres = get_socket(proc, sockfd, &fflags);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -560,7 +576,7 @@ namespace syscall::vfs
         }
 
         socklen_t out_len = in_len;
-        auto ares = sock->accept(uspan, &out_len, flags);
+        auto ares = sock->accept(uspan, &out_len, fflags & o_nonblock);
         if (!ares)
             return -lib::map_error(ares.error());
 

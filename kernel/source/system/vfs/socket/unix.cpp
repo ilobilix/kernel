@@ -1,0 +1,1252 @@
+// Copyright (C) 2024-2026  ilobilo
+
+module system.vfs.socket;
+
+import system.sched;
+import system.vfs;
+
+namespace vfs::socket
+{
+    namespace
+    {
+        constexpr std::size_t default_capacity = lib::kib(128);
+        constexpr std::size_t min_capacity = lib::kib(4);
+        constexpr std::size_t max_capacity = lib::mib(1);
+
+        constexpr std::size_t dgram_cap = lib::kib(208);
+        constexpr std::size_t msg_cap = lib::kib(64);
+
+        std::size_t round_capacity(std::size_t size)
+        {
+            return lib::next_pow2(std::clamp(size, min_capacity, max_capacity));
+        }
+
+        void raise_sigpipe()
+        {
+            const auto thread = sched::current_thread();
+            lib::bug_on(!thread);
+
+            const sched::siginfo_t info {
+                .signo = sched::sigpipe,
+                .code = sched::si_kernel,
+                .err = 0,
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = 0,
+                .value = 0
+            };
+            sched::send_signal(thread, info);
+        }
+
+        std::size_t copy_out(
+            auto &locked, lib::maybe_uspan<std::byte> dst,
+            std::size_t off, std::size_t len, bool &fault
+        );
+        std::size_t copy_in(
+            auto &locked, lib::maybe_uspan<std::byte> src,
+            std::size_t off, std::size_t len, bool &fault
+        );
+
+        // TODO: scm rights, abstract namespace, connected dgram, msg_more, cmsg_cloexec, trunc
+
+        // struct unix_sock;
+        // lib::locker<
+        //     lib::map::flat_hash<
+        //         std::string,
+        //         std::weak_ptr<unix_sock>
+        //     >, sched::mutex
+        // > abstract;
+
+        enum state { unconnected, connecting, connected, listening, disconnecting };
+        struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
+        {
+            struct private_t
+            {
+                std::weak_ptr<unix_sock> sock;
+
+                static auto create(std::shared_ptr<unix_sock> sock)
+                {
+                    return std::make_shared<private_t>(std::move(sock));
+                }
+
+                static auto get(const std::shared_ptr<vfs::inode> &inode)
+                {
+                    return std::static_pointer_cast<private_t>(inode->private_data);
+                }
+            };
+
+            std::weak_ptr<unix_sock> peer;
+
+            sched::wait_queue_t read_wait;
+            sched::wait_queue_t write_wait;
+            sched::wait_queue_t accept_wait;
+
+            struct state_t
+            {
+                state state;
+
+                std::shared_ptr<vfs::inode> bound_inode;
+                std::string bound_path;
+
+                lib::list<std::shared_ptr<unix_sock>> accept_queue;
+                std::size_t backlog = 0;
+
+                bool shut_read = false;
+                bool shut_write = false;
+                bool passcred = false;
+                int pending_error = 0;
+
+                linger linger_opt { };
+                timeval rcvtimeo { }, sndtimeo { };
+
+                ucred cred { };
+
+                state_t(enum state state) : state { state } { }
+            };
+
+            lib::locker<
+                state_t,
+                sched::mutex
+            > state;
+
+            struct receive_t
+            {
+                lib::membuffer storage;
+                std::size_t capacity = 0;
+                std::size_t head = 0, tail = 0;
+                std::size_t buffered = 0;
+
+                struct dgram
+                {
+                    std::string sender_path;
+                    lib::membuffer payload;
+                };
+                lib::list<dgram> queue;
+            };
+
+            lib::locker<
+                receive_t,
+                sched::mutex
+            > receive;
+
+            unix_sock(int protocol, sock_type type, enum state state = unconnected)
+                : socket_t { protocol, af_unix, type }, state { state }
+            {
+                if (type == sock_stream)
+                {
+                    auto locked = receive.lock();
+                    locked->capacity = default_capacity;
+                    locked->storage.allocate(locked->capacity);
+                }
+            }
+
+            auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> override
+            {
+                if (addr.size() < sizeof(addr_fam) || addr.size() > sizeof(sockaddr_un))
+                    return std::unexpected { lib::err::invalid_argument };
+
+                sockaddr_un sa;
+                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+
+                if (sa.sun_family != af_unix)
+                    return std::unexpected { lib::err::address_family_unsupported };
+
+                std::string_view path;
+                if (addr.size() > sizeof(addr_fam))
+                {
+                    if (sa.sun_path[0] == 0)
+                    {
+                        // TODO
+                        return std::unexpected { lib::err::not_supported };
+                    }
+
+                    const auto len = std::strnlen(sa.sun_path, addr.size() - sizeof(addr_fam));
+                    path = std::string_view { sa.sun_path, len };
+                }
+                else path = "";
+
+                auto slocked = state.lock();
+                if (!slocked->bound_path.empty())
+                    return std::unexpected { lib::err::address_in_use };
+
+                if (slocked->state != unconnected)
+                    return std::unexpected { lib::err::invalid_argument };
+
+                const auto proc = sched::current_process();
+                const auto ret = vfs::create(
+                    proc->vfs->cwd, path, (0777 & ~proc->vfs->umask) | stat::s_ifsock, 0
+                );
+                if (!ret)
+                {
+                    if (ret.error() == lib::err::already_exists)
+                        return std::unexpected { lib::err::address_in_use };
+                    return std::unexpected { ret.error() };
+                }
+
+                ret->dentry->inode->private_data = private_t::create(shared_from_this());
+                slocked->bound_inode = ret->dentry->inode;
+                slocked->bound_path = path;
+
+                return { };
+            }
+
+            auto connect(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> override
+            {
+                if (addr.size() < sizeof(addr_fam) || addr.size() > sizeof(sockaddr_un))
+                    return std::unexpected { lib::err::invalid_argument };
+
+                sockaddr_un sa { };
+                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+
+                if (sa.sun_family != af_unix)
+                    return std::unexpected { lib::err::address_family_unsupported };
+
+                std::string_view path;
+                if (addr.size() > sizeof(addr_fam))
+                {
+                    if (sa.sun_path[0] == 0)
+                        return std::unexpected { lib::err::not_found };
+
+                    const auto len = std::strnlen(sa.sun_path, addr.size() - sizeof(addr_fam));
+                    path = std::string_view { sa.sun_path, len };
+                }
+                else return std::unexpected { lib::err::not_found };
+
+                const auto proc = sched::current_process();
+                const auto res = vfs::resolve(proc->vfs->cwd, path);
+                if (!res)
+                    return std::unexpected { res.error() };
+
+                auto &inode = res->target.dentry->inode;
+                if (inode->stat.type() != stat::s_ifsock)
+                    return std::unexpected { lib::err::connection_refused };
+
+                auto target = private_t::get(inode)->sock.lock();
+                if (!target)
+                    return std::unexpected { lib::err::connection_refused };
+
+                if (type == sock_dgram)
+                {
+                    auto slocked = state.lock();
+                    if (slocked->state == connected)
+                        return std::unexpected { lib::err::already_connected };
+
+                    peer = target;
+                    slocked->state = connected;
+                    return { };
+                }
+
+                {
+                    auto slocked = state.lock();
+                    if (slocked->state == connected)
+                        return std::unexpected { lib::err::already_connected };
+                    if (slocked->state == connecting)
+                        return std::unexpected { lib::err::connection_in_progress };
+                    if (slocked->state != unconnected)
+                        return std::unexpected { lib::err::invalid_argument };
+
+                    slocked->state = connecting;
+                    slocked->cred = {
+                        .pid = proc->pid,
+                        .uid = proc->cred->ruid,
+                        .gid = proc->cred->rgid
+                    };
+                }
+
+                {
+                    auto tlocked = target->state.lock();
+                    if (tlocked->state != listening ||
+                        tlocked->accept_queue.size() >= tlocked->backlog)
+                    {
+                        state.lock()->state = unconnected;
+                        return std::unexpected { lib::err::connection_refused };
+                    }
+
+                    auto server = std::make_shared<unix_sock>(protocol, type);
+                    peer = server;
+                    server->peer = shared_from_this();
+                    server->state.lock()->state = connecting;
+
+                    tlocked->accept_queue.push_back(server);
+                    target->accept_wait.wake_one();
+                }
+
+                return { };
+            }
+
+            auto listen(int backlog) -> lib::expect<void> override
+            {
+                if (type == sock_dgram)
+                    return std::unexpected { lib::err::operation_unsupported };
+
+                auto slocked = state.lock();
+                if (slocked->bound_path.empty())
+                    return std::unexpected { lib::err::invalid_argument };
+
+                if (slocked->state != unconnected && slocked->state != listening)
+                    return std::unexpected { lib::err::already_connected };
+
+                slocked->backlog = std::clamp(backlog, 0, somaxconn);
+                slocked->state = listening;
+
+                return { };
+            }
+
+            auto accept(
+                lib::maybe_uspan<std::byte> peer_addr_out,
+                socklen_t *addr_len_inout, bool nonblock
+            ) -> lib::expect<std::shared_ptr<socket_t>> override
+            {
+                while (true)
+                {
+                    std::shared_ptr<unix_sock> client;
+                    std::size_t gen = 0;
+
+                    {
+                        auto slocked = state.lock();
+                        if (slocked->state != listening)
+                            return std::unexpected { lib::err::not_connected };
+
+                        if (!slocked->accept_queue.empty())
+                        {
+                            client = std::move(slocked->accept_queue.front());
+                            slocked->accept_queue.pop_front();
+                        }
+                        else gen = accept_wait.snapshot_gen();
+                    }
+
+                    if (client)
+                    {
+                        const auto proc = sched::current_process();
+                        {
+                            auto cslocked = client->state.lock();
+                            cslocked->cred = {
+                                .pid = proc->pid,
+                                .uid = proc->cred->ruid,
+                                .gid = proc->cred->rgid
+                            };
+                        }
+
+                        if (peer_addr_out.size() > 0 && addr_len_inout)
+                        {
+                            sockaddr_un sa { };
+                            sa.sun_family = af_unix;
+
+                            socklen_t actual = sizeof(addr_fam);
+                            if (auto connecting = client->peer.lock())
+                            {
+                                auto pslocked = connecting->state.lock();
+                                if (!pslocked->bound_path.empty())
+                                {
+                                    std::strncpy(
+                                        sa.sun_path,
+                                        pslocked->bound_path.c_str(),
+                                        sizeof(sa.sun_path) - 1
+                                    );
+                                    actual = sizeof(addr_fam) + pslocked->bound_path.size() + 1;
+                                }
+                            }
+
+                            const auto copy_len = std::min<std::size_t>(peer_addr_out.size(), actual);
+                            peer_addr_out.subspan(0, copy_len).copy_from(
+                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
+                            );
+                            *addr_len_inout = actual;
+                        }
+
+                        return client;
+                    }
+
+                    if (nonblock)
+                        return std::unexpected { lib::err::try_again };
+
+                    if (accept_wait.wait_prepared(gen))
+                        return std::unexpected { lib::err::interrupted };
+                }
+            }
+
+            auto sendmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> override
+            {
+                if (flags & msg_oob)
+                    return std::unexpected { lib::err::operation_unsupported };
+
+                std::size_t total = 0;
+                for (const auto &iov : hdr.iovs)
+                    total += iov.size();
+
+                if (total == 0)
+                    return 0uz;
+
+                if (type == sock_stream)
+                {
+                    auto peer_ptr = peer.lock();
+                    if (!peer_ptr)
+                    {
+                        if (!(flags & msg_nosignal))
+                            raise_sigpipe();
+                        return std::unexpected { lib::err::broken_pipe };
+                    }
+
+                    {
+                        auto slocked = state.lock();
+                        if (slocked->shut_write)
+                        {
+                            if (!(flags & msg_nosignal))
+                                raise_sigpipe();
+                            return std::unexpected { lib::err::broken_pipe };
+                        }
+                    }
+
+                    std::size_t sent = 0;
+                    std::size_t cur_iov = 0;
+                    std::size_t iov_off = 0;
+
+                    while (sent < total && cur_iov < hdr.iovs.size())
+                    {
+                        std::size_t chunk = 0;
+                        bool fault = false;
+                        bool peer_gone = false;
+                        std::size_t gen = 0;
+
+                        auto &iov = hdr.iovs[cur_iov];
+                        {
+                            {
+                                auto slocked = peer_ptr->state.lock();
+                                const auto state = slocked->state;
+                                if (state == disconnecting || state == unconnected)
+                                {
+                                    peer_gone = true;
+                                    goto skip;
+                                }
+                            }
+
+                            {
+                                auto locked = peer_ptr->receive.lock();
+                                const auto available = locked->capacity - locked->buffered;
+
+                                // if (available >= total - sent)
+                                if (available > 0)
+                                {
+                                    const auto want = std::min(
+                                        available, iov.size() - iov_off
+                                    );
+                                    chunk = copy_in(locked, iov, iov_off, want, fault);
+                                }
+                                else gen = peer_ptr->write_wait.snapshot_gen();
+                            }
+                        }
+
+                        skip:
+                        if (peer_gone)
+                        {
+                            if (sent > 0)
+                                return sent;
+
+                            if (!(flags & msg_nosignal))
+                                raise_sigpipe();
+                            return std::unexpected { lib::err::broken_pipe };
+                        }
+
+                        if (chunk > 0)
+                        {
+                            sent += chunk;
+                            iov_off += chunk;
+                            if (iov_off >= iov.size())
+                            {
+                                cur_iov++;
+                                iov_off = 0;
+                            }
+
+                            peer_ptr->read_wait.wake_all();
+                            continue;
+                        }
+
+                        if (fault)
+                        {
+                            if (sent > 0)
+                                return sent;
+                            return std::unexpected { lib::err::invalid_address };
+                        }
+
+                        if (flags & msg_dontwait)
+                        {
+                            if (sent > 0)
+                                return sent;
+                            return std::unexpected { lib::err::try_again };
+                        }
+
+                        if (peer_ptr->write_wait.wait_prepared(gen))
+                        {
+                            if (sent > 0)
+                                return sent;
+                            return std::unexpected { lib::err::interrupted };
+                        }
+                    }
+
+                    return sent;
+                }
+                else // sock_dgram and sock_seqpacket
+                {
+                    if (total > msg_cap)
+                        return std::unexpected { lib::err::message_too_long };
+
+                    std::shared_ptr<unix_sock> dest;
+                    if (!hdr.name.empty())
+                    {
+                        sockaddr_un sa { };
+                        hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+                        if (sa.sun_family != af_unix)
+                            return std::unexpected { lib::err::address_family_unsupported };
+
+                        const auto len = std::strnlen(
+                            sa.sun_path,
+                            hdr.name.size() - sizeof(addr_fam)
+                        );
+                        const std::string_view path { sa.sun_path, len };
+
+                        const auto proc = sched::current_process();
+                        const auto res = vfs::resolve(proc->vfs->cwd, path);
+                        if (!res)
+                            return std::unexpected { res.error() };
+
+                        auto &inode = res->target.dentry->inode;
+                        if (inode->stat.type() != stat::s_ifsock)
+                            return std::unexpected { lib::err::connection_refused };
+
+                        dest = private_t::get(inode)->sock.lock();
+                        if (!dest)
+                            return std::unexpected { lib::err::connection_refused };
+                    }
+                    else
+                    {
+                        dest = peer.lock();
+                        if (!dest)
+                            return std::unexpected { lib::err::not_connected };
+                    }
+
+                    lib::membuffer payload { total };
+                    std::size_t off = 0;
+                    for (const auto &iov : hdr.iovs)
+                    {
+                        if (!iov.copy_to({ payload.data() + off, iov.size() }))
+                            return std::unexpected { lib::err::invalid_address };
+                        off += iov.size();
+                    }
+
+                    std::string sender_path;
+                    {
+                        auto slocked = state.lock();
+                        sender_path = slocked->bound_path;
+                    }
+
+                    while (true)
+                    {
+                        std::size_t gen = 0;
+                        {
+                            auto locked = dest->receive.lock();
+                            std::size_t queued = 0;
+                            for (auto &dgram : locked->queue)
+                                queued += dgram.payload.size();
+
+                            if (queued + total <= dgram_cap)
+                            {
+                                locked->queue.push_back({
+                                    std::move(sender_path),
+                                    std::move(payload)
+                                });
+                                dest->read_wait.wake_all();
+                                return total;
+                            }
+
+                            gen = dest->write_wait.snapshot_gen();
+                        }
+
+                        if (flags & msg_dontwait)
+                            return std::unexpected { lib::err::try_again };
+
+                        if (dest->write_wait.wait_prepared(gen))
+                            return std::unexpected { lib::err::interrupted };
+                    }
+                }
+            }
+
+            auto recvmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> override
+            {
+                if (flags & msg_oob)
+                    return std::unexpected { lib::err::operation_unsupported };
+
+                std::size_t total = 0;
+                for (const auto &iov : hdr.iovs)
+                    total += iov.size();
+
+                if (total == 0)
+                    return 0uz;
+
+                if (type == sock_stream)
+                {
+                    if (flags & msg_peek)
+                    {
+                        auto locked = receive.lock();
+
+                        std::size_t peek_tail = locked->tail;
+                        std::size_t peek_left = locked->buffered;
+                        std::size_t peek_out = 0;
+
+                        for (auto &iov : hdr.iovs)
+                        {
+                            if (peek_left == 0)
+                                break;
+
+                            const auto want = std::min(iov.size(), peek_left);
+                            const auto first = std::min(want, locked->capacity - peek_tail);
+                            const auto rest = want - first;
+
+                            std::span span { locked->storage.data() + peek_tail, first };
+                            if (!iov.subspan(0, first).copy_from(span))
+                                return std::unexpected { lib::err::invalid_address };
+                            peek_tail = (peek_tail + first) & (locked->capacity - 1);
+
+                            if (rest > 0)
+                            {
+                                std::span span { locked->storage.data(), rest };
+                                if (!iov.subspan(first, rest).copy_from(span))
+                                    return std::unexpected { lib::err::invalid_address };
+                                peek_tail = (peek_tail + rest) & (locked->capacity - 1);
+                            }
+
+                            peek_out += want;
+                            peek_left -= want;
+                        }
+
+                        return peek_out;
+                    }
+
+                    std::size_t received = 0;
+                    std::size_t cur_iov = 0;
+                    std::size_t iov_off = 0;
+
+                    while (received < total && cur_iov < hdr.iovs.size())
+                    {
+                        std::size_t chunk = 0;
+                        bool fault = false;
+                        bool eof = false;
+                        std::size_t gen = 0;
+
+                        auto &iov = hdr.iovs[cur_iov];
+                        {
+                            auto locked = receive.lock();
+
+                            if (locked->buffered > 0)
+                            {
+                                const auto want = std::min(
+                                    locked->buffered, iov.size() - iov_off
+                                );
+                                chunk = copy_out(locked, iov, iov_off, want, fault);
+                            }
+                            else
+                            {
+                                auto peer_ptr = peer.lock();
+                                if (peer_ptr && peer_ptr->state.lock()->state != disconnecting)
+                                    gen = read_wait.snapshot_gen();
+                                else
+                                    eof = true;
+                            }
+                        }
+
+                        if (chunk > 0)
+                        {
+                            received += chunk;
+                            iov_off += chunk;
+                            if (iov_off > iov.size())
+                            {
+                                cur_iov++;
+                                iov_off = 0;
+                            }
+
+                            if (auto peer_ptr = peer.lock())
+                                peer_ptr->write_wait.wake_all();
+
+                            if (!(flags & msg_waitall))
+                                return received;
+                            continue;
+                        }
+
+                        if (eof)
+                        {
+                            if (state.lock()->shut_read && !(flags & msg_nosignal))
+                                raise_sigpipe();
+                            return received;
+                        }
+
+                        if (fault)
+                            return std::unexpected { lib::err::invalid_address };
+
+                        if ((flags & msg_dontwait) || (!(flags & msg_waitall) && received > 0))
+                        {
+                            if (received > 0)
+                                return received;
+                            return std::unexpected { lib::err::try_again };
+                        }
+
+                        if (read_wait.wait_prepared(gen))
+                        {
+                            if (received > 0)
+                                return received;
+                            return std::unexpected { lib::err::interrupted };
+                        }
+                    }
+
+                    return received;
+                }
+                else // sock_dgram and sock_seqpacket
+                {
+                    while (true)
+                    {
+                        std::optional<receive_t::dgram> msg;
+                        std::size_t gen = 0;
+
+                        {
+                            auto locked = receive.lock();
+                            if (!locked->queue.empty())
+                            {
+                                if (!(flags & msg_peek))
+                                {
+                                    msg = std::move(locked->queue.front());
+                                    locked->queue.pop_front();
+                                }
+                                else msg = locked->queue.front();
+                            }
+                            else gen = read_wait.snapshot_gen();
+                        }
+
+                        if (msg)
+                        {
+                            const auto payload_size = msg->payload.size();
+                            std::size_t out = 0;
+
+                            for (auto &iov : hdr.iovs)
+                            {
+                                if (out >= payload_size)
+                                    break;
+
+                                const auto want = std::min(iov.size(), payload_size - out);
+                                if (!iov.copy_from({ msg->payload.data() + out, want }))
+                                    return std::unexpected { lib::err::invalid_address };
+                                out += want;
+                            }
+
+                            if (payload_size > total)
+                                hdr.out_flags |= msg_trunc;
+
+                            if (!hdr.name.empty() && !msg->sender_path.empty())
+                            {
+                                sockaddr_un sa { };
+                                sa.sun_family = af_unix;
+                                std::strncpy(
+                                    sa.sun_path,
+                                    msg->sender_path.c_str(),
+                                    sizeof(sa.sun_path) - 1
+                                );
+
+                                const auto sa_len = sizeof(addr_fam) + msg->sender_path.size() + 1;
+                                const auto copy_len = std::min(hdr.name.size(), sa_len);
+
+                                hdr.name.subspan(0, copy_len).copy_from(
+                                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
+                                );
+                                hdr.addr_len_out = sa_len;
+                            }
+
+                            if (auto peer_ptr = peer.lock())
+                                peer_ptr->write_wait.wake_all();
+
+                            return std::min(total, payload_size);
+                        }
+
+                        if (flags & msg_dontwait)
+                            return std::unexpected { lib::err::try_again };
+
+                        if (read_wait.wait_prepared(gen))
+                            return std::unexpected { lib::err::interrupted };
+                    }
+                }
+            }
+
+            auto ioctl(std::uint64_t request, lib::uptr_or_addr argp) -> lib::expect<int> override
+            {
+                switch (request)
+                {
+                    case 0x541B: // FIONREAD
+                    {
+                        auto locked = receive.lock();
+                        int count = (type == sock_stream)
+                            ? static_cast<int>(locked->buffered)
+                            : !locked->queue.empty()
+                                ? static_cast<int>(locked->queue.front().payload.size())
+                                : 0;
+
+                        if (!argp.write(count))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    case 0x8905: // SIOCATMARK
+                    {
+                        if (!argp.write(1))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    default:
+                        return std::unexpected { lib::err::inappropriate_ioctl };
+                }
+            }
+
+            auto poll(vfs::poll_table *pt) -> lib::expect<std::uint16_t> override
+            {
+                if (pt)
+                {
+                    pt->add(read_wait);
+                    pt->add(write_wait);
+                    pt->add(accept_wait);
+                }
+
+                std::uint16_t mask = 0;
+
+                const auto peer_ptr = peer.lock();
+                bool peer_gone;
+                {
+                    peer_gone = !peer_ptr || [&] {
+                        const auto pslocked = peer_ptr->state.lock();
+                        return pslocked->state == disconnecting || pslocked->shut_write;
+                    } ();
+                }
+
+                bool has_data;
+                {
+                    auto locked = receive.lock();
+                    has_data = (type == sock_stream)
+                        ? locked->buffered > 0
+                        : !locked->queue.empty();
+                }
+
+                if (has_data || peer_gone)
+                    mask |= pollin | pollrdnorm;
+
+                // bool shut_read;
+                bool shut_write;
+                {
+                    const auto slocked = state.lock();
+                    // shut_read = slocked->shut_read;
+                    shut_write = slocked->shut_write;
+                }
+
+                if (/* shut_read && */ peer_gone)
+                    mask |= pollrdhup;
+
+                if (peer_ptr && !shut_write && !peer_gone)
+                {
+                    const auto prlocked = peer_ptr->receive.lock();
+                    const bool writable = (type == sock_stream)
+                        ? (prlocked->capacity - prlocked->buffered) > 0
+                        : [&] {
+                            std::size_t size = 0;
+                            for (auto &dgram : prlocked->queue)
+                                size += dgram.payload.size();
+                            return size < dgram_cap;
+                        } ();
+
+                    if (writable)
+                        mask |= pollout | pollwrnorm;
+                }
+
+                if (peer_gone)
+                    mask |= pollhup;
+
+                return mask;
+            }
+
+            auto shutdown(int how) -> lib::expect<void> override
+            {
+                {
+                    auto slocked = state.lock();
+                    if (slocked->state != connected && slocked->state != listening)
+                        return std::unexpected { lib::err::not_connected };
+
+                    if (how == shut_rd || how == shut_rdwr)
+                        slocked->shut_read = true;
+                    if (how == shut_wr || how == shut_rdwr)
+                        slocked->shut_write = true;
+                }
+
+                read_wait.wake_all();
+                write_wait.wake_all();
+
+                if (auto peer_ptr = peer.lock())
+                {
+                    peer_ptr->read_wait.wake_all();
+                    peer_ptr->write_wait.wake_all();
+                }
+
+                return { };
+            }
+
+            auto getsockname(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> override
+            {
+                sockaddr_un sa { };
+                sa.sun_family = af_unix;
+                socklen_t actual = sizeof(addr_fam);
+
+                {
+                    auto slocked = state.lock();
+                    if (!slocked->bound_path.empty())
+                    {
+                        std::strncpy(
+                            sa.sun_path,
+                            slocked->bound_path.c_str(),
+                            sizeof(sa.sun_path) - 1
+                        );
+                        actual = sizeof(addr_fam) + slocked->bound_path.size() + 1;
+                    }
+                }
+
+                const auto copy_len = std::min<std::size_t>(out.size(), actual);
+                out.subspan(0, copy_len).copy_from(
+                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
+                );
+
+                return actual;
+            }
+
+            auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> override
+            {
+                auto peer_ptr = peer.lock();
+                if (!peer_ptr)
+                    return std::unexpected { lib::err::not_connected };
+                return peer_ptr->getsockname(out);
+            }
+
+            auto setsockopt(
+                sock_lvl lvl, int opt,
+                lib::maybe_uspan<const std::byte> buf
+            ) -> lib::expect<void> override
+            {
+                if (lvl != sol_socket)
+                    return std::unexpected { lib::err::protocol_unsupported };
+
+                auto slocked = state.lock();
+                const auto read_int = [&](int &out) {
+                    if (buf.size() < sizeof(int))
+                        return false;
+
+                    buf.copy_to(std::as_writable_bytes(std::span { &out, 1 }));
+                    return true;
+                };
+
+                switch (static_cast<sock_opt>(opt))
+                {
+                    case so_rcvbuf:
+                    {
+                        int val;
+                        if (!read_int(val))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        auto locked = receive.lock();
+                        locked->capacity = round_capacity(static_cast<std::size_t>(val) * 2);
+                        return { };
+                    }
+                    case so_sndbuf:
+                    {
+                        int val;
+                        if (!read_int(val))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        if (auto peer_ptr = peer.lock())
+                        {
+                            auto locked = peer_ptr->receive.lock();
+                            locked->capacity = round_capacity(static_cast<std::size_t>(val) * 2);
+                        }
+                        return { };
+                    }
+                    case so_passcred:
+                    {
+                        int val;
+                        if (!read_int(val))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        slocked->passcred = val != 0;
+                        return { };
+                    }
+                    case so_linger:
+                        if (buf.size() < sizeof(linger))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->linger_opt, 1 }));
+                        return { };
+                    case so_rcvtimeo:
+                        if (buf.size() < sizeof(timeval))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->rcvtimeo, 1 }));
+                        return { };
+                    case so_sndtimeo:
+                        if (buf.size() < sizeof(timeval))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->sndtimeo, 1 }));
+                        return { };
+                    case so_reuseaddr:
+                    case so_reuseport:
+                    case so_keepalive:
+                    case so_broadcast:
+                    case so_dontroute:
+                        // no-op
+                        return { };
+                    default:
+                        return std::unexpected { lib::err::invalid_argument };
+                }
+            }
+
+            auto getsockopt(
+                sock_lvl lvl, int opt,
+                lib::maybe_uspan<std::byte> buf
+            ) -> lib::expect<std::size_t> override
+            {
+                if (lvl != sol_socket)
+                    return std::unexpected { lib::err::protocol_unsupported };
+
+                auto slocked = state.lock();
+                const auto copy = [&]<typename Type>(Type val) -> lib::expect<std::size_t> {
+                    const auto num = std::min(buf.size(), sizeof(Type));
+                    buf.subspan(0, num).copy_from(
+                        std::as_bytes(std::span { &val, 1 }).subspan(0, num)
+                    );
+                    return sizeof(Type);
+                };
+
+                switch (static_cast<sock_opt>(opt))
+                {
+                    case so_type:
+                        return copy(static_cast<int>(type));
+                    case so_domain:
+                        return copy(static_cast<int>(family));
+                    case so_protocol:
+                        return copy(protocol);
+                    case so_acceptconn:
+                        return copy(slocked->state == listening ? 1 : 0);
+                    case so_passcred:
+                        return copy(slocked->passcred ? 1 : 0);
+                    case so_error:
+                    {
+                        const int err = slocked->pending_error;
+                        slocked->pending_error = 0;
+                        return copy(err);
+                    }
+                    case so_rcvbuf:
+                    {
+                        const auto locked = receive.lock();
+                        return copy(static_cast<int>(locked->capacity));
+                    }
+                    case so_sndbuf:
+                        if (auto peer_ptr = peer.lock())
+                        {
+                            auto locked = peer_ptr->receive.lock();
+                            return copy(static_cast<int>(locked->capacity));
+                        }
+                        return copy(static_cast<int>(default_capacity));
+                    case so_peercred:
+                    {
+                        if (buf.size() < sizeof(ucred))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        auto peer_ptr = peer.lock();
+                        if (!peer_ptr)
+                            return std::unexpected { lib::err::not_connected };
+
+                        ucred cred;
+                        {
+                            auto pslocked = peer_ptr->state.lock();
+                            cred = pslocked->cred;
+                        }
+
+                        buf.subspan(0, sizeof(ucred)).copy_from(
+                            std::as_bytes(std::span { &cred, 1 })
+                        );
+                        return sizeof(ucred);
+                    }
+                    case so_linger:
+                        if (buf.size() < sizeof(linger))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.subspan(0, sizeof(linger)).copy_from(
+                            std::as_bytes(std::span { &slocked->linger_opt, 1 })
+                        );
+                        return sizeof(linger);
+                    case so_rcvtimeo:
+                        if (buf.size() < sizeof(timeval))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.subspan(0, sizeof(timeval)).copy_from(
+                            std::as_bytes(std::span { &slocked->rcvtimeo, 1 })
+                        );
+                        return sizeof(timeval);
+                    case so_sndtimeo:
+                        if (buf.size() < sizeof(timeval))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        buf.subspan(0, sizeof(timeval)).copy_from(
+                            std::as_bytes(std::span { &slocked->sndtimeo, 1 })
+                        );
+                        return sizeof(timeval);
+                    default:
+                        return std::unexpected { lib::err::invalid_argument };
+                }
+            }
+
+            auto release() -> lib::expect<void> override
+            {
+                {
+                    auto slocked = state.lock();
+                    slocked->state = disconnecting;
+                    slocked->bound_inode.reset();
+
+                    for (auto &client : slocked->accept_queue)
+                    {
+                        auto cslocked = client->state.lock();
+                        cslocked->state = unconnected;
+                    }
+                    slocked->accept_queue.clear();
+                }
+
+                read_wait.wake_all();
+                write_wait.wake_all();
+                accept_wait.wake_all();
+
+                if (auto peer_ptr = peer.lock())
+                {
+                    peer_ptr->read_wait.wake_all();
+                    peer_ptr->write_wait.wake_all();
+                }
+
+                return { };
+            }
+        };
+
+        std::size_t copy_in(
+            auto &locked, lib::maybe_uspan<std::byte> src,
+            std::size_t off, std::size_t len, bool &fault
+        )
+        {
+            fault = false;
+            const auto first = std::min(len, locked->capacity - locked->head);
+            const auto rest = len - first;
+
+            if (!src.subspan(off, first).copy_to({ locked->storage.data() + locked->head, first }))
+            {
+                fault = true;
+                return 0;
+            }
+
+            locked->head = (locked->head + first) & (locked->capacity - 1);
+            locked->buffered += first;
+
+            if (rest == 0)
+                return first;
+
+            if (!src.subspan(off + first, rest).copy_to({ locked->storage.data(), rest }))
+            {
+                fault = true;
+                return first;
+            }
+
+            locked->head = (locked->head + rest) & (locked->capacity - 1);
+            locked->buffered += rest;
+            return len;
+        }
+
+        std::size_t copy_out(
+            auto &locked, lib::maybe_uspan<std::byte> dst,
+            std::size_t off, std::size_t len, bool &fault
+        )
+        {
+            fault = false;
+            const auto first = std::min(len, locked->capacity - locked->tail);
+            const auto rest = len - first;
+
+            std::span span { locked->storage.data() + locked->tail, first };
+            if (!dst.subspan(off, first).copy_from(span))
+            {
+                fault = true;
+                return 0;
+            }
+
+            locked->tail = (locked->tail + first) & (locked->capacity - 1);
+            locked->buffered -= first;
+
+            if (rest == 0)
+                return first;
+
+            if (!dst.subspan(off + first, rest).copy_from({ locked->storage.data(), rest }))
+            {
+                fault = true;
+                return first;
+            }
+
+            locked->tail = (locked->tail + rest) & (locked->capacity - 1);
+            locked->buffered -= rest;
+            return len;
+        }
+
+        struct unix_family_t : family_t
+        {
+            unix_family_t() : family_t { af_unix } { }
+
+            lib::expect<std::shared_ptr<socket_t>> create(sock_type type, int protocol) override
+            {
+                if (protocol != 0)
+                    return std::unexpected { lib::err::protocol_unsupported };
+
+                if (type != sock_stream && type != sock_dgram && type != sock_seqpacket)
+                    return std::unexpected { lib::err::socket_unsupported };
+
+                return std::make_shared<unix_sock>(protocol, type);
+            }
+
+            auto create_pair(sock_type type, int protocol)
+                -> lib::expect<std::pair<std::shared_ptr<socket_t>, std::shared_ptr<socket_t>>> override
+            {
+                if (protocol != 0)
+                    return std::unexpected { lib::err::protocol_unsupported };
+
+                if (type != sock_stream && type != sock_dgram && type != sock_seqpacket)
+                    return std::unexpected { lib::err::socket_unsupported };
+
+                auto one = std::make_shared<unix_sock>(protocol, type, connected);
+                auto two = std::make_shared<unix_sock>(protocol, type, connected);
+
+                one->peer = two;
+                two->peer = one;
+
+                return std::make_pair(std::move(one), std::move(two));
+            }
+        };
+
+        unix_family_t unix_family;
+
+        lib::initgraph::task root_task
+        {
+            "socket.register-unix",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::entail { root_mounted_stage() },
+            [] {
+                if (const auto ret = register_family(&unix_family); !ret)
+                {
+                    lib::error(
+                        "socket: could not register family 'unix': {}",
+                        lib::error_name(ret.error())
+                    );
+                }
+            }
+        };
+
+    } // namespace
+} // namespace vfs::socket

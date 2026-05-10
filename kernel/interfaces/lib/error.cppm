@@ -57,7 +57,6 @@ export namespace lib
         not_mapped = EFAULT,
 
         no_space_left = ENOSPC,
-        no_readers = EPIPE,
 
         try_again = EAGAIN,
         interrupted = EINTR,
@@ -65,7 +64,6 @@ export namespace lib
         mapping_unsupported = ENODEV,
         io_error = EIO,
 
-        addr_in_use = EADDRINUSE,
         out_of_memory = ENOMEM,
 
         not_permitted = EPERM,
@@ -76,6 +74,7 @@ export namespace lib
         read_only_fs = EROFS,
 
         illegal_seek = ESPIPE,
+        broken_pipe = EPIPE,
 
         address_family_unsupported = EAFNOSUPPORT,
         protocol_unsupported = EPROTONOSUPPORT,
@@ -86,7 +85,9 @@ export namespace lib
         already_connected = EISCONN,
         not_connected = ENOTCONN,
         connection_refused = ECONNREFUSED,
-        message_too_long = EMSGSIZE
+        message_too_long = EMSGSIZE,
+        address_in_use = EADDRINUSE,
+        connection_in_progress = EALREADY
     };
 
     template<typename Type>

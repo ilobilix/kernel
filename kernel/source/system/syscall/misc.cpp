@@ -7,6 +7,7 @@ module;
 
 module system.syscall.misc;
 
+import system.memory.virt;
 import system.memory.phys;
 import system.random;
 import system.chrono;
@@ -23,24 +24,6 @@ namespace syscall::misc
         char version[65];
         char machine[65];
         char domainname[65];
-    };
-
-    struct sysinfo
-    {
-        long uptime;
-        unsigned long loads[3];
-        unsigned long totalram;
-        unsigned long freeram;
-        unsigned long sharedram;
-        unsigned long bufferram;
-        unsigned long totalswap;
-        unsigned long freeswap;
-        unsigned short procs;
-        unsigned short pad;
-        unsigned long totalhigh;
-        unsigned long freehigh;
-        unsigned int mem_unit;
-        char _f[20 - 2 * sizeof(long) - sizeof(int)];
     };
 
     namespace
@@ -157,6 +140,24 @@ namespace syscall::misc
         return 0;
     }
 
+    struct sysinfo
+    {
+        long uptime;
+        unsigned long loads[3];
+        unsigned long totalram;
+        unsigned long freeram;
+        unsigned long sharedram;
+        unsigned long bufferram;
+        unsigned long totalswap;
+        unsigned long freeswap;
+        unsigned short procs;
+        unsigned short pad;
+        unsigned long totalhigh;
+        unsigned long freehigh;
+        unsigned int mem_unit;
+        char _f[20 - 2 * sizeof(long) - sizeof(int)];
+    };
+
     int sysinfo(struct sysinfo __user *info)
     {
         const auto mem = pmm::info();
@@ -169,6 +170,7 @@ namespace syscall::misc
         kbuf.uptime = uptime_ns.tv_sec;
         kbuf.totalram = mem.usable;
         kbuf.freeram = mem.usable - mem.used;
+        kbuf.sharedram = vmm::cached_pages(vmm::object_type::shmem) * pmm::page_size;
         kbuf.procs = static_cast<unsigned short>(
             std::min<std::size_t>(procs, std::numeric_limits<unsigned short>::max())
         );

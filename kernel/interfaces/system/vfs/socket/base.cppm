@@ -235,15 +235,27 @@ export
 
     enum msg_flag : int
     {
-        msg_oob = 0x0001,
-        msg_peek = 0x0002,
-        msg_dontroute = 0x0004,
-        msg_ctrunc = 0x0008,
-        msg_trunc = 0x0020,
-        msg_dontwait = 0x0040,
-        msg_eor = 0x0080,
+        msg_oob = 0x01,
+        msg_peek = 0x02,
+        msg_dontroute = 0x04,
+        msg_ctrunc = 0x08,
+        msg_proxy = 0x10,
+        msg_trunc = 0x20,
+        msg_dontwait = 0x40,
+        msg_eor = 0x80,
         msg_waitall = 0x0100,
+        msg_fin = 0x200,
+        msg_syn = 0x400,
+        msg_confirm = 0x800,
+        msg_rst = 0x1000,
+        msg_errqueue = 0x2000,
         msg_nosignal = 0x4000,
+        msg_more = 0x8000,
+        msg_waitforone = 0x10000,
+        msg_batch = 0x40000,
+        msg_sock_devmem = 0x2000000,
+        msg_zerocopy = 0x4000000,
+        msg_fastopen = 0x20000000,
         msg_cmsg_cloexec = 0x40000000
     };
 
@@ -309,16 +321,19 @@ export namespace vfs::socket
         addr_fam family;
         sock_type type;
 
+        socket_t(int protocol, addr_fam family, sock_type type)
+            : protocol { protocol }, family { family }, type { type } { }
+
         virtual auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
         virtual auto connect(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
         virtual auto listen(int backlog) -> lib::expect<void> = 0;
         virtual auto accept(
             lib::maybe_uspan<std::byte> peer_addr_out,
-            socklen_t *addr_len_inout, int flags
+            socklen_t *addr_len_inout, bool nonblock
         ) -> lib::expect<std::shared_ptr<socket_t>> = 0;
 
-        virtual auto sendmsg(msg_header_t hdr, int flags) -> lib::expect<std::size_t> = 0;
-        virtual auto recvmsg(msg_header_t hdr, int flags) -> lib::expect<std::size_t> = 0;
+        virtual auto sendmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> = 0;
+        virtual auto recvmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> = 0;
 
         virtual auto ioctl(std::uint64_t request, lib::uptr_or_addr argp) -> lib::expect<int> = 0;
         virtual auto poll(vfs::poll_table *pt) -> lib::expect<std::uint16_t> = 0;
@@ -347,6 +362,8 @@ export namespace vfs::socket
     struct family_t
     {
         addr_fam af;
+
+        family_t(addr_fam af) : af { af } { }
 
         virtual lib::expect<std::shared_ptr<socket_t>> create(sock_type type, int protocol) = 0;
         virtual auto create_pair(sock_type type, int protocol)

@@ -243,6 +243,7 @@ export namespace lib
 
     class kvparse_view : public std::ranges::view_interface<kvparse_view>
     {
+        private:
         std::string_view _input;
         char _separator;
 

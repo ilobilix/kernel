@@ -45,8 +45,6 @@ namespace syscall::vfs
             .mnt = nullptr
         }, flags | o_rdonly);
 
-        rfdesc->closexec = (flags & o_closexec) != 0;
-
         const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
 
         const auto fd0res = fdt->alloc(rfdesc, 0, false, max_fd);
@@ -68,8 +66,6 @@ namespace syscall::vfs
             .dentry = wdentry,
             .mnt = nullptr
         }, flags | o_wronly);
-
-        wfdesc->closexec = (flags & o_closexec) != 0;
 
         const auto fd1res = fdt->alloc(wfdesc, 0, false, max_fd);
         if (!fd1res.has_value())
