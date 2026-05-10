@@ -16,6 +16,8 @@ namespace vfs::socket
         constexpr std::size_t dgram_cap = lib::kib(208);
         constexpr std::size_t msg_cap = lib::kib(64);
 
+        constexpr std::size_t cmsg_align = sizeof(std::size_t);
+
         std::size_t round_capacity(std::size_t size)
         {
             return lib::next_pow2(std::clamp(size, min_capacity, max_capacity));
@@ -61,6 +63,10 @@ namespace vfs::socket
         enum state { unconnected, connecting, connected, listening, disconnecting };
         struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
         {
+            public:
+            std::weak_ptr<unix_sock> peer;
+
+            private:
             struct private_t
             {
                 std::weak_ptr<unix_sock> sock;
@@ -76,7 +82,13 @@ namespace vfs::socket
                 }
             };
 
-            std::weak_ptr<unix_sock> peer;
+            struct ancdata_t
+            {
+                std::vector<std::shared_ptr<vfs::filedesc>> passed_fds;
+                std::optional<ucred> creds;
+
+                bool empty() const { return passed_fds.empty() && !creds.has_value(); }
+            };
 
             sched::wait_queue_t read_wait;
             sched::wait_queue_t write_wait;
@@ -117,12 +129,23 @@ namespace vfs::socket
                 std::size_t head = 0, tail = 0;
                 std::size_t buffered = 0;
 
+                std::size_t total_produced = 0;
+                std::size_t total_consumed = 0;
+
+                struct pending_anc
+                {
+                    std::size_t at_byte;
+                    ancdata_t data;
+                };
+                lib::list<pending_anc> anc_queue;
+
                 struct dgram
                 {
                     std::string sender_path;
                     lib::membuffer payload;
+                    ancdata_t ancdata;
                 };
-                lib::list<dgram> queue;
+                lib::list<dgram> dgram_queue;
             };
 
             lib::locker<
@@ -130,6 +153,138 @@ namespace vfs::socket
                 sched::mutex
             > receive;
 
+            auto parse_ancdata(msg_header_t &hdr) -> lib::expect<ancdata_t>
+            {
+                ancdata_t anc;
+                if (hdr.msgctrl.empty())
+                    return anc;
+
+                const auto proc = sched::current_process();
+                std::size_t off = 0;
+
+                while (off + sizeof(cmsghdr) <= hdr.msgctrl.size())
+                {
+                    cmsghdr cmsg { };
+                    hdr.msgctrl.subspan(off, sizeof(cmsghdr))
+                        .copy_to(std::as_writable_bytes(std::span { &cmsg, 1 }));
+
+                    if (cmsg.cmsg_len < sizeof(cmsghdr) ||
+                        off + cmsg.cmsg_len > hdr.msgctrl.size())
+                        return std::unexpected { lib::err::invalid_argument };
+
+                    const auto data_off = off + sizeof(cmsghdr);
+                    const auto data_len = cmsg.cmsg_len - sizeof(cmsghdr);
+
+                    if (cmsg.cmsg_level == sol_socket)
+                    {
+                        if (cmsg.cmsg_type == scm_rights)
+                        {
+                            if (data_len % sizeof(int) != 0)
+                                return std::unexpected { lib::err::invalid_argument };
+
+                            const auto num_fds = data_len / sizeof(int);
+                            lib::buffer<int> fds { num_fds };
+                            hdr.msgctrl.subspan(data_off, data_len)
+                                .copy_to(std::as_writable_bytes(fds.span()));
+
+                            for (const auto fd : fds.span())
+                            {
+                                auto res = proc->fdt->get(fd);
+                                if (!res)
+                                    return std::unexpected { lib::err::invalid_fd };
+                                anc.passed_fds.push_back(std::move(res));
+                            }
+                        }
+                        else if (cmsg.cmsg_type == scm_credentials)
+                        {
+                            if (data_len < sizeof(ucred))
+                                return std::unexpected { lib::err::invalid_argument };
+
+                            ucred cred { };
+                            hdr.msgctrl.subspan(data_off, sizeof(ucred))
+                                .copy_to(std::as_writable_bytes(std::span { &cred, 1 }));
+                            anc.creds = cred;
+                        }
+                        // skip unknown types
+                    }
+
+                    off += (cmsg.cmsg_len + cmsg_align - 1) & ~(cmsg_align - 1);
+                }
+
+                return anc;
+            }
+
+            void deliver_ancdata(msg_header_t &hdr, ancdata_t &anc, int flags)
+            {
+                if (anc.empty())
+                    return;
+
+                const auto proc = sched::current_process();
+                const bool cloexec = (flags & msg_cmsg_cloexec) != 0;
+                const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
+                std::size_t ctrl_off = 0;
+
+                const auto write_cmsg = [&](int type, std::span<const std::byte> data)
+                {
+                    const auto total = sizeof(cmsghdr) + data.size();
+                    const auto stride = (total + cmsg_align - 1) & ~(cmsg_align - 1);
+
+                    if (ctrl_off + total > hdr.msgctrl.size())
+                    {
+                        hdr.out_flags |= msg_ctrunc;
+                        return false;
+                    }
+
+                    const cmsghdr hd {
+                        .cmsg_len = total,
+                        .cmsg_level = sol_socket,
+                        .cmsg_type = type
+                    };
+                    hdr.msgctrl.subspan(ctrl_off, sizeof(cmsghdr))
+                        .copy_from(std::as_bytes(std::span { &hd, 1 }));
+                    hdr.msgctrl.subspan(ctrl_off + sizeof(cmsghdr), data.size())
+                        .copy_from(data);
+
+                    ctrl_off += stride;
+                    return true;
+                };
+
+                if (!anc.passed_fds.empty())
+                {
+                    std::vector<int> new_fds;
+                    new_fds.reserve(anc.passed_fds.size());
+
+                    for (auto &fdesc : anc.passed_fds)
+                    {
+                        auto new_fdesc = std::make_shared<vfs::filedesc>(fdesc->file, cloexec);
+                        auto res = proc->fdt->alloc(new_fdesc, 0, false, max_fd);
+                        if (!res)
+                        {
+                            for (const auto fd : new_fds)
+                                proc->fdt->close(fd);
+                            hdr.out_flags |= msg_ctrunc;
+                            return;
+                        }
+                        new_fds.push_back(*res);
+                    }
+
+                    if (!write_cmsg(scm_rights, std::as_bytes(std::span { new_fds })))
+                    {
+                        for (const auto fd : new_fds)
+                            proc->fdt->close(fd);
+                    }
+                }
+
+                if (anc.creds.has_value())
+                {
+                    std::span span { std::addressof(*anc.creds), 1 };
+                    write_cmsg(scm_credentials, std::as_bytes(span));
+                }
+
+                hdr.msgctrl_len_out = ctrl_off;
+            }
+
+            public:
             unix_sock(int protocol, sock_type type, enum state state = unconnected)
                 : socket_t { protocol, af_unix, type }, state { state }
             {
@@ -414,6 +569,11 @@ namespace vfs::socket
                 if (flags & msg_oob)
                     return std::unexpected { lib::err::operation_unsupported };
 
+                auto anc_res = parse_ancdata(hdr);
+                if (!anc_res)
+                    return std::unexpected { anc_res.error() };
+                auto anc = std::move(*anc_res);
+
                 std::size_t total = 0;
                 for (const auto &iov : hdr.iovs)
                     total += iov.size();
@@ -527,6 +687,15 @@ namespace vfs::socket
                         }
                     }
 
+                    if (!anc.empty())
+                    {
+                        auto locked = peer_ptr->receive.lock();
+                        locked->anc_queue.push_back({
+                            .at_byte = locked->total_produced,
+                            .data = std::move(anc)
+                        });
+                    }
+
                     return sent;
                 }
                 else // sock_dgram and sock_seqpacket
@@ -607,16 +776,17 @@ namespace vfs::socket
                         {
                             auto locked = dest->receive.lock();
                             std::size_t queued = 0;
-                            for (auto &dgram : locked->queue)
+                            for (auto &dgram : locked->dgram_queue)
                                 queued += dgram.payload.size();
 
                             if (queued + total <= dgram_cap)
                             {
-                                locked->queue.push_back({
+                                locked->dgram_queue.push_back({
                                     std::move(sender_path),
-                                    std::move(payload)
+                                    std::move(payload),
+                                    std::move(anc)
                                 });
-                                dest->read_wait.wake_all();
+                                dest->read_wait.wake_all();\
                                 return total;
                             }
 
@@ -725,6 +895,16 @@ namespace vfs::socket
                                 iov_off = 0;
                             }
 
+                            {
+                                auto locked = receive.lock();
+                                while (!locked->anc_queue.empty() &&
+                                    locked->anc_queue.front().at_byte <= locked->total_consumed)
+                                {
+                                    deliver_ancdata(hdr, locked->anc_queue.front().data, flags);
+                                    locked->anc_queue.pop_front();
+                                }
+                            }
+
                             if (auto peer_ptr = peer.lock())
                                 peer_ptr->write_wait.wake_all();
 
@@ -769,14 +949,14 @@ namespace vfs::socket
 
                         {
                             auto locked = receive.lock();
-                            if (!locked->queue.empty())
+                            if (!locked->dgram_queue.empty())
                             {
                                 if (!(flags & msg_peek))
                                 {
-                                    msg = std::move(locked->queue.front());
-                                    locked->queue.pop_front();
+                                    msg = std::move(locked->dgram_queue.front());
+                                    locked->dgram_queue.pop_front();
                                 }
-                                else msg = locked->queue.front();
+                                else msg = locked->dgram_queue.front();
                             }
                             else gen = read_wait.snapshot_gen();
                         }
@@ -821,6 +1001,8 @@ namespace vfs::socket
                                 hdr.addr_len_out = sa_len;
                             }
 
+                            deliver_ancdata(hdr, msg->ancdata, flags);
+
                             if (auto peer_ptr = peer.lock())
                                 peer_ptr->write_wait.wake_all();
 
@@ -845,8 +1027,8 @@ namespace vfs::socket
                         auto locked = receive.lock();
                         int count = (type == sock_stream)
                             ? static_cast<int>(locked->buffered)
-                            : !locked->queue.empty()
-                                ? static_cast<int>(locked->queue.front().payload.size())
+                            : !locked->dgram_queue.empty()
+                                ? static_cast<int>(locked->dgram_queue.front().payload.size())
                                 : 0;
 
                         if (!argp.write(count))
@@ -889,7 +1071,7 @@ namespace vfs::socket
                     auto locked = receive.lock();
                     has_data = (type == sock_stream)
                         ? locked->buffered > 0
-                        : !locked->queue.empty();
+                        : !locked->dgram_queue.empty();
                 }
 
                 if (has_data || peer_gone)
@@ -913,7 +1095,7 @@ namespace vfs::socket
                         ? (prlocked->capacity - prlocked->buffered) > 0
                         : [&] {
                             std::size_t size = 0;
-                            for (auto &dgram : prlocked->queue)
+                            for (auto &dgram : prlocked->dgram_queue)
                                 size += dgram.payload.size();
                             return size < dgram_cap;
                         } ();
@@ -976,10 +1158,8 @@ namespace vfs::socket
                 }
 
                 const auto copy_len = std::min<std::size_t>(out.size(), actual);
-                out.subspan(0, copy_len).copy_from(
-                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
-                );
-
+                out.subspan(0, copy_len)
+                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len));
                 return actual;
             }
 
@@ -1083,9 +1263,8 @@ namespace vfs::socket
                 auto slocked = state.lock();
                 const auto copy = [&]<typename Type>(Type val) -> lib::expect<std::size_t> {
                     const auto num = std::min(buf.size(), sizeof(Type));
-                    buf.subspan(0, num).copy_from(
-                        std::as_bytes(std::span { &val, 1 }).subspan(0, num)
-                    );
+                    buf.subspan(0, num)
+                        .copy_from(std::as_bytes(std::span { &val, 1 }).subspan(0, num));
                     return sizeof(Type);
                 };
 
@@ -1134,34 +1313,30 @@ namespace vfs::socket
                             cred = pslocked->cred;
                         }
 
-                        buf.subspan(0, sizeof(ucred)).copy_from(
-                            std::as_bytes(std::span { &cred, 1 })
-                        );
+                        buf.subspan(0, sizeof(ucred))
+                            .copy_from(std::as_bytes(std::span { &cred, 1 }));
                         return sizeof(ucred);
                     }
                     case so_linger:
                         if (buf.size() < sizeof(linger))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(linger)).copy_from(
-                            std::as_bytes(std::span { &slocked->linger_opt, 1 })
-                        );
+                        buf.subspan(0, sizeof(linger))
+                            .copy_from(std::as_bytes(std::span { &slocked->linger_opt, 1 }));
                         return sizeof(linger);
                     case so_rcvtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(timeval)).copy_from(
-                            std::as_bytes(std::span { &slocked->rcvtimeo, 1 })
-                        );
+                        buf.subspan(0, sizeof(timeval))
+                            .copy_from(std::as_bytes(std::span { &slocked->rcvtimeo, 1 }));
                         return sizeof(timeval);
                     case so_sndtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(timeval)).copy_from(
-                            std::as_bytes(std::span { &slocked->sndtimeo, 1 })
-                        );
+                        buf.subspan(0, sizeof(timeval))
+                            .copy_from(std::as_bytes(std::span { &slocked->sndtimeo, 1 }));
                         return sizeof(timeval);
                     default:
                         return std::unexpected { lib::err::invalid_argument };
@@ -1187,6 +1362,12 @@ namespace vfs::socket
                         cslocked->state = unconnected;
                     }
                     slocked->accept_queue.clear();
+                }
+
+                {
+                    auto locked = receive.lock();
+                    locked->anc_queue.clear();
+                    locked->dgram_queue.clear();
                 }
 
                 read_wait.wake_all();
@@ -1220,6 +1401,7 @@ namespace vfs::socket
 
             locked->head = (locked->head + first) & (locked->capacity - 1);
             locked->buffered += first;
+            locked->total_produced += first;
 
             if (rest == 0)
                 return first;
@@ -1232,6 +1414,8 @@ namespace vfs::socket
 
             locked->head = (locked->head + rest) & (locked->capacity - 1);
             locked->buffered += rest;
+            locked->total_produced += rest;
+
             return len;
         }
 
@@ -1253,6 +1437,7 @@ namespace vfs::socket
 
             locked->tail = (locked->tail + first) & (locked->capacity - 1);
             locked->buffered -= first;
+            locked->total_consumed += first;
 
             if (rest == 0)
                 return first;
@@ -1265,6 +1450,8 @@ namespace vfs::socket
 
             locked->tail = (locked->tail + rest) & (locked->capacity - 1);
             locked->buffered -= rest;
+            locked->total_consumed += rest;
+
             return len;
         }
 
@@ -1319,6 +1506,5 @@ namespace vfs::socket
                 }
             }
         };
-
     } // namespace
 } // namespace vfs::socket
