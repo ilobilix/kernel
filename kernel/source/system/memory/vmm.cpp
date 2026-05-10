@@ -1102,14 +1102,11 @@ namespace vmm
                 tail_amap->nslots = tail_pages;
                 tail_amap->slots = std::make_unique<anon::ptr []>(tail_pages);
 
-                const auto tail_offp = (src->obj && src->amap)
-                    ? src->offp + src_pages : 0;
-
                 locked->insert(new entry {
                     .startp = dst_old_endp,
                     .endp = dst_endp,
                     .obj = (src->obj && src->amap) ? src->obj : object::ptr { },
-                    .offp = tail_offp,
+                    .offp = (src->obj && src->amap) ? src->offp + src_pages : 0,
                     .amap = std::move(tail_amap),
                     .anon_idx = 0,
                     .prot = src->prot,

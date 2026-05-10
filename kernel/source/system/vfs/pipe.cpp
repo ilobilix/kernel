@@ -11,9 +11,9 @@ namespace vfs::pipe
 {
     namespace
     {
-        constexpr std::size_t pipe_buf = 4096;
-        constexpr std::size_t default_capacity = 65536;
-        constexpr std::size_t max_capacity = 1048576;
+        constexpr std::size_t pipe_buf = 0x1000;
+        constexpr std::size_t default_capacity = 0x10000;
+        constexpr std::size_t max_capacity = 0x100000;
 
         std::size_t round_capacity(std::size_t size)
         {
@@ -25,10 +25,7 @@ namespace vfs::pipe
             sched::mutex lock;
 
             lib::membuffer storage;
-            std::size_t capacity;
-            std::size_t head;
-            std::size_t tail;
-            std::size_t buffered;
+            std::size_t capacity, head, tail, buffered;
 
             std::size_t readers;
             std::size_t writers;
@@ -59,7 +56,7 @@ namespace vfs::pipe
             return std::static_pointer_cast<data>(file->private_data);
         }
 
-        std::size_t copy_in_locked(
+        std::size_t copy_in(
             data &pdata, lib::maybe_uspan<std::byte> src,
             std::size_t off, std::size_t len, bool &fault
         )
@@ -91,7 +88,7 @@ namespace vfs::pipe
             return len;
         }
 
-        std::size_t copy_out_locked(
+        std::size_t copy_out(
             data &pdata, lib::maybe_uspan<std::byte> dst,
             std::size_t off, std::size_t len, bool &fault
         )
@@ -121,24 +118,6 @@ namespace vfs::pipe
             pdata.tail = (pdata.tail + rest) & (pdata.capacity - 1);
             pdata.buffered -= rest;
             return len;
-        }
-
-        void raise_sigpipe()
-        {
-            const auto thread = sched::current_thread();
-            lib::bug_on(!thread);
-
-            const sched::siginfo_t info {
-                .signo = sched::sigpipe,
-                .code = sched::si_kernel,
-                .err = 0,
-                .pid = 0,
-                .uid = 0,
-                .status = 0,
-                .addr = 0,
-                .value = 0
-            };
-            sched::send_signal(thread, info);
         }
 
         lib::expect<void> wait_for_writer(const std::shared_ptr<data> &pdata, bool nonblock)
@@ -276,7 +255,7 @@ namespace vfs::pipe
                 {
                     std::size_t copied = 0;
                     bool fault = false;
-                    bool eof = false;
+                    bool no_writers = false;
                     std::size_t gen = 0;
 
                     {
@@ -285,12 +264,12 @@ namespace vfs::pipe
                         if (pdata->buffered > 0)
                         {
                             const auto want = std::min(buffer.size(), pdata->buffered);
-                            copied = copy_out_locked(*pdata, buffer, 0, want, fault);
+                            copied = copy_out(*pdata, buffer, 0, want, fault);
                         }
                         else if (pdata->writers != 0)
                             gen = pdata->read_wait.snapshot_gen();
                         else
-                            eof = true;
+                            no_writers = true;
                     }
 
                     if (copied > 0)
@@ -301,7 +280,7 @@ namespace vfs::pipe
 
                     if (fault)
                         return std::unexpected { lib::err::invalid_address };
-                    if (eof)
+                    if (no_writers)
                         return 0uz;
 
                     if (nonblock)
@@ -328,11 +307,10 @@ namespace vfs::pipe
                 const bool atomic = total <= pipe_buf;
 
                 std::size_t written = 0;
-                bool sigpipe_raised = false;
 
                 while (written < total)
                 {
-                    std::size_t this_chunk = 0;
+                    std::size_t chunk = 0;
                     bool fault = false;
                     bool no_readers = false;
                     std::size_t gen = 0;
@@ -347,17 +325,17 @@ namespace vfs::pipe
                         if (pdata->readers != 0 && avail >= need)
                         {
                             const auto want = std::min(avail, remaining);
-                            this_chunk = copy_in_locked(*pdata, buffer, written, want, fault);
+                            chunk = copy_in(*pdata, buffer, written, want, fault);
                         }
-                        else if (pdata->readers == 0)
-                            no_readers = true;
-                        else
+                        else if (pdata->readers != 0)
                             gen = pdata->write_wait.snapshot_gen();
+                        else
+                            no_readers = true;
                     }
 
-                    if (this_chunk > 0)
+                    if (chunk > 0)
                     {
-                        written += this_chunk;
+                        written += chunk;
                         pdata->read_wait.wake_all();
                     }
 
@@ -366,12 +344,22 @@ namespace vfs::pipe
                         if (written > 0)
                             return written;
 
-                        if (!sigpipe_raised)
-                        {
-                            raise_sigpipe();
-                            sigpipe_raised = true;
-                        }
-                        return std::unexpected { lib::err::no_readers };
+                        const auto thread = sched::current_thread();
+                        lib::bug_on(!thread);
+
+                        const sched::siginfo_t info {
+                            .signo = sched::sigpipe,
+                            .code = sched::si_kernel,
+                            .err = 0,
+                            .pid = 0,
+                            .uid = 0,
+                            .status = 0,
+                            .addr = 0,
+                            .value = 0
+                        };
+                        sched::send_signal(thread, info);
+
+                        return std::unexpected { lib::err::broken_pipe };
                     }
 
                     if (fault)
@@ -381,7 +369,7 @@ namespace vfs::pipe
                         return std::unexpected { lib::err::invalid_address };
                     }
 
-                    if (this_chunk > 0)
+                    if (chunk > 0)
                         continue;
 
                     if (nonblock)

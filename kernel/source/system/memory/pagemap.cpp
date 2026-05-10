@@ -220,7 +220,7 @@ namespace vmm
             }
 
             if (use_psize != page_size::small && !accessor.is_large())
-                return std::unexpected { lib::err::addr_in_use };
+                return std::unexpected { lib::err::address_in_use };
 
             accessor.clearflags()
                 .setflags(to_arch(flags, cache, use_psize), true)

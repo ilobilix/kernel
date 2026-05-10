@@ -194,9 +194,13 @@ export namespace vfs
         pollerr    = 0x008,  // error condition
         pollhup    = 0x010,  // hung up
         pollnval   = 0x020,  // invalid request
+        pollrdnorm = 0x040,  // normal data may be read
+        pollrdband = 0x080,  // priority data may be read
+        pollwrnorm = 0x100,  // writing now will not block
+        pollwrband = 0x200,  // priority data may be written
         pollmsg    = 0x400,  // linux extensions
         pollremove = 0x1000,
-        pollrdhup =  0x2000
+        pollrdhup  = 0x2000
     };
 
     struct poll_table

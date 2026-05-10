@@ -25,6 +25,12 @@ namespace vfs::socket
 
             bool seekable() const override { return false; }
 
+            lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
+            {
+                lib::unused(file, flags, pid);
+                return std::unexpected { lib::err::invalid_device_or_address };
+            }
+
             lib::expect<void> close(vfs::file &file) override
             {
                 return from_file(file)->release();
@@ -36,6 +42,7 @@ namespace vfs::socket
             ) override
             {
                 lib::unused(offset);
+
                 std::array iovs { buffer };
                 msg_header_t hdr {
                     .name = { },
@@ -45,7 +52,9 @@ namespace vfs::socket
                     .addr_len_out = 0,
                     .out_flags = 0
                 };
-                return from_file(*file)->recvmsg(hdr, 0);
+
+                const auto flags = (file->flags & o_nonblock) ? msg_dontwait : 0;
+                return from_file(*file)->recvmsg(hdr, flags);
             }
 
             lib::expect<std::size_t> write(
@@ -54,6 +63,7 @@ namespace vfs::socket
             ) override
             {
                 lib::unused(offset);
+
                 std::array iovs { buffer };
                 msg_header_t hdr {
                     .name = { },
@@ -63,7 +73,9 @@ namespace vfs::socket
                     .addr_len_out = 0,
                     .out_flags = 0
                 };
-                return from_file(*file)->sendmsg(hdr, 0);
+
+                const auto flags = (file->flags & o_nonblock) ? msg_dontwait : 0;
+                return from_file(*file)->sendmsg(hdr, flags);
             }
 
             lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
@@ -91,7 +103,7 @@ namespace vfs::socket
 
     std::shared_ptr<socket_t> from_file(const vfs::file &file)
     {
-        return std::static_pointer_cast<socket_t>(file.path.dentry->inode->private_data);
+        return std::static_pointer_cast<socket_t>(file.private_data);
     }
 
     lib::expect<void> register_family(family_t *fam)
@@ -160,7 +172,6 @@ namespace vfs::socket
                 kstat::time::birth
             );
 
-            inode->private_data = std::move(sock);
         }
 
         const auto dentry = std::make_shared<vfs::dentry>();
@@ -168,7 +179,7 @@ namespace vfs::socket
         dentry->inode = inode;
 
         const auto fdesc = filedesc::create({ .dentry = dentry, .mnt = nullptr }, flags);
-        fdesc->closexec = (flags & o_closexec) != 0;
+        fdesc->file->private_data = std::move(sock);
 
         const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
         const auto fdres = fdt->alloc(fdesc, 0, false, max_fd);
