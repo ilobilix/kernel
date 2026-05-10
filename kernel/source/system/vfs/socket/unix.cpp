@@ -50,8 +50,6 @@ namespace vfs::socket
             std::size_t off, std::size_t len, bool &fault
         );
 
-        // TODO: scm rights, connected dgram, msg_more, cmsg_cloexec, trunc
-
         struct unix_sock;
         lib::locker<
             lib::map::flat_hash<
