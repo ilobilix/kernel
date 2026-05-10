@@ -111,7 +111,7 @@ namespace syscall::vfs
         if (!res)
             return -lib::map_error(res.error());
 
-        return res->first;
+        return *res;
     }
 
     int connect(int sockfd, const sockaddr __user *addr, socklen_t addrlen)
@@ -491,11 +491,11 @@ namespace syscall::vfs
         auto res2 = socket::create_anon(std::move(pres->second), flags);
         if (!res2)
         {
-            proc->fdt->close(res1->first);
+            proc->fdt->close(*res1);
             return -lib::map_error(res2.error());
         }
 
-        int ksv[2] { res1->first, res2->first };
+        int ksv[2] { *res1, *res2 };
         if (!lib::copy_to_user(sv, ksv, sizeof(int) * 2))
             return -EFAULT;
         return 0;
@@ -590,6 +590,6 @@ namespace syscall::vfs
                 return -EFAULT;
         }
 
-        return res->first;
+        return *res;
     }
 } // namespace syscall::vfs

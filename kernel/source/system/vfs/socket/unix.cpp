@@ -48,15 +48,15 @@ namespace vfs::socket
             std::size_t off, std::size_t len, bool &fault
         );
 
-        // TODO: scm rights, abstract namespace, connected dgram, msg_more, cmsg_cloexec, trunc
+        // TODO: scm rights, connected dgram, msg_more, cmsg_cloexec, trunc
 
-        // struct unix_sock;
-        // lib::locker<
-        //     lib::map::flat_hash<
-        //         std::string,
-        //         std::weak_ptr<unix_sock>
-        //     >, sched::mutex
-        // > abstract;
+        struct unix_sock;
+        lib::locker<
+            lib::map::flat_hash<
+                std::string,
+                std::weak_ptr<unix_sock>
+            >, sched::mutex
+        > abstract;
 
         enum state { unconnected, connecting, connected, listening, disconnecting };
         struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
@@ -146,23 +146,28 @@ namespace vfs::socket
                 if (addr.size() < sizeof(addr_fam) || addr.size() > sizeof(sockaddr_un))
                     return std::unexpected { lib::err::invalid_argument };
 
-                sockaddr_un sa;
-                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+                sockaddr_un sa { };
+                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size()));
 
                 if (sa.sun_family != af_unix)
                     return std::unexpected { lib::err::address_family_unsupported };
 
                 std::string_view path;
+                bool is_abstract = false;
+
                 if (addr.size() > sizeof(addr_fam))
                 {
+                    const auto max_len = addr.size() - sizeof(addr_fam);
                     if (sa.sun_path[0] == 0)
                     {
-                        // TODO
-                        return std::unexpected { lib::err::not_supported };
+                        is_abstract = true;
+                        path = std::string_view { sa.sun_path, max_len };
                     }
-
-                    const auto len = std::strnlen(sa.sun_path, addr.size() - sizeof(addr_fam));
-                    path = std::string_view { sa.sun_path, len };
+                    else
+                    {
+                        const auto len = std::strnlen(sa.sun_path, max_len);
+                        path = std::string_view { sa.sun_path, len };
+                    }
                 }
                 else path = "";
 
@@ -172,6 +177,18 @@ namespace vfs::socket
 
                 if (slocked->state != unconnected)
                     return std::unexpected { lib::err::invalid_argument };
+
+                if (is_abstract)
+                {
+                    auto registry = abstract.lock();
+                    if (registry->contains(path))
+                        return std::unexpected { lib::err::address_in_use };
+
+                    registry->insert({ std::string { path }, shared_from_this() });
+                    slocked->bound_path = path;
+
+                    return { };
+                }
 
                 const auto proc = sched::current_process();
                 const auto ret = vfs::create(
@@ -197,32 +214,56 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size()));
 
                 if (sa.sun_family != af_unix)
                     return std::unexpected { lib::err::address_family_unsupported };
 
                 std::string_view path;
+                bool is_abstract = false;
+
                 if (addr.size() > sizeof(addr_fam))
                 {
+                    const auto max_len = addr.size() - sizeof(addr_fam);
                     if (sa.sun_path[0] == 0)
-                        return std::unexpected { lib::err::not_found };
-
-                    const auto len = std::strnlen(sa.sun_path, addr.size() - sizeof(addr_fam));
-                    path = std::string_view { sa.sun_path, len };
+                    {
+                        is_abstract = true;
+                        path = std::string_view { sa.sun_path, max_len };
+                    }
+                    else
+                    {
+                        const auto len = std::strnlen(sa.sun_path, max_len);
+                        path = std::string_view { sa.sun_path, len };
+                    }
                 }
                 else return std::unexpected { lib::err::not_found };
 
                 const auto proc = sched::current_process();
-                const auto res = vfs::resolve(proc->vfs->cwd, path);
-                if (!res)
-                    return std::unexpected { res.error() };
+                std::shared_ptr<unix_sock> target;
 
-                auto &inode = res->target.dentry->inode;
-                if (inode->stat.type() != stat::s_ifsock)
-                    return std::unexpected { lib::err::connection_refused };
+                if (is_abstract)
+                {
+                    auto registry = abstract.lock();
+                    auto it = registry->find(path);
+                    if (it == registry->end())
+                        return std::unexpected { lib::err::connection_refused };
 
-                auto target = private_t::get(inode)->sock.lock();
+                    target = it->second.lock();
+                    if (!target)
+                        return std::unexpected { lib::err::connection_refused };
+                }
+                else
+                {
+                    const auto res = vfs::resolve(proc->vfs->cwd, path);
+                    if (!res)
+                        return std::unexpected { res.error() };
+
+                    auto &inode = res->target.dentry->inode;
+                    if (inode->stat.type() != stat::s_ifsock)
+                        return std::unexpected { lib::err::connection_refused };
+
+                    target = private_t::get(inode)->sock.lock();
+                }
                 if (!target)
                     return std::unexpected { lib::err::connection_refused };
 
@@ -339,12 +380,14 @@ namespace vfs::socket
                                 auto pslocked = connecting->state.lock();
                                 if (!pslocked->bound_path.empty())
                                 {
-                                    std::strncpy(
-                                        sa.sun_path,
-                                        pslocked->bound_path.c_str(),
-                                        sizeof(sa.sun_path) - 1
+                                    const bool is_abstract = pslocked->bound_path[0] == 0;
+                                    const auto copy_size = std::min(
+                                        pslocked->bound_path.size(), sizeof(sa.sun_path)
                                     );
-                                    actual = sizeof(addr_fam) + pslocked->bound_path.size() + 1;
+
+                                    std::memcpy(sa.sun_path, pslocked->bound_path.data(), copy_size);
+                                    actual = static_cast<socklen_t>(sizeof(addr_fam) +
+                                        pslocked->bound_path.size() + !is_abstract);
                                 }
                             }
 
@@ -495,26 +538,44 @@ namespace vfs::socket
                     if (!hdr.name.empty())
                     {
                         sockaddr_un sa { };
-                        hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 }));
+                        hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
+                            .subspan(0, hdr.name.size()));
+
                         if (sa.sun_family != af_unix)
                             return std::unexpected { lib::err::address_family_unsupported };
 
-                        const auto len = std::strnlen(
-                            sa.sun_path,
-                            hdr.name.size() - sizeof(addr_fam)
-                        );
-                        const std::string_view path { sa.sun_path, len };
+                        const auto max_len = hdr.name.size() - sizeof(addr_fam);
+                        if (max_len == 0)
+                            return std::unexpected { lib::err::invalid_argument };
 
-                        const auto proc = sched::current_process();
-                        const auto res = vfs::resolve(proc->vfs->cwd, path);
-                        if (!res)
-                            return std::unexpected { res.error() };
+                        if (sa.sun_path[0] == '\0')
+                        {
+                            const std::string_view path { sa.sun_path, max_len };
 
-                        auto &inode = res->target.dentry->inode;
-                        if (inode->stat.type() != stat::s_ifsock)
-                            return std::unexpected { lib::err::connection_refused };
+                            auto registry = abstract.lock();
+                            auto it = registry->find(path);
+                            if (it == registry->end())
+                                return std::unexpected { lib::err::connection_refused };
 
-                        dest = private_t::get(inode)->sock.lock();
+                            dest = it->second.lock();
+                        }
+                        else
+                        {
+                            const auto len = std::strnlen(sa.sun_path, max_len);
+                            const std::string_view path { sa.sun_path, len };
+
+                            const auto proc = sched::current_process();
+                            const auto res = vfs::resolve(proc->vfs->cwd, path);
+                            if (!res)
+                                return std::unexpected { res.error() };
+
+                            auto &inode = res->target.dentry->inode;
+                            if (inode->stat.type() != stat::s_ifsock)
+                                return std::unexpected { lib::err::connection_refused };
+
+                            dest = private_t::get(inode)->sock.lock();
+                        }
+
                         if (!dest)
                             return std::unexpected { lib::err::connection_refused };
                     }
@@ -743,13 +804,15 @@ namespace vfs::socket
                             {
                                 sockaddr_un sa { };
                                 sa.sun_family = af_unix;
-                                std::strncpy(
-                                    sa.sun_path,
-                                    msg->sender_path.c_str(),
-                                    sizeof(sa.sun_path) - 1
-                                );
 
-                                const auto sa_len = sizeof(addr_fam) + msg->sender_path.size() + 1;
+                                const bool is_abstract = msg->sender_path[0] == 0;
+                                const auto copy_size = std::min(
+                                    msg->sender_path.size(), sizeof(sa.sun_path)
+                                );
+                                std::memcpy(sa.sun_path, msg->sender_path.data(), copy_size);
+
+                                const auto sa_len = sizeof(addr_fam) +
+                                    msg->sender_path.size() + !is_abstract;
                                 const auto copy_len = std::min(hdr.name.size(), sa_len);
 
                                 hdr.name.subspan(0, copy_len).copy_from(
@@ -900,12 +963,15 @@ namespace vfs::socket
                     auto slocked = state.lock();
                     if (!slocked->bound_path.empty())
                     {
-                        std::strncpy(
-                            sa.sun_path,
-                            slocked->bound_path.c_str(),
-                            sizeof(sa.sun_path) - 1
+                        const bool is_abstract = slocked->bound_path[0] == 0;
+                        const auto copy_size = std::min(
+                            slocked->bound_path.size(),
+                            sizeof(sa.sun_path)
                         );
-                        actual = sizeof(addr_fam) + slocked->bound_path.size() + 1;
+                        std::memcpy(sa.sun_path, slocked->bound_path.data(), copy_size);
+
+                        actual = static_cast<socklen_t>(sizeof(addr_fam) +
+                            slocked->bound_path.size() + !is_abstract);
                     }
                 }
 
@@ -1106,6 +1172,12 @@ namespace vfs::socket
             {
                 {
                     auto slocked = state.lock();
+                    if (!slocked->bound_path.empty() && slocked->bound_path[0] == 0)
+                    {
+                        auto registry = abstract.lock();
+                        registry->erase(slocked->bound_path);
+                    }
+
                     slocked->state = disconnecting;
                     slocked->bound_inode.reset();
 

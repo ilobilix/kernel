@@ -149,8 +149,7 @@ namespace vfs::socket
         return fam->create_pair(type, protocol);
     }
 
-    auto create_anon(std::shared_ptr<socket_t> sock, int flags)
-            -> lib::expect<std::pair<int, std::shared_ptr<vfs::filedesc>>>
+    auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>
     {
         const auto proc = sched::current_process();
         auto &fdt = proc->fdt;
@@ -171,22 +170,22 @@ namespace vfs::socket
                 kstat::time::status |
                 kstat::time::birth
             );
-
         }
 
-        const auto dentry = std::make_shared<vfs::dentry>();
+        auto dentry = std::make_shared<vfs::dentry>();
         dentry->name = "<[SOCKET]>";
         dentry->inode = inode;
 
-        const auto fdesc = filedesc::create({ .dentry = dentry, .mnt = nullptr }, flags);
+        auto fdesc = filedesc::create({ .dentry = std::move(dentry), .mnt = nullptr }, flags);
         fdesc->file->private_data = std::move(sock);
+        fdesc->file->opened = true;
 
         const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
-        const auto fdres = fdt->alloc(fdesc, 0, false, max_fd);
+        const auto fdres = fdt->alloc(std::move(fdesc), 0, false, max_fd);
         if (!fdres.has_value())
             return std::unexpected { fdres.error() };
 
-        return std::make_pair(*fdres, fdesc);
+        return *fdres;
     }
 
     std::shared_ptr<vfs::ops> get_ops()

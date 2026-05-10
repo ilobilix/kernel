@@ -36,12 +36,12 @@ namespace syscall::vfs
 
         std::array<int, 2> fds;
 
-        const auto rdentry = std::make_shared<dentry>();
+        auto rdentry = std::make_shared<dentry>();
         rdentry->name = "<[PIPE READ]>";
         rdentry->inode = shared_inode;
 
         const auto rfdesc = filedesc::create({
-            .dentry = rdentry,
+            .dentry = std::move(rdentry),
             .mnt = nullptr
         }, flags | o_rdonly);
 
@@ -58,12 +58,12 @@ namespace syscall::vfs
             return -lib::map_error(ret.error());
         }
 
-        const auto wdentry = std::make_shared<dentry>();
+        auto wdentry = std::make_shared<dentry>();
         wdentry->name = "<[PIPE WRITE]>";
         wdentry->inode = std::move(shared_inode);
 
         const auto wfdesc = filedesc::create({
-            .dentry = wdentry,
+            .dentry = std::move(wdentry),
             .mnt = nullptr
         }, flags | o_wronly);
 
