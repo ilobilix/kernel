@@ -1155,4 +1155,10 @@ namespace syscall::proc
         sched::process_exit(status);
         std::unreachable();
     }
+
+    [[noreturn]] void exit(int status)
+    {
+        sched::thread_exit(status);
+        std::unreachable();
+    }
 } // namespace syscall::proc

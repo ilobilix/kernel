@@ -79,6 +79,7 @@ namespace x86_64::syscall
         [57] = { "fork", proc::fork, true },
         [58] = { "vfork", proc::vfork, true },
         [59] = { "execve", proc::execve },
+        [60] = { "exit", proc::exit },
         [61] = { "wait4", proc::wait4, true },
         [62] = { "kill", proc::kill },
         [63] = { "uname", misc::uname },
