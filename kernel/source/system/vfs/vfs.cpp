@@ -273,7 +273,7 @@ namespace vfs
     }
 
     auto filesystem::instance::lookup(std::shared_ptr<dentry> dir, std::string_view name)
-        -> lib::expect<std::optional<dir_entry>>
+        -> lib::expect<dir_entry>
     {
         if (auto den = dir->children.lock()->lookup(name))
             return dir_entry { std::string { name }, den->inode, 0 };
@@ -286,7 +286,7 @@ namespace vfs
                 return std::unexpected { batch.error() };
 
             if (batch->empty())
-                return std::nullopt;
+                return std::unexpected { lib::err::not_found };
 
             auto locked = dir->children.lock();
             for (auto &entry : *batch)
@@ -481,7 +481,7 @@ namespace vfs
             }
             if (dentry == nullptr)
             {
-                auto found = [&] -> lib::expect<std::optional<dir_entry>> {
+                auto found = [&] -> lib::expect<dir_entry> {
                     auto fs = current.mnt->fs.lock();
                     if (fs.get() == nullptr)
                         return std::unexpected { lib::err::io_error };
@@ -491,22 +491,19 @@ namespace vfs
                 if (!found)
                     return std::unexpected { found.error() };
 
-                if (!found->has_value())
-                    return std::unexpected { lib::err::not_found };
-
                 dentry = current.dentry->children.lock()->lookup(segment);
                 if (dentry == nullptr)
                 {
                     const auto &entry = *found;
 
                     auto locked = current.dentry->children.lock();
-                    dentry = locked->lookup(entry->name);
+                    dentry = locked->lookup(entry.name);
                     if (dentry == nullptr)
                     {
                         dentry = std::make_shared<vfs::dentry>();
                         dentry->parent = current.dentry;
-                        dentry->name = entry->name;
-                        dentry->inode = entry->inode;
+                        dentry->name = entry.name;
+                        dentry->inode = entry.inode;
                         locked->insert(dentry);
                     }
                 }
@@ -1252,110 +1249,201 @@ namespace vfs
         return &stage;
     }
 
-    lib::initgraph::task root_task
+    namespace
     {
-        "vfs.mount-root",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::registered_stage() },
-        lib::initgraph::entail { root_mounted_stage() },
-        [] {
-            lib::bug_on(!mount("", "/", "tmpfs", 0));
-        }
-    };
+        lib::initgraph::task root_task
+        {
+            "vfs.mount-root",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { fs::registered_stage() },
+            lib::initgraph::entail { root_mounted_stage() },
+            [] {
+                lib::bug_on(!mount("", "/", "tmpfs", 0));
+            }
+        };
 
-    lib::initgraph::task procfs_register_task
-    {
-        "vfs.procfs.register-mounts",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::procfs::registered_stage() },
-        [] {
-            fs::procfs::register_global("mounts",
-                [](auto) {
-                    std::vector<std::shared_ptr<struct mount>> snapshot;
-                    std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
+        std::shared_ptr<fs::procfs::node_ops> make_fdsym_ops(int fd)
+        {
+            return fs::procfs::make_symlink_ops(
+                [fd](sched::process_t *proc) -> lib::expect<lib::path> {
+                    if (!proc)
+                        return std::unexpected { lib::err::not_found };
+
+                    std::shared_ptr<vfs::filedesc> fdesc;
                     {
-                        auto locked = mounts.lock();
-                        snapshot.reserve(locked->size());
-                        for (auto it = locked->begin(); it != locked->end(); it++)
-                        {
-                            if (auto strong = it->lock())
-                                snapshot.push_back(std::move(strong));
-                            else
-                                dead.push_back(it);
-                        }
-                        for (auto it : dead)
-                            locked->erase(it);
+                        const std::unique_lock _ { proc->lock };
+                        if (!proc->fdt)
+                            return std::unexpected { lib::err::not_found };
+                        fdesc = proc->fdt->get(fd);
+                    }
+                    if (!fdesc || !fdesc->file || !fdesc->file->path.dentry)
+                        return std::unexpected { lib::err::not_found };
+
+                    const auto &target_inode = fdesc->file->path.dentry->inode;
+                    const auto target_ino = target_inode
+                        ? target_inode->stat.st_ino : 0;
+                    const auto type = target_inode
+                        ? target_inode->stat.type() : stat::s_ifreg;
+
+                    switch (type)
+                    {
+                        case stat::s_ififo:
+                            return fmt::format("pipe:[{}]", target_ino);
+                        case stat::s_ifsock:
+                            return fmt::format("socket:[{}]", target_ino);
+                        default:
+                            break;
                     }
 
-                    std::string out;
-                    for (const auto &mnt : snapshot)
-                    {
-                        if (!mnt->mounted_on || !mnt->mounted_on->dentry)
-                            continue;
-                        if (mnt->fstype.empty())
-                            continue;
+                    auto target = vfs::pathname_from(fdesc->file->path);
+                    if (!target.empty())
+                        return target;
 
-                        const auto mountpoint = pathname_from(*mnt->mounted_on);
-                        if (mountpoint.empty())
-                            continue;
+                    return fmt::format("anon_inode:[{}]", target_ino);
+                },
+                [fd](sched::process_t *proc) {
+                    return proc->fdt->get(fd) != nullptr;
+                }
+            );
+        };
 
-                        const std::string_view source = mnt->source.empty()
-                            ? std::string_view { mnt->fstype }
-                            : mnt->source;
-                        const auto flags = mnt->flags;
-
-                        std::string opts { (flags & ms_rdonly) ? "ro" : "rw" };
-                        if (flags & ms_nosuid)
-                            opts.append(",nosuid");
-                        if (flags & ms_nodev)
-                            opts.append(",nodev");
-                        if (flags & ms_noexec)
-                            opts.append(",noexec");
-                        if (flags & ms_synchronous)
-                            opts.append(",sync");
-                        if (flags & ms_dirsync)
-                            opts.append(",dirsync");
-                        if (flags & ms_noatime)
-                            opts.append(",noatime");
-                        if (flags & ms_nodiratime)
-                            opts.append(",nodiratime");
-                        if (flags & ms_relatime)
-                            opts.append(",relatime");
-                        if (flags & ms_strictatime)
-                            opts.append(",strictatime");
-                        if (flags & ms_lazytime)
-                            opts.append(",lazytime");
-
+        lib::initgraph::task procfs_register_task
+        {
+            "vfs.procfs.register-mounts",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { fs::procfs::registered_stage() },
+            [] {
+                using namespace fs::procfs;
+                lib::bug_on(!register_global("mounts",
+                    make_file_ops([](auto) {
+                        std::vector<std::shared_ptr<struct mount>> snapshot;
+                        std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
                         {
-                            const auto fs = mnt->fs.lock();
-                            const auto fs_opts = fs->mount_options();
-                            if (!fs_opts.empty())
+                            auto locked = mounts.lock();
+                            snapshot.reserve(locked->size());
+                            for (auto it = locked->begin(); it != locked->end(); it++)
                             {
-                                opts.append(",");
-                                opts.append(fs_opts);
+                                if (auto strong = it->lock())
+                                    snapshot.push_back(std::move(strong));
+                                else
+                                    dead.push_back(it);
                             }
+                            for (auto it : dead)
+                                locked->erase(it);
                         }
 
-                        out.append(fmt::format("{} {} {} {} 0 0\n",
-                            source, mountpoint, mnt->fstype, opts
-                        ));
-                    }
-                    return out;
-                }, 0444
-            );
+                        std::string out;
+                        for (const auto &mnt : snapshot)
+                        {
+                            if (!mnt->mounted_on || !mnt->mounted_on->dentry)
+                                continue;
+                            if (mnt->fstype.empty())
+                                continue;
 
-            fs::procfs::register_global("filesystems",
-                [](auto) {
-                    std::string out;
-                    for (const auto &[name, fs] : *filesystems.lock())
-                    {
-                        out.append(fmt::format("{}\t{}\n",
-                            !fs->requires_dev ? "nodev" : "", name
-                        ));
-                    }
-                    return out;
-                }, 0444
-            );
-        }
-    };
+                            const auto mountpoint = pathname_from(*mnt->mounted_on);
+                            if (mountpoint.empty())
+                                continue;
+
+                            const std::string_view source = mnt->source.empty()
+                                ? std::string_view { mnt->fstype }
+                                : mnt->source;
+                            const auto flags = mnt->flags;
+
+                            std::string opts { (flags & ms_rdonly) ? "ro" : "rw" };
+                            if (flags & ms_nosuid)
+                                opts.append(",nosuid");
+                            if (flags & ms_nodev)
+                                opts.append(",nodev");
+                            if (flags & ms_noexec)
+                                opts.append(",noexec");
+                            if (flags & ms_synchronous)
+                                opts.append(",sync");
+                            if (flags & ms_dirsync)
+                                opts.append(",dirsync");
+                            if (flags & ms_noatime)
+                                opts.append(",noatime");
+                            if (flags & ms_nodiratime)
+                                opts.append(",nodiratime");
+                            if (flags & ms_relatime)
+                                opts.append(",relatime");
+                            if (flags & ms_strictatime)
+                                opts.append(",strictatime");
+                            if (flags & ms_lazytime)
+                                opts.append(",lazytime");
+
+                            {
+                                const auto fs = mnt->fs.lock();
+                                const auto fs_opts = fs->mount_options();
+                                if (!fs_opts.empty())
+                                {
+                                    opts.append(",");
+                                    opts.append(fs_opts);
+                                }
+                            }
+
+                            out.append(fmt::format("{} {} {} {} 0 0\n",
+                                source, mountpoint, mnt->fstype, opts
+                            ));
+                        }
+                        return out;
+                    }), node_type::file, 0444
+                ));
+
+                lib::bug_on(!register_global("filesystems",
+                    make_file_ops([](auto) {
+                        std::string out;
+                        for (const auto &[name, fs] : *filesystems.lock())
+                        {
+                            out.append(fmt::format("{}\t{}\n",
+                                !fs->requires_dev ? "nodev" : "", name
+                            ));
+                        }
+                        return out;
+                    }), node_type::file, 0444
+                ));
+
+                lib::bug_on(!register_per_pid("fd",
+                    make_dir_ops(
+                        [](sched::process_t *proc, std::string_view name) -> lib::expect<node_t> {
+                            if (!proc)
+                                return std::unexpected { lib::err::not_found };
+
+                            char *end;
+                            const auto res = lib::str2int<int>(name.data(), &end, 10);
+                            if (!res.has_value() || end != name.data() + name.size())
+                                return std::unexpected { lib::err::not_found };
+                            const auto fd = *res;
+
+                            auto file = proc->fdt->get(fd);
+                            if (!file)
+                                return std::unexpected { lib::err::not_found };
+
+                            return node_t {
+                                .name = std::string { name },
+                                .mode = 0777,
+                                .type = node_type::symlink,
+                                .ops = make_fdsym_ops(fd)
+                            };
+                        },
+                        [](sched::process_t *proc) -> lib::expect<lib::list<node_t>> {
+                            if (!proc)
+                                return std::unexpected { lib::err::not_found };
+
+                            lib::list<node_t> result;
+                            for (const auto &[fd, _] : *proc->fdt->fds.read_lock())
+                            {
+                                result.push_back(node_t {
+                                    .name = std::to_string(fd),
+                                    .mode = 0777,
+                                    .type = node_type::symlink,
+                                    .ops = make_fdsym_ops(fd)
+                                });
+                            };
+                            return result;
+                        }
+                    ), node_type::dir, 0555
+                ));
+            }
+        };
+    } // namespace
 } // namespace vfs

@@ -2,6 +2,7 @@
 
 module system.vfs.socket;
 
+import drivers.fs.procfs;
 import system.sched;
 
 namespace vfs::socket
@@ -192,4 +193,35 @@ namespace vfs::socket
     {
         return ops::singleton();
     }
+
+    lib::initgraph::stage *registered_procfs_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "socket.procfs.registered-net",
+            lib::initgraph::postsched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::task net_task
+    {
+        "socket.procfs.register-net",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        lib::initgraph::entail { registered_procfs_stage() },
+        [] {
+            using namespace fs::procfs;
+            lib::bug_on(!register_per_pid("net",
+                make_dir_ops(),
+                node_type::dir, 0555
+            ));
+
+            lib::bug_on(!register_global("net",
+                make_symlink_ops([](auto) {
+                    return std::string { "self/net" };
+                }), node_type::symlink, 0777
+            ));
+        }
+    };
 } // namespace vfs::socket

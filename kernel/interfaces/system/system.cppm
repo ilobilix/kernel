@@ -15,7 +15,6 @@ export import system.pci;
 export import system.random;
 export import system.sched;
 export import system.syscall;
-export import system.sysctl;
 export import system.vfs;
 export import system.vfs.dev;
 export import system.vfs.pipe;

@@ -158,7 +158,7 @@ export namespace sched
 
     std::size_t process_count();
 
-    void for_each_process(std::function<bool(process_t *)> func);
+    void for_each_process(std::function<bool (process_t *)> func);
 
     // called from a timer interrupt
     void tick(bool from_user);

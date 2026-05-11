@@ -624,8 +624,9 @@ namespace pmm
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::procfs::registered_stage() },
         [] {
-            fs::procfs::register_global("meminfo",
-                [](auto) {
+            using namespace ::fs::procfs;
+            lib::bug_on(!register_global("meminfo",
+                make_file_ops([](auto) {
                     // TODO: Active/Inactive/Slab/AnonPages/Mapped/correct MemAvailable
                     const auto mem = info();
                     const auto kb = [](std::size_t bytes) { return bytes / 1024; };
@@ -654,8 +655,8 @@ namespace pmm
                         0uz,
                         0uz
                     );
-                }, 0444
-            );
+                }), node_type::file, 0444
+            ));
         }
     };
 } // namespace pmm

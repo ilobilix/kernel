@@ -116,8 +116,9 @@ namespace chrono
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::procfs::registered_stage() },
         [] {
-            fs::procfs::register_global("uptime",
-                [](auto) {
+            using namespace fs::procfs;
+            lib::bug_on(!register_global("uptime",
+                make_file_ops([](auto) {
                     // TODO: second field should be sum of idle time across all cpus
                     const auto t = now(monotonic);
                     const auto centi = (t.to_ms() / 10) % 100;
@@ -125,8 +126,8 @@ namespace chrono
                         "{}.{:02} {}.{:02}\n",
                         t.tv_sec, centi, t.tv_sec, centi
                     );
-                }, 0444
-            );
+                }), node_type::file, 0444
+            ));
         }
     };
 } // namespace chrono

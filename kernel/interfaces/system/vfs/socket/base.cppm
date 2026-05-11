@@ -383,4 +383,6 @@ export namespace vfs::socket
     auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>;
 
     std::shared_ptr<vfs::ops> get_ops();
+
+    lib::initgraph::stage *registered_procfs_stage();
 } // export namespace vfs::socket
