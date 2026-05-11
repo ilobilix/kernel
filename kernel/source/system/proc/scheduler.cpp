@@ -785,7 +785,7 @@ namespace sched
         return processes.lock()->size();
     }
 
-    void for_each_process(std::function<bool(process_t *)> func)
+    void for_each_process(std::function<bool (process_t *)> func)
     {
         std::vector<process_t *> snapshot;
         {
@@ -1136,6 +1136,7 @@ namespace sched
             auto prev = thread->hook.predecessor;
 
             if (thread == src_rq.current || !can_run_on(thread, my_rq.cpu_idx) ||
+                thread->is_kernel() || // do not migrate kernel threads
                 migrated_weight + thread->weight > target + target / 2)
             {
                 thread = prev;
@@ -2066,8 +2067,9 @@ namespace sched
             lib::initgraph::postsched_init_engine,
             lib::initgraph::require { fs::procfs::registered_stage() },
             [] {
-                fs::procfs::register_per_pid("status",
-                    [](process_t *proc) {
+                using namespace fs::procfs;
+                lib::bug_on(!register_per_pid("status",
+                    make_file_ops([](process_t *proc) {
                         // TODO: VmPeak/VmSize/VmRSS/VmData/VmStk, SigQ, CapInh, etc.
                         const std::unique_lock _ { proc->lock };
 
@@ -2090,11 +2092,11 @@ namespace sched
                             cred.rgid, cred.egid, cred.sgid, cred.fsgid,
                             threads
                         );
-                    }, 0444
-                );
+                    }), node_type::file, 0444
+                ));
 
-                fs::procfs::register_per_pid("stat",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("stat",
+                    make_file_ops([](process_t *proc) {
                         // TODO: tty_nr, flags, faults, stime, starttime, rss, wchan, processor, policy
                         const std::unique_lock _ { proc->lock };
 
@@ -2174,18 +2176,18 @@ namespace sched
                             startbrk, curr_brk,
                             proc->exit_code
                         );
-                    }, 0444
-                );
+                    }), node_type::file, 0444
+                ));
 
-                fs::procfs::register_per_pid("comm",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("comm",
+                    make_file_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         return proc_comm(proc) + '\n';
-                    }, 0444
-                );
+                    }), node_type::file, 0444
+                ));
 
-                fs::procfs::register_per_pid("cmdline",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("cmdline",
+                    make_file_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         std::string out;
                         for (const auto &arg : proc->argv)
@@ -2194,11 +2196,11 @@ namespace sched
                             out.push_back('\0');
                         }
                         return out;
-                    }, 0444
-                );
+                    }), node_type::file, 0444
+                ));
 
-                fs::procfs::register_per_pid("maps",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("maps",
+                    make_file_ops([](process_t *proc) {
                         // TODO: missing inode/dev/pathname columns and [stack]/[heap]/[vdso]
                         const std::unique_lock _ { proc->lock };
                         std::string out;
@@ -2220,33 +2222,29 @@ namespace sched
                             );
                         }
                         return out;
-                    }, 0400
-                );
+                    }), node_type::file, 0400
+                ));
 
-                fs::procfs::register_per_pid("exe",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("exe",
+                    make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         return proc->pathname;
-                    }, 0777, true
-                );
+                    }), node_type::symlink, 0777
+                ));
 
-                fs::procfs::register_per_pid("cwd",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("cwd",
+                    make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        if (!proc->vfs)
-                            return std::string { "/" };
                         return vfs::pathname_from(proc->vfs->cwd);
-                    }, 0777, true
-                );
+                    }), node_type::symlink, 0777
+                ));
 
-                fs::procfs::register_per_pid("root",
-                    [](process_t *proc) {
+                lib::bug_on(!register_per_pid("root",
+                    make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        if (!proc->vfs)
-                            return std::string { "/" };
                         return vfs::pathname_from(proc->vfs->root);
-                    }, 0777, true
-                );
+                    }), node_type::symlink, 0777
+                ));
             }
         };
     } // namespace

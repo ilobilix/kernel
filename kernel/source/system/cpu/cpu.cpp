@@ -110,8 +110,9 @@ namespace cpu
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { ::fs::procfs::registered_stage() },
         [] {
-            ::fs::procfs::register_global("cpuinfo",
-                [](auto) {
+            using namespace ::fs::procfs;
+            lib::bug_on(!register_global("cpuinfo",
+                make_file_ops([](auto) {
                     // TODO: real vendor_id/model name/flags/cache info/cpu mhz
                     constexpr std::string_view tail =
                         "vendor_id\t: ilobilix\n"
@@ -127,8 +128,8 @@ namespace cpu
                         out.append(tail);
                     }
                     return out;
-                }, 0444
-            );
+                }), node_type::file, 0444
+            ));
         }
     };
 } // namespace cpu

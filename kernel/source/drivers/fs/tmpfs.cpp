@@ -244,12 +244,12 @@ namespace fs::tmpfs
     }
 
     auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
-        -> lib::expect<std::optional<vfs::dir_entry>>
+        -> lib::expect<vfs::dir_entry>
     {
         const auto locked = dir->children.lock();
         if (auto den = locked->lookup(name); den != nullptr)
             return vfs::dir_entry { std::string { name }, den->inode, 0 };
-        return std::nullopt;
+        return std::unexpected { lib::err::not_found };
     }
 
     auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>

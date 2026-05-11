@@ -318,7 +318,7 @@ export namespace vfs
                 -> lib::expect<lib::list<dir_entry>> = 0;
 
             virtual auto lookup(std::shared_ptr<dentry> dir,std::string_view name)
-                -> lib::expect<std::optional<dir_entry>>;
+                -> lib::expect<dir_entry>;
 
             virtual auto readlink(std::shared_ptr<dentry> dentry) -> lib::expect<lib::path>;
 

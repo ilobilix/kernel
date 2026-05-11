@@ -72,7 +72,7 @@ export namespace fs::tmpfs
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
             auto lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
-                -> lib::expect<std::optional<vfs::dir_entry>> override;
+                -> lib::expect<vfs::dir_entry> override;
 
             auto write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;
             auto dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;

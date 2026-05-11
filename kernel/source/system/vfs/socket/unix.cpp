@@ -2,6 +2,7 @@
 
 module system.vfs.socket;
 
+import drivers.fs.procfs;
 import system.sched;
 import system.vfs;
 
@@ -1489,11 +1490,11 @@ namespace vfs::socket
 
         unix_family_t unix_family;
 
-        lib::initgraph::task root_task
+        lib::initgraph::task unix_task
         {
-            "socket.register-unix",
+            "socket.procfs.register-unix",
             lib::initgraph::postsched_init_engine,
-            lib::initgraph::entail { root_mounted_stage() },
+            lib::initgraph::require { registered_procfs_stage() },
             [] {
                 if (const auto ret = register_family(&unix_family); !ret)
                 {
@@ -1501,7 +1502,16 @@ namespace vfs::socket
                         "socket: could not register family 'unix': {}",
                         lib::error_name(ret.error())
                     );
+                    return;
                 }
+
+                using namespace fs::procfs;
+                lib::bug_on(!register_per_pid("net/unix",
+                    make_file_ops([](auto) {
+                        // TODO
+                        return std::string { };
+                    }), node_type::file, 0444
+                ));
             }
         };
     } // namespace

@@ -66,11 +66,12 @@ namespace cmdline
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::procfs::registered_stage() },
         [] {
-            fs::procfs::register_global("cmdline",
-                [](auto) {
+            using namespace fs::procfs;
+            lib::bug_on(!register_global("cmdline",
+                make_file_ops([](auto) {
                     return std::string { raw() } + '\n';
-                }, 0444
-            );
+                }), node_type::file, 0444
+            ));
         }
     };
 } // namespace cmdline
