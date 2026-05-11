@@ -1609,6 +1609,8 @@ namespace sched
                 (flags & clone_parent) ? caller_proc->parent : caller_proc
             );
 
+            target_proc->no_new_privs = caller_proc->no_new_privs;
+
             if (flags & clone_vm)
             {
                 // TODO: clear alternate signal stacks
@@ -1769,7 +1771,7 @@ namespace sched
             {
                 const std::unique_lock _ { inode->lock };
 
-                const bool nosuid = mount_flags & vfs::ms_nosuid;
+                const bool nosuid = (mount_flags & vfs::ms_nosuid) || process->no_new_privs;
 
                 std::optional<vfs::file_caps> fcaps;
                 if (xattr_caps && !nosuid)
@@ -2086,11 +2088,12 @@ namespace sched
                             "Uid:\t{} {} {} {}\n"
                             "Gid:\t{} {} {} {}\n"
                             "Threads:\t{}\n",
+                            "NoNewPrivs: \t{}\n",
                             proc_comm(proc), state_letter(proc),
                             proc->pid, proc->pid, ppid,
                             cred.ruid, cred.euid, cred.suid, cred.fsuid,
                             cred.rgid, cred.egid, cred.sgid, cred.fsgid,
-                            threads
+                            threads, proc->no_new_privs ? 1 : 0
                         );
                     }), node_type::file, 0444
                 ));

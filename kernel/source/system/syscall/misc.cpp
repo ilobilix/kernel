@@ -281,6 +281,14 @@ namespace syscall::misc
                     return -EFAULT;
                 return 0;
             }
+            case 38: // PR_SET_NO_NEW_PRIVS
+                if (arg2 != 1)
+                    return -EINVAL;
+
+                sched::current_process()->no_new_privs = true;
+                return 0;
+            case 39: // PR_GET_NO_NEW_PRIVS
+                return sched::current_process()->no_new_privs;
             default:
                 lib::error("prctl: unhandled option: 0x{:X}", option);
                 return -EINVAL;

@@ -95,6 +95,7 @@ export namespace sched
         bool is_zombie : 1 = false;
         bool has_execved : 1 = false;
         bool vfork_pending : 1 = false;
+        bool no_new_privs : 1 = false;
 
         bool pending_continued : 1 = false;
         int pending_stop_sig = 0;
