@@ -46,8 +46,8 @@ export namespace fs::tmpfs
             gid_t opt_gid = 0;
 
             auto create(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, mode_t mode, dev_t rdev
+                std::shared_ptr<vfs::inode> &parent, std::string_view name,
+                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
 
             auto symlink(
@@ -100,7 +100,10 @@ export namespace fs::tmpfs
     {
         fs::instance *owner;
         vmm::object::ptr memory;
-        inode(fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode);
+        inode(
+            fs::instance *owner, dev_t dev, dev_t rdev,
+            ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
+        );
         ~inode();
     };
 

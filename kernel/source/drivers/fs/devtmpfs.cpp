@@ -41,13 +41,12 @@ namespace fs::devtmpfs
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked.get(), locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode
+                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
+                tmpfs::ops::singleton()
             );
             root->parent = root;
 
             internal_mnt = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
-
-            vfs::dev::register_fs_ops(locked->dev_id, tmpfs::ops::singleton());
         }
     };
 

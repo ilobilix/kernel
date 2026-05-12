@@ -17,7 +17,7 @@ namespace vfs
             auto root = std::make_shared<dentry>();
             root->name = "/";
             root->parent = root;
-            root->inode = std::make_shared<inode>();
+            root->inode = std::make_shared<inode>(nullptr);
             root->inode->stat.st_mode = static_cast<mode_t>(stat::type::s_ifdir) |
                 (s_irwxu | s_irgrp | s_ixgrp | s_iroth | s_ixoth);
             return root;
@@ -143,29 +143,15 @@ namespace vfs
         return check_access(target, sched::current_process()->cred, mode);
     }
 
-    auto file::get_ops() const -> lib::expect<std::shared_ptr<ops>>
+    std::shared_ptr<ops> file::get_ops(dev_t rdev, mode_t mode)
     {
-        lib::bug_on(!path.dentry || !path.dentry->inode);
-
-        auto &inode = path.dentry->inode;
-        const auto &stat = inode->stat;
-
-        const auto dev = stat.st_dev;
-        const auto rdev = stat.st_rdev;
-        const auto mode = stat.st_mode;
-
-        auto ops = dev::get_ops(dev, rdev, mode);
-        if (!ops.has_value())
-            return std::unexpected { ops.error() };
-
-        return *ops;
+        return dev::get_ops(rdev, mode).value_or(nullptr);
     }
 
     lib::expect<std::size_t> file::getdents(lib::maybe_uspan<std::byte> buffer)
     {
-        const auto ops = get_ops();
-        if (!ops.has_value())
-            return std::unexpected { ops.error() };
+        if (!ops)
+            return std::unexpected { lib::err::invalid_device_or_address };
 
         const std::unique_lock _ { lock };
         std::size_t progress = 0;
@@ -695,8 +681,10 @@ namespace vfs
         return std::unexpected { lib::err::todo };
     }
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev)
-        -> lib::expect<path>
+    auto create(
+        std::optional<path> parent, lib::path _path,
+        mode_t mode, dev_t rdev, std::shared_ptr<ops> ops
+    ) -> lib::expect<path>
     {
         if (resolve(parent, _path))
             return std::unexpected { lib::err::already_exists };
@@ -708,7 +696,17 @@ namespace vfs
         const auto real_parent = std::move(*pres);
         const auto name = _path.basename();
 
-        auto ret = real_parent.mnt->fs.lock()->create(real_parent.dentry->inode, name, mode, rdev);
+        std::optional<std::shared_ptr<struct ops>> _ops;
+        if (!ops)
+        {
+            if (rdev != 0)
+                _ops = nullptr;
+        }
+        else _ops = std::move(ops);
+
+        auto ret = real_parent.mnt->fs.lock()->create(
+            real_parent.dentry->inode, name, mode, rdev, std::move(_ops)
+        );
         if (!ret)
             return std::unexpected { ret.error() };
 

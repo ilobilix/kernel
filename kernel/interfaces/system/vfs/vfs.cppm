@@ -292,8 +292,8 @@ export namespace vfs
             dev_t dev_id;
 
             virtual auto create(
-                std::shared_ptr<inode> &parent,
-                std::string_view name, mode_t mode, dev_t rdev
+                std::shared_ptr<inode> &parent, std::string_view name,
+                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<ops>> ops
             ) -> lib::expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(
@@ -403,6 +403,7 @@ export namespace vfs
     struct inode
     {
         sched::mutex lock;
+        std::shared_ptr<ops> ops;
         kstat stat;
         bool dirty = false;
 
@@ -412,6 +413,8 @@ export namespace vfs
         > xattrs;
 
         std::shared_ptr<void> private_data;
+
+        inode(std::shared_ptr<struct ops> ops) : ops { ops } { }
     };
 
     struct dentry : std::enable_shared_from_this<dentry>
@@ -521,9 +524,8 @@ export namespace vfs
 
     struct file : std::enable_shared_from_this<file>
     {
-        auto get_ops() const -> lib::expect<std::shared_ptr<ops>>;
-
         sched::mutex lock;
+        std::shared_ptr<ops> ops;
         bool opened;
         path path;
         std::size_t offset;
@@ -536,23 +538,24 @@ export namespace vfs
             if (!opened)
                 return;
 
-            const auto ops = get_ops();
-            if (!ops.has_value())
+            if (!ops)
             {
-                lib::error("failed to close file: {}", lib::error_name(ops.error()));
+                lib::error(
+                    "failed to close file: {}",
+                    lib::error_name(lib::err::invalid_device_or_address)
+                );
                 return;
             }
 
-            if (const auto ret = ops->get()->close(*this); !ret)
+            if (const auto ret = ops->close(*this); !ret)
                 lib::error("failed to close file: {}", lib::error_name(ret.error()));
         }
 
         lib::expect<void> open(int flags, pid_t pid)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            auto ret = ops->get()->open(shared_from_this(), flags, pid);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            auto ret = ops->open(shared_from_this(), flags, pid);
             if (ret.has_value())
                 opened = true;
             return ret;
@@ -560,13 +563,10 @@ export namespace vfs
 
         lib::expect<std::size_t> read(lib::maybe_uspan<std::byte> buffer)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
             const std::unique_lock _ { lock };
-
-            const auto ret = ops->get()->read(shared_from_this(), offset, buffer);
+            const auto ret = ops->read(shared_from_this(), offset, buffer);
             if (ret.has_value())
                 offset += *ret;
             return ret;
@@ -574,13 +574,10 @@ export namespace vfs
 
         lib::expect<std::size_t> write(lib::maybe_uspan<std::byte> buffer)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
             const std::unique_lock _ { lock };
-
-            const auto ret = ops->get()->write(shared_from_this(), offset, buffer);
+            const auto ret = ops->write(shared_from_this(), offset, buffer);
             if (ret.has_value())
                 offset += *ret;
             return ret;
@@ -588,61 +585,54 @@ export namespace vfs
 
         lib::expect<std::size_t> pread(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->read(shared_from_this(), offset, buffer);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->read(shared_from_this(), offset, buffer);
         }
 
         lib::expect<std::size_t> pwrite(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->write(shared_from_this(), offset, buffer);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->write(shared_from_this(), offset, buffer);
         }
 
         lib::expect<void> trunc(std::size_t size)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->trunc(shared_from_this(), size);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->trunc(shared_from_this(), size);
         }
 
         lib::expect<std::size_t> getdents(lib::maybe_uspan<std::byte> buffer);
 
         lib::expect<std::uint16_t> poll(poll_table *pt)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->poll(shared_from_this(), pt);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->poll(shared_from_this(), pt);
         }
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp)
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->ioctl(shared_from_this(), request, argp);
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->ioctl(shared_from_this(), request, argp);
         }
 
         lib::expect<vmm::object::ptr> map()
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
-            return ops->get()->map(shared_from_this());
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
+            return ops->map(shared_from_this());
         }
 
         lib::expect<void> sync()
         {
-            const auto ops = get_ops();
-            if (!ops.has_value())
-                return std::unexpected { ops.error() };
+            if (!ops)
+                return std::unexpected { lib::err::invalid_device_or_address };
 
-            if (auto ret = ops->get()->sync(); !ret.has_value())
+            if (auto ret = ops->sync(); !ret.has_value())
                 return ret;
 
             auto &inode = path.dentry->inode;
@@ -655,6 +645,7 @@ export namespace vfs
             return { };
         }
 
+        static std::shared_ptr<struct ops> get_ops(dev_t rdev, mode_t mode);
         static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
         {
             auto file = std::make_shared<vfs::file>();
@@ -662,6 +653,14 @@ export namespace vfs
             file->path = path;
             file->offset = offset;
             file->flags = flags;
+            if (path.dentry && path.dentry->inode)
+            {
+                if (!(file->ops = path.dentry->inode->ops))
+                {
+                    const auto &stat = path.dentry->inode->stat;
+                    file->ops = get_ops(stat.st_rdev, stat.st_mode);
+                }
+            }
             return file;
         }
     };
@@ -743,8 +742,10 @@ export namespace vfs
 
     bool check_access(const path &target, std::uint32_t mode);
 
-    auto create(std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0)
-        -> lib::expect<path>;
+    auto create(
+        std::optional<path> parent, lib::path _path,
+        mode_t mode, dev_t rdev = 0, std::shared_ptr<ops> ops = nullptr
+    ) -> lib::expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
     auto link(
         std::optional<path> parent, lib::path src,

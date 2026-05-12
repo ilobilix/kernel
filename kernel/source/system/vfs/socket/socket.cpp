@@ -155,7 +155,7 @@ namespace vfs::socket
         const auto proc = sched::current_process();
         auto &fdt = proc->fdt;
 
-        auto inode = std::make_shared<vfs::inode>();
+        auto inode = std::make_shared<vfs::inode>(ops::singleton());
         {
             inode->stat.st_ino = vfs::next_anon_ino();
             inode->stat.st_blksize = 0x1000;
@@ -187,11 +187,6 @@ namespace vfs::socket
             return std::unexpected { fdres.error() };
 
         return *fdres;
-    }
-
-    std::shared_ptr<vfs::ops> get_ops()
-    {
-        return ops::singleton();
     }
 
     lib::initgraph::stage *registered_procfs_stage()

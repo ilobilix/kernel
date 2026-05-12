@@ -31,8 +31,6 @@ export namespace vfs::dev
             (min & 0xFFFFFF00ull) << 12;
     }
 
-    bool register_dev_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops);
-    bool register_fs_ops(dev_t dev, std::shared_ptr<vfs::ops> ops);
-
-    auto get_ops(dev_t dev, dev_t rdev, mode_t mode) -> lib::expect<std::shared_ptr<vfs::ops>>;
+    bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops);
+    lib::expect<std::shared_ptr<vfs::ops>> get_ops(dev_t rdev, mode_t mode);
 } // export namespace vfs::dev

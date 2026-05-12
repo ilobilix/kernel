@@ -134,15 +134,15 @@ namespace syscall::vfs
                     if (!slots[i].file)
                         continue;
 
-                    const auto ops_res = slots[i].file->get_ops();
-                    if (!ops_res)
+                    const auto &ops = slots[i].file->ops;
+                    if (!ops)
                     {
                         fds[i].revents = pollerr;
                         ready++;
                         continue;
                     }
 
-                    auto res = ops_res->get()->poll(slots[i].file, &pt);
+                    auto res = ops->poll(slots[i].file, &pt);
                     if (res.has_value())
                     {
                         fds[i].revents = *res & slots[i].events;

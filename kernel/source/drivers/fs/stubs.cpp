@@ -57,11 +57,10 @@ namespace fs::stubs
                 root->name = fmt::format("{} stub root. this shouldn't be visible anywhere", this->name);
                 root->inode = std::make_shared<tmpfs::inode>(
                     locked.get(), locked->dev_id, 0, locked->next_inode++,
-                    static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode
+                    static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
+                    tmpfs::ops::singleton()
                 );
                 root->parent = root;
-
-                vfs::dev::register_fs_ops(locked->dev_id, tmpfs::ops::singleton());
             }
         };
     } // namespace

@@ -231,8 +231,9 @@ namespace fs::procfs
 
         inode(
             inode_type type, std::shared_ptr<node_ops> ops, pid_t pid, int fd,
-            dev_t dev, ino_t ino, mode_t mode
-        ) : type { type }, ops { ops }, pid { pid }, fd { fd }
+            dev_t dev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> iops
+        ) : vfs::inode { iops }, type { type },
+            ops { ops }, pid { pid }, fd { fd }
         {
             stat.st_dev = dev;
             stat.st_rdev = 0;
@@ -392,7 +393,8 @@ namespace fs::procfs
                 return std::make_shared<inode>(
                     inode_type::root_dir, nullptr, -1, -1,
                     dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifdir) | 0555
+                    static_cast<mode_t>(stat::s_ifdir) | 0555,
+                    ops::singleton()
                 );
             }
 
@@ -401,7 +403,8 @@ namespace fs::procfs
                 auto ret = std::make_shared<inode>(
                     inode_type::file, std::move(ops), pid, -1,
                     dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifreg) | mode
+                    static_cast<mode_t>(stat::s_ifreg) | mode,
+                    ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -412,7 +415,8 @@ namespace fs::procfs
                 auto ret = std::make_shared<inode>(
                     inode_type::symlink, std::move(ops), pid, -1,
                     dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_iflnk) | mode
+                    static_cast<mode_t>(stat::s_iflnk) | mode,
+                    ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -423,7 +427,8 @@ namespace fs::procfs
                 auto ret = std::make_shared<inode>(
                     inode_type::dir, std::move(ops), pid, -1,
                     dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifdir) | mode
+                    static_cast<mode_t>(stat::s_ifdir) | mode,
+                    ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -444,11 +449,11 @@ namespace fs::procfs
             }
 
             auto create(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, mode_t mode, dev_t rdev
+                std::shared_ptr<vfs::inode> &parent, std::string_view name,
+                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
-                lib::unused(parent, name, mode, rdev);
+                lib::unused(parent, name, mode, rdev, ops);
                 return std::unexpected { lib::err::read_only_fs };
             }
 
@@ -737,8 +742,6 @@ namespace fs::procfs
             root->parent = root;
 
             internal_mnt = std::make_shared<struct vfs::mount>(inst, root, std::nullopt);
-
-            vfs::dev::register_fs_ops(locked->dev_id, ops::singleton());
         }
     };
 

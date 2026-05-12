@@ -1592,7 +1592,7 @@ namespace fs::dev::tty
 
     void register_chrdev(dev_t rdev)
     {
-        vfs::dev::register_dev_ops(rdev, ops::singleton());
+        vfs::dev::register_ops(rdev, ops::singleton());
     }
 
     void register_driver(driver *drv)
@@ -1607,7 +1607,7 @@ namespace fs::dev::tty
         const auto add_one = [&](std::size_t idx, std::uint32_t minor)
         {
             using namespace vfs::dev;
-            register_dev_ops(makedev(drv->major, minor), ops::singleton());
+            register_ops(makedev(drv->major, minor), ops::singleton());
 
             std::string name;
             if (drv->typ == type::pty)
@@ -1653,7 +1653,7 @@ namespace fs::dev::tty
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::registered_stage() },
         [] {
-            register_dev_ops(makedev(5, 0), current_ops::singleton());
+            register_ops(makedev(5, 0), current_ops::singleton());
             if (const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
             {
                 lib::panic(
@@ -1662,7 +1662,7 @@ namespace fs::dev::tty
                 );
             }
 
-            register_dev_ops(makedev(5, 1), console_ops::singleton());
+            register_ops(makedev(5, 1), console_ops::singleton());
             if (const auto ret = fs::devtmpfs::create("console", stat::s_ifchr | 0666, makedev(5, 1)); !ret)
             {
                 lib::panic(

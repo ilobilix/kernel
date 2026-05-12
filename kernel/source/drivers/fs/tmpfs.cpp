@@ -30,8 +30,11 @@ namespace fs::tmpfs
         }
     }
 
-    inode::inode(fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode)
-        : vfs::inode { }, owner { owner }, memory { new vmm::memobject { vmm::object_type::shmem } }
+    inode::inode(
+        fs::instance *owner, dev_t dev, dev_t rdev,
+        ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
+    ) : vfs::inode { std::move(ops) }, owner { owner },
+        memory { new vmm::memobject { vmm::object_type::shmem } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
@@ -174,14 +177,18 @@ namespace fs::tmpfs
     }
 
     auto fs::instance::create(
-        std::shared_ptr<vfs::inode> &parent,
-        std::string_view name, mode_t mode, dev_t rdev
+        std::shared_ptr<vfs::inode> &parent, std::string_view name,
+        mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
         if (!reserve(current_inodes, max_inodes, 1))
             return std::unexpected { lib::err::no_space_left };
-        return std::shared_ptr<vfs::inode>(new inode { this, dev_id, rdev, next_inode++, mode });
+
+        return std::make_shared<inode>(
+            this, dev_id, rdev, next_inode++,
+            mode, ops ? *ops : ops::singleton()
+        );
     }
 
     auto fs::instance::symlink(
@@ -190,7 +197,7 @@ namespace fs::tmpfs
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(target);
-        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0);
+        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, nullptr);
     }
 
     auto fs::instance::link(
@@ -404,13 +411,12 @@ namespace fs::tmpfs
         locked->current_inodes.fetch_add(1, std::memory_order_relaxed);
         root->inode = std::make_shared<inode>(
             locked.get(), locked->dev_id, 0, locked->next_inode++,
-            static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode
+            static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
+            ops::singleton()
         );
         root->inode->stat.st_uid = locked->opt_uid;
         root->inode->stat.st_gid = locked->opt_gid;
         root->parent = root;
-
-        vfs::dev::register_fs_ops(locked->dev_id, ops::singleton());
 
         auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
         mounts.push_back(mount);

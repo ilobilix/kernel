@@ -174,13 +174,13 @@ namespace fs::dev::mem
         lib::initgraph::require { devtmpfs::registered_stage() },
         [] {
             using namespace vfs::dev;
-            register_dev_ops(makedev(1, 3), null_ops::singleton());
-            register_dev_ops(makedev(1, 5), zero_ops::singleton());
-            register_dev_ops(makedev(1, 7), full_ops::singleton());
+            register_ops(makedev(1, 3), null_ops::singleton());
+            register_ops(makedev(1, 5), zero_ops::singleton());
+            register_ops(makedev(1, 7), full_ops::singleton());
 
             const auto rand = random_dev::singleton();
-            register_dev_ops(makedev(1, 8), rand);
-            register_dev_ops(makedev(1, 9), rand);
+            register_ops(makedev(1, 8), rand);
+            register_ops(makedev(1, 9), rand);
 
             auto create = [](std::string_view name, mode_t mode, dev_t dev)
             {
