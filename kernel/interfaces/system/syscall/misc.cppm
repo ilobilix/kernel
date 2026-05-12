@@ -22,5 +22,7 @@ export namespace syscall::misc
         unsigned long arg4, unsigned long arg5
     );
 
+    int seccomp(unsigned int op, unsigned int flags, void __user *args);
+
     int syslog(int type, char __user *buf, int len);
 } // export namespace syscall::misc
