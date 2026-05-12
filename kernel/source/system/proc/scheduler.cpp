@@ -1948,7 +1948,7 @@ namespace sched
             if (no_hang)
                 return 0;
 
-            if (proc->wait_child.wait())
+            if (proc->wait_child.wait().interrupted)
                 return -EINTR;
         }
     }

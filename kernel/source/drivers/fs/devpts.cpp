@@ -26,7 +26,7 @@ namespace fs::devpts
         {
             lib::unused(src, data);
 
-            auto mount = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
+            auto mount = std::make_shared<struct vfs::mount>(instance, root);
             mounts.push_back(mount);
             return mount;
         }
@@ -48,7 +48,7 @@ namespace fs::devpts
             );
             root->parent = root;
 
-            internal_mnt = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
+            internal_mnt = std::make_shared<struct vfs::mount>(instance, root);
         }
     };
 

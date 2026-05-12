@@ -12,6 +12,16 @@ export
     {
         time_t tv_sec;
         suseconds_t tv_usec;
+
+        constexpr std::uint64_t to_ns() const
+        {
+            return tv_sec * 1'000'000'000ul + tv_usec * 1'000;
+        }
+
+        constexpr std::uint64_t to_ms() const
+        {
+            return tv_sec * 1000ul + tv_usec / 1'000;
+        }
     };
 
     struct itimerval

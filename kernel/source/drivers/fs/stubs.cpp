@@ -39,7 +39,7 @@ namespace fs::stubs
             {
                 lib::unused(src, data);
 
-                auto mount = std::make_shared<struct vfs::mount>(instance, root, std::nullopt);
+                auto mount = std::make_shared<struct vfs::mount>(instance, root);
                 mounts.push_back(mount);
                 return mount;
             }

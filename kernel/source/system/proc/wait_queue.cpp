@@ -62,15 +62,15 @@ namespace sched
         return generation.load(std::memory_order_acquire);
     }
 
-    bool wait_queue_t::wait(std::uint64_t ns)
+    auto wait_queue_t::wait(std::uint64_t ns) -> wait_result_t
     {
         return wait_prepared(snapshot_gen(), ns);
     }
 
-    bool wait_queue_t::wait_prepared(std::size_t gen, std::uint64_t ns)
+    auto wait_queue_t::wait_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
     {
         if (try_dec_pending())
-            return false;
+            return { false, false };
 
         wait_queue_entry_t entry { };
 
@@ -79,13 +79,13 @@ namespace sched
         {
             pending.fetch_sub(1, std::memory_order_release);
             lock.unlock();
-            return false;
+            return { false, false };
         }
 
         if (generation.load(std::memory_order_acquire) != gen)
         {
             lock.unlock();
-            return false;
+            return { false, false };
         }
 
         entries.push_back(&entry);
@@ -108,7 +108,7 @@ namespace sched
             if (entries.find(&entry) != entries.end())
                 entries.remove(&entry);
             lock.unlock();
-            return interrupted;
+            return { interrupted, false };
         }
 
         sleep_entry_t timeout {
@@ -133,15 +133,15 @@ namespace sched
             entries.remove(&entry);
         lock.unlock();
 
-        return interrupted;
+        return { interrupted, timeout.expired };
     }
 
-    void wait_queue_t::wait_unint(std::uint64_t ns)
+    auto wait_queue_t::wait_unint(std::uint64_t ns) -> wait_result_t
     {
         const auto gen = generation.load(std::memory_order_acquire);
 
         if (try_dec_pending())
-            return;
+            return { false, false };
 
         wait_queue_entry_t entry { };
 
@@ -150,13 +150,13 @@ namespace sched
         {
             pending.fetch_sub(1, std::memory_order_release);
             lock.unlock();
-            return;
+            return { false, false };
         }
 
         if (generation.load(std::memory_order_acquire) != gen)
         {
             lock.unlock();
-            return;
+            return { false, false };
         }
 
         entries.push_back(&entry);
@@ -178,7 +178,7 @@ namespace sched
             if (entries.find(&entry) != entries.end())
                 entries.remove(&entry);
             lock.unlock();
-            return;
+            return { false, false };
         }
 
         sleep_entry_t timeout {
@@ -201,6 +201,8 @@ namespace sched
         if (entries.find(&entry) != entries.end())
             entries.remove(&entry);
         lock.unlock();
+
+        return { false, timeout.expired };
     }
 
     void wait_queue_t::wake_one(bool drop)

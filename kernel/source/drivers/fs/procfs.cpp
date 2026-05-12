@@ -725,7 +725,7 @@ namespace fs::procfs
         {
             lib::unused(src, data);
 
-            auto mount = std::make_shared<struct vfs::mount>(inst, root, std::nullopt);
+            auto mount = std::make_shared<struct vfs::mount>(inst, root);
             mounts.lock()->push_back(mount);
             return mount;
         }
@@ -741,7 +741,7 @@ namespace fs::procfs
             root->inode = locked->mkroot();
             root->parent = root;
 
-            internal_mnt = std::make_shared<struct vfs::mount>(inst, root, std::nullopt);
+            internal_mnt = std::make_shared<struct vfs::mount>(inst, root);
         }
     };
 

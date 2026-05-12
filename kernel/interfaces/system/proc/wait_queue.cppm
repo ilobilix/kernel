@@ -47,11 +47,17 @@ export namespace sched
             std::atomic<wait_queue_entry_t *> &entry_ref
         );
 
-        bool wait(std::uint64_t ns = 0);
-        void wait_unint(std::uint64_t ns = 0);
+        struct wait_result_t
+        {
+            bool interrupted;
+            bool expired;
+        };
+
+        wait_result_t wait(std::uint64_t ns = 0);
+        wait_result_t wait_unint(std::uint64_t ns = 0);
 
         std::size_t snapshot_gen() const;
-        bool wait_prepared(std::size_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_prepared(std::size_t gen, std::uint64_t ns = 0);
 
         void wake_one(bool drop = false);
         void wake_all();

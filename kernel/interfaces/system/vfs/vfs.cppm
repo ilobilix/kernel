@@ -394,10 +394,16 @@ export namespace vfs
         lib::locked_ptr<filesystem::instance, sched::mutex> fs;
         std::shared_ptr<dentry> root;
         std::optional<path> mounted_on;
+
+        std::size_t id;
+        std::size_t parent_id;
         std::uint64_t flags = 0;
 
         std::string fstype;
         std::string source;
+
+        mount(lib::locked_ptr<filesystem::instance, sched::mutex> fs, std::shared_ptr<dentry> root)
+            : fs { std::move(fs) }, root { std::move(root) } { }
     };
 
     struct inode
@@ -710,6 +716,7 @@ export namespace vfs
     };
 
     path get_root(bool absolute);
+    std::shared_ptr<mount> get_mount(std::size_t id);
 
     bool register_fs(std::unique_ptr<filesystem> fs);
     auto find_fs(std::string_view name)

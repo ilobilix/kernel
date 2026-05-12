@@ -110,14 +110,14 @@ namespace syscall::vfs
         if (needs_write && (mflags & ms_rdonly))
             return -EROFS;
 
-        if (stat.type() == stat::type::s_ifdir && (write || trunc) && !is_tmpfile)
+        if (stat.type() == stat::s_ifdir && (write || trunc) && !is_tmpfile)
             return -EISDIR;
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return -ENOTDIR;
 
         if ((mflags & ms_nodev) &&
-            (stat.type() == stat::type::s_ifchr || stat.type() == stat::type::s_ifblk))
+            (stat.type() == stat::s_ifchr || stat.type() == stat::s_ifblk))
             return -EACCES;
 
         if ((flags & o_noatime) &&
