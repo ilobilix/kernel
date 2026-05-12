@@ -868,12 +868,15 @@ namespace fs::dev::tty
                             return progress;
 
                         in_locked.unlock();
-                        bool interrupted = in_wq.wait(ms * 1'000'000);
+                        const auto [interrupted, expired] = in_wq.wait(ms * 1'000'000);
                         in_locked.lock();
 
                         available = get_available(in_locked);
                         if (!interrupted && available == 0) // expired
+                        {
+                            lib::bug_on(!expired);
                             return progress;
+                        }
                     }
                 }
                 return progress;

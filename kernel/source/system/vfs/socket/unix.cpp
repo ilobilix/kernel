@@ -558,7 +558,8 @@ namespace vfs::socket
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    if (accept_wait.wait_prepared(gen))
+                    // TODO: timeout?
+                    if (accept_wait.wait_prepared(gen).interrupted)
                         return std::unexpected { lib::err::interrupted };
                 }
             }
@@ -590,6 +591,7 @@ namespace vfs::socket
                         return std::unexpected { lib::err::broken_pipe };
                     }
 
+                    std::size_t wait_ns;
                     {
                         auto slocked = state.lock();
                         if (slocked->shut_write)
@@ -598,6 +600,7 @@ namespace vfs::socket
                                 raise_sigpipe();
                             return std::unexpected { lib::err::broken_pipe };
                         }
+                        wait_ns = slocked->sndtimeo.to_ns();
                     }
 
                     std::size_t sent = 0;
@@ -678,11 +681,19 @@ namespace vfs::socket
                             return std::unexpected { lib::err::try_again };
                         }
 
-                        if (peer_ptr->write_wait.wait_prepared(gen))
+                        const auto [interrupted, expired] =
+                            peer_ptr->write_wait.wait_prepared(gen, wait_ns);
+                        if (interrupted)
                         {
                             if (sent > 0)
                                 return sent;
                             return std::unexpected { lib::err::interrupted };
+                        }
+                        if (expired)
+                        {
+                            if (sent > 0)
+                                return sent;
+                            return std::unexpected { lib::err::try_again };
                         }
                     }
 
@@ -764,9 +775,11 @@ namespace vfs::socket
                     }
 
                     std::string sender_path;
+                    std::size_t wait_ns;
                     {
                         auto slocked = state.lock();
                         sender_path = slocked->bound_path;
+                        wait_ns = slocked->sndtimeo.to_ns();
                     }
 
                     while (true)
@@ -795,8 +808,12 @@ namespace vfs::socket
                         if (flags & msg_dontwait)
                             return std::unexpected { lib::err::try_again };
 
-                        if (dest->write_wait.wait_prepared(gen))
+                        const auto [interrupted, expired] =
+                            dest->write_wait.wait_prepared(gen, wait_ns);
+                        if (interrupted)
                             return std::unexpected { lib::err::interrupted };
+                        if (expired)
+                            return std::unexpected { lib::err::try_again };
                     }
                 }
             }
@@ -813,6 +830,7 @@ namespace vfs::socket
                 if (total == 0)
                     return 0uz;
 
+                const auto wait_ns = state.lock()->rcvtimeo.to_ns();
                 if (type == sock_stream)
                 {
                     if (flags & msg_peek)
@@ -929,11 +947,18 @@ namespace vfs::socket
                             return std::unexpected { lib::err::try_again };
                         }
 
-                        if (read_wait.wait_prepared(gen))
+                        const auto [interrupted, expired] = read_wait.wait_prepared(gen, wait_ns);
+                        if (interrupted)
                         {
                             if (received > 0)
                                 return received;
                             return std::unexpected { lib::err::interrupted };
+                        }
+                        if (expired)
+                        {
+                            if (received > 0)
+                                return received;
+                            return std::unexpected { lib::err::try_again };
                         }
                     }
 
@@ -1011,8 +1036,11 @@ namespace vfs::socket
                         if (flags & msg_dontwait)
                             return std::unexpected { lib::err::try_again };
 
-                        if (read_wait.wait_prepared(gen))
+                        const auto [interrupted, expired] = read_wait.wait_prepared(gen, wait_ns);
+                        if (interrupted)
                             return std::unexpected { lib::err::interrupted };
+                        if (expired)
+                            return std::unexpected { lib::err::try_again };
                     }
                 }
             }
@@ -1111,6 +1139,7 @@ namespace vfs::socket
 
             auto shutdown(int how) -> lib::expect<void> override
             {
+                // TODO: linger
                 {
                     auto slocked = state.lock();
                     if (slocked->state != connected && slocked->state != listening)
@@ -1344,6 +1373,7 @@ namespace vfs::socket
 
             auto release() -> lib::expect<void> override
             {
+                // TODO: linger
                 {
                     auto slocked = state.lock();
                     if (!slocked->bound_path.empty() && slocked->bound_path[0] == 0)

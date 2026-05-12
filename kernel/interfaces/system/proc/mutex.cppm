@@ -67,7 +67,7 @@ export namespace sched
                         lib::panic("mutex deadlock");
                 }
 
-                if (_waiters.wait())
+                if (_waiters.wait().interrupted)
                     return false;
             }
         }
@@ -121,7 +121,7 @@ export namespace sched
                 if (now >= deadline)
                     return false;
 
-                if (_waiters.wait(deadline - now))
+                if (_waiters.wait(deadline - now).interrupted)
                     return false;
             }
         }
@@ -200,7 +200,7 @@ export namespace sched
                     }
                 }
 
-                if (_waiters.wait())
+                if (_waiters.wait().interrupted)
                     return false;
             }
         }
@@ -281,7 +281,7 @@ export namespace sched
                 if (now >= deadline)
                     return false;
 
-                if (_waiters.wait(deadline - now))
+                if (_waiters.wait(deadline - now).interrupted)
                     return false;
             }
         }

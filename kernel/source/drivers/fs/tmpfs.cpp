@@ -418,7 +418,7 @@ namespace fs::tmpfs
         root->inode->stat.st_gid = locked->opt_gid;
         root->parent = root;
 
-        auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root, std::nullopt);
+        auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root);
         mounts.push_back(mount);
         return mount;
     }

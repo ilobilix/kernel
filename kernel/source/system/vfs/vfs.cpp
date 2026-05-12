@@ -31,14 +31,22 @@ namespace vfs
         > filesystems;
 
         lib::locker<
-            lib::list<std::weak_ptr<struct mount>>,
-            sched::mutex
+            lib::map::flat_hash<
+                std::size_t,
+                std::shared_ptr<struct mount>
+            >, sched::mutex
         > mounts;
 
         std::atomic<dev_t> next_dev = 1;
         dev_t allocate_dev()
         {
             return next_dev.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        std::atomic<ino_t> next_mount_id { 1 };
+        std::size_t allocate_mount_id()
+        {
+            return next_mount_id.fetch_add(1, std::memory_order_relaxed);
         }
 
         path resolve_mounts(path path)
@@ -91,6 +99,41 @@ namespace vfs
                 return sched::check_perms(cred, stat, sched::access_mode::write);
             return false;
         }
+
+        std::string get_mnt_opts(const auto flags, const auto &fs)
+        {
+            std::string opts { (flags & ms_rdonly) ? "ro" : "rw" };
+            if (flags & ms_nosuid)
+                opts.append(",nosuid");
+            if (flags & ms_nodev)
+                opts.append(",nodev");
+            if (flags & ms_noexec)
+                opts.append(",noexec");
+            if (flags & ms_synchronous)
+                opts.append(",sync");
+            if (flags & ms_dirsync)
+                opts.append(",dirsync");
+            if (flags & ms_noatime)
+                opts.append(",noatime");
+            if (flags & ms_nodiratime)
+                opts.append(",nodiratime");
+            if (flags & ms_relatime)
+                opts.append(",relatime");
+            if (flags & ms_strictatime)
+                opts.append(",strictatime");
+            if (flags & ms_lazytime)
+                opts.append(",lazytime");
+
+            const auto locked = fs.lock();
+            const auto fs_opts = locked->mount_options();
+            if (!fs_opts.empty())
+            {
+                opts.append(",");
+                opts.append(fs_opts);
+            }
+
+            return opts;
+        };
     } // namespace
 
     filesystem::instance::instance() : dev_id { allocate_dev() } { }
@@ -320,6 +363,15 @@ namespace vfs
             ret.dentry = mnt->root;
         }
         return ret;
+    }
+
+    std::shared_ptr<struct mount> get_mount(std::size_t id)
+    {
+        const auto locked = mounts.lock();
+        auto it = locked->find(id);
+        if (it == locked->end())
+            return nullptr;
+        return it->second;
     }
 
     bool register_fs(std::unique_ptr<filesystem> fs)
@@ -657,11 +709,13 @@ namespace vfs
             return std::unexpected { mnt.error() };
 
         mnt.value()->mounted_on = target;
+        mnt.value()->id = allocate_mount_id();
+        mnt.value()->parent_id = target.mnt ? target.mnt->id : 0;
         mnt.value()->flags = flags;
         mnt.value()->fstype = fstype;
         mnt.value()->source = source_path.str();
         target.dentry->child_mounts.lock()->push_back(mnt.value());
-        mounts.lock()->push_back(mnt.value());
+        (*mounts.lock())[mnt.value()->id] = mnt.value();
 
         if (!(flags & ms_silent))
             lib::info("vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags);
@@ -1312,26 +1366,12 @@ namespace vfs
             lib::initgraph::require { fs::procfs::registered_stage() },
             [] {
                 using namespace fs::procfs;
+
                 lib::bug_on(!register_global("mounts",
                     make_file_ops([](auto) {
-                        std::vector<std::shared_ptr<struct mount>> snapshot;
-                        std::vector<lib::list<std::weak_ptr<struct mount>>::iterator> dead;
-                        {
-                            auto locked = mounts.lock();
-                            snapshot.reserve(locked->size());
-                            for (auto it = locked->begin(); it != locked->end(); it++)
-                            {
-                                if (auto strong = it->lock())
-                                    snapshot.push_back(std::move(strong));
-                                else
-                                    dead.push_back(it);
-                            }
-                            for (auto it : dead)
-                                locked->erase(it);
-                        }
-
+                        const auto snapshot = *mounts.lock();
                         std::string out;
-                        for (const auto &mnt : snapshot)
+                        for (const auto &[_, mnt] : snapshot)
                         {
                             if (!mnt->mounted_on || !mnt->mounted_on->dentry)
                                 continue;
@@ -1345,42 +1385,42 @@ namespace vfs
                             const std::string_view source = mnt->source.empty()
                                 ? std::string_view { mnt->fstype }
                                 : mnt->source;
-                            const auto flags = mnt->flags;
-
-                            std::string opts { (flags & ms_rdonly) ? "ro" : "rw" };
-                            if (flags & ms_nosuid)
-                                opts.append(",nosuid");
-                            if (flags & ms_nodev)
-                                opts.append(",nodev");
-                            if (flags & ms_noexec)
-                                opts.append(",noexec");
-                            if (flags & ms_synchronous)
-                                opts.append(",sync");
-                            if (flags & ms_dirsync)
-                                opts.append(",dirsync");
-                            if (flags & ms_noatime)
-                                opts.append(",noatime");
-                            if (flags & ms_nodiratime)
-                                opts.append(",nodiratime");
-                            if (flags & ms_relatime)
-                                opts.append(",relatime");
-                            if (flags & ms_strictatime)
-                                opts.append(",strictatime");
-                            if (flags & ms_lazytime)
-                                opts.append(",lazytime");
-
-                            {
-                                const auto fs = mnt->fs.lock();
-                                const auto fs_opts = fs->mount_options();
-                                if (!fs_opts.empty())
-                                {
-                                    opts.append(",");
-                                    opts.append(fs_opts);
-                                }
-                            }
 
                             out.append(fmt::format("{} {} {} {} 0 0\n",
-                                source, mountpoint, mnt->fstype, opts
+                                source, mountpoint, mnt->fstype,
+                                get_mnt_opts(mnt->flags, mnt->fs)
+                            ));
+                        }
+                        return out;
+                    }), node_type::file, 0444
+                ));
+
+                lib::bug_on(!register_per_pid("mountinfo",
+                    make_file_ops([](auto) {
+                        const auto snapshot = *mounts.lock();
+                        std::string out;
+                        for (const auto &[id, mnt] : snapshot)
+                        {
+                            if (!mnt->mounted_on || !mnt->mounted_on->dentry)
+                                continue;
+                            if (mnt->fstype.empty())
+                                continue;
+
+                            const auto mountpoint = pathname_from(*mnt->mounted_on);
+                            if (mountpoint.empty())
+                                continue;
+
+                            const std::string_view source = mnt->source.empty()
+                                ? std::string_view { mnt->fstype }
+                                : mnt->source;
+
+                            const auto dev_id = mnt->fs.lock()->dev_id;
+
+                            // TODO: root within the fs, optional_fields, super_options
+                            const auto mnt_opts = get_mnt_opts(mnt->flags, mnt->fs);
+                            out.append(fmt::format("{} {} 0:{} {} {} {} - {} {} {}\n",
+                                mnt->id, mnt->parent_id, dev_id, "/", mountpoint,
+                                mnt_opts, mnt->fstype, source, mnt_opts
                             ));
                         }
                         return out;
