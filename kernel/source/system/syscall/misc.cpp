@@ -281,6 +281,12 @@ namespace syscall::misc
                     return -EFAULT;
                 return 0;
             }
+            case 21: // PR_GET_SECCOMP
+                // TODO
+                return -EINVAL;
+            case 22: // PR_SET_SECCOMP
+                // TODO
+                return -EINVAL;
             case 38: // PR_SET_NO_NEW_PRIVS
                 if (arg2 != 1)
                     return -EINVAL;
@@ -293,6 +299,13 @@ namespace syscall::misc
                 lib::error("prctl: unhandled option: 0x{:X}", option);
                 return -EINVAL;
         }
+    }
+
+    int seccomp(unsigned int op, unsigned int flags, void __user *args)
+    {
+        // TODO
+        lib::unused(op, flags, args);
+        return -ENOSYS;
     }
 
     int syslog(int type, char __user *buf, int len)

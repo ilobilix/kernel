@@ -198,6 +198,7 @@ namespace x86_64::syscall
         [295] = { "preadv", vfs::preadv, true },
         [296] = { "pwritev", vfs::pwritev, true },
         [302] = { "prlimit", proc::prlimit },
+        [317] = { "seccomp", misc::seccomp, true },
         [318] = { "getrandom", misc::getrandom, true },
         [322] = { "execveat", proc::execveat },
         [332] = { "statx", vfs::statx },
