@@ -452,10 +452,7 @@ namespace vfs::pipe
         if (!file || !file->path.dentry || !file->path.dentry->inode)
             return false;
 
-        const auto fops = file->get_ops();
-        if (!fops.has_value())
-            return false;
-        return fops->get() == ops::singleton().get();
+        return file->ops == ops::singleton();
     }
 
     lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file> file)

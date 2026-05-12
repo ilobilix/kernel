@@ -443,7 +443,7 @@ namespace syscall::vfs
         if (type == stat::s_ifsock || type == stat::s_ififo)
             return -ESPIPE;
 
-        if (const auto ops_res = file->get_ops(); !ops_res || !(*ops_res)->seekable())
+        if (const auto &ops = file->ops; !ops || !ops->seekable())
             return -ESPIPE;
 
         std::size_t new_offset = 0;

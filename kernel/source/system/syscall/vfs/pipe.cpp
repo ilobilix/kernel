@@ -16,11 +16,12 @@ namespace syscall::vfs
         if (flags & ~(o_closexec | o_nonblock))
             return -EINVAL;
 
-        auto shared_inode = std::make_shared<inode>();
+        auto shared_inode = std::make_shared<inode>(pipe::get_ops());
         {
             shared_inode->stat.st_ino = vfs::next_anon_ino();
             shared_inode->stat.st_blksize = 0x1000;
-            shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo;
+            shared_inode->stat.st_mode = std::to_underlying(stat::s_ififo) |
+                s_irwxu | s_irwxg | s_irwxo;
             shared_inode->stat.st_uid = proc->cred->euid;
             shared_inode->stat.st_gid = proc->cred->egid;
 
@@ -32,7 +33,7 @@ namespace syscall::vfs
             );
         }
 
-        vfs::pipe::prep_anon(shared_inode);
+        pipe::prep_anon(shared_inode);
 
         std::array<int, 2> fds;
 

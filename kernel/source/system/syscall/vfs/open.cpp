@@ -183,8 +183,7 @@ namespace syscall::vfs
 
     int close(int fd)
     {
-        const auto proc = sched::current_process();
-        return detail::close_fd(proc, fd);
+        return detail::close_fd(sched::current_process(), fd);
     }
 
     int close_range(std::uint32_t first, std::uint32_t last, std::uint32_t flags)

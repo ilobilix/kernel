@@ -504,7 +504,7 @@ namespace fs::dev::pty
             }
 
             constexpr auto ptmx_rdev = vfs::dev::makedev(5, 2);
-            vfs::dev::register_dev_ops(ptmx_rdev, ptmx_ops::singleton());
+            vfs::dev::register_ops(ptmx_rdev, ptmx_ops::singleton());
             if (const auto ret = devtmpfs::create("ptmx", stat::s_ifchr | 0666, ptmx_rdev); !ret)
             {
                 lib::panic(
