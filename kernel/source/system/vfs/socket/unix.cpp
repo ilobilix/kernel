@@ -3,8 +3,10 @@
 module system.vfs.socket;
 
 import drivers.fs.procfs;
+import system.chrono;
 import system.sched;
 import system.vfs;
+import fmt;
 
 namespace vfs::socket
 {
@@ -18,6 +20,7 @@ namespace vfs::socket
         constexpr std::size_t msg_cap = lib::kib(64);
 
         constexpr std::size_t cmsg_align = sizeof(std::size_t);
+        constexpr std::size_t scm_max_fd = 253;
 
         std::size_t round_capacity(std::size_t size)
         {
@@ -52,6 +55,9 @@ namespace vfs::socket
         );
 
         struct unix_sock;
+        void register_sock(unix_sock *sock);
+        void unregister_sock(unix_sock *sock);
+
         lib::locker<
             lib::map::flat_hash<
                 std::string,
@@ -62,10 +68,6 @@ namespace vfs::socket
         enum state { unconnected, connecting, connected, listening, disconnecting };
         struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
         {
-            public:
-            std::weak_ptr<unix_sock> peer;
-
-            private:
             struct private_t
             {
                 std::weak_ptr<unix_sock> sock;
@@ -92,13 +94,19 @@ namespace vfs::socket
             sched::wait_queue_t read_wait;
             sched::wait_queue_t write_wait;
             sched::wait_queue_t accept_wait;
+            sched::wait_queue_t conn_wait;
+
+            lib::intrusive_list_hook<unix_sock> sockets_hook;
 
             struct state_t
             {
                 state state;
 
+                std::weak_ptr<unix_sock> peer;
+
                 std::shared_ptr<vfs::inode> bound_inode;
                 std::string bound_path;
+                bool bound = false;
 
                 lib::list<std::shared_ptr<unix_sock>> accept_queue;
                 std::size_t backlog = 0;
@@ -107,6 +115,8 @@ namespace vfs::socket
                 bool shut_write = false;
                 bool passcred = false;
                 int pending_error = 0;
+
+                std::optional<int> resize_on_con;
 
                 linger linger_opt { };
                 timeval rcvtimeo { }, sndtimeo { };
@@ -182,6 +192,9 @@ namespace vfs::socket
                                 return std::unexpected { lib::err::invalid_argument };
 
                             const auto num_fds = data_len / sizeof(int);
+                            if (num_fds > scm_max_fd)
+                                return std::unexpected { lib::err::invalid_argument };
+
                             lib::buffer<int> fds { num_fds };
                             hdr.msgctrl.subspan(data_off, data_len)
                                 .copy_to(std::as_writable_bytes(fds.span()));
@@ -221,14 +234,13 @@ namespace vfs::socket
                 const auto proc = sched::current_process();
                 const bool cloexec = (flags & msg_cmsg_cloexec) != 0;
                 const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
-                std::size_t ctrl_off = 0;
 
                 const auto write_cmsg = [&](int type, std::span<const std::byte> data)
                 {
                     const auto total = sizeof(cmsghdr) + data.size();
                     const auto stride = (total + cmsg_align - 1) & ~(cmsg_align - 1);
 
-                    if (ctrl_off + total > hdr.msgctrl.size())
+                    if (hdr.msgctrl_len_out + total > hdr.msgctrl.size())
                     {
                         hdr.out_flags |= msg_ctrunc;
                         return false;
@@ -239,12 +251,12 @@ namespace vfs::socket
                         .cmsg_level = sol_socket,
                         .cmsg_type = type
                     };
-                    hdr.msgctrl.subspan(ctrl_off, sizeof(cmsghdr))
+                    hdr.msgctrl.subspan(hdr.msgctrl_len_out, sizeof(cmsghdr))
                         .copy_from(std::as_bytes(std::span { &hd, 1 }));
-                    hdr.msgctrl.subspan(ctrl_off + sizeof(cmsghdr), data.size())
+                    hdr.msgctrl.subspan(hdr.msgctrl_len_out + sizeof(cmsghdr), data.size())
                         .copy_from(data);
 
-                    ctrl_off += stride;
+                    hdr.msgctrl_len_out += stride;
                     return true;
                 };
 
@@ -279,20 +291,57 @@ namespace vfs::socket
                     std::span span { std::addressof(*anc.creds), 1 };
                     write_cmsg(scm_credentials, std::as_bytes(span));
                 }
-
-                hdr.msgctrl_len_out = ctrl_off;
             }
 
-            public:
-            unix_sock(int protocol, sock_type type, enum state state = unconnected)
-                : socket_t { protocol, af_unix, type }, state { state }
+            void resize_storage(auto &locked, std::size_t new_cap)
+            {
+                new_cap = round_capacity(new_cap * 2);
+                if (new_cap == locked->capacity)
+                    return;
+
+                if (locked->buffered > new_cap)
+                {
+                    const auto diff = locked->buffered - new_cap;
+                    locked->tail = (locked->tail + diff) & (locked->capacity - 1);
+                    locked->buffered = new_cap;
+                }
+
+                lib::membuffer storage { new_cap };
+                auto to_copy = locked->buffered;
+                auto src = locked->tail, dst = 0uz;
+
+                while (to_copy > 0)
+                {
+                    const auto chunk = std::min(to_copy, locked->capacity - src);
+                    std::memcpy(storage.data() + dst, locked->storage.data() + src, chunk);
+                    src = (src + chunk) & (locked->capacity - 1);
+                    dst += chunk;
+                    to_copy -= chunk;
+                }
+
+                locked->storage = std::move(storage);
+                locked->capacity = new_cap;
+                locked->tail = 0;
+                locked->head = locked->buffered;
+            }
+
+            unix_sock(
+                int protocol, sock_type type, enum state state = unconnected,
+                std::size_t cap = default_capacity
+            ) : socket_t { protocol, af_unix, type }, state { state }
             {
                 if (type == sock_stream)
                 {
                     auto locked = receive.lock();
-                    locked->capacity = default_capacity;
+                    locked->capacity = cap;
                     locked->storage.allocate(locked->capacity);
                 }
+                register_sock(this);
+            }
+
+            ~unix_sock() override
+            {
+                unregister_sock(this);
             }
 
             auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> override
@@ -326,8 +375,8 @@ namespace vfs::socket
                 else path = "";
 
                 auto slocked = state.lock();
-                if (!slocked->bound_path.empty())
-                    return std::unexpected { lib::err::address_in_use };
+                if (slocked->bound)
+                    return std::unexpected { lib::err::invalid_argument };
 
                 if (slocked->state != unconnected)
                     return std::unexpected { lib::err::invalid_argument };
@@ -340,8 +389,37 @@ namespace vfs::socket
 
                     registry->insert({ std::string { path }, shared_from_this() });
                     slocked->bound_path = path;
+                    slocked->bound = true;
 
                     return { };
+                }
+
+                if (path.empty())
+                {
+                    // linux generates abstract names (\0XXXXX)
+                    static std::uint32_t autobind_seq = 0;
+                    auto registry = abstract.lock();
+
+                    constexpr char hex[] = "0123456789abcdef";
+                    for (std::uint32_t retry = 0; retry < 0x100000; retry++)
+                    {
+                        const auto num = (++autobind_seq) & 0xFFFFFu;
+                        std::string name(6, '\0');
+                        name[1] = hex[(num >> 16) & 0xF];
+                        name[2] = hex[(num >> 12) & 0xF];
+                        name[3] = hex[(num >> 8) & 0xF];
+                        name[4] = hex[(num >> 4) & 0xF];
+                        name[5] = hex[num & 0xF];
+
+                        if (registry->contains(name))
+                            continue;
+
+                        registry->insert({ name, shared_from_this() });
+                        slocked->bound_path = std::move(name);
+                        slocked->bound = true;
+                        return { };
+                    }
+                    return std::unexpected { lib::err::address_in_use };
                 }
 
                 const auto proc = sched::current_process();
@@ -358,17 +436,29 @@ namespace vfs::socket
                 ret->dentry->inode->private_data = private_t::create(shared_from_this());
                 slocked->bound_inode = ret->dentry->inode;
                 slocked->bound_path = path;
+                slocked->bound = true;
 
                 return { };
             }
 
-            auto connect(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> override
+            auto connect(lib::maybe_uspan<const std::byte> addr, bool nonblock)
+                -> lib::expect<void> override
             {
                 if (addr.size() < sizeof(addr_fam) || addr.size() > sizeof(sockaddr_un))
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
                 addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size()));
+
+                if (sa.sun_family == af_unspec)
+                {
+                    if (type != sock_dgram)
+                        return std::unexpected { lib::err::address_family_unsupported };
+                    auto slocked = state.lock();
+                    slocked->peer.reset();
+                    slocked->state = unconnected;
+                    return { };
+                }
 
                 if (sa.sun_family != af_unix)
                     return std::unexpected { lib::err::address_family_unsupported };
@@ -421,13 +511,13 @@ namespace vfs::socket
                 if (!target)
                     return std::unexpected { lib::err::connection_refused };
 
+                if (target->type != type)
+                    return std::unexpected { lib::err::wrong_protocol };
+
                 if (type == sock_dgram)
                 {
                     auto slocked = state.lock();
-                    if (slocked->state == connected)
-                        return std::unexpected { lib::err::already_connected };
-
-                    peer = target;
+                    slocked->peer = target;
                     slocked->state = connected;
                     return { };
                 }
@@ -437,34 +527,98 @@ namespace vfs::socket
                     if (slocked->state == connected)
                         return std::unexpected { lib::err::already_connected };
                     if (slocked->state == connecting)
-                        return std::unexpected { lib::err::connection_in_progress };
+                        return std::unexpected { lib::err::already_in_progress };
                     if (slocked->state != unconnected)
                         return std::unexpected { lib::err::invalid_argument };
 
                     slocked->state = connecting;
                     slocked->cred = {
                         .pid = proc->pid,
-                        .uid = proc->cred->ruid,
-                        .gid = proc->cred->rgid
+                        .uid = proc->cred->euid,
+                        .gid = proc->cred->egid
                     };
                 }
 
                 {
-                    auto tlocked = target->state.lock();
-                    if (tlocked->state != listening ||
-                        tlocked->accept_queue.size() >= tlocked->backlog)
+                    while (true)
                     {
-                        state.lock()->state = unconnected;
-                        return std::unexpected { lib::err::connection_refused };
+                        std::size_t gen = 0;
+                        bool queued = false;
+
+                        {
+                            auto tlocked = target->state.lock();
+                            if (tlocked->state != listening)
+                            {
+                                state.lock()->state = unconnected;
+                                return std::unexpected { lib::err::connection_refused };
+                            }
+
+                            if (tlocked->accept_queue.size() < tlocked->backlog)
+                            {
+                                std::shared_ptr<unix_sock> server;
+                                {
+                                    auto slocked = state.lock();
+                                    server = std::make_shared<unix_sock>(
+                                        protocol, type, unconnected,
+                                        slocked->resize_on_con
+                                            ? *slocked->resize_on_con
+                                            : default_capacity
+                                    );
+                                    slocked->resize_on_con = std::nullopt;
+                                    slocked->peer = server;
+                                }
+                                {
+                                    auto sslocked = server->state.lock();
+                                    sslocked->peer = shared_from_this();
+                                    sslocked->state = connecting;
+                                    sslocked->bound_path = tlocked->bound_path;
+                                }
+
+                                tlocked->accept_queue.push_back(server);
+                                target->accept_wait.wake_one();
+                                queued = true;
+                            }
+                            else gen = target->accept_wait.snapshot_gen();
+                        }
+
+                        if (!queued)
+                        {
+                            if (nonblock)
+                            {
+                                state.lock()->state = unconnected;
+                                return std::unexpected { lib::err::try_again };
+                            }
+                            if (target->accept_wait.wait_prepared(gen).interrupted)
+                            {
+                                state.lock()->state = unconnected;
+                                return std::unexpected { lib::err::interrupted };
+                            }
+                            continue;
+                        }
+
+                        if (nonblock && state.lock()->state != connected)
+                            return std::unexpected { lib::err::operation_in_progress };
+
+                        while (true)
+                        {
+                            std::size_t wgen = 0;
+
+                            {
+                                auto slocked = state.lock();
+                                if (slocked->state != connecting)
+                                {
+                                    if (slocked->state != connected)
+                                        return std::unexpected { lib::err::connection_refused };
+                                    break;
+                                }
+                                wgen = conn_wait.snapshot_gen();
+                            }
+
+                            if (conn_wait.wait_prepared(wgen).interrupted)
+                                return std::unexpected { lib::err::interrupted };
+                        }
+                        break;
                     }
-
-                    auto server = std::make_shared<unix_sock>(protocol, type);
-                    peer = server;
-                    server->peer = shared_from_this();
-                    server->state.lock()->state = connecting;
-
-                    tlocked->accept_queue.push_back(server);
-                    target->accept_wait.wake_one();
                 }
 
                 return { };
@@ -476,7 +630,7 @@ namespace vfs::socket
                     return std::unexpected { lib::err::operation_unsupported };
 
                 auto slocked = state.lock();
-                if (slocked->bound_path.empty())
+                if (!slocked->bound)
                     return std::unexpected { lib::err::invalid_argument };
 
                 if (slocked->state != unconnected && slocked->state != listening)
@@ -493,6 +647,12 @@ namespace vfs::socket
                 socklen_t *addr_len_inout, bool nonblock
             ) -> lib::expect<std::shared_ptr<socket_t>> override
             {
+                std::size_t wait_ns;
+                {
+                    const auto slocked = state.lock();
+                    wait_ns = slocked->rcvtimeo.to_ns();
+                }
+
                 while (true)
                 {
                     std::shared_ptr<unix_sock> client;
@@ -501,7 +661,10 @@ namespace vfs::socket
                     {
                         auto slocked = state.lock();
                         if (slocked->state != listening)
-                            return std::unexpected { lib::err::not_connected };
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        if (slocked->shut_read)
+                            return std::unexpected { lib::err::invalid_argument };
 
                         if (!slocked->accept_queue.empty())
                         {
@@ -514,42 +677,51 @@ namespace vfs::socket
                     if (client)
                     {
                         const auto proc = sched::current_process();
+                        std::shared_ptr<unix_sock> connecting;
                         {
                             auto cslocked = client->state.lock();
+                            connecting = cslocked->peer.lock();
+                            cslocked->state = connected;
                             cslocked->cred = {
                                 .pid = proc->pid,
-                                .uid = proc->cred->ruid,
-                                .gid = proc->cred->rgid
+                                .uid = proc->cred->euid,
+                                .gid = proc->cred->egid
                             };
+                        }
+
+                        sockaddr_un sa { };
+                        sa.sun_family = af_unix;
+                        socklen_t actual = sizeof(addr_fam);
+
+                        if (connecting)
+                        {
+                            auto pslocked = connecting->state.lock();
+                            pslocked->state = connected;
+                            if (!pslocked->bound_path.empty())
+                            {
+                                const bool is_abstract = pslocked->bound_path[0] == 0;
+                                const auto copy_size = std::min(
+                                    pslocked->bound_path.size(), sizeof(sa.sun_path)
+                                );
+                                std::memcpy(sa.sun_path, pslocked->bound_path.data(), copy_size);
+                                actual = static_cast<socklen_t>(sizeof(addr_fam) +
+                                    pslocked->bound_path.size() + !is_abstract);
+                            }
                         }
 
                         if (peer_addr_out.size() > 0 && addr_len_inout)
                         {
-                            sockaddr_un sa { };
-                            sa.sun_family = af_unix;
-
-                            socklen_t actual = sizeof(addr_fam);
-                            if (auto connecting = client->peer.lock())
-                            {
-                                auto pslocked = connecting->state.lock();
-                                if (!pslocked->bound_path.empty())
-                                {
-                                    const bool is_abstract = pslocked->bound_path[0] == 0;
-                                    const auto copy_size = std::min(
-                                        pslocked->bound_path.size(), sizeof(sa.sun_path)
-                                    );
-
-                                    std::memcpy(sa.sun_path, pslocked->bound_path.data(), copy_size);
-                                    actual = static_cast<socklen_t>(sizeof(addr_fam) +
-                                        pslocked->bound_path.size() + !is_abstract);
-                                }
-                            }
-
                             const auto copy_len = std::min<std::size_t>(peer_addr_out.size(), actual);
                             peer_addr_out.subspan(0, copy_len).copy_from(
                                 std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
                             );
                             *addr_len_inout = actual;
+                        }
+
+                        if (connecting)
+                        {
+                            connecting->conn_wait.wake_all();
+                            connecting->write_wait.wake_all();
                         }
 
                         return client;
@@ -558,9 +730,12 @@ namespace vfs::socket
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    // TODO: timeout?
-                    if (accept_wait.wait_prepared(gen).interrupted)
+                    const auto [interrupted, expired] =
+                        accept_wait.wait_prepared(gen, wait_ns);
+                    if (interrupted)
                         return std::unexpected { lib::err::interrupted };
+                    if (expired)
+                        return std::unexpected { lib::err::try_again };
                 }
             }
 
@@ -583,17 +758,18 @@ namespace vfs::socket
 
                 if (type == sock_stream)
                 {
-                    auto peer_ptr = peer.lock();
-                    if (!peer_ptr)
-                    {
-                        if (!(flags & msg_nosignal))
-                            raise_sigpipe();
-                        return std::unexpected { lib::err::broken_pipe };
-                    }
-
+                    std::shared_ptr<unix_sock> peer_ptr;
                     std::size_t wait_ns;
+
                     {
-                        auto slocked = state.lock();
+                        const auto slocked = state.lock();
+                        if (!(peer_ptr = slocked->peer.lock()))
+                        {
+                            if (!(flags & msg_nosignal))
+                                raise_sigpipe();
+                            return std::unexpected { lib::err::broken_pipe };
+                        }
+
                         if (slocked->shut_write)
                         {
                             if (!(flags & msg_nosignal))
@@ -603,18 +779,36 @@ namespace vfs::socket
                         wait_ns = slocked->sndtimeo.to_ns();
                     }
 
+                    if (peer_ptr->state.lock()->passcred && !anc.creds.has_value())
+                    {
+                        const auto proc = sched::current_process();
+                        anc.creds = ucred {
+                            .pid = proc->pid,
+                            .uid = proc->cred->euid,
+                            .gid = proc->cred->egid
+                        };
+                    }
+
                     std::size_t sent = 0;
                     std::size_t cur_iov = 0;
                     std::size_t iov_off = 0;
+                    bool anc_queued = anc.empty();
 
                     while (sent < total && cur_iov < hdr.iovs.size())
                     {
+                        auto &iov = hdr.iovs[cur_iov];
+                        if (iov_off >= iov.size())
+                        {
+                            cur_iov++;
+                            iov_off = 0;
+                            continue;
+                        }
+
                         std::size_t chunk = 0;
                         bool fault = false;
                         bool peer_gone = false;
                         std::size_t gen = 0;
 
-                        auto &iov = hdr.iovs[cur_iov];
                         {
                             {
                                 auto slocked = peer_ptr->state.lock();
@@ -630,13 +824,21 @@ namespace vfs::socket
                                 auto locked = peer_ptr->receive.lock();
                                 const auto available = locked->capacity - locked->buffered;
 
-                                // if (available >= total - sent)
                                 if (available > 0)
                                 {
                                     const auto want = std::min(
                                         available, iov.size() - iov_off
                                     );
+                                    const auto at_byte = locked->total_produced;
                                     chunk = copy_in(locked, iov, iov_off, want, fault);
+                                    if (chunk > 0 && !anc_queued)
+                                    {
+                                        locked->anc_queue.push_back({
+                                            .at_byte = at_byte,
+                                            .data = std::move(anc)
+                                        });
+                                        anc_queued = true;
+                                    }
                                 }
                                 else gen = peer_ptr->write_wait.snapshot_gen();
                             }
@@ -697,15 +899,6 @@ namespace vfs::socket
                         }
                     }
 
-                    if (!anc.empty())
-                    {
-                        auto locked = peer_ptr->receive.lock();
-                        locked->anc_queue.push_back({
-                            .at_byte = locked->total_produced,
-                            .data = std::move(anc)
-                        });
-                    }
-
                     return sent;
                 }
                 else // sock_dgram and sock_seqpacket
@@ -760,9 +953,22 @@ namespace vfs::socket
                     }
                     else
                     {
-                        dest = peer.lock();
+                        dest = state.lock()->peer.lock();
                         if (!dest)
                             return std::unexpected { lib::err::not_connected };
+                    }
+
+                    if (dest->type != type)
+                        return std::unexpected { lib::err::wrong_protocol };
+
+                    if (dest->state.lock()->passcred && !anc.creds.has_value())
+                    {
+                        const auto proc = sched::current_process();
+                        anc.creds = ucred {
+                            .pid = proc->pid,
+                            .uid = proc->cred->euid,
+                            .gid = proc->cred->egid
+                        };
                     }
 
                     lib::membuffer payload { total };
@@ -798,7 +1004,7 @@ namespace vfs::socket
                                     std::move(payload),
                                     std::move(anc)
                                 });
-                                dest->read_wait.wake_all();\
+                                dest->read_wait.wake_all();
                                 return total;
                             }
 
@@ -830,7 +1036,17 @@ namespace vfs::socket
                 if (total == 0)
                     return 0uz;
 
-                const auto wait_ns = state.lock()->rcvtimeo.to_ns();
+                std::size_t wait_ns;
+                std::weak_ptr<unix_sock> peer_weak;
+                {
+                    const auto slocked = state.lock();
+                    wait_ns = slocked->rcvtimeo.to_ns();
+                    peer_weak = slocked->peer;
+
+                    if (slocked->shut_read)
+                        return 0uz;
+                }
+
                 if (type == sock_stream)
                 {
                     if (flags & msg_peek)
@@ -867,6 +1083,14 @@ namespace vfs::socket
                             peek_left -= want;
                         }
 
+                        const auto threshold = locked->total_consumed + peek_out;
+                        for (auto &entry : locked->anc_queue)
+                        {
+                            if (entry.at_byte > threshold)
+                                break;
+                            deliver_ancdata(hdr, entry.data, flags);
+                        }
+
                         return peek_out;
                     }
 
@@ -876,12 +1100,19 @@ namespace vfs::socket
 
                     while (received < total && cur_iov < hdr.iovs.size())
                     {
+                        auto &iov = hdr.iovs[cur_iov];
+                        if (iov_off >= iov.size())
+                        {
+                            cur_iov++;
+                            iov_off = 0;
+                            continue;
+                        }
+
                         std::size_t chunk = 0;
                         bool fault = false;
                         bool eof = false;
                         std::size_t gen = 0;
 
-                        auto &iov = hdr.iovs[cur_iov];
                         {
                             auto locked = receive.lock();
 
@@ -894,11 +1125,16 @@ namespace vfs::socket
                             }
                             else
                             {
-                                auto peer_ptr = peer.lock();
-                                if (peer_ptr && peer_ptr->state.lock()->state != disconnecting)
-                                    gen = read_wait.snapshot_gen();
-                                else
-                                    eof = true;
+                                auto peer_ptr = peer_weak.lock();
+                                if (peer_ptr)
+                                {
+                                    const auto pslocked = peer_ptr->state.lock();
+                                    if (pslocked->state == disconnecting || pslocked->shut_write)
+                                        eof = true;
+                                    else
+                                        gen = read_wait.snapshot_gen();
+                                }
+                                else eof = true;
                             }
                         }
 
@@ -906,7 +1142,7 @@ namespace vfs::socket
                         {
                             received += chunk;
                             iov_off += chunk;
-                            if (iov_off > iov.size())
+                            if (iov_off >= iov.size())
                             {
                                 cur_iov++;
                                 iov_off = 0;
@@ -922,7 +1158,7 @@ namespace vfs::socket
                                 }
                             }
 
-                            if (auto peer_ptr = peer.lock())
+                            if (auto peer_ptr = peer_weak.lock())
                                 peer_ptr->write_wait.wake_all();
 
                             if (!(flags & msg_waitall))
@@ -931,11 +1167,7 @@ namespace vfs::socket
                         }
 
                         if (eof)
-                        {
-                            if (state.lock()->shut_read && !(flags & msg_nosignal))
-                                raise_sigpipe();
                             return received;
-                        }
 
                         if (fault)
                             return std::unexpected { lib::err::invalid_address };
@@ -966,6 +1198,7 @@ namespace vfs::socket
                 }
                 else // sock_dgram and sock_seqpacket
                 {
+                    auto peer_weak = state.lock()->peer;
                     while (true)
                     {
                         std::optional<receive_t::dgram> msg;
@@ -1004,6 +1237,10 @@ namespace vfs::socket
                             if (payload_size > total)
                                 hdr.out_flags |= msg_trunc;
 
+                            const auto ret = (flags & msg_trunc)
+                                ? payload_size
+                                : std::min(total, payload_size);
+
                             if (!hdr.name.empty() && !msg->sender_path.empty())
                             {
                                 sockaddr_un sa { };
@@ -1027,10 +1264,10 @@ namespace vfs::socket
 
                             deliver_ancdata(hdr, msg->ancdata, flags);
 
-                            if (auto peer_ptr = peer.lock())
+                            if (auto peer_ptr = peer_weak.lock())
                                 peer_ptr->write_wait.wake_all();
 
-                            return std::min(total, payload_size);
+                            return ret;
                         }
 
                         if (flags & msg_dontwait)
@@ -1084,13 +1321,22 @@ namespace vfs::socket
 
                 std::uint16_t mask = 0;
 
-                const auto peer_ptr = peer.lock();
-                bool peer_gone;
+                std::shared_ptr<unix_sock> peer_ptr;
+                bool is_listener = false;
+                bool is_connected = false;
+                bool peer_gone = false;
                 {
-                    peer_gone = !peer_ptr || [&] {
-                        const auto pslocked = peer_ptr->state.lock();
-                        return pslocked->state == disconnecting || pslocked->shut_write;
-                    } ();
+                    auto slocked = state.lock();
+                    peer_ptr = slocked->peer.lock();
+                    is_listener = (slocked->state == listening);
+                    is_connected = (slocked->state == connected);
+                    if (is_connected)
+                    {
+                        peer_gone = !peer_ptr || [&] {
+                            const auto pslocked = peer_ptr->state.lock();
+                            return pslocked->state == disconnecting || pslocked->shut_write;
+                        } ();
+                    }
                 }
 
                 bool has_data;
@@ -1101,49 +1347,71 @@ namespace vfs::socket
                         : !locked->dgram_queue.empty();
                 }
 
-                if (has_data || peer_gone)
-                    mask |= pollin | pollrdnorm;
-
-                // bool shut_read;
-                bool shut_write;
+                if (is_listener)
                 {
-                    const auto slocked = state.lock();
-                    // shut_read = slocked->shut_read;
-                    shut_write = slocked->shut_write;
+                    auto slocked = state.lock();
+                    if (!slocked->accept_queue.empty())
+                        mask |= pollin | pollrdnorm;
                 }
-
-                if (/* shut_read && */ peer_gone)
-                    mask |= pollrdhup;
-
-                if (peer_ptr && !shut_write && !peer_gone)
+                else
                 {
-                    const auto prlocked = peer_ptr->receive.lock();
-                    const bool writable = (type == sock_stream)
-                        ? (prlocked->capacity - prlocked->buffered) > 0
-                        : [&] {
-                            std::size_t size = 0;
-                            for (auto &dgram : prlocked->dgram_queue)
-                                size += dgram.payload.size();
-                            return size < dgram_cap;
-                        } ();
+                    if (has_data || peer_gone)
+                        mask |= pollin | pollrdnorm;
 
-                    if (writable)
-                        mask |= pollout | pollwrnorm;
+                    bool shut_write;
+                    {
+                        const auto slocked = state.lock();
+                        shut_write = slocked->shut_write;
+                    }
+
+                    if (peer_gone)
+                        mask |= pollrdhup;
+
+                    if (type == sock_stream)
+                    {
+                        if (is_connected && peer_ptr && !shut_write && !peer_gone)
+                        {
+                            const auto prlocked = peer_ptr->receive.lock();
+                            if ((prlocked->capacity - prlocked->buffered) > 0)
+                                mask |= pollout | pollwrnorm;
+                        }
+                    }
+                    else // sock_dgram and sock_seqpacket
+                    {
+                        if (!shut_write)
+                        {
+                            if (peer_ptr && !peer_gone)
+                            {
+                                const auto prlocked = peer_ptr->receive.lock();
+                                std::size_t size = 0;
+                                for (auto &dgram : prlocked->dgram_queue)
+                                    size += dgram.payload.size();
+                                if (size < dgram_cap)
+                                    mask |= pollout | pollwrnorm;
+                            }
+                            else if (!is_connected)
+                                mask |= pollout | pollwrnorm;
+                        }
+                    }
+
+                    if (peer_gone)
+                        mask |= pollhup;
                 }
-
-                if (peer_gone)
-                    mask |= pollhup;
 
                 return mask;
             }
 
             auto shutdown(int how) -> lib::expect<void> override
             {
-                // TODO: linger
+                std::weak_ptr<unix_sock> peer_weak;
+                bool was_listening = false;
                 {
                     auto slocked = state.lock();
                     if (slocked->state != connected && slocked->state != listening)
                         return std::unexpected { lib::err::not_connected };
+
+                    peer_weak = slocked->peer;
+                    was_listening = (slocked->state == listening);
 
                     if (how == shut_rd || how == shut_rdwr)
                         slocked->shut_read = true;
@@ -1153,8 +1421,10 @@ namespace vfs::socket
 
                 read_wait.wake_all();
                 write_wait.wake_all();
+                if (was_listening)
+                    accept_wait.wake_all();
 
-                if (auto peer_ptr = peer.lock())
+                if (auto peer_ptr = peer_weak.lock())
                 {
                     peer_ptr->read_wait.wake_all();
                     peer_ptr->write_wait.wake_all();
@@ -1193,7 +1463,7 @@ namespace vfs::socket
 
             auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> override
             {
-                auto peer_ptr = peer.lock();
+                auto peer_ptr = state.lock()->peer.lock();
                 if (!peer_ptr)
                     return std::unexpected { lib::err::not_connected };
                 return peer_ptr->getsockname(out);
@@ -1225,7 +1495,7 @@ namespace vfs::socket
                             return std::unexpected { lib::err::invalid_argument };
 
                         auto locked = receive.lock();
-                        locked->capacity = round_capacity(static_cast<std::size_t>(val) * 2);
+                        resize_storage(locked, val);
                         return { };
                     }
                     case so_sndbuf:
@@ -1234,11 +1504,15 @@ namespace vfs::socket
                         if (!read_int(val))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        if (auto peer_ptr = peer.lock())
+                        auto peer_ptr = slocked->peer.lock();
+                        if (!peer_ptr)
                         {
-                            auto locked = peer_ptr->receive.lock();
-                            locked->capacity = round_capacity(static_cast<std::size_t>(val) * 2);
+                            slocked->resize_on_con = val;
+                            return { };
                         }
+
+                        auto locked = peer_ptr->receive.lock();
+                        resize_storage(locked, val);
                         return { };
                     }
                     case so_passcred:
@@ -1320,7 +1594,7 @@ namespace vfs::socket
                         return copy(static_cast<int>(locked->capacity));
                     }
                     case so_sndbuf:
-                        if (auto peer_ptr = peer.lock())
+                        if (auto peer_ptr = slocked->peer.lock())
                         {
                             auto locked = peer_ptr->receive.lock();
                             return copy(static_cast<int>(locked->capacity));
@@ -1331,7 +1605,7 @@ namespace vfs::socket
                         if (buf.size() < sizeof(ucred))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        auto peer_ptr = peer.lock();
+                        auto peer_ptr = slocked->peer.lock();
                         if (!peer_ptr)
                             return std::unexpected { lib::err::not_connected };
 
@@ -1373,10 +1647,16 @@ namespace vfs::socket
 
             auto release() -> lib::expect<void> override
             {
-                // TODO: linger
+                std::weak_ptr<unix_sock> peer_weak;
+                std::vector<std::shared_ptr<unix_sock>> pending_connectors;
+                lib::list<std::shared_ptr<unix_sock>> orphaned_queue;
+                linger linger_opt;
                 {
                     auto slocked = state.lock();
-                    if (!slocked->bound_path.empty() && slocked->bound_path[0] == 0)
+                    peer_weak = slocked->peer;
+                    linger_opt = slocked->linger_opt;
+                    if (slocked->bound && !slocked->bound_path.empty() &&
+                        slocked->bound_path[0] == 0)
                     {
                         auto registry = abstract.lock();
                         registry->erase(slocked->bound_path);
@@ -1384,13 +1664,60 @@ namespace vfs::socket
 
                     slocked->state = disconnecting;
                     slocked->bound_inode.reset();
+                    slocked->bound = false;
 
-                    for (auto &client : slocked->accept_queue)
+                    orphaned_queue = std::move(slocked->accept_queue);
+                }
+
+                pending_connectors.reserve(orphaned_queue.size());
+                for (auto &client : orphaned_queue)
+                {
+                    auto cslocked = client->state.lock();
+                    cslocked->state = disconnecting;
+                    if (auto conn = cslocked->peer.lock())
+                        pending_connectors.push_back(std::move(conn));
+                }
+
+                if (type == sock_stream && linger_opt.l_onoff && linger_opt.l_linger > 0)
+                {
+                    if (auto peer_ptr = peer_weak.lock())
                     {
-                        auto cslocked = client->state.lock();
-                        cslocked->state = unconnected;
+                        const auto deadline = chrono::now(chrono::monotonic) +
+                            timespec { linger_opt.l_linger, 0 };
+
+                        while (true)
+                        {
+                            std::size_t gen;
+                            {
+                                auto plocked = peer_ptr->receive.lock();
+                                if (plocked->buffered == 0)
+                                    break;
+                                gen = write_wait.snapshot_gen();
+                            }
+
+                            const auto now = chrono::now(chrono::monotonic);
+                            if (now >= deadline)
+                                break;
+
+                            const auto remaining = (deadline - now).to_ns();
+                            const auto [interrupted, expired] =
+                                write_wait.wait_prepared(gen, remaining);
+                            if (interrupted || expired)
+                                break;
+                        }
                     }
-                    slocked->accept_queue.clear();
+                }
+
+                if (type == sock_stream && linger_opt.l_onoff && linger_opt.l_linger == 0)
+                {
+                    if (auto peer_ptr = peer_weak.lock())
+                    {
+                        auto plocked = peer_ptr->receive.lock();
+                        plocked->buffered = 0;
+                        plocked->head = 0;
+                        plocked->tail = 0;
+                        plocked->anc_queue.clear();
+                    }
                 }
 
                 {
@@ -1403,15 +1730,42 @@ namespace vfs::socket
                 write_wait.wake_all();
                 accept_wait.wake_all();
 
-                if (auto peer_ptr = peer.lock())
+                if (auto peer_ptr = peer_weak.lock())
                 {
                     peer_ptr->read_wait.wake_all();
                     peer_ptr->write_wait.wake_all();
                 }
 
+                for (auto &conn : pending_connectors)
+                {
+                    {
+                        auto clocked = conn->state.lock();
+                        if (clocked->state == connecting)
+                            clocked->state = unconnected;
+                    }
+                    conn->conn_wait.wake_all();
+                }
+
                 return { };
             }
         };
+
+        lib::locker<
+            lib::intrusive_list<
+                unix_sock,
+                &unix_sock::sockets_hook
+            >, sched::mutex
+        > sockets;
+
+        void register_sock(unix_sock *sock)
+        {
+            sockets.lock()->push_back(sock);
+        }
+
+        void unregister_sock(unix_sock *sock)
+        {
+            sockets.lock()->remove(sock);
+        }
 
         std::size_t copy_in(
             auto &locked, lib::maybe_uspan<std::byte> src,
@@ -1511,8 +1865,23 @@ namespace vfs::socket
                 auto one = std::make_shared<unix_sock>(protocol, type, connected);
                 auto two = std::make_shared<unix_sock>(protocol, type, connected);
 
-                one->peer = two;
-                two->peer = one;
+                const auto proc = sched::current_process();
+                const ucred cred {
+                    .pid = proc->pid,
+                    .uid = proc->cred->euid,
+                    .gid = proc->cred->egid
+                };
+
+                {
+                    auto locked = one->state.lock();
+                    locked->peer = two;
+                    locked->cred = cred;
+                }
+                {
+                    auto locked = two->state.lock();
+                    locked->peer = one;
+                    locked->cred = cred;
+                }
 
                 return std::make_pair(std::move(one), std::move(two));
             }
@@ -1538,8 +1907,62 @@ namespace vfs::socket
                 using namespace fs::procfs;
                 lib::bug_on(!register_per_pid("net/unix",
                     make_file_ops([](auto) {
-                        // TODO
-                        return std::string { };
+                        std::string out {
+                            "Num       RefCount Protocol Flags    Type St Inode Path\n"
+                        };
+
+                        for (auto &sock : *sockets.lock())
+                        {
+                            const auto slocked = sock.state.lock();
+                            const std::uint32_t flags = (slocked->state == listening) ? 0x10000 : 0;
+
+                            std::uint32_t st = 0;
+                            switch (slocked->state)
+                            {
+                                case unconnected:
+                                    st = 0x01;
+                                    break;
+                                case connecting:
+                                    st = 0x02;
+                                    break;
+                                case connected:
+                                    st = 0x03;
+                                    break;
+                                case disconnecting:
+                                    st = 0x04;
+                                    break;
+                                case listening:
+                                    st = 0x0A;
+                                    break;
+                            }
+
+                            const std::uint64_t inode = slocked->bound_inode
+                                ? slocked->bound_inode->stat.st_ino : 0;
+
+                            std::string path;
+                            if (!slocked->bound_path.empty())
+                            {
+                                if (slocked->bound_path[0] == '\0')
+                                {
+                                    path = "@";
+                                    path.append(
+                                        slocked->bound_path.data() + 1,
+                                        slocked->bound_path.size() - 1
+                                    );
+                                }
+                                else path = slocked->bound_path;
+                            }
+
+                            out += fmt::format(
+                                "{:016x}: {:08x} {:08x} {:08x} {:04x} {:02x} {:5}{}{}\n",
+                                reinterpret_cast<std::uintptr_t>(&sock),
+                                static_cast<std::uint32_t>(sock.weak_from_this().use_count()),
+                                0, flags, static_cast<std::uint32_t>(sock.type),
+                                st, inode, path.empty() ? "" : " ", path
+                            );
+                        }
+
+                        return out;
                     }), node_type::file, 0444
                 ));
             }

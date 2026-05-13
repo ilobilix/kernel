@@ -87,7 +87,8 @@ export namespace lib
         connection_refused = ECONNREFUSED,
         message_too_long = EMSGSIZE,
         address_in_use = EADDRINUSE,
-        connection_in_progress = EALREADY
+        already_in_progress = EALREADY,
+        operation_in_progress = EINPROGRESS
     };
 
     template<typename Type>
