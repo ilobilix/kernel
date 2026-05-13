@@ -24,7 +24,7 @@ namespace syscall::vfs
             return inode->stat.type() == stat::s_ifsock;
         }
 
-        auto get_socket(sched::process_t *proc, int sockfd, int *flags = nullptr)
+        auto get_socket(sched::process_t *proc, int sockfd, bool *nonblock = nullptr)
             -> lib::expect<std::shared_ptr<socket::socket_t>>
         {
             const auto fdesc_res = detail::get_fd(proc, sockfd);
@@ -35,8 +35,8 @@ namespace syscall::vfs
             if (!is_socket(fdesc))
                 return std::unexpected { lib::err::not_a_socket };
 
-            if (flags)
-                *flags = fdesc->file->flags;
+            if (nonblock)
+                *nonblock = (fdesc->file->flags & o_nonblock) != 0;
 
             return socket::from_file(*fdesc->file);
         }
@@ -49,14 +49,6 @@ namespace syscall::vfs
                 ret |= o_closexec;
             if (flags & sock_nonblock)
                 ret |= o_nonblock;
-            return ret;
-        }
-
-        int effective_flags(int fflags)
-        {
-            int ret = 0;
-            if (fflags & o_nonblock)
-                ret |= msg_dontwait;
             return ret;
         }
 
@@ -121,7 +113,8 @@ namespace syscall::vfs
 
         const auto proc = sched::current_process();
 
-        auto sockres = get_socket(proc, sockfd);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -130,7 +123,7 @@ namespace syscall::vfs
         if (!uspan)
             return -EFAULT;
 
-        if (const auto res = sock->connect(*uspan); !res)
+        if (const auto res = sock->connect(*uspan, nonblock); !res)
             return -lib::map_error(res.error());
         return 0;
     }
@@ -147,11 +140,13 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        int fflags;
-        auto sockres = get_socket(proc, sockfd, &fflags);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
 
         auto bufuspan = lib::maybe_uspan<std::byte>::create(buf, len);
         if (!bufuspan)
@@ -177,7 +172,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->sendmsg(hdr, flags | effective_flags(fflags));
+        const auto res = sock->sendmsg(hdr, flags);
         if (!res)
             return -lib::map_error(res.error());
         return *res;
@@ -190,11 +185,13 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        int fflags;
-        auto sockres = get_socket(proc, sockfd, &fflags);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
 
         auto bufuspan = lib::maybe_uspan<std::byte>::create(buf, len);
         if (!bufuspan)
@@ -224,7 +221,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->recvmsg(hdr, flags | effective_flags(fflags));
+        const auto res = sock->recvmsg(hdr, flags);
         if (!res)
             return -lib::map_error(res.error());
 
@@ -237,11 +234,13 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        int fflags;
-        auto sockres = get_socket(proc, sockfd, &fflags);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
 
         msghdr kmsg;
         if (!lib::copy_from_user(&kmsg, msg, sizeof(msghdr)))
@@ -282,7 +281,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->sendmsg(hdr, flags | effective_flags(fflags));
+        const auto res = sock->sendmsg(hdr, flags);
         if (!res)
             return -lib::map_error(res.error());
         return *res;
@@ -292,11 +291,13 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        int fflags;
-        auto sockres = get_socket(proc, sockfd, &fflags);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
 
         msghdr kmsg;
         if (!lib::copy_from_user(&kmsg, msg, sizeof(msghdr)))
@@ -337,7 +338,7 @@ namespace syscall::vfs
             .out_flags = 0
         };
 
-        const auto res = sock->recvmsg(hdr, flags | effective_flags(fflags));
+        const auto res = sock->recvmsg(hdr, flags);
         if (!res)
             return -lib::map_error(res.error());
 
@@ -400,7 +401,6 @@ namespace syscall::vfs
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
 
-        backlog = std::clamp(backlog, 0, somaxconn);
         if (const auto res = sock->listen(backlog); !res)
             return -lib::map_error(res.error());
         return 0;
@@ -484,11 +484,11 @@ namespace syscall::vfs
         if (!pres)
             return -lib::map_error(pres.error());
 
-        auto res1 = socket::create_anon(std::move(pres->first), flags);
+        auto res1 = socket::create_anon(std::move(pres->first), map_flags(flags));
         if (!res1)
             return -lib::map_error(res1.error());
 
-        auto res2 = socket::create_anon(std::move(pres->second), flags);
+        auto res2 = socket::create_anon(std::move(pres->second), map_flags(flags));
         if (!res2)
         {
             proc->fdt->close(*res1);
@@ -555,8 +555,8 @@ namespace syscall::vfs
 
         const auto proc = sched::current_process();
 
-        int fflags;
-        auto sockres = get_socket(proc, sockfd, &fflags);
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -576,7 +576,7 @@ namespace syscall::vfs
         }
 
         socklen_t out_len = in_len;
-        auto ares = sock->accept(uspan, &out_len, fflags & o_nonblock);
+        auto ares = sock->accept(uspan, &out_len, nonblock);
         if (!ares)
             return -lib::map_error(ares.error());
 

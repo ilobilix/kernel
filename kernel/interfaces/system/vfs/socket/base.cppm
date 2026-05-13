@@ -325,7 +325,9 @@ export namespace vfs::socket
             : protocol { protocol }, family { family }, type { type } { }
 
         virtual auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
-        virtual auto connect(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
+        virtual auto connect(
+            lib::maybe_uspan<const std::byte> addr, bool nonblock
+        ) -> lib::expect<void> = 0;
         virtual auto listen(int backlog) -> lib::expect<void> = 0;
         virtual auto accept(
             lib::maybe_uspan<std::byte> peer_addr_out,
