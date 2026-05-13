@@ -174,8 +174,9 @@ namespace vfs::socket
                 while (off + sizeof(cmsghdr) <= hdr.msgctrl.size())
                 {
                     cmsghdr cmsg { };
-                    hdr.msgctrl.subspan(off, sizeof(cmsghdr))
-                        .copy_to(std::as_writable_bytes(std::span { &cmsg, 1 }));
+                    if (!hdr.msgctrl.subspan(off, sizeof(cmsghdr))
+                        .copy_to(std::as_writable_bytes(std::span { &cmsg, 1 })))
+                        return std::unexpected { lib::err::invalid_address };
 
                     if (cmsg.cmsg_len < sizeof(cmsghdr) ||
                         off + cmsg.cmsg_len > hdr.msgctrl.size())
@@ -196,8 +197,9 @@ namespace vfs::socket
                                 return std::unexpected { lib::err::invalid_argument };
 
                             lib::buffer<int> fds { num_fds };
-                            hdr.msgctrl.subspan(data_off, data_len)
-                                .copy_to(std::as_writable_bytes(fds.span()));
+                            if (!hdr.msgctrl.subspan(data_off, data_len)
+                                .copy_to(std::as_writable_bytes(fds.span())))
+                                return std::unexpected { lib::err::invalid_address };
 
                             for (const auto fd : fds.span())
                             {
@@ -213,8 +215,9 @@ namespace vfs::socket
                                 return std::unexpected { lib::err::invalid_argument };
 
                             ucred cred { };
-                            hdr.msgctrl.subspan(data_off, sizeof(ucred))
-                                .copy_to(std::as_writable_bytes(std::span { &cred, 1 }));
+                            if (!hdr.msgctrl.subspan(data_off, sizeof(ucred))
+                                .copy_to(std::as_writable_bytes(std::span { &cred, 1 })))
+                                return std::unexpected { lib::err::invalid_address };
                             anc.creds = cred;
                         }
                         // skip unknown types
@@ -226,16 +229,17 @@ namespace vfs::socket
                 return anc;
             }
 
-            void deliver_ancdata(msg_header_t &hdr, ancdata_t &anc, int flags)
+            lib::expect<void> deliver_ancdata(msg_header_t &hdr, ancdata_t &anc, int flags)
             {
                 if (anc.empty())
-                    return;
+                    return { };
 
                 const auto proc = sched::current_process();
                 const bool cloexec = (flags & msg_cmsg_cloexec) != 0;
                 const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
 
                 const auto write_cmsg = [&](int type, std::span<const std::byte> data)
+                    -> lib::expect<bool>
                 {
                     const auto total = sizeof(cmsghdr) + data.size();
                     const auto stride = (total + cmsg_align - 1) & ~(cmsg_align - 1);
@@ -251,10 +255,12 @@ namespace vfs::socket
                         .cmsg_level = sol_socket,
                         .cmsg_type = type
                     };
-                    hdr.msgctrl.subspan(hdr.msgctrl_len_out, sizeof(cmsghdr))
-                        .copy_from(std::as_bytes(std::span { &hd, 1 }));
-                    hdr.msgctrl.subspan(hdr.msgctrl_len_out + sizeof(cmsghdr), data.size())
-                        .copy_from(data);
+                    if (!hdr.msgctrl.subspan(hdr.msgctrl_len_out, sizeof(cmsghdr))
+                        .copy_from(std::as_bytes(std::span { &hd, 1 })))
+                        return std::unexpected { lib::err::invalid_address };
+                    if (!hdr.msgctrl.subspan(hdr.msgctrl_len_out + sizeof(cmsghdr), data.size())
+                        .copy_from(data))
+                        return std::unexpected { lib::err::invalid_address };
 
                     hdr.msgctrl_len_out += stride;
                     return true;
@@ -274,12 +280,19 @@ namespace vfs::socket
                             for (const auto fd : new_fds)
                                 proc->fdt->close(fd);
                             hdr.out_flags |= msg_ctrunc;
-                            return;
+                            return { };
                         }
                         new_fds.push_back(*res);
                     }
 
-                    if (!write_cmsg(scm_rights, std::as_bytes(std::span { new_fds })))
+                    const auto res = write_cmsg(scm_rights, std::as_bytes(std::span { new_fds }));
+                    if (!res.has_value())
+                    {
+                        for (const auto fd : new_fds)
+                            proc->fdt->close(fd);
+                        return std::unexpected { res.error() };
+                    }
+                    if (!*res)
                     {
                         for (const auto fd : new_fds)
                             proc->fdt->close(fd);
@@ -289,8 +302,10 @@ namespace vfs::socket
                 if (anc.creds.has_value())
                 {
                     std::span span { std::addressof(*anc.creds), 1 };
-                    write_cmsg(scm_credentials, std::as_bytes(span));
+                    if (const auto ret = write_cmsg(scm_credentials, std::as_bytes(span)); !ret)
+                        return std::unexpected { ret.error() };
                 }
+                return { };
             }
 
             void resize_storage(auto &locked, std::size_t new_cap)
@@ -350,7 +365,8 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size()));
+                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size())))
+                    return std::unexpected { lib::err::invalid_address };
 
                 if (sa.sun_family != af_unix)
                     return std::unexpected { lib::err::address_family_unsupported };
@@ -448,7 +464,8 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size()));
+                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size())))
+                    return std::unexpected { lib::err::invalid_address };
 
                 if (sa.sun_family == af_unspec)
                 {
@@ -712,9 +729,9 @@ namespace vfs::socket
                         if (peer_addr_out.size() > 0 && addr_len_inout)
                         {
                             const auto copy_len = std::min<std::size_t>(peer_addr_out.size(), actual);
-                            peer_addr_out.subspan(0, copy_len).copy_from(
-                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
-                            );
+                            if (!peer_addr_out.subspan(0, copy_len).copy_from(
+                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                                return std::unexpected { lib::err::invalid_address };
                             *addr_len_inout = actual;
                         }
 
@@ -910,8 +927,9 @@ namespace vfs::socket
                     if (!hdr.name.empty())
                     {
                         sockaddr_un sa { };
-                        hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
-                            .subspan(0, hdr.name.size()));
+                        if (!hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
+                            .subspan(0, hdr.name.size())))
+                            return std::unexpected { lib::err::invalid_address };
 
                         if (sa.sun_family != af_unix)
                             return std::unexpected { lib::err::address_family_unsupported };
@@ -1088,7 +1106,8 @@ namespace vfs::socket
                         {
                             if (entry.at_byte > threshold)
                                 break;
-                            deliver_ancdata(hdr, entry.data, flags);
+                            if (const auto ret = deliver_ancdata(hdr, entry.data, flags); !ret)
+                                return std::unexpected { ret.error() };
                         }
 
                         return peek_out;
@@ -1153,7 +1172,9 @@ namespace vfs::socket
                                 while (!locked->anc_queue.empty() &&
                                     locked->anc_queue.front().at_byte <= locked->total_consumed)
                                 {
-                                    deliver_ancdata(hdr, locked->anc_queue.front().data, flags);
+                                    if (const auto ret = deliver_ancdata(
+                                        hdr, locked->anc_queue.front().data, flags); !ret)
+                                        return std::unexpected { ret.error() };
                                     locked->anc_queue.pop_front();
                                 }
                             }
@@ -1256,13 +1277,14 @@ namespace vfs::socket
                                     msg->sender_path.size() + !is_abstract;
                                 const auto copy_len = std::min(hdr.name.size(), sa_len);
 
-                                hdr.name.subspan(0, copy_len).copy_from(
-                                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)
-                                );
+                                if (!hdr.name.subspan(0, copy_len).copy_from(
+                                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                                    return std::unexpected { lib::err::invalid_address };
                                 hdr.addr_len_out = sa_len;
                             }
 
-                            deliver_ancdata(hdr, msg->ancdata, flags);
+                            if (const auto ret = deliver_ancdata(hdr, msg->ancdata, flags); !ret)
+                                return std::unexpected { ret.error() };
 
                             if (auto peer_ptr = peer_weak.lock())
                                 peer_ptr->write_wait.wake_all();
@@ -1456,8 +1478,9 @@ namespace vfs::socket
                 }
 
                 const auto copy_len = std::min<std::size_t>(out.size(), actual);
-                out.subspan(0, copy_len)
-                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len));
+                if (!out.subspan(0, copy_len)
+                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                    return std::unexpected { lib::err::invalid_address };
                 return actual;
             }
 
@@ -1478,12 +1501,13 @@ namespace vfs::socket
                     return std::unexpected { lib::err::protocol_unsupported };
 
                 auto slocked = state.lock();
-                const auto read_int = [&](int &out) {
+                const auto read_int = [&](int &out) -> lib::expect<void> {
                     if (buf.size() < sizeof(int))
-                        return false;
+                        return std::unexpected { lib::err::invalid_argument };
 
-                    buf.copy_to(std::as_writable_bytes(std::span { &out, 1 }));
-                    return true;
+                    if (!buf.copy_to(std::as_writable_bytes(std::span { &out, 1 })))
+                        return std::unexpected { lib::err::invalid_address };
+                    return { };
                 };
 
                 switch (static_cast<sock_opt>(opt))
@@ -1491,8 +1515,8 @@ namespace vfs::socket
                     case so_rcvbuf:
                     {
                         int val;
-                        if (!read_int(val))
-                            return std::unexpected { lib::err::invalid_argument };
+                        if (const auto ret = read_int(val); !ret)
+                            return ret;
 
                         auto locked = receive.lock();
                         resize_storage(locked, val);
@@ -1501,8 +1525,8 @@ namespace vfs::socket
                     case so_sndbuf:
                     {
                         int val;
-                        if (!read_int(val))
-                            return std::unexpected { lib::err::invalid_argument };
+                        if (const auto ret = read_int(val); !ret)
+                            return ret;
 
                         auto peer_ptr = slocked->peer.lock();
                         if (!peer_ptr)
@@ -1518,8 +1542,8 @@ namespace vfs::socket
                     case so_passcred:
                     {
                         int val;
-                        if (!read_int(val))
-                            return std::unexpected { lib::err::invalid_argument };
+                        if (const auto ret = read_int(val); !ret)
+                            return ret;
 
                         slocked->passcred = val != 0;
                         return { };
@@ -1528,19 +1552,22 @@ namespace vfs::socket
                         if (buf.size() < sizeof(linger))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->linger_opt, 1 }));
+                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->linger_opt, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return { };
                     case so_rcvtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->rcvtimeo, 1 }));
+                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->rcvtimeo, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return { };
                     case so_sndtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.copy_to(std::as_writable_bytes(std::span { &slocked->sndtimeo, 1 }));
+                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->sndtimeo, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return { };
                     case so_reuseaddr:
                     case so_reuseport:
@@ -1565,8 +1592,9 @@ namespace vfs::socket
                 auto slocked = state.lock();
                 const auto copy = [&]<typename Type>(Type val) -> lib::expect<std::size_t> {
                     const auto num = std::min(buf.size(), sizeof(Type));
-                    buf.subspan(0, num)
-                        .copy_from(std::as_bytes(std::span { &val, 1 }).subspan(0, num));
+                    if (!buf.subspan(0, num)
+                        .copy_from(std::as_bytes(std::span { &val, 1 }).subspan(0, num)))
+                        return std::unexpected { lib::err::invalid_address };
                     return sizeof(Type);
                 };
 
@@ -1615,30 +1643,34 @@ namespace vfs::socket
                             cred = pslocked->cred;
                         }
 
-                        buf.subspan(0, sizeof(ucred))
-                            .copy_from(std::as_bytes(std::span { &cred, 1 }));
+                        if (!buf.subspan(0, sizeof(ucred))
+                            .copy_from(std::as_bytes(std::span { &cred, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return sizeof(ucred);
                     }
                     case so_linger:
                         if (buf.size() < sizeof(linger))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(linger))
-                            .copy_from(std::as_bytes(std::span { &slocked->linger_opt, 1 }));
+                        if (!buf.subspan(0, sizeof(linger))
+                            .copy_from(std::as_bytes(std::span { &slocked->linger_opt, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return sizeof(linger);
                     case so_rcvtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(timeval))
-                            .copy_from(std::as_bytes(std::span { &slocked->rcvtimeo, 1 }));
+                        if (!buf.subspan(0, sizeof(timeval))
+                            .copy_from(std::as_bytes(std::span { &slocked->rcvtimeo, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return sizeof(timeval);
                     case so_sndtimeo:
                         if (buf.size() < sizeof(timeval))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        buf.subspan(0, sizeof(timeval))
-                            .copy_from(std::as_bytes(std::span { &slocked->sndtimeo, 1 }));
+                        if (!buf.subspan(0, sizeof(timeval))
+                            .copy_from(std::as_bytes(std::span { &slocked->sndtimeo, 1 })))
+                            return std::unexpected { lib::err::invalid_address };
                         return sizeof(timeval);
                     default:
                         return std::unexpected { lib::err::invalid_argument };
