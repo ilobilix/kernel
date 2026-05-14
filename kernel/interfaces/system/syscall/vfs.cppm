@@ -222,8 +222,6 @@ namespace syscall::vfs::detail
 
     lib::expect<lib::path> get_path(const char __user *pathname);
 
-    int close_fd(sched::process_t *proc, int fd, bool was_opened = true);
-
     std::uint64_t mount_flags(const path &path);
     bool readonly_mount(const path &path);
     bool should_update_atime(const path &path, const kstat &stat, int file_flags = 0);

@@ -152,41 +152,20 @@ namespace vfs::socket
 
     auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>
     {
-        const auto proc = sched::current_process();
-        auto &fdt = proc->fdt;
+        auto ret = create_anon_fd({
+            .name = "<[SOCKET]>",
+            .ops = ops::singleton(),
+            .file_private_data = std::move(sock),
+            .inode_private_data = nullptr,
+            .st_mode = std::to_underlying(stat::s_ifsock) | s_irwxu | s_irwxg | s_irwxo,
+            .flags = flags | o_rdonly,
+            .skip_open = true,
+            .inode = nullptr
+        });
+        if (!ret)
+            return std::unexpected { ret.error() };
 
-        auto inode = std::make_shared<vfs::inode>(ops::singleton());
-        {
-            inode->stat.st_ino = vfs::next_anon_ino();
-            inode->stat.st_blksize = 0x1000;
-            inode->stat.st_mode = std::to_underlying(stat::s_ifsock) |
-                s_irwxu | s_irwxg | s_irwxo;
-
-            inode->stat.st_uid = proc->cred->euid;
-            inode->stat.st_gid = proc->cred->egid;
-
-            inode->stat.update_time(
-                kstat::time::access |
-                kstat::time::modify |
-                kstat::time::status |
-                kstat::time::birth
-            );
-        }
-
-        auto dentry = std::make_shared<vfs::dentry>();
-        dentry->name = "<[SOCKET]>";
-        dentry->inode = inode;
-
-        auto fdesc = filedesc::create({ .dentry = std::move(dentry), .mnt = nullptr }, flags);
-        fdesc->file->private_data = std::move(sock);
-        fdesc->file->opened = true;
-
-        const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
-        const auto fdres = fdt->alloc(std::move(fdesc), 0, false, max_fd);
-        if (!fdres.has_value())
-            return std::unexpected { fdres.error() };
-
-        return *fdres;
+        return ret->first;
     }
 
     lib::initgraph::stage *registered_procfs_stage()

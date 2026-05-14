@@ -144,7 +144,7 @@ namespace syscall::vfs
 
         if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
         {
-            detail::close_fd(proc, *fdres, false);
+            proc->fdt->close(*fdres);
             return -lib::map_error(ret.error());
         }
 
@@ -183,7 +183,7 @@ namespace syscall::vfs
 
     int close(int fd)
     {
-        return detail::close_fd(sched::current_process(), fd);
+        return sched::current_process()->fdt->close(fd) ? 0 : -EBADF;
     }
 
     int close_range(std::uint32_t first, std::uint32_t last, std::uint32_t flags)
@@ -205,8 +205,7 @@ namespace syscall::vfs
 
         if (flags & cloexec)
         {
-            auto wlocked = fdt->fds.write_lock();
-            for (auto &[fd, fdesc] : *wlocked)
+            for (const auto &[fd, fdesc] : *fdt->fds.read_lock())
             {
                 if (fd >= static_cast<int>(first) && fd <= static_cast<int>(last))
                     fdesc->closexec.store(true, std::memory_order_relaxed);

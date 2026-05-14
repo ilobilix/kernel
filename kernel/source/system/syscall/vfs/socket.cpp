@@ -46,7 +46,7 @@ namespace syscall::vfs
             // these are the same but ehh
             int ret = 0;
             if (flags & sock_cloexec)
-                ret |= o_closexec;
+                ret |= o_cloexec;
             if (flags & sock_nonblock)
                 ret |= o_nonblock;
             return ret;

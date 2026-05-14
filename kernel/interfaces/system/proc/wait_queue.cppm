@@ -15,11 +15,16 @@ export namespace sched
         static thread_base_t *current_thread();
 
         public:
-        thread_base_t *thread;
+        using callback_t = std::function<void ()>;
+
+        std::variant<thread_base_t *, callback_t> type;
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
         wait_queue_entry_t()
-            : thread { current_thread() }, hook { } { }
+            : type { current_thread() }, hook { } { }
+
+        explicit wait_queue_entry_t(callback_t func)
+            : type { std::move(func) }, hook { } { }
     };
 
     struct wait_queue_t
@@ -58,6 +63,7 @@ export namespace sched
 
         std::size_t snapshot_gen() const;
         wait_result_t wait_prepared(std::size_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_unint_prepared(std::size_t gen, std::uint64_t ns = 0);
 
         void wake_one(bool drop = false);
         void wake_all();

@@ -6,6 +6,21 @@ import system.sched;
 
 namespace sched
 {
+    namespace
+    {
+        void visit(auto &type, bool preempt)
+        {
+            std::visit(lib::overloaded {
+                [preempt](thread_base_t *thread) {
+                    wake_up(static_cast<thread_t *>(thread), preempt);
+                },
+                [](wait_queue_entry_t::callback_t &func) {
+                    func();
+                }
+            }, type);
+        }
+    } // namespace
+
     thread_base_t *wait_queue_entry_t::current_thread()
     {
         return sched::current_thread();
@@ -89,7 +104,7 @@ namespace sched
         }
 
         entries.push_back(&entry);
-        auto thread = static_cast<thread_t *>(entry.thread);
+        auto thread = static_cast<thread_t *>(std::get<thread_base_t *>(entry.type));
 
         thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
         thread->on_wait_queue.store(this, std::memory_order_relaxed);
@@ -138,8 +153,11 @@ namespace sched
 
     auto wait_queue_t::wait_unint(std::uint64_t ns) -> wait_result_t
     {
-        const auto gen = generation.load(std::memory_order_acquire);
+        return wait_unint_prepared(snapshot_gen(), ns);
+    }
 
+    auto wait_queue_t::wait_unint_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
+    {
         if (try_dec_pending())
             return { false, false };
 
@@ -160,7 +178,7 @@ namespace sched
         }
 
         entries.push_back(&entry);
-        auto thread = static_cast<thread_t *>(entry.thread);
+        auto thread = static_cast<thread_t *>(std::get<thread_base_t *>(entry.type));
 
         thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
         thread->on_wait_queue.store(this, std::memory_order_relaxed);
@@ -182,7 +200,7 @@ namespace sched
         }
 
         sleep_entry_t timeout {
-            .thread = static_cast<thread_t *>(entry.thread),
+            .thread = thread,
             .deadline_ns = 0,
             .expired = false,
             .hook = { }
@@ -216,19 +234,21 @@ namespace sched
             return;
         }
         auto entry = entries.pop_front();
-        auto thread = static_cast<thread_t *>(entry->thread);
+        auto type = entry->type;
         lock.unlock();
-        wake_up(thread, true);
+
+        visit(type, true);
     }
 
     void wait_queue_t::wake_all()
     {
-        const std::unique_lock _ { lock };
-        generation.fetch_add(1, std::memory_order_release);
-        while (!entries.empty())
+        decltype(entries) tmp;
         {
-            auto entry = entries.pop_front();
-            wake_up(static_cast<thread_t *>(entry->thread), false);
+            const std::unique_lock _ { lock };
+            generation.fetch_add(1, std::memory_order_release);
+            tmp = std::move(entries);
         }
+        while (!tmp.empty())
+            visit(tmp.pop_front()->type, false);
     }
 } // namespace sched

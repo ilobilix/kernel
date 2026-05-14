@@ -94,23 +94,6 @@ namespace syscall::vfs
             return path;
         }
 
-        int close_fd(sched::process_t *proc, int fd, bool was_opened)
-        {
-            if (!was_opened)
-            {
-                const auto fdesc = get_fd(proc, fd);
-                if (!fdesc)
-                    return -lib::map_error(fdesc.error());
-                proc->fdt->fds.write_lock()->erase(fd);
-                return 0;
-            }
-
-            if (!proc->fdt->close(fd))
-                return -EBADF;
-
-            return 0;
-        }
-
         std::uint64_t mount_flags(const path &path)
         {
             return path.mnt ? path.mnt->flags : 0ul;
