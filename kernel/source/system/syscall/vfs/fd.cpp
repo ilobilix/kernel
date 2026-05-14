@@ -80,9 +80,9 @@ namespace syscall::vfs
                 return *fdres;
             }
             case 1: // F_GETFD
-                return fdesc->closexec ? o_closexec : 0;
+                return fdesc->closexec ? o_cloexec : 0;
             case 2: // F_SETFD
-                fdesc->closexec = (arg & o_closexec) != 0;
+                fdesc->closexec = (arg & o_cloexec) != 0;
                 break;
             case 3: // F_GETFL
                 return fdesc->file->flags;
@@ -186,12 +186,12 @@ namespace syscall::vfs
 
     int dup3(int oldfd, int newfd, int flags)
     {
-        if (oldfd == newfd || (flags & ~o_closexec) != 0)
+        if (oldfd == newfd || (flags & ~o_cloexec) != 0)
             return -EINVAL;
 
         const auto proc = sched::current_process();
         const auto fdres = proc->fdt->dup(
-            oldfd, newfd, (flags & o_closexec) != 0, true,
+            oldfd, newfd, (flags & o_cloexec) != 0, true,
             proc->rlimits->get(sched::rlimit_nofile).cur
         );
         if (!fdres.has_value())

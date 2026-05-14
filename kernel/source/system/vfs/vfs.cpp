@@ -49,6 +49,12 @@ namespace vfs
             return next_mount_id.fetch_add(1, std::memory_order_relaxed);
         }
 
+        std::atomic<ino_t> next_anon_ino { 1 };
+        ino_t allocate_anon_ino()
+        {
+            return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
+        }
+
         path resolve_mounts(path path)
         {
             while (path.mnt != nullptr && path.dentry == path.mnt->root)
@@ -723,12 +729,6 @@ namespace vfs
         return { };
     }
 
-    ino_t next_anon_ino()
-    {
-        static std::atomic<ino_t> counter { 1 };
-        return counter.fetch_add(1, std::memory_order_relaxed);
-    }
-
     auto unmount(lib::path target) -> lib::expect<void>
     {
         lib::unused(target);
@@ -1083,26 +1083,27 @@ namespace vfs
         else if ((flags & xattr_replace) != 0)
             return std::unexpected { lib::err::does_not_exist };
 
+        lib::membuffer buf { data.size() };
+        if (!data.copy_to(buf.span()))
+            return std::unexpected { lib::err::invalid_address };
+
+        auto uspan = lib::maybe_uspan<std::byte>::create(buf.data(), buf.size());
+        if (!uspan.has_value())
+            return std::unexpected { lib::err::invalid_address };
+
         {
             auto fs = target.mnt->fs.lock();
             if (fs.get() == nullptr)
                 return std::unexpected { lib::err::io_error };
 
-            if (const auto ret = fs->setxattr(inode, name, data, flags); !ret)
+            if (const auto ret = fs->setxattr(inode, name, *uspan, flags); !ret)
                 return ret;
         }
 
-        lib::membuffer buf { data.size() };
-        const bool copied = data.copy_to(buf.span());
         inode->xattrs.insert_or_assign(name, std::move(buf));
 
         inode->stat.update_time(kstat::time::status);
-        if (const auto ret = dirty_inode(target); !ret)
-            return ret;
-
-        if (!copied)
-            return std::unexpected { lib::err::invalid_address };
-        return { };
+        return dirty_inode(target);
     }
 
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>
@@ -1158,7 +1159,7 @@ namespace vfs
 
             for (const auto &name : *ret)
             {
-                if (auto val = fs->getxattr(inode, name); !val.has_value())
+                if (auto val = fs->getxattr(inode, name); val.has_value())
                     inode->xattrs[name] = std::move(*val);
             }
         }
@@ -1275,7 +1276,7 @@ namespace vfs
 
     fdtable::fdtable(fdtable &other)
     {
-        auto orlocked = other.fds.read_lock();
+        const auto orlocked = other.fds.read_lock();
         next_fd = other.next_fd;
 
         auto wlocked = fds.write_lock();
@@ -1289,6 +1290,59 @@ namespace vfs
                 old_desc->closexec.load(std::memory_order_relaxed)
             );
         }
+    }
+
+    auto create_anon_fd(const anon_fd_args &args)
+        -> lib::expect<std::pair<int, std::shared_ptr<filedesc>>>
+    {
+        const auto proc = sched::current_process();
+        auto &fdt = proc->fdt;
+
+        std::shared_ptr<inode> inode;
+        if (!args.inode)
+        {
+            inode = std::make_shared<vfs::inode>(args.ops);
+            inode->stat.st_ino = allocate_anon_ino();
+            inode->stat.st_blksize = 0x1000;
+            inode->stat.st_mode = args.st_mode;
+            inode->stat.st_uid = proc->cred->euid;
+            inode->stat.st_gid = proc->cred->egid;
+            inode->stat.update_time(
+                kstat::time::access | kstat::time::modify |
+                kstat::time::status | kstat::time::birth
+            );
+            inode->private_data = args.inode_private_data;
+        }
+        else inode = args.inode;
+
+        auto dentry = std::make_shared<vfs::dentry>();
+        dentry->name = args.name;
+        dentry->inode = std::move(inode);
+
+        auto fdesc = filedesc::create({
+            .mnt = nullptr,
+            .dentry = std::move(dentry)
+        }, args.flags);
+        fdesc->file->private_data = args.file_private_data;
+        if (args.skip_open)
+            fdesc->file->opened = true;
+
+        const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
+        auto fdres = fdt->alloc(fdesc, 0, false, max_fd);
+        if (!fdres)
+            return std::unexpected { fdres.error() };
+        const auto fd = *fdres;
+
+        if (!args.skip_open)
+        {
+            if (const auto ret = fdesc->file->open(args.flags, proc->pid); !ret)
+            {
+                proc->fdt->close(fd);
+                return std::unexpected { ret.error() };
+            }
+        }
+
+        return std::make_pair(fd, std::move(fdesc));
     }
 
     lib::initgraph::stage *root_mounted_stage()

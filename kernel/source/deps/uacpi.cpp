@@ -34,7 +34,8 @@ namespace uacpi
         {
             while (true)
             {
-                added.wait();
+                const auto gen = added.snapshot_gen();
+
                 bool worked = false;
                 {
                     auto locked = queue.write_lock();
@@ -47,6 +48,8 @@ namespace uacpi
                 }
                 if (worked)
                     completed.wake_one();
+
+                added.wait_prepared(gen);
             }
         }
     } // namespace
@@ -529,8 +532,13 @@ extern "C"
 
     uacpi_status uacpi_kernel_wait_for_work_completion()
     {
-        while (!uacpi::is_empty())
-            uacpi::completed.wait();
+        while (true)
+        {
+            const auto gen = uacpi::completed.snapshot_gen();
+            if (uacpi::is_empty())
+                break;
+            uacpi::completed.wait_prepared(gen);
+        }
         return UACPI_STATUS_OK;
     }
 } // extern "C"

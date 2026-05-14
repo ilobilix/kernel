@@ -385,6 +385,8 @@ namespace fs::dev::tty
                 sched::thread_exit(0);
             }
 
+            const auto raw_gen = self->raw_wq.snapshot_gen();
+            const auto hung_gen = self->hung_wq.snapshot_gen();
             auto ret = self->raw_buffer.pop();
             if (!ret.has_value())
             {
@@ -399,9 +401,9 @@ namespace fs::dev::tty
                             self->inst->drv->major, self->inst->minor
                         );
                     }
-                    self->hung_wq.wait();
+                    self->hung_wq.wait_prepared(hung_gen);
                 }
-                else self->raw_wq.wait();
+                else self->raw_wq.wait_prepared(raw_gen);
                 continue;
             }
             auto chr = static_cast<char>(ret.value());
@@ -742,8 +744,9 @@ namespace fs::dev::tty
                     if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
+                    const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait();
+                    in_wq.wait_prepared(gen);
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -801,8 +804,9 @@ namespace fs::dev::tty
                     if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
+                    const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait();
+                    in_wq.wait_prepared(gen);
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -821,8 +825,9 @@ namespace fs::dev::tty
                     if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
+                    const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait(ms * 1'000'000);
+                    in_wq.wait_prepared(gen, ms * 1'000'000);
                     in_locked.lock();
                     available = get_available(in_locked);
                     if (available == 0)
@@ -847,8 +852,9 @@ namespace fs::dev::tty
                     if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                         return 0;
 
+                    const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait();
+                    in_wq.wait_prepared(gen);
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -867,8 +873,9 @@ namespace fs::dev::tty
                         if (inst->hung_up.load(std::memory_order_relaxed))
                             return progress;
 
+                        const auto gen = in_wq.snapshot_gen();
                         in_locked.unlock();
-                        const auto [interrupted, expired] = in_wq.wait(ms * 1'000'000);
+                        const auto [interrupted, expired] = in_wq.wait_prepared(gen, ms * 1'000'000);
                         in_locked.lock();
 
                         available = get_available(in_locked);
@@ -930,7 +937,13 @@ namespace fs::dev::tty
                 if (nonblock)
                     return std::unexpected { lib::err::try_again };
 
-                out_wq.wait();
+                const auto gen = out_wq.snapshot_gen();
+                if (output_append(termios, static_cast<char>(buf.data()[i])))
+                {
+                    progress++;
+                    continue;
+                }
+                out_wq.wait_prepared(gen);
                 if (inst->hung_up.load(std::memory_order_relaxed))
                     return std::unexpected { lib::err::io_error };
                 goto again;
@@ -1408,11 +1421,12 @@ namespace fs::dev::tty
                 sched::thread_exit(0);
             }
 
+            const auto gen = self->raw_wq.snapshot_gen();
             std::array<std::byte, 64> chunk;
             const auto num = self->raw_buffer.pop(std::span { chunk });
             if (num == 0)
             {
-                self->raw_wq.wait();
+                self->raw_wq.wait_prepared(gen);
                 continue;
             }
 

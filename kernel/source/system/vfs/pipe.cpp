@@ -36,24 +36,18 @@ namespace vfs::pipe
             sched::wait_queue_t write_wait;
             sched::wait_queue_t open_wait;
 
-            explicit data(std::size_t cap = default_capacity)
-                : storage { cap }, capacity { cap }, head { 0 }, tail { 0 },
-                  buffered { 0 }, readers { 0 }, writers { 0 }, anon { false } { }
+            explicit data(bool anon)
+                : storage { default_capacity }, capacity { default_capacity },
+                  head { 0 }, tail { 0 }, buffered { 0 }, readers { 0 }, writers { 0 },
+                  anon { anon } { }
         };
 
         std::shared_ptr<data> get_or_create(const std::shared_ptr<vfs::inode> &inode)
         {
             const std::unique_lock _ { inode->lock };
             if (!inode->private_data)
-                inode->private_data = std::make_shared<data>();
+                inode->private_data = std::make_shared<data>(false);
             return std::static_pointer_cast<data>(inode->private_data);
-        }
-
-        lib::expect<std::shared_ptr<data>> require_pipe(const std::shared_ptr<vfs::file> &file)
-        {
-            if (!is_pipe(file))
-                return std::unexpected { lib::err::invalid_argument };
-            return std::static_pointer_cast<data>(file->private_data);
         }
 
         std::size_t copy_in(
@@ -431,28 +425,55 @@ namespace vfs::pipe
                 return mask;
             }
         };
+
+        bool is_pipe(const std::shared_ptr<vfs::file> &file)
+        {
+            if (!file || !file->path.dentry || !file->path.dentry->inode)
+                return false;
+
+            return file->ops == ops::singleton();
+        }
+
+        lib::expect<std::shared_ptr<data>> require_pipe(const std::shared_ptr<vfs::file> &file)
+        {
+            if (!is_pipe(file))
+                return std::unexpected { lib::err::invalid_argument };
+            return std::static_pointer_cast<data>(file->private_data);
+        }
     } // namespace
 
-    std::shared_ptr<vfs::ops> get_ops()
+    lib::expect<std::pair<int, int>> create_pair(int flags)
     {
-        return ops::singleton();
-    }
+        auto rfd = create_anon_fd({
+            .name = "<[PIPE READ]>",
+            .ops = ops::singleton(),
+            .file_private_data = nullptr,
+            .inode_private_data = std::make_shared<data>(true),
+            .st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo,
+            .flags = flags | o_rdonly,
+            .skip_open = false,
+            .inode = nullptr
+        });
+        if (!rfd)
+            return std::unexpected { rfd.error() };
 
-    void prep_anon(std::shared_ptr<vfs::inode> &inode)
-    {
-        const std::unique_lock _ { inode->lock };
-        lib::bug_on(inode->private_data != nullptr);
-        auto pdata = std::make_shared<data>();
-        pdata->anon = true;
-        inode->private_data = std::move(pdata);
-    }
+        auto wfd = create_anon_fd({
+            .name = "<[PIPE WRITE]>",
+            .ops = ops::singleton(),
+            .file_private_data = nullptr,
+            .inode_private_data = nullptr,
+            .st_mode = 0,
+            .flags = flags | o_wronly,
+            .skip_open = false,
+            .inode = rfd->second->file->path.dentry->inode,
+        });
+        if (!wfd)
+        {
+            sched::current_process()->fdt->close(rfd->first);
+            return std::unexpected { wfd.error() };
+        }
 
-    bool is_pipe(const std::shared_ptr<vfs::file> &file)
-    {
-        if (!file || !file->path.dentry || !file->path.dentry->inode)
-            return false;
-
-        return file->ops == ops::singleton();
+        return std::make_pair(rfd->first, wfd->first);
     }
 
     lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file> file)

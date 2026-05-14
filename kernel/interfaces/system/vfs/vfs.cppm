@@ -46,10 +46,10 @@ export namespace vfs
         o_trunc = 01000,
         // o_directory
         // o_nofollow
-        o_closexec = 02000000,
+        o_cloexec = 02000000,
         o_tmpfile = 020000000 | o_directory,
 
-        creation_flags = o_creat | o_excl | o_noctty | o_trunc | o_directory | o_nofollow | o_closexec | o_tmpfile,
+        creation_flags = o_creat | o_excl | o_noctty | o_trunc | o_directory | o_nofollow | o_cloexec | o_tmpfile,
 
         // status flags
         o_append = 02000,
@@ -680,7 +680,7 @@ export namespace vfs
         {
             auto fd = std::make_shared<filedesc>();
             fd->file = vfs::file::create(path, 0, flags & ~creation_flags);
-            fd->closexec = (flags & o_closexec) != 0;
+            fd->closexec = (flags & o_cloexec) != 0;
             return fd;
         }
     };
@@ -739,8 +739,6 @@ export namespace vfs
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
 
-    ino_t next_anon_ino();
-
     bool check_access(
         const path &target,
         const std::shared_ptr<sched::cred_t> &cred,
@@ -778,6 +776,21 @@ export namespace vfs
 
     auto listxattrs(const path &target) -> lib::expect<std::vector<std::string>>;
     auto lenxattrs(const path &target) -> lib::expect<std::size_t>;
+
+    struct anon_fd_args
+    {
+        std::string_view name;
+        std::shared_ptr<ops> ops;
+        std::shared_ptr<void> file_private_data;
+        std::shared_ptr<void> inode_private_data;
+        mode_t st_mode;
+        int flags;
+        bool skip_open;
+        std::shared_ptr<vfs::inode> inode;
+    };
+
+    auto create_anon_fd(const anon_fd_args &args)
+        -> lib::expect<std::pair<int, std::shared_ptr<filedesc>>>;
 
     lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

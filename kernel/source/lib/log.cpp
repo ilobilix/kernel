@@ -712,8 +712,13 @@ namespace lib::log
             return;
 
         const auto target = last_published.load(std::memory_order_acquire);
-        while (last_consumed.load(std::memory_order_acquire) < target)
-            finished.wait();
+        while (true)
+        {
+            const auto gen = finished.snapshot_gen();
+            if (last_consumed.load(std::memory_order_acquire) >= target)
+                break;
+            finished.wait_prepared(gen);
+        }
     }
 
     namespace detail
@@ -817,6 +822,7 @@ namespace lib::log
 
         while (true)
         {
+            const auto gen = available.snapshot_gen();
             auto res = buffer.read(next_seq, std::span {
                 data.data() + len_time, data.size() - len_time
             });
@@ -831,7 +837,7 @@ namespace lib::log
                         reported_drops = cur;
                     }
                     finished.wake_all();
-                    available.wait_unint();
+                    available.wait_unint_prepared(gen);
                     continue;
                 }
                 next_seq = buffer.first_seq();
