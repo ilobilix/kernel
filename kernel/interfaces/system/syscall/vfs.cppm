@@ -201,6 +201,9 @@ export namespace syscall::vfs
     int fsopen(const char __user *fsname, std::uint32_t flags);
 
     int inotify_init1(int flags);
+
+    int eventfd2(unsigned int count, int flags);
+    int eventfd(unsigned int count);
 } // export namespace syscall::vfs
 
 namespace syscall::vfs::detail
