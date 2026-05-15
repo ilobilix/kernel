@@ -278,6 +278,22 @@ export namespace sched
     struct process_t;
     struct thread_t;
 
+    class scoped_sigmask
+    {
+        thread_t *thread;
+        bool armed;
+
+        public:
+        scoped_sigmask() : thread { nullptr }, armed { false } { }
+        ~scoped_sigmask();
+
+        scoped_sigmask(const scoped_sigmask &) = delete;
+        scoped_sigmask &operator=(const scoped_sigmask &) = delete;
+
+        void apply(const sigset_t *mask);
+        void disarm() { armed = false; }
+    };
+
     bool send_signal(thread_t *thread, const siginfo_t &info);
     bool send_signal(process_t *process, const siginfo_t &info);
 

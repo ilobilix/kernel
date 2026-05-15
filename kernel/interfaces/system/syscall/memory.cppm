@@ -15,4 +15,6 @@ export namespace syscall::memory
     void *brk(void *addr);
 
     int mincore(std::size_t start, std::size_t len, unsigned char __user *vec);
+
+    int madvise(void *addr, std::size_t length, int advice);
 } // export namespace syscall::memory

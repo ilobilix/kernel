@@ -288,6 +288,29 @@ namespace sched
         return thread->saved_regs->ret();
     }
 
+    void scoped_sigmask::apply(const sigset_t *mask)
+    {
+        if (!mask)
+            return;
+
+        thread = current_thread();
+        auto kmask = *mask;
+        kmask &= ~sigmask_uncatchable;
+
+        thread->saved_sigmask = thread->sigmask;
+        thread->sigmask = kmask;
+        armed = true;
+    }
+
+    scoped_sigmask::~scoped_sigmask()
+    {
+        if (armed && thread && thread->saved_sigmask.has_value())
+        {
+            thread->sigmask = *thread->saved_sigmask;
+            thread->saved_sigmask = std::nullopt;
+        }
+    }
+
     bool consume_pending_stops()
     {
         auto thread = current_thread();

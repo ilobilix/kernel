@@ -216,4 +216,11 @@ namespace syscall::memory
         lib::unused(start, len, vec);
         return -ENOSYS;
     }
+
+    int madvise(void *addr, std::size_t length, int advice)
+    {
+        // TODO
+        lib::unused(addr, length, advice);
+        return 0;
+    }
 } // namespace syscall::memory
