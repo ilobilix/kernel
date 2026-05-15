@@ -174,14 +174,14 @@ namespace fs::procfs
 
         std::shared_ptr<dir_ops> pid_dir_ops()
         {
-            static auto instance = std::make_shared<dir_ops>();
+            static auto instance = std::shared_ptr<dir_ops>(new dir_ops { });
             return instance;
         }
     } // namespace
 
     std::shared_ptr<node_ops> make_file_ops(gen_fn gfn, write_fn wfn)
     {
-        auto ret = std::make_shared<file_ops>();
+        auto ret = std::shared_ptr<file_ops>(new file_ops { });
         ret->gfn = gfn;
         ret->wfn = wfn;
         return ret;
@@ -189,7 +189,7 @@ namespace fs::procfs
 
     std::shared_ptr<node_ops> make_symlink_ops(readlink_fn rdlfn, revalidate_fn rvfn)
     {
-        auto ret = std::make_shared<file_ops>();
+        auto ret = std::shared_ptr<file_ops>(new file_ops { });
         ret->rdlfn = rdlfn;
         ret->rvfn = rvfn;
         return ret;
@@ -197,7 +197,7 @@ namespace fs::procfs
 
     std::shared_ptr<node_ops> make_dir_ops(lookup_fn lfn, readdir_fn rfn)
     {
-        auto ret = std::make_shared<dir_ops>();
+        auto ret = std::shared_ptr<dir_ops>(new dir_ops { });
         ret->lfn = lfn;
         ret->rfn = rfn;
         return ret;
@@ -283,7 +283,9 @@ namespace fs::procfs
             if (!content)
                 return std::unexpected { content.error() };
 
-            file->private_data = std::make_shared<std::string>(std::move(*content));
+            file->private_data = std::shared_ptr<std::string>(
+                new std::string { std::move(*content) }
+            );
             return { };
         }
 
@@ -307,7 +309,9 @@ namespace fs::procfs
                 auto content = inod->ops->generate(proc.get());
                 if (!content)
                     return std::unexpected { content.error() };
-                file->private_data = std::make_shared<std::string>(std::move(*content));
+                file->private_data = std::shared_ptr<std::string>(
+                    new std::string { std::move(*content) }
+                );
             }
 
             auto content = std::static_pointer_cast<std::string>(file->private_data);

@@ -71,7 +71,6 @@ export namespace sched
 
         public:
         wait_result_t wait(std::uint64_t ns = 0);
-        // ignores signals
         wait_result_t wait_killable(std::uint64_t ns = 0);
         wait_result_t wait_unkillable(std::uint64_t ns = 0);
 
