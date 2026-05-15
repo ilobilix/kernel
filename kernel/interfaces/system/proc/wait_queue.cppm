@@ -9,6 +9,13 @@ import std;
 
 export namespace sched
 {
+    enum class wait_mode
+    {
+        interruptible, // woken by signals and kill
+        killable,      // woken by kill
+        unkillable     // uninterruptible
+    };
+
     struct wait_queue_entry_t
     {
         private:
@@ -56,14 +63,22 @@ export namespace sched
         {
             bool interrupted;
             bool expired;
+            bool killed;
         };
 
+        private:
+        wait_result_t wait_common(std::size_t gen, std::uint64_t ns, wait_mode mode);
+
+        public:
         wait_result_t wait(std::uint64_t ns = 0);
-        wait_result_t wait_unint(std::uint64_t ns = 0);
+        // ignores signals
+        wait_result_t wait_killable(std::uint64_t ns = 0);
+        wait_result_t wait_unkillable(std::uint64_t ns = 0);
 
         std::size_t snapshot_gen() const;
         wait_result_t wait_prepared(std::size_t gen, std::uint64_t ns = 0);
-        wait_result_t wait_unint_prepared(std::size_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_killable_prepared(std::size_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_unkillable_prepared(std::size_t gen, std::uint64_t ns = 0);
 
         void wake_one(bool drop = false);
         void wake_all();

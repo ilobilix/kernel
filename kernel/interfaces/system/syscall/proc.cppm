@@ -72,6 +72,7 @@ export namespace syscall::proc
         const sched::sigset_t __user *uthese, sched::siginfo_t __user *uinfo,
         const timespec __user *uts, std::size_t sigsetsize
     );
+    int rt_sigsuspend(const sched::sigset_t __user *set, std::size_t sigsetsize);
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss);
 
     std::uintptr_t rt_sigreturn();

@@ -104,14 +104,14 @@ export namespace sched
     // called on yield, block, timer or wake up
     void schedule();
 
-    process_t *create_process(process_t *parent);
+    std::shared_ptr<process_t> create_process(const std::shared_ptr<process_t> &parent);
 
     // create a new kernel thread under pid 0
-    thread_t *create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
+    std::shared_ptr<thread_t> create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
 
     // create a user thread
-    thread_t *create_uthread(
-        process_t *proc, std::uintptr_t ip, std::uintptr_t arg,
+    std::shared_ptr<thread_t> create_uthread(
+        const std::shared_ptr<process_t> &proc, std::uintptr_t ip, std::uintptr_t arg,
         bool is_trampoline, bool is_clone,
         std::uintptr_t stack, nice_t nice = default_nice
     );
@@ -120,17 +120,17 @@ export namespace sched
     void enqueue_new(thread_t *thread);
 
     // create a new kernel thread and enqueue it
-    thread_t *spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice);
+    std::shared_ptr<thread_t> spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice);
 
     template<typename Func>
-    inline thread_t *spawn(Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice)
+    inline std::shared_ptr<thread_t> spawn(Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice)
     {
         return spawn(reinterpret_cast<std::uintptr_t>(func), arg, nice);
     }
 
     template<typename Func, typename Arg>
         requires (!std::convertible_to<Arg, std::uintptr_t>)
-    inline thread_t *spawn(Func &&func, Arg arg, nice_t nice = default_nice)
+    inline std::shared_ptr<thread_t> spawn(Func &&func, Arg arg, nice_t nice = default_nice)
     {
         return spawn(
             reinterpret_cast<std::uintptr_t>(func),
@@ -141,6 +141,9 @@ export namespace sched
     bool wake_up(thread_t *thread, bool preempt = true, bool force = false);
 
     bool yield();
+
+    void request_kill(thread_t *thread, int exit_code);
+    void die_if_kill_pending();
 
     // exit the current thread
     // if this is the last thread, process becomes a zombie
@@ -153,12 +156,12 @@ export namespace sched
     // status reported to waitpid will have WIFSIGNALED set
     [[noreturn]] void process_exit_signal(int signo, bool core_dumped = false);
 
-    process_t *get_process(pid_t pid);
-    thread_t *get_thread(pid_t tid);
+    std::shared_ptr<process_t> get_process(pid_t pid);
+    std::shared_ptr<thread_t> get_thread(pid_t tid);
 
     std::size_t process_count();
 
-    void for_each_process(std::function<bool (process_t *)> func);
+    void for_each_process(std::function<bool (const std::shared_ptr<process_t> &)> func);
 
     // called from a timer interrupt
     void tick(bool from_user);

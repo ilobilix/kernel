@@ -430,7 +430,7 @@ export namespace fs::dev::tty
 
         std::atomic_bool stopped;
 
-        sched::thread_t *worker_thread;
+        std::weak_ptr<sched::thread_t> worker_thread;
         std::atomic_bool should_work;
         std::atomic_bool shut_down;
         sched::wait_queue_t hung_wq;
@@ -485,7 +485,7 @@ export namespace fs::dev::tty
 
         lib::rbspscd<std::byte, raw_buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
-        sched::thread_t *worker_thread;
+        std::weak_ptr<sched::thread_t> worker_thread;
         std::atomic_bool raw_should_work;
 
         std::weak_ptr<instance> link;

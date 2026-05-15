@@ -77,150 +77,126 @@ namespace sched
         return generation.load(std::memory_order_acquire);
     }
 
+    auto wait_queue_t::wait_common(
+        std::size_t gen, std::uint64_t ns, wait_mode mode
+    ) -> wait_result_t
+    {
+        auto thread = static_cast<thread_t *>(current_thread());
+        const bool kill_aware = (mode != wait_mode::unkillable);
+
+        if (kill_aware && thread->has_flag(thread_flags::kill_pending))
+            return { false, false, true };
+
+        if (try_dec_pending())
+            return { false, false, false };
+
+        wait_queue_entry_t entry { };
+
+        lock.lock();
+        if (try_dec_pending())
+        {
+            lock.unlock();
+            return { false, false, false };
+        }
+        if (generation.load(std::memory_order_acquire) != gen)
+        {
+            lock.unlock();
+            return { false, false, false };
+        }
+
+        const auto sleep_state = (mode == wait_mode::interruptible)
+            ? thread_state::sleeping
+            : thread_state::blocked;
+
+        entries.push_back(&entry);
+        thread->on_wait_queue.store(this, std::memory_order_relaxed);
+        thread->wait_entry.store(&entry, std::memory_order_relaxed);
+        thread->state.store(sleep_state, std::memory_order_seq_cst);
+
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
+        const bool killed_now = kill_aware && thread->has_flag(thread_flags::kill_pending);
+        const bool interrupted_now = (mode == wait_mode::interruptible) &&
+            (thread->has_flag(thread_flags::interrupted) || signal_pending_for(thread));
+
+        if (killed_now || interrupted_now)
+        {
+            auto expected = sleep_state;
+            if (thread->state.compare_exchange_strong(
+                expected, thread_state::running,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire))
+            {
+                thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+                thread->wait_entry.store(nullptr, std::memory_order_relaxed);
+                if (entries.find(&entry) != entries.end())
+                    entries.remove(&entry);
+
+                lock.unlock();
+                if (killed_now)
+                    return { false, false, true };
+
+                thread->test_and_clear_flag(thread_flags::interrupted);
+                return { true, false, false };
+            }
+        }
+
+        sleep_entry_t timeout {
+            .thread = thread,
+            .deadline_ns = 0,
+            .expired = false,
+            .hook = { }
+        };
+        if (ns != 0)
+            arm_thread_timeout(&timeout, ns);
+
+        lock.unlock();
+        schedule();
+
+        const bool interrupted = (mode == wait_mode::interruptible) &&
+            thread->test_and_clear_flag(thread_flags::interrupted);
+        const bool killed = thread->has_flag(thread_flags::kill_pending);
+        if (ns != 0 && !timeout.expired)
+            cancel_thread_timeout(&timeout);
+
+        lock.lock();
+        thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
+        thread->wait_entry.store(nullptr, std::memory_order_relaxed);
+        if (entries.find(&entry) != entries.end())
+            entries.remove(&entry);
+        lock.unlock();
+
+        return { interrupted, ns != 0 && timeout.expired, killed };
+    }
+
     auto wait_queue_t::wait(std::uint64_t ns) -> wait_result_t
     {
-        return wait_prepared(snapshot_gen(), ns);
+        return wait_common(snapshot_gen(), ns, wait_mode::interruptible);
+    }
+
+    auto wait_queue_t::wait_killable(std::uint64_t ns) -> wait_result_t
+    {
+        return wait_common(snapshot_gen(), ns, wait_mode::killable);
+    }
+
+    auto wait_queue_t::wait_unkillable(std::uint64_t ns) -> wait_result_t
+    {
+        return wait_common(snapshot_gen(), ns, wait_mode::unkillable);
     }
 
     auto wait_queue_t::wait_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
     {
-        if (try_dec_pending())
-            return { false, false };
-
-        wait_queue_entry_t entry { };
-
-        lock.lock();
-        if (pending.load(std::memory_order_acquire) > 0)
-        {
-            pending.fetch_sub(1, std::memory_order_release);
-            lock.unlock();
-            return { false, false };
-        }
-
-        if (generation.load(std::memory_order_acquire) != gen)
-        {
-            lock.unlock();
-            return { false, false };
-        }
-
-        entries.push_back(&entry);
-        auto thread = static_cast<thread_t *>(std::get<thread_base_t *>(entry.type));
-
-        thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
-        thread->on_wait_queue.store(this, std::memory_order_relaxed);
-        thread->wait_entry.store(&entry, std::memory_order_relaxed);
-
-        if (ns == 0)
-        {
-            lock.unlock();
-            schedule();
-            const bool interrupted = thread->test_and_clear_flag(thread_flags::interrupted);
-            lock.lock();
-
-            thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
-            thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-
-            if (entries.find(&entry) != entries.end())
-                entries.remove(&entry);
-            lock.unlock();
-            return { interrupted, false };
-        }
-
-        sleep_entry_t timeout {
-            .thread = thread,
-            .deadline_ns = 0,
-            .expired = false,
-            .hook = { }
-        };
-        arm_thread_timeout(&timeout, ns);
-
-        lock.unlock();
-        schedule();
-        const bool interrupted = thread->test_and_clear_flag(thread_flags::interrupted);
-        if (!timeout.expired)
-            cancel_thread_timeout(&timeout);
-
-        lock.lock();
-        thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
-        thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-
-        if (entries.find(&entry) != entries.end())
-            entries.remove(&entry);
-        lock.unlock();
-
-        return { interrupted, timeout.expired };
+        return wait_common(gen, ns, wait_mode::interruptible);
     }
 
-    auto wait_queue_t::wait_unint(std::uint64_t ns) -> wait_result_t
+    auto wait_queue_t::wait_killable_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
     {
-        return wait_unint_prepared(snapshot_gen(), ns);
+        return wait_common(gen, ns, wait_mode::killable);
     }
 
-    auto wait_queue_t::wait_unint_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
+    auto wait_queue_t::wait_unkillable_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
     {
-        if (try_dec_pending())
-            return { false, false };
-
-        wait_queue_entry_t entry { };
-
-        lock.lock();
-        if (pending.load(std::memory_order_acquire) > 0)
-        {
-            pending.fetch_sub(1, std::memory_order_release);
-            lock.unlock();
-            return { false, false };
-        }
-
-        if (generation.load(std::memory_order_acquire) != gen)
-        {
-            lock.unlock();
-            return { false, false };
-        }
-
-        entries.push_back(&entry);
-        auto thread = static_cast<thread_t *>(std::get<thread_base_t *>(entry.type));
-
-        thread->state.store(thread_state::sleeping, std::memory_order_relaxed);
-        thread->on_wait_queue.store(this, std::memory_order_relaxed);
-        thread->wait_entry.store(&entry, std::memory_order_relaxed);
-
-        if (ns == 0)
-        {
-            lock.unlock();
-            schedule();
-            lock.lock();
-
-            thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
-            thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-
-            if (entries.find(&entry) != entries.end())
-                entries.remove(&entry);
-            lock.unlock();
-            return { false, false };
-        }
-
-        sleep_entry_t timeout {
-            .thread = thread,
-            .deadline_ns = 0,
-            .expired = false,
-            .hook = { }
-        };
-        arm_thread_timeout(&timeout, ns);
-
-        lock.unlock();
-        schedule();
-
-        if (!timeout.expired)
-            cancel_thread_timeout(&timeout);
-
-        lock.lock();
-        thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
-        thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-        if (entries.find(&entry) != entries.end())
-            entries.remove(&entry);
-        lock.unlock();
-
-        return { false, timeout.expired };
+        return wait_common(gen, ns, wait_mode::unkillable);
     }
 
     void wait_queue_t::wake_one(bool drop)

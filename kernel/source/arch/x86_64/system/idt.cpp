@@ -240,7 +240,10 @@ namespace x86_64::idt
                 sched::schedule();
 
             if ((regs->cs & 3) == 3)
+            {
+                sched::die_if_kill_pending();
                 sched::handle_pending_signals(regs);
+            }
         }
 
         skip_sched:

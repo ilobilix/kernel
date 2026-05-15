@@ -30,7 +30,6 @@ namespace sched
             > queue;
 
             wait_queue_t work_wq;
-            thread_t *worker_thread = nullptr;
 
             [[noreturn]] static void worker(workqueue_t *self)
             {
@@ -85,7 +84,7 @@ namespace sched
             pid0_created_stage()
         },
         [] {
-            wq.worker_thread = sched::spawn(workqueue_t::worker, &wq, 5);
+            sched::spawn(workqueue_t::worker, &wq, 5);
         }
     };
 

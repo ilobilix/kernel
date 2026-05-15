@@ -128,7 +128,8 @@ namespace vfs::pipe
                 if (nonblock)
                     return { };
 
-                if (pdata->open_wait.wait_prepared(gen).interrupted)
+                const auto res = pdata->open_wait.wait_prepared(gen);
+                if (res.interrupted || res.killed)
                 {
                     const std::unique_lock _ { pdata->lock };
                     pdata->readers--;
@@ -155,7 +156,8 @@ namespace vfs::pipe
                     gen = pdata->open_wait.snapshot_gen();
                 }
 
-                if (pdata->open_wait.wait_prepared(gen).interrupted)
+                const auto res = pdata->open_wait.wait_prepared(gen);
+                if (res.interrupted || res.killed)
                 {
                     const std::unique_lock _ { pdata->lock };
                     pdata->writers--;
@@ -280,7 +282,8 @@ namespace vfs::pipe
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    if (pdata->read_wait.wait_prepared(gen).interrupted)
+                    const auto res = pdata->read_wait.wait_prepared(gen);
+                    if (res.interrupted || res.killed)
                         return std::unexpected { lib::err::interrupted };
                 }
             }
@@ -373,7 +376,8 @@ namespace vfs::pipe
                         return std::unexpected { lib::err::try_again };
                     }
 
-                    if (pdata->write_wait.wait_prepared(gen).interrupted)
+                    const auto res = pdata->write_wait.wait_prepared(gen);
+                    if (res.interrupted || res.killed)
                     {
                         if (written > 0)
                             return written;

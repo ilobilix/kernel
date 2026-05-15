@@ -46,7 +46,7 @@ export namespace sched
         std::uint64_t nr_running;
 
         thread_t *current;
-        thread_t *idle;
+        std::shared_ptr<thread_t> idle;
 
         std::uint64_t nr_switches;
 
