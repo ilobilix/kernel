@@ -158,7 +158,7 @@ namespace vfs::socket
             .file_private_data = std::move(sock),
             .inode_private_data = nullptr,
             .st_mode = std::to_underlying(stat::s_ifsock) | s_irwxu | s_irwxg | s_irwxo,
-            .flags = flags | o_rdonly,
+            .flags = flags | o_rdwr,
             .skip_open = true,
             .inode = nullptr
         });

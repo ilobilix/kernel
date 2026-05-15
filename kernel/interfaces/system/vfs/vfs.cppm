@@ -571,6 +571,8 @@ export namespace vfs
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
+            if (!ops->seekable())
+                return ops->read(shared_from_this(), offset, buffer);
             const std::unique_lock _ { lock };
             const auto ret = ops->read(shared_from_this(), offset, buffer);
             if (ret.has_value())
@@ -582,6 +584,8 @@ export namespace vfs
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
+            if (!ops->seekable())
+                return ops->write(shared_from_this(), offset, buffer);
             const std::unique_lock _ { lock };
             const auto ret = ops->write(shared_from_this(), offset, buffer);
             if (ret.has_value())
