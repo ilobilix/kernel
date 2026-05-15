@@ -40,7 +40,8 @@ namespace sched
 
         void notify_parent(process_t *proc, int code, int status)
         {
-            if (!proc->parent)
+            auto parent = proc->parent.lock();
+            if (!parent)
                 return;
 
             siginfo_t info {
@@ -53,8 +54,8 @@ namespace sched
                 .addr = 0,
                 .value = 0
             };
-            send_signal(proc->parent, info);
-            proc->parent->wait_child.wake_one();
+            send_signal(parent.get(), info);
+            parent->wait_child.wake_one();
         }
 
         void stop_process(process_t *proc, int sig)
@@ -103,7 +104,7 @@ namespace sched
                         break;
                     default:
                         thread->state.store(thread_state::sleeping, std::memory_order_release);
-                        wake_up(thread, true);
+                        wake_up(thread.get(), true);
                         break;
                 }
             }
@@ -183,6 +184,13 @@ namespace sched
         }
     } // namespace
 
+    bool signal_pending_for(thread_t *thread)
+    {
+        auto proc = thread->proc;
+        const std::unique_lock _ { proc->sigqueue.lock };
+        return (proc->sigqueue.pending & ~thread->sigmask).any();
+    }
+
     bool send_signal(thread_t *thread, const siginfo_t &info)
     {
         const int sig = info.signo;
@@ -218,6 +226,8 @@ namespace sched
             continue_process(proc);
 
         thread->set_flag(thread_flags::signal_pending);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
         wake_for_signal(thread, sig);
         return true;
     }
@@ -236,7 +246,7 @@ namespace sched
         if (sig < 1 || sig > static_cast<int>(nsig))
             return false;
 
-        thread_t *target = nullptr;
+        std::shared_ptr<thread_t> target;
         {
             auto locked = process->threads.lock();
             for (auto &[_, thread] : *locked)
@@ -251,7 +261,7 @@ namespace sched
                 }
             }
 
-            if (target == nullptr)
+            if (!target)
             {
                 for (auto &[_, thread] : *locked)
                 {
@@ -264,10 +274,10 @@ namespace sched
             }
         }
 
-        if (target == nullptr)
+        if (!target)
             return false;
 
-        return send_signal(target, info);
+        return send_signal(target.get(), info);
     }
 
     std::uintptr_t sigreturn()
@@ -338,6 +348,7 @@ namespace sched
         auto thread = current_thread();
         auto proc = thread->proc;
 
+        bool delivered = false;
         while (true)
         {
             int sig = 0;
@@ -390,7 +401,14 @@ namespace sched
             if (!arch::setup_sigframe(thread, regs, sig, *info, action))
                 process_exit_signal(sigsegv);
 
+            delivered = true;
             break;
+        }
+
+        if (!delivered && thread->saved_sigmask.has_value())
+        {
+            thread->sigmask = *thread->saved_sigmask;
+            thread->saved_sigmask = std::nullopt;
         }
 
         {

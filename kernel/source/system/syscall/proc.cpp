@@ -25,7 +25,7 @@ namespace syscall::proc
 
     pid_t getppid()
     {
-        const auto parent = sched::current_process()->parent;
+        const auto parent = sched::current_process()->parent.lock();
         return parent ? parent->pid : 0;
     }
 
@@ -527,7 +527,7 @@ namespace syscall::proc
         if (!target_proc)
             return -ESRCH;
 
-        thread_t *target_thread = nullptr;
+        std::shared_ptr<thread_t> target_thread;
         {
             auto locked = target_proc->threads.lock();
             auto it = locked->find(tid);
@@ -537,7 +537,7 @@ namespace syscall::proc
         if (!target_thread)
             return -ESRCH;
 
-        if (!check_kill(sig, target_proc))
+        if (!check_kill(sig, target_proc.get()))
             return -EPERM;
 
         if (sig == 0)
@@ -554,7 +554,7 @@ namespace syscall::proc
             .addr = 0,
             .value = 0,
         };
-        return send_signal(target_thread, info) ? 0 : -ESRCH;
+        return send_signal(target_thread.get(), info) ? 0 : -ESRCH;
     }
 
     int rt_sigaction(
@@ -618,7 +618,7 @@ namespace syscall::proc
         sigset_t kset;
         if (set)
         {
-            if (!lib::copy_from_user(&kset, set, sizeof(sigset_t)))
+            if (!lib::copy_from_user(&kset, set, sigsetsize))
                 return -EFAULT;
             kset &= ~sigmask_uncatchable;
         }
@@ -642,7 +642,7 @@ namespace syscall::proc
             }
         }
 
-        if (oldset && !lib::copy_to_user(oldset, &old, sizeof(sigset_t)))
+        if (oldset && !lib::copy_to_user(oldset, &old, sigsetsize))
             return -EFAULT;
 
         return 0;
@@ -663,7 +663,7 @@ namespace syscall::proc
         }
         pending &= current_thread()->sigmask;
 
-        if (!lib::copy_to_user(set, &pending, sizeof(sigset_t)))
+        if (!lib::copy_to_user(set, &pending, sigsetsize))
             return -EFAULT;
 
         return 0;
@@ -676,6 +676,35 @@ namespace syscall::proc
     {
         lib::unused(uthese, uinfo, uts, sigsetsize);
         return -ENOSYS;
+    }
+
+    int rt_sigsuspend(const sched::sigset_t __user *set, std::size_t sigsetsize)
+    {
+        using namespace sched;
+
+        if (sigsetsize != sizeof(sigset_t))
+            return -EINVAL;
+
+        sigset_t kmask;
+        if (!lib::copy_from_user(&kmask, set, sizeof(sigset_t)))
+            return -EFAULT;
+        kmask &= ~sigmask_uncatchable;
+
+        auto thread = current_thread();
+        thread->saved_sigmask = thread->sigmask;
+        thread->sigmask = kmask;
+
+        wait_queue_t queue;
+        while (true)
+        {
+            const auto res = queue.wait();
+            if (consume_pending_stops())
+                continue;
+            if (res.interrupted || res.killed)
+                break;
+        }
+
+        return -EINTR;
     }
 
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss)
@@ -749,7 +778,7 @@ namespace syscall::proc
 
         const auto &caller = current_process()->cred;
 
-        auto target = current_process();
+        auto target = current_process()->shared_from_this();
         if (pid != 0)
         {
             target = get_process(pid);
@@ -1082,10 +1111,11 @@ namespace syscall::proc
             return -EINVAL;
 
         sched::process_t *target_proc = nullptr;
-        sched::thread_t *target_thread = nullptr;
+        std::shared_ptr<sched::thread_t> target_thread;
+        sched::thread_t *target_thread_ptr = nullptr;
         if (pid == 0)
         {
-            target_thread = sched::current_thread();
+            target_thread_ptr = sched::current_thread();
             target_proc = sched::current_process();
         }
         else
@@ -1093,7 +1123,8 @@ namespace syscall::proc
             target_thread = sched::get_thread(pid);
             if (!target_thread)
                 return -ESRCH;
-            target_proc = target_thread->proc;
+            target_thread_ptr = target_thread.get();
+            target_proc = target_thread_ptr->proc;
         }
 
         const auto cred = sched::current_process()->cred;
@@ -1104,10 +1135,10 @@ namespace syscall::proc
         if (!perm_ok)
             return -EPERM;
 
-        target_thread->affinity = std::move(bm);
-        if (target_thread->state.load(std::memory_order_acquire) == sched::thread_state::running &&
-            !target_thread->affinity.get(target_thread->running_on->idx))
-            target_thread->set_flag(sched::thread_flags::needs_resched);
+        target_thread_ptr->affinity = std::move(bm);
+        if (target_thread_ptr->state.load(std::memory_order_acquire) == sched::thread_state::running &&
+            !target_thread_ptr->affinity.get(target_thread_ptr->running_on->idx))
+            target_thread_ptr->set_flag(sched::thread_flags::needs_resched);
 
         return 0;
     }
@@ -1131,16 +1162,18 @@ namespace syscall::proc
         if (cpusetsize < kernel_bytes_aligned)
             return -EINVAL;
 
-        sched::thread_t *target_thread = nullptr;
+        std::shared_ptr<sched::thread_t> target_thread;
+        sched::thread_t *target_thread_ptr = nullptr;
         if (pid != 0)
         {
             target_thread = sched::get_thread(pid);
             if (!target_thread)
                 return -ESRCH;
+            target_thread_ptr = target_thread.get();
         }
-        else target_thread = sched::current_thread();
+        else target_thread_ptr = sched::current_thread();
 
-        const auto &bm = target_thread->affinity;
+        const auto &bm = target_thread_ptr->affinity;
         const auto first = std::min(kernel_bytes, cpusetsize);
         if (!lib::copy_to_user(mask, bm.data(), first))
             return -EFAULT;

@@ -24,7 +24,7 @@ namespace bin::script
         ) : exec::image { std::move(file) }, _interp { std::move(interp) },
             _interp_path { interp_path }, _interp_arg { std::move(interp_arg) } { }
 
-        sched::thread_t *load(const exec::request &req) const override
+        std::shared_ptr<sched::thread_t> load(const exec::request &req) const override
         {
             exec::request new_req {
                 .pathname = req.pathname.empty()

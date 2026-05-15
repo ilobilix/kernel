@@ -467,7 +467,7 @@ namespace bin::elf::exec
         image(std::shared_ptr<vfs::file> file, const Elf64_Ehdr &ehdr)
             : bin::exec::image { std::move(file) }, _ehdr { ehdr } { }
 
-        sched::thread_t *load(const bin::exec::request &req) const override
+        std::shared_ptr<sched::thread_t> load(const bin::exec::request &req) const override
         {
             lib::bug_on(!req.proc);
 
@@ -517,7 +517,7 @@ namespace bin::elf::exec
                 req, std::move(execfn), entry, interp_base, auxv
             };
             return sched::create_uthread(
-                req.proc,
+                req.proc->shared_from_this(),
                 reinterpret_cast<std::uintptr_t>(trampoline),
                 reinterpret_cast<std::uintptr_t>(arg),
                 true, false, 0

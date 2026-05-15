@@ -605,7 +605,9 @@ namespace vfs::socket
                                 state.lock()->state = unconnected;
                                 return std::unexpected { lib::err::try_again };
                             }
-                            if (target->accept_wait.wait_prepared(gen).interrupted)
+
+                            const auto res = target->accept_wait.wait_prepared(gen);
+                            if (res.interrupted || res.killed)
                             {
                                 state.lock()->state = unconnected;
                                 return std::unexpected { lib::err::interrupted };
@@ -631,7 +633,8 @@ namespace vfs::socket
                                 wgen = conn_wait.snapshot_gen();
                             }
 
-                            if (conn_wait.wait_prepared(wgen).interrupted)
+                            const auto res = conn_wait.wait_prepared(wgen);
+                            if (res.interrupted || res.killed)
                                 return std::unexpected { lib::err::interrupted };
                         }
                         break;
@@ -747,11 +750,10 @@ namespace vfs::socket
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto [interrupted, expired] =
-                        accept_wait.wait_prepared(gen, wait_ns);
-                    if (interrupted)
+                    const auto res = accept_wait.wait_prepared(gen, wait_ns);
+                    if (res.interrupted || res.killed)
                         return std::unexpected { lib::err::interrupted };
-                    if (expired)
+                    if (res.expired)
                         return std::unexpected { lib::err::try_again };
                 }
             }
@@ -900,15 +902,14 @@ namespace vfs::socket
                             return std::unexpected { lib::err::try_again };
                         }
 
-                        const auto [interrupted, expired] =
-                            peer_ptr->write_wait.wait_prepared(gen, wait_ns);
-                        if (interrupted)
+                        const auto res = peer_ptr->write_wait.wait_prepared(gen, wait_ns);
+                        if (res.interrupted || res.killed)
                         {
                             if (sent > 0)
                                 return sent;
                             return std::unexpected { lib::err::interrupted };
                         }
-                        if (expired)
+                        if (res.expired)
                         {
                             if (sent > 0)
                                 return sent;
@@ -1032,11 +1033,10 @@ namespace vfs::socket
                         if (flags & msg_dontwait)
                             return std::unexpected { lib::err::try_again };
 
-                        const auto [interrupted, expired] =
-                            dest->write_wait.wait_prepared(gen, wait_ns);
-                        if (interrupted)
+                        const auto res = dest->write_wait.wait_prepared(gen, wait_ns);
+                        if (res.interrupted || res.killed)
                             return std::unexpected { lib::err::interrupted };
-                        if (expired)
+                        if (res.expired)
                             return std::unexpected { lib::err::try_again };
                     }
                 }
@@ -1200,14 +1200,14 @@ namespace vfs::socket
                             return std::unexpected { lib::err::try_again };
                         }
 
-                        const auto [interrupted, expired] = read_wait.wait_prepared(gen, wait_ns);
-                        if (interrupted)
+                        const auto res = read_wait.wait_prepared(gen, wait_ns);
+                        if (res.interrupted || res.killed)
                         {
                             if (received > 0)
                                 return received;
                             return std::unexpected { lib::err::interrupted };
                         }
-                        if (expired)
+                        if (res.expired)
                         {
                             if (received > 0)
                                 return received;
@@ -1295,10 +1295,10 @@ namespace vfs::socket
                         if (flags & msg_dontwait)
                             return std::unexpected { lib::err::try_again };
 
-                        const auto [interrupted, expired] = read_wait.wait_prepared(gen, wait_ns);
-                        if (interrupted)
+                        const auto res = read_wait.wait_prepared(gen, wait_ns);
+                        if (res.interrupted || res.killed)
                             return std::unexpected { lib::err::interrupted };
-                        if (expired)
+                        if (res.expired)
                             return std::unexpected { lib::err::try_again };
                     }
                 }
@@ -1732,9 +1732,8 @@ namespace vfs::socket
                                 break;
 
                             const auto remaining = (deadline - now).to_ns();
-                            const auto [interrupted, expired] =
-                                write_wait.wait_prepared(gen, remaining);
-                            if (interrupted || expired)
+                            const auto res = write_wait.wait_prepared(gen, remaining);
+                            if (res.interrupted || res.expired || res.killed)
                                 break;
                         }
                     }

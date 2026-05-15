@@ -30,7 +30,7 @@ export namespace bin::exec
         public:
         virtual ~image() = default;
 
-        virtual sched::thread_t *load(const request &req) const = 0;
+        virtual std::shared_ptr<sched::thread_t> load(const request &req) const = 0;
 
         virtual std::string_view format_name() const = 0;
     };

@@ -366,8 +366,6 @@ namespace fs::dev::tty
             }
         };
 
-        lib::bug_on(sched::current_thread() != self->worker_thread);
-
         bool next_is_verbatim = false;
         while (true)
         {
@@ -875,13 +873,13 @@ namespace fs::dev::tty
 
                         const auto gen = in_wq.snapshot_gen();
                         in_locked.unlock();
-                        const auto [interrupted, expired] = in_wq.wait_prepared(gen, ms * 1'000'000);
+                        const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
                         in_locked.lock();
 
                         available = get_available(in_locked);
-                        if (!interrupted && available == 0) // expired
+                        if (!res.interrupted && !res.killed && available == 0)
                         {
-                            lib::bug_on(!expired);
+                            lib::bug_on(!res.expired);
                             return progress;
                         }
                     }
@@ -1386,7 +1384,7 @@ namespace fs::dev::tty
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, kbmode { 0x01 /* K_XLATE */ },
           ldisc { ld }, termios { drv->init_termios }, termios_locked { ktermios { } },
           winsize { winsize::standard() }, ctrl { }, raw_buffer { }, raw_wq { },
-          worker_thread { nullptr }, raw_should_work { ld != nullptr }
+          worker_thread { }, raw_should_work { ld != nullptr }
     {
         lib::bug_on(drv == nullptr);
         if (ld)
@@ -1397,7 +1395,7 @@ namespace fs::dev::tty
     {
         if (!raw_should_work.load(std::memory_order_relaxed))
         {
-            lib::bug_on(worker_thread != nullptr);
+            lib::bug_on(!worker_thread.expired());
             return;
         }
 
@@ -1411,7 +1409,7 @@ namespace fs::dev::tty
     [[noreturn]]
     void instance::raw_worker(instance *self)
     {
-        lib::bug_on(!self || sched::current_thread() != self->worker_thread);
+        lib::bug_on(!self);
 
         while (true)
         {

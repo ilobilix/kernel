@@ -271,7 +271,7 @@ namespace fs::procfs
             if (inod->type != inode_type::file)
                 return { };
 
-            sched::process_t *proc = nullptr;
+            std::shared_ptr<sched::process_t> proc;
             if (inod->pid > 0)
             {
                 proc = sched::get_process(inod->pid);
@@ -279,7 +279,7 @@ namespace fs::procfs
                     return std::unexpected { lib::err::not_found };
             }
 
-            auto content = inod->ops->generate(proc);
+            auto content = inod->ops->generate(proc.get());
             if (!content)
                 return std::unexpected { content.error() };
 
@@ -294,7 +294,7 @@ namespace fs::procfs
         {
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
 
-            sched::process_t *proc = nullptr;
+            std::shared_ptr<sched::process_t> proc;
             if (inod->pid > 0)
             {
                 proc = sched::get_process(inod->pid);
@@ -304,7 +304,7 @@ namespace fs::procfs
 
             if (!file->private_data || offset == 0)
             {
-                auto content = inod->ops->generate(proc);
+                auto content = inod->ops->generate(proc.get());
                 if (!content)
                     return std::unexpected { content.error() };
                 file->private_data = std::make_shared<std::string>(std::move(*content));
@@ -335,7 +335,7 @@ namespace fs::procfs
 
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
 
-            sched::process_t *proc = nullptr;
+            std::shared_ptr<sched::process_t> proc;
             if (inod->pid > 0)
             {
                 proc = sched::get_process(inod->pid);
@@ -347,7 +347,7 @@ namespace fs::procfs
             if (!buffer.copy_to(reinterpret_cast<std::byte *>(data.data())))
                 return std::unexpected { lib::err::invalid_address };
 
-            if (const auto ret = inod->ops->write(proc, data); !ret)
+            if (const auto ret = inod->ops->write(proc.get(), data); !ret)
                 return std::unexpected { ret.error() };
 
             file->private_data.reset();
@@ -519,7 +519,7 @@ namespace fs::procfs
                             }
                         }
 
-                        sched::for_each_process([&](sched::process_t *proc) {
+                        sched::for_each_process([&](const std::shared_ptr<sched::process_t> &proc) {
                             if (proc->pid == 0)
                                 return true;
 
@@ -540,7 +540,7 @@ namespace fs::procfs
                         if (!inod->ops)
                             return result;
 
-                        sched::process_t *proc = nullptr;
+                        std::shared_ptr<sched::process_t> proc;
                         if (inod->pid > 0)
                         {
                             proc = sched::get_process(inod->pid);
@@ -548,7 +548,7 @@ namespace fs::procfs
                                 return std::unexpected { lib::err::not_found };
                         }
 
-                        auto nodes = inod->ops->readdir(proc);
+                        auto nodes = inod->ops->readdir(proc.get());
                         if (!nodes)
                             return std::unexpected { nodes.error() };
 
@@ -611,7 +611,7 @@ namespace fs::procfs
                         if (!inod->ops)
                             return std::unexpected { lib::err::not_found };
 
-                        sched::process_t *proc = nullptr;
+                        std::shared_ptr<sched::process_t> proc;
                         if (inod->pid > 0)
                         {
                             proc = sched::get_process(inod->pid);
@@ -619,7 +619,7 @@ namespace fs::procfs
                                 return std::unexpected { lib::err::not_found };
                         }
 
-                        auto result = inod->ops->lookup(proc, name);
+                        auto result = inod->ops->lookup(proc.get(), name);
                         if (!result)
                             return std::unexpected { result.error() };
 
@@ -641,7 +641,7 @@ namespace fs::procfs
                 if (inod->type != inode_type::symlink)
                     return std::unexpected { lib::err::invalid_symlink };
 
-                sched::process_t *proc = nullptr;
+                std::shared_ptr<sched::process_t> proc;
                 if (inod->pid > 0)
                 {
                     proc = sched::get_process(inod->pid);
@@ -649,7 +649,7 @@ namespace fs::procfs
                         return std::unexpected { lib::err::not_found };
                 }
 
-                return inod->ops->readlink(proc);
+                return inod->ops->readlink(proc.get());
             }
 
             bool revalidate(std::shared_ptr<vfs::dentry> dentry) override
@@ -662,7 +662,7 @@ namespace fs::procfs
                 if (!proc)
                     return false;
 
-                return !(inod->ops && !inod->ops->revalidate(proc));
+                return !(inod->ops && !inod->ops->revalidate(proc.get()));
             }
 
             bool permission(

@@ -136,6 +136,7 @@ namespace x86_64::syscall
         [126] = { "capset", proc::capset },
         [127] = { "rt_sigpending", proc::rt_sigpending },
         [128] = { "rt_sigtimedwait", proc::rt_sigtimedwait, true },
+        [130] = { "rt_sigsuspend", proc::rt_sigsuspend },
         [131] = { "sigaltstack", proc::sigaltstack },
         [133] = { "mknod", vfs::mknod },
         [137] = { "statfs", vfs::statfs },
@@ -224,6 +225,7 @@ namespace x86_64::syscall
         sched::current_thread()->saved_regs = regs;
         regs->rax = table[idx].invoke(regs);
 
+        sched::die_if_kill_pending();
         sched::handle_pending_signals(regs);
     }
 

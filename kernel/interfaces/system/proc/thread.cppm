@@ -36,7 +36,7 @@ export namespace sched
         needs_resched = (1 << 2),
         interrupted = (1 << 3),
         signal_pending = (1 << 4),
-        quiesce_pending = (1 << 5)
+        kill_pending = (1 << 5)
     };
 
     using namespace magic_enum::bitwise_operators;
@@ -63,6 +63,7 @@ export namespace sched
         std::atomic<thread_state> prev_state = thread_state::runnable;
         std::atomic<std::uint8_t> flags = 0;
         int exit_code = 0;
+        std::atomic<int> pending_exit_code = 0;
 
         std::uint64_t vruntime = 0;
         std::uint64_t total_runtime = 0;
@@ -76,15 +77,11 @@ export namespace sched
         void *on_rq = nullptr;
         lib::rbtree_hook<thread_t> hook;
 
-        lib::intrusive_list_hook<thread_t> dead_hook;
-
         std::atomic_bool *was_in_interrupt = nullptr;
         lib::spinlock_irq *needs_unlock = nullptr;
 
         std::atomic<wait_queue_t *> on_wait_queue = nullptr;
         std::atomic<wait_queue_entry_t *> wait_entry = nullptr;
-
-        std::atomic<bool> dead_listed = false;
 
         std::atomic<bool> on_cpu = false;
         thread_t *prev_to_release = nullptr;

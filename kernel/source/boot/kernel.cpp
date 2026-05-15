@@ -13,7 +13,7 @@ void kthread()
     lib::initgraph::postsched_init_engine.run();
     pmm::reclaim_bootloader_memory();
 
-    sched::thread_t *thread = nullptr;
+    std::shared_ptr<sched::thread_t> thread;
     {
         lib::path_view path { cmdline::get("init").value_or("/sbin/init") };
         lib::info("loading {}", path);
@@ -58,9 +58,9 @@ void kthread()
 
         fs::dev::tty::set_console(ret->target.dentry->inode->stat.st_rdev);
 
-        proc->fdt->alloc(tty, 0, false);
-        proc->fdt->dup(0, 1, false, false);
-        proc->fdt->dup(0, 2, false, false);
+        lib::bug_on(!proc->fdt->alloc(tty, 0, false));
+        lib::bug_on(!proc->fdt->dup(0, 1, false, false));
+        lib::bug_on(!proc->fdt->dup(0, 2, false, false));
 
         thread = image.value()->load({
             .pathname = path.data(),
@@ -69,7 +69,7 @@ void kthread()
                 "TERM=xterm-256color",
                 "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
             },
-            .proc = proc
+            .proc = proc.get()
         });
 
         if (!thread)
@@ -77,7 +77,7 @@ void kthread()
     }
 
     lib::log::wait_for_logs();
-    sched::enqueue_new(thread);
+    sched::enqueue_new(thread.get());
 }
 
 extern "C"  [[noreturn]] void kmain()

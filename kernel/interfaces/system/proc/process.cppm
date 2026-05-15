@@ -33,16 +33,16 @@ export namespace sched
         root = 2
     };
 
-    struct process_t
+    struct process_t : std::enable_shared_from_this<process_t>
     {
         pid_t pid;
 
-        process_t *parent;
+        std::weak_ptr<process_t> parent;
 
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
-                process_t *
+                std::shared_ptr<process_t>
             >, mutex
         > children;
 
@@ -78,12 +78,11 @@ export namespace sched
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
-                thread_t *
+                std::shared_ptr<thread_t>
             >, mutex
         > threads;
 
         std::atomic<std::size_t> alive_threads = 0;
-        std::atomic<std::size_t> to_quiesce = 0;
 
         std::atomic<dumpable_t> dumpable = dumpable_t::user;
 
@@ -123,7 +122,7 @@ export namespace sched
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
-                process_t *
+                std::weak_ptr<process_t>
             >, mutex
         > members;
 

@@ -227,10 +227,14 @@ namespace sched::arch
         kf.pretcode = action.restorer;
         kf.info = info;
 
+        const auto mask = thread->saved_sigmask.has_value()
+            ? *thread->saved_sigmask
+            : thread->sigmask;
+
         kf.uc.uc_flags = 0;
         kf.uc.uc_link = nullptr;
         kf.uc.uc_stack = thread->altstack;
-        kf.uc.uc_sigmask = thread->sigmask;
+        kf.uc.uc_sigmask = mask;
 
         auto &mc = kf.uc.uc_mcontext;
         mc.r15 = regs->r15;
@@ -266,11 +270,12 @@ namespace sched::arch
         regs->rcx = 0;
         regs->r11 = 0;
 
-        auto new_mask = thread->sigmask | action.mask;
+        auto new_mask = mask | action.mask;
         if (!(action.flags & sa_nodefer))
             new_mask.add(sig);
         new_mask &= ~sigmask_uncatchable;
         thread->sigmask = new_mask;
+        thread->saved_sigmask = std::nullopt;
 
         return true;
     }

@@ -837,7 +837,7 @@ namespace lib::log
                         reported_drops = cur;
                     }
                     finished.wake_all();
-                    available.wait_unint_prepared(gen);
+                    available.wait_prepared(gen);
                     continue;
                 }
                 next_seq = buffer.first_seq();
