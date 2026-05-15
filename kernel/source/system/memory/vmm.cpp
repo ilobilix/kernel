@@ -15,9 +15,14 @@ namespace vmm
 
     namespace
     {
-        std::array<std::atomic<std::size_t>, 2> stats { };
+        std::array<
+            std::atomic<std::size_t>,
+            magic_enum::enum_count<object_type>()
+        > stats { };
+
         std::atomic<std::size_t> &stats_for(object_type type)
         {
+            lib::bug_on(!magic_enum::enum_contains(type));
             return stats[static_cast<std::size_t>(type)];
         }
 
@@ -542,10 +547,21 @@ namespace vmm
         const bool is_anon = flags & flag::anonymous;
         const bool is_file = !is_anon;
 
+        const bool is_mmio = obj && obj->type == object_type::mmio;
+        if (is_mmio)
+        {
+            if (!(flags & flag::shared))
+                return std::unexpected { lib::err::invalid_flags };
+            if (prot & prot::exec)
+                return std::unexpected { lib::err::permission_denied };
+            if (is_anon)
+                return std::unexpected { lib::err::invalid_flags };
+        }
+
         if (is_file)
             target_obj = std::move(obj);
 
-        if (flags & flag::private_)
+        if ((flags & flag::private_) && !is_mmio)
         {
             target_amap = new anon_map { };
             target_amap->nslots = length / npsize;
@@ -1316,6 +1332,19 @@ namespace vmm
             return false;
 
         const auto offp = (aligned / npsize) - startp;
+
+        if (obj && obj->type == object_type::mmio)
+        {
+            const auto paddr = obj->direct_paddr(obj_offp + offp);
+            if (!paddr)
+                return false;
+
+            return vmspace->pmap->map(
+                aligned, *paddr, npsize,
+                prot_to_pflags(prot), psize, obj->cache_attr()
+            ).has_value();
+        }
+
         std::uintptr_t paddr = 0;
 
         page *pinned = nullptr;
