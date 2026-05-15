@@ -101,7 +101,7 @@ export namespace sched
 
     inline constexpr bool cap_valid(cap_t cap)
     {
-        return magic_enum::enum_contains(cap);
+        return magic_enum::enum_flags_contains(cap);
     }
 
     inline constexpr bool has_cap(cap_t set, cap_t cap)
