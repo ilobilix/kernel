@@ -204,6 +204,19 @@ export namespace syscall::vfs
 
     int eventfd2(unsigned int count, int flags);
     int eventfd(unsigned int count);
+
+    int epoll_create(int size);
+    int epoll_create1(int flags);
+    int epoll_ctl(int epfd, int op, int fd,  struct epoll_event __user *event);
+    int epoll_pwait2(
+        int epfd, epoll_event __user *events, int maxevents, const timespec __user *timeout,
+        const sigset_t __user *sigmask, std::size_t sigsetsize
+    );
+    int epoll_pwait(
+        int epfd, epoll_event __user *events, int maxevents, int timeout,
+        const sigset_t __user *sigmask, std::size_t sigsetsize
+    );
+    int epoll_wait(int epfd, epoll_event __user *events, int maxevents, int timeout);
 } // export namespace syscall::vfs
 
 namespace syscall::vfs::detail

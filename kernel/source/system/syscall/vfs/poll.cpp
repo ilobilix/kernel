@@ -83,17 +83,14 @@ namespace syscall::vfs
             auto thread = sched::current_thread();
             auto process = thread->proc;
 
-            // TODO
-            lib::unused(sigmask);
-            // sigset_t old_sigmask;
-            // if (sigmask)
-            //     sigprocmask(SIG_SETMASK, sigmask, &old_sigmask);
-
-            auto cleanup = [&] {
-                // TODO
-                // if (sigmask)
-                //     restore old sigmask
-            };
+            sched::scoped_sigmask guard;
+            if (sigmask)
+            {
+                sched::sigset_t kmask { };
+                static_assert(sizeof(kmask) <= sizeof(*sigmask));
+                std::memcpy(&kmask, sigmask, sizeof(kmask));
+                guard.apply(&kmask);
+            }
 
             struct fd_slot
             {
@@ -152,16 +149,10 @@ namespace syscall::vfs
                 }
 
                 if (ready > 0)
-                {
-                    cleanup();
                     return ready;
-                }
 
                 if (timeout && timeout_ns == 0)
-                {
-                    cleanup();
                     return 0;
-                }
 
                 thread->state.store(sched::thread_state::sleeping, std::memory_order_release);
                 sched::sleep_entry_t sleep_timeout {
@@ -178,16 +169,13 @@ namespace syscall::vfs
                 if (timeout)
                 {
                     if (sleep_timeout.expired)
-                    {
-                        cleanup();
                         return 0;
-                    }
                     else sched::cancel_thread_timeout(&sleep_timeout);
                 }
 
                 if (interrupted)
                 {
-                    cleanup();
+                    guard.disarm();
                     return -EINTR;
                 }
             }

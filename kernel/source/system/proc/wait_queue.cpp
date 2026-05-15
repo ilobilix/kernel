@@ -222,7 +222,23 @@ namespace sched
         {
             const std::unique_lock _ { lock };
             generation.fetch_add(1, std::memory_order_release);
-            tmp = std::move(entries);
+
+            bool exclusive = false;
+            for (auto it = entries.begin(); it != entries.end(); )
+            {
+                auto entry = it.value();
+                it++;
+
+                if (entry->exclusive)
+                {
+                    if (exclusive)
+                        continue;
+                    exclusive = true;
+                }
+
+                entries.remove(entry);
+                tmp.push_back(entry);
+            }
         }
         while (!tmp.empty())
             visit(tmp.pop_front()->type, false);

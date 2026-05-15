@@ -24,14 +24,18 @@ export namespace sched
         public:
         using callback_t = std::function<void ()>;
 
-        std::variant<thread_base_t *, callback_t> type;
+        std::variant<
+            thread_base_t *,
+            callback_t
+        > type;
+        bool exclusive;
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
-        wait_queue_entry_t()
-            : type { current_thread() }, hook { } { }
+        wait_queue_entry_t(bool exclusive = false)
+            : type { current_thread() }, exclusive { exclusive }, hook { } { }
 
-        explicit wait_queue_entry_t(callback_t func)
-            : type { std::move(func) }, hook { } { }
+        explicit wait_queue_entry_t(callback_t func, bool exclusive = false)
+            : type { std::move(func) }, exclusive { exclusive }, hook { } { }
     };
 
     struct wait_queue_t

@@ -283,9 +283,9 @@ namespace fs::procfs
             if (!content)
                 return std::unexpected { content.error() };
 
-            file->private_data = std::shared_ptr<std::string>(
+            file->private_data = std::shared_ptr<std::string> {
                 new std::string { std::move(*content) }
-            );
+            };
             return { };
         }
 
@@ -309,9 +309,9 @@ namespace fs::procfs
                 auto content = inod->ops->generate(proc.get());
                 if (!content)
                     return std::unexpected { content.error() };
-                file->private_data = std::shared_ptr<std::string>(
+                file->private_data = std::shared_ptr<std::string> {
                     new std::string { std::move(*content) }
-                );
+                };
             }
 
             auto content = std::static_pointer_cast<std::string>(file->private_data);

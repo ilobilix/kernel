@@ -107,6 +107,25 @@ namespace output::frm
             std::uint32_t reserved[4];
         };
 
+        struct fb_cmap
+        {
+            std::uint32_t start;
+            std::uint32_t len;
+            std::uint16_t *red;
+            std::uint16_t *green;
+            std::uint16_t *blue;
+            std::uint16_t *transp;
+        };
+
+        enum fb_blank
+        {
+            fb_blank_unblank = 0,
+            fb_blank_normal = 1,
+            fb_blank_vsync_suspend = 2,
+            fb_blank_hsync_suspend = 3,
+            fb_blank_powerdown = 4
+        };
+
         struct [[gnu::packed]] edid_info
         {
             uint8_t padding[8];
@@ -205,6 +224,43 @@ namespace output::frm
                         if (!argp.write(fix))
                             return std::unexpected { lib::err::invalid_address };
                         return 0;
+                    case 0x4605: // FBIOPUTCMAP
+                    {
+                        fb_cmap cmap;
+                        if (!argp.read(cmap))
+                            return std::unexpected { lib::err::invalid_address };
+                        if (cmap.len == 0)
+                            return std::unexpected { lib::err::invalid_argument };
+                        return 0;
+                    }
+                    case 0x4606: // FBIOPAN_DISPLAY
+                    {
+                        fb_var_screeninfo pan;
+                        if (!argp.read(pan))
+                            return std::unexpected { lib::err::invalid_address };
+
+                        if (pan.xoffset + var.xres > var.xres_virtual ||
+                            pan.yoffset + var.yres > var.yres_virtual)
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        var.xoffset = pan.xoffset;
+                        var.yoffset = pan.yoffset;
+                        return 0;
+                    }
+                    case 0x4611: // FBIOBLANK
+                    {
+                        switch (argp.address())
+                        {
+                            case fb_blank_unblank:
+                            case fb_blank_normal:
+                            case fb_blank_vsync_suspend:
+                            case fb_blank_hsync_suspend:
+                            case fb_blank_powerdown:
+                                return 0;
+                            default:
+                                return std::unexpected { lib::err::invalid_argument };
+                        }
+                    }
                     default:
                         lib::error("fbdev: unhandled ioctl: 0x{:X}", request);
                         break;

@@ -688,11 +688,9 @@ namespace syscall::proc
         sigset_t kmask;
         if (!lib::copy_from_user(&kmask, set, sizeof(sigset_t)))
             return -EFAULT;
-        kmask &= ~sigmask_uncatchable;
 
-        auto thread = current_thread();
-        thread->saved_sigmask = thread->sigmask;
-        thread->sigmask = kmask;
+        scoped_sigmask guard;
+        guard.apply(&kmask);
 
         wait_queue_t queue;
         while (true)
@@ -704,6 +702,7 @@ namespace syscall::proc
                 break;
         }
 
+        guard.disarm();
         return -EINTR;
     }
 

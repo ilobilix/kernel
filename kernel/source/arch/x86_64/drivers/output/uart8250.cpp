@@ -120,19 +120,22 @@ namespace x86_64::output::uart8250
             lib::io::out<8>(port + 1, on);
         }
 
-        void prints(std::string_view str)
-        {
-            for (const auto chr : str)
-            printc(chr, ports[0]);
-        }
 
         lib::spinlock _lock;
         void lock() { _lock.lock(); }
         void unlock() { _lock.unlock(); }
 
+#if !ILOBILIX_SYSCALL_LOG
+        void prints(std::string_view str)
+        {
+            for (const auto chr : str)
+                printc(chr, ports[0]);
+        }
+
         constinit lib::logger log {
             prints, lock, unlock
         };
+#endif
     } // namespace
 
     void init()
@@ -140,7 +143,9 @@ namespace x86_64::output::uart8250
         for (std::size_t i = 0; i < num_ports; i++)
             usable[i] = init_port(ports[i]);
 
+#if !ILOBILIX_SYSCALL_LOG
         register_logger(&log);
+#endif
     }
 
     namespace tty = fs::dev::tty;

@@ -4,6 +4,7 @@ module system.syscall.chrono;
 
 import system.chrono;
 import system.sched;
+import magic_enum;
 import std;
 
 namespace syscall::chrono
@@ -15,6 +16,22 @@ namespace syscall::chrono
         const auto cur = now(static_cast<chrono::type>(clockid));
         if (!lib::copy_to_user(tp, &cur, sizeof(timespec)))
             return -EFAULT;
+        return 0;
+    }
+
+    int clock_getres(clockid_t clockid, timespec __user *res)
+    {
+        const auto id = static_cast<chrono::type>(clockid);
+        if (!magic_enum::enum_contains(id))
+            return -EINVAL;
+
+        if (res != nullptr)
+        {
+            // TODO
+            timespec kres { 1 };
+            if (!lib::copy_to_user(res, &kres, sizeof(timespec)))
+                return -EFAULT;
+        }
         return 0;
     }
 
