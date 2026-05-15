@@ -13,6 +13,7 @@ import system.random;
 import system.chrono;
 import system.sched;
 import system.sysctl;
+import magic_enum;
 
 namespace syscall::misc
 {
@@ -227,7 +228,7 @@ namespace syscall::misc
         unsigned long arg4, unsigned long arg5
     )
     {
-        lib::unused(arg3, arg4, arg5);
+        lib::unused(arg4, arg5);
         switch (option)
         {
             case 3: // PR_GET_DUMPABLE
@@ -243,15 +244,6 @@ namespace syscall::misc
                     static_cast<sched::dumpable_t>(arg2), std::memory_order_relaxed
                 );
                 return 0;
-            case 23: // PR_CAPBSET_READ
-            {
-                if (arg2 >= 64)
-                    return -EINVAL;
-                const auto cap = static_cast<sched::cap_t>(1ul << arg2);
-                if (!sched::cap_valid(cap))
-                    return -EINVAL;
-                return sched::has_cap(sched::current_process()->cred->bounding, cap);
-            }
             case 15: // PR_SET_NAME
             {
                 constexpr std::size_t comm_max = 15;
@@ -287,6 +279,26 @@ namespace syscall::misc
             case 22: // PR_SET_SECCOMP
                 // TODO
                 return -EINVAL;
+            case 23: // PR_CAPBSET_READ
+            {
+                if (arg2 >= 64)
+                    return -EINVAL;
+                const auto cap = static_cast<sched::cap_t>(1ul << arg2);
+                if (!sched::cap_valid(cap))
+                    return -EINVAL;
+                return sched::has_cap(sched::current_process()->cred->bounding, cap);
+            }
+            case 24: // PR_CAPBSET_DROP
+            {
+                if (arg2 >= 64)
+                    return -EINVAL;
+                const auto cap = static_cast<sched::cap_t>(1ul << arg2);
+                if (!sched::cap_valid(cap))
+                    return -EINVAL;
+                if (const auto ret = sched::cap_bounding_drop(cap); !ret)
+                    return -lib::map_error(ret.error());
+                return 0;
+            }
             case 38: // PR_SET_NO_NEW_PRIVS
                 if (arg2 != 1)
                     return -EINVAL;
@@ -295,6 +307,47 @@ namespace syscall::misc
                 return 0;
             case 39: // PR_GET_NO_NEW_PRIVS
                 return sched::current_process()->no_new_privs;
+            case 47: // PR_CAP_AMBIENT
+                switch (arg2)
+                {
+                    case 1: // PR_CAP_AMBIENT_IS_SET
+                    {
+                        if (arg3 >= 64)
+                            return -EINVAL;
+                        const auto cap = static_cast<sched::cap_t>(1ul << arg3);
+                        if (!sched::cap_valid(cap))
+                            return -EINVAL;
+                        const auto ambient = sched::current_process()->cred->ambient;
+                        return sched::has_cap(ambient, cap);
+                    }
+                    case 2: // PR_CAP_AMBIENT_RAISE
+                    {
+                        if (arg3 >= 64)
+                            return -EINVAL;
+                        const auto cap = static_cast<sched::cap_t>(1ul << arg3);
+                        if (!sched::cap_valid(cap))
+                            return -EINVAL;
+                        if (const auto ret = sched::cap_ambient_raise(cap); !ret)
+                            return -lib::map_error(ret.error());
+                        return 0;
+                    }
+                    case 3: // PR_CAP_AMBIENT_LOWER
+                    {
+                        if (arg3 >= 64)
+                            return -EINVAL;
+                        const auto cap = static_cast<sched::cap_t>(1ul << arg3);
+                        if (!sched::cap_valid(cap))
+                            return -EINVAL;
+                        sched::cap_ambient_lower(cap);
+                        return 0;
+                    }
+                    case 4: // PR_CAP_AMBIENT_CLEAR_ALL
+                        sched::cap_ambient_lower(sched::cap_t::all);
+                        return 0;
+                    default:
+                        return -EINVAL;
+                }
+                std::unreachable();
             default:
                 lib::error("prctl: unhandled option: 0x{:X}", option);
                 return -EINVAL;
