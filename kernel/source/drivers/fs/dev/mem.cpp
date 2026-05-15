@@ -112,7 +112,6 @@ namespace fs::dev::mem
         }
     };
 
-    // TODO
     struct random_dev : vfs::ops
     {
         static std::shared_ptr<random_dev> singleton()
@@ -194,7 +193,6 @@ namespace fs::dev::mem
                 }
             };
 
-            using namespace vfs::dev;
             create("null", stat::s_ifchr | 0666, makedev(1, 3));
             create("zero", stat::s_ifchr | 0666, makedev(1, 5));
             create("full", stat::s_ifchr | 0666, makedev(1, 7));

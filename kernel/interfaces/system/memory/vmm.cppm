@@ -40,8 +40,12 @@ export namespace vmm
     {
     };
 
-    struct page;
+    constexpr page_size default_page_size()
+    {
+        return page_size::small;
+    }
 
+    struct page;
     struct anon
     {
         page *pg;
@@ -110,7 +114,8 @@ export namespace vmm
     enum class object_type : std::uint8_t
     {
         shmem,
-        file
+        file,
+        mmio
     };
 
     std::size_t cached_pages(object_type type);
@@ -143,6 +148,13 @@ export namespace vmm
         std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t clear(std::uint64_t offset, std::uint8_t value, std::size_t length);
 
+        virtual std::optional<std::uintptr_t> direct_paddr(std::uint64_t offp)
+        {
+            lib::unused(offp);
+            return std::nullopt;
+        }
+        virtual caching cache_attr() const { return caching::normal; }
+
         explicit object(object_type type = object_type::file) : type { type } { }
         virtual ~object();
 
@@ -164,6 +176,38 @@ export namespace vmm
         {
             lib::unused(idx, pages);
             return { };
+        }
+    };
+
+    struct pmemobject : object
+    {
+        std::uintptr_t base;
+        std::size_t num_pages;
+        caching cache;
+
+        pmemobject(std::uintptr_t base, std::size_t num_pages, caching cache = caching::normal)
+            : object { object_type::mmio }, base { base }, num_pages { num_pages }, cache { cache } { }
+
+        std::optional<std::uintptr_t> direct_paddr(std::uint64_t offp) override
+        {
+            if (offp >= num_pages)
+                return std::nullopt;
+            return base + offp * pagemap::from_page_size(default_page_size());
+        }
+
+        caching cache_attr() const override { return cache; }
+
+        private:
+        lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) override
+        {
+            lib::unused(idx, pages);
+            return std::unexpected { lib::err::invalid_argument };
+        }
+
+        lib::expect<void> write_pages(std::size_t idx, std::span<page *> pages) override
+        {
+            lib::unused(idx, pages);
+            return std::unexpected { lib::err::invalid_argument };
         }
     };
 
@@ -244,11 +288,6 @@ export namespace vmm
             });
         }
     };
-
-    constexpr page_size default_page_size()
-    {
-        return page_size::small;
-    }
 
     page *page_for(std::uintptr_t addr);
     std::uintptr_t paddr_from(page *pg);
