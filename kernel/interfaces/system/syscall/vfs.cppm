@@ -205,6 +205,9 @@ export namespace syscall::vfs
     int eventfd2(unsigned int count, int flags);
     int eventfd(unsigned int count);
 
+    int signalfd4(int fd, sigset_t __user *mask, std::size_t sizemask, int flags);
+    int signalfd(int fd, sigset_t __user *mask, std::size_t sizemask);
+
     int epoll_create(int size);
     int epoll_create1(int flags);
     int epoll_ctl(int epfd, int op, int fd,  struct epoll_event __user *event);

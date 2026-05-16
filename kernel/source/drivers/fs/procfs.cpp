@@ -790,6 +790,13 @@ namespace fs::procfs
                 }), node_type::symlink, 0777
             ));
 
+            // TODO: stub
+            lib::bug_on(!register_per_pid("cgroup",
+                make_file_ops([](auto) {
+                    return "0::/\n";
+                }), node_type::file, 0444
+            ));
+
             lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { new fs { } }));
         }
     };

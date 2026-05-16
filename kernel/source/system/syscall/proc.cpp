@@ -8,6 +8,7 @@ import system.memory.virt;
 import system.cpu.regs;
 import system.cpu.arch;
 import system.cpu;
+import system.chrono;
 import magic_enum;
 import arch;
 
@@ -674,8 +675,83 @@ namespace syscall::proc
         const timespec __user *uts, std::size_t sigsetsize
     )
     {
-        lib::unused(uthese, uinfo, uts, sigsetsize);
-        return -ENOSYS;
+        using namespace sched;
+
+        if (sigsetsize != sizeof(sigset_t))
+            return -EINVAL;
+
+        sigset_t set;
+        if (!uthese || !lib::copy_from_user(&set, uthese, sizeof(set)))
+            return -EFAULT;
+        set &= ~sigmask_uncatchable;
+
+        bool has_timeout = false;
+        std::uint64_t timeout_ns = 0;
+        if (uts)
+        {
+            timespec kts;
+            if (!lib::copy_from_user(&kts, uts, sizeof(kts)))
+                return -EFAULT;
+            if (kts.tv_nsec < 0 || kts.tv_nsec >= 1'000'000'000l || kts.tv_sec < 0)
+                return -EINVAL;
+
+            has_timeout = true;
+            timeout_ns = kts.to_ns();
+        }
+
+        auto proc = current_process();
+
+        const auto timer = chrono::main_timer();
+        std::uint64_t deadline_ns = 0;
+        if (has_timeout)
+            deadline_ns = timer->ns() + timeout_ns;
+
+        const auto deliver = [&](const siginfo_t &info) {
+            if (uinfo && !lib::copy_to_user(uinfo, &info, sizeof(info)))
+                return -EFAULT;
+            return info.signo;
+        };
+
+        wait_queue_t queue;
+        signal_waiter_t waiter {
+            .interest = set,
+            .wake = [&] { queue.wake_all(); },
+            .hook = { }
+        };
+        add_signal_waiter(proc, waiter);
+
+        const auto result = [&] {
+            while (true)
+            {
+                if (const auto info = dequeue_signal(proc, set))
+                    return deliver(*info);
+
+                std::uint64_t wait_ns = 0;
+                if (has_timeout)
+                {
+                    const auto now = timer->ns();
+                    if (now >= deadline_ns)
+                        return -EAGAIN;
+                    wait_ns = deadline_ns - now;
+                }
+
+                const auto res = queue.wait(wait_ns);
+
+                if (consume_pending_stops())
+                    continue;
+
+                if (const auto info = dequeue_signal(proc, set))
+                    return deliver(*info);
+
+                if (res.expired)
+                    return -EAGAIN;
+                if (res.interrupted || res.killed)
+                    return -EINTR;
+            }
+        } ();
+
+        remove_signal_waiter(proc, waiter);
+        return result;
     }
 
     int rt_sigsuspend(const sched::sigset_t __user *set, std::size_t sigsetsize)
