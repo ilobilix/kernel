@@ -289,17 +289,17 @@ namespace syscall::proc
         const auto permitted = static_cast<std::uint64_t>(kdata.permitted);
         const auto inheritable = static_cast<std::uint64_t>(kdata.inheritable);
 
-        const std::size_t count = cap_data_count(hdr.version);
+        const auto count = cap_data_count(hdr.version);
         std::array<cap_user_data, 2> out { };
 
-        out[0].effective = static_cast<std::uint32_t>(effective);
-        out[0].permitted = static_cast<std::uint32_t>(permitted);
-        out[0].inheritable = static_cast<std::uint32_t>(inheritable);
+        out[0].effective = effective;
+        out[0].permitted = permitted;
+        out[0].inheritable = inheritable;
         if (count > 1)
         {
-            out[1].effective = static_cast<std::uint32_t>(effective >> 32);
-            out[1].permitted = static_cast<std::uint32_t>(permitted >> 32);
-            out[1].inheritable = static_cast<std::uint32_t>(inheritable >> 32);
+            out[1].effective = effective >> 32;
+            out[1].permitted = permitted >> 32;
+            out[1].inheritable = inheritable >> 32;
         }
 
         if (!lib::copy_to_user(data, out.data(), sizeof(cap_user_data) * count))
@@ -325,7 +325,7 @@ namespace syscall::proc
             return -EINVAL;
         }
 
-        const std::size_t count = cap_data_count(hdr.version);
+        const auto count = cap_data_count(hdr.version);
         std::array<cap_user_data, 2> in { };
         if (!lib::copy_from_user(in.data(), data, sizeof(cap_user_data) * count))
             return -EFAULT;

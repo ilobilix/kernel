@@ -104,6 +104,11 @@ export namespace sched
         return magic_enum::enum_flags_contains(cap);
     }
 
+    inline constexpr bool secbit_valid(secbit_t bits)
+    {
+        return magic_enum::enum_flags_contains(bits);
+    }
+
     inline constexpr bool has_cap(cap_t set, cap_t cap)
     {
         return (set & cap) == cap;
@@ -113,6 +118,9 @@ export namespace sched
     {
         return (bits & flag) == flag;
     }
+
+    static_assert(!cap_valid(static_cast<cap_t>(1ul << 41)));
+    static_assert(!secbit_valid(static_cast<secbit_t>(1ul << 33)));
 
     // supplementary gids
     struct groups_t
