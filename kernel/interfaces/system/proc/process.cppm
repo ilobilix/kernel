@@ -76,6 +76,13 @@ export namespace sched
         signal_queue_t sigqueue;
 
         lib::locker<
+            lib::intrusive_list<
+                signal_waiter_t,
+                &signal_waiter_t::hook
+            >, lib::spinlock
+        > sig_waiters;
+
+        lib::locker<
             lib::map::flat_hash<
                 pid_t,
                 std::shared_ptr<thread_t>

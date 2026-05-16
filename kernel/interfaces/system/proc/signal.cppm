@@ -235,6 +235,13 @@ export namespace sched
         lib::spinlock lock;
     };
 
+    struct signal_waiter_t
+    {
+        sigset_t interest { };
+        std::function<void ()> wake;
+        lib::intrusive_list_hook<signal_waiter_t> hook;
+    };
+
     enum class default_action
     {
         term,
@@ -298,6 +305,15 @@ export namespace sched
     bool send_signal(process_t *process, const siginfo_t &info);
 
     bool signal_pending_for(thread_t *thread);
+
+    std::optional<siginfo_t> dequeue_signal(process_t *proc, const sigset_t &set);
+
+    void add_signal_waiter(process_t *proc, signal_waiter_t &waiter);
+    void remove_signal_waiter(process_t *proc, signal_waiter_t &waiter);
+    void update_signal_waiter(
+        process_t *proc, signal_waiter_t &waiter,
+        const sigset_t &interest
+    );
 
     void flush_signal(process_t *proc, int sig);
 

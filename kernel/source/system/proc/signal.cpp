@@ -182,6 +182,16 @@ namespace sched
 
             return info;
         }
+
+        void wake_signal_waiters(process_t *proc, int sig)
+        {
+            auto locked = proc->sig_waiters.lock();
+            for (auto it = locked->begin(); it != locked->end(); it++)
+            {
+                if (it->interest.has(sig) && it->wake)
+                    it->wake();
+            }
+        }
     } // namespace
 
     bool signal_pending_for(thread_t *thread)
@@ -189,6 +199,38 @@ namespace sched
         auto proc = thread->proc;
         const std::unique_lock _ { proc->sigqueue.lock };
         return (proc->sigqueue.pending & ~thread->sigmask).any();
+    }
+
+    std::optional<siginfo_t> dequeue_signal(process_t *proc, const sigset_t &set)
+    {
+        const std::unique_lock _ { proc->sigqueue.lock };
+        const auto sig = (proc->sigqueue.pending & set).lowest();
+        if (sig == 0)
+            return std::nullopt;
+        return dequeue_signal(proc, sig);
+    }
+
+    void add_signal_waiter(process_t *proc, signal_waiter_t &waiter)
+    {
+        auto locked = proc->sig_waiters.lock();
+        if (locked->find(&waiter) == locked->end())
+            locked->push_back(&waiter);
+    }
+
+    void remove_signal_waiter(process_t *proc, signal_waiter_t &waiter)
+    {
+        auto locked = proc->sig_waiters.lock();
+        if (locked->find(&waiter) != locked->end())
+            locked->remove(&waiter);
+    }
+
+    void update_signal_waiter(
+        process_t *proc, signal_waiter_t &waiter,
+        const sigset_t &interest
+    )
+    {
+        const auto guard = proc->sig_waiters.lock();
+        waiter.interest = interest;
     }
 
     bool send_signal(thread_t *thread, const siginfo_t &info)
@@ -229,6 +271,7 @@ namespace sched
         std::atomic_thread_fence(std::memory_order_seq_cst);
 
         wake_for_signal(thread, sig);
+        wake_signal_waiters(proc, sig);
         return true;
     }
 
