@@ -478,6 +478,9 @@ namespace sched
         auto process = current_process();
         const auto &old_cred = process->cred;
 
+        if (!capable(old_cred, cap_t::setpcap))
+            return std::unexpected { lib::err::not_permitted };
+
         const auto old_bits = old_cred->securebits;
 
         const auto old_locked = old_bits & secbit_t::all_locked;

@@ -299,6 +299,17 @@ namespace syscall::misc
                     return -lib::map_error(ret.error());
                 return 0;
             }
+            case 27: // PR_GET_SECUREBITS
+                return static_cast<int>(sched::current_process()->cred->securebits);
+            case 28: // PR_SET_SECUREBITS
+            {
+                const auto bits = static_cast<sched::secbit_t>(arg2);
+                if (!sched::secbit_valid(bits))
+                    return -EINVAL;
+                if (const auto ret = sched::set_securebits(bits); !ret)
+                    return -lib::map_error(ret.error());
+                return 0;
+            }
             case 38: // PR_SET_NO_NEW_PRIVS
                 if (arg2 != 1)
                     return -EINVAL;
