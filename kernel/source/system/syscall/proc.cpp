@@ -1016,7 +1016,7 @@ namespace syscall::proc
         if (uargs.set_tid && uargs.set_tid_size == 0)
             return -EINVAL;
 
-        if ((uargs.exit_signal & ~csignal) || uargs.exit_signal > 64 /* _NSIG */)
+        if ((uargs.exit_signal & ~csignal) || uargs.exit_signal > sched::nsig)
             return -EINVAL;
 
         constexpr auto max = std::numeric_limits<int>::max();
