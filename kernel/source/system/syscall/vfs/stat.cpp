@@ -197,6 +197,6 @@ namespace syscall::vfs
         if (const auto err = detail::touch_atime(fdesc->file); err < 0)
             return err;
 
-        return static_cast<int>(ret.value());
+        return ret.value();
     }
 } // namespace syscall::vfs
