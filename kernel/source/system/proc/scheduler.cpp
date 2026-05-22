@@ -183,8 +183,12 @@ namespace sched
 
         lib::bitmap create_affinity()
         {
-            lib::bitmap ret { cpu::count() };
+            const auto ncpus = cpu::count();
+            lib::bitmap ret { ncpus };
             ret.clear(0xFF);
+            const auto trailing = ncpus % 8;
+            if (trailing != 0)
+                ret.data()[ret.size_bytes() - 1] &= static_cast<std::uint8_t>((1u << trailing) - 1);
             return ret;
         }
 

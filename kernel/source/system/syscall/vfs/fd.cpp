@@ -97,14 +97,14 @@ namespace syscall::vfs
                 const auto ret = vfs::pipe::set_size(fdesc->file, static_cast<std::size_t>(arg));
                 if (!ret)
                     return -lib::map_error(ret.error());
-                return static_cast<int>(*ret);
+                return *ret;
             }
             case 1032: // F_GETPIPE_SZ
             {
                 const auto ret = vfs::pipe::get_size(fdesc->file);
                 if (!ret)
                     return -lib::map_error(ret.error());
-                return static_cast<int>(*ret);
+                return *ret;
             }
             // TODO: flock
             case 6: // F_SETLK

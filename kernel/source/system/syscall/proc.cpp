@@ -1171,49 +1171,37 @@ namespace syscall::proc
             return -EINVAL;
 
         const auto ncpus = cpu::count();
-        const auto kernel_bytes = lib::div_roundup(ncpus, 8u);
-        const auto read_bytes = std::min(cpusetsize, kernel_bytes);
+        const auto kbytes = lib::div_roundup(ncpus, 8u);
 
         lib::bitmap bm { ncpus };
-        if (!lib::copy_from_user(bm.data(), mask, read_bytes))
+        if (!lib::copy_from_user(bm.data(), mask, std::min(cpusetsize, kbytes)))
             return -EFAULT;
 
-        const auto trailing = ncpus % 8;
-        if (trailing != 0)
-            bm.data()[kernel_bytes - 1] &= static_cast<std::uint8_t>((1u << trailing) - 1);
+        if (const auto trailing = ncpus % 8; trailing != 0)
+            bm.data()[kbytes - 1] &= static_cast<std::uint8_t>((1u << trailing) - 1);
 
         if (bm.empty())
             return -EINVAL;
 
-        sched::process_t *target_proc = nullptr;
-        std::shared_ptr<sched::thread_t> target_thread;
-        sched::thread_t *target_thread_ptr = nullptr;
-        if (pid == 0)
-        {
-            target_thread_ptr = sched::current_thread();
-            target_proc = sched::current_process();
-        }
-        else
-        {
-            target_thread = sched::get_thread(pid);
-            if (!target_thread)
-                return -ESRCH;
-            target_thread_ptr = target_thread.get();
-            target_proc = target_thread_ptr->proc;
-        }
+        std::shared_ptr<sched::thread_t> keep_alive;
+        auto thread = (pid == 0)
+            ? sched::current_thread()
+            : (keep_alive = sched::get_thread(pid)).get();
+        if (!thread)
+            return -ESRCH;
 
         const auto cred = sched::current_process()->cred;
-        const auto tcred = target_proc->cred;
+        const auto tcred = thread->proc->cred;
         const bool perm_ok = sched::capable(cred, sched::cap_t::sys_nice) ||
             (tcred && (cred->euid == tcred->ruid || cred->euid == tcred->suid));
 
         if (!perm_ok)
             return -EPERM;
 
-        target_thread_ptr->affinity = std::move(bm);
-        if (target_thread_ptr->state.load(std::memory_order_acquire) == sched::thread_state::running &&
-            !target_thread_ptr->affinity.get(target_thread_ptr->running_on->idx))
-            target_thread_ptr->set_flag(sched::thread_flags::needs_resched);
+        thread->affinity = std::move(bm);
+        if (thread->state.load(std::memory_order_acquire) == sched::thread_state::running &&
+            !thread->affinity.get(thread->running_on->idx))
+            thread->set_flag(sched::thread_flags::needs_resched);
 
         return 0;
     }
@@ -1226,36 +1214,29 @@ namespace syscall::proc
         if (mask == nullptr)
             return -EFAULT;
 
-        if (cpusetsize == 0 || (cpusetsize & (sizeof(unsigned long) - 1)) != 0)
+        if ((cpusetsize & (sizeof(unsigned long) - 1)) != 0)
             return -EINVAL;
 
         const auto ncpus = cpu::count();
-        const auto kernel_bytes = lib::div_roundup(ncpus, 8u);
-        constexpr auto ulong_size = sizeof(unsigned long);
-        const auto kernel_bytes_aligned = (kernel_bytes + ulong_size - 1) & ~(ulong_size - 1);
+        const auto kbytes = lib::div_roundup(ncpus, 8u);
+        const auto aligned = lib::align_up(kbytes, sizeof(unsigned long));
 
-        if (cpusetsize < kernel_bytes_aligned)
+        if (cpusetsize < aligned)
             return -EINVAL;
 
-        std::shared_ptr<sched::thread_t> target_thread;
-        sched::thread_t *target_thread_ptr = nullptr;
-        if (pid != 0)
-        {
-            target_thread = sched::get_thread(pid);
-            if (!target_thread)
-                return -ESRCH;
-            target_thread_ptr = target_thread.get();
-        }
-        else target_thread_ptr = sched::current_thread();
+        std::shared_ptr<sched::thread_t> keep_alive;
+        auto thread = (pid == 0)
+            ? sched::current_thread()
+            : (keep_alive = sched::get_thread(pid)).get();
+        if (!thread)
+            return -ESRCH;
 
-        const auto &bm = target_thread_ptr->affinity;
-        const auto first = std::min(kernel_bytes, cpusetsize);
-        if (!lib::copy_to_user(mask, bm.data(), first))
+        if (!lib::copy_to_user(mask, thread->affinity.data(), kbytes))
             return -EFAULT;
-        if (cpusetsize > first && !lib::fill_user(mask + first, 0, cpusetsize - first))
+        if (aligned > kbytes && !lib::fill_user(mask + kbytes, 0, aligned - kbytes))
             return -EFAULT;
 
-        return static_cast<int>(kernel_bytes_aligned);
+        return aligned;
     }
 
     [[noreturn]] void exit_group(int status)
