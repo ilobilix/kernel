@@ -6,13 +6,14 @@ import :errno;
 import :log;
 import :types;
 import :string;
-import :unused;
 import system.cpu.regs;
 import magic_enum;
 import std;
 
 namespace lib::syscall
 {
+    export bool log_enabled = false;
+
     template<typename Type, typename CType = remove_address_space_t<Type>>
     using to_formattable_ptr =
         typename std::conditional_t<
@@ -87,16 +88,15 @@ namespace lib::syscall
                         } (std::get<I>(args)), ...);
                     } (std::make_index_sequence<std::tuple_size_v<typename sign::args_type>> { });
 
-#if ILOBILIX_SYSCALL_LOG
-                    const auto [pid, tid] = get_ptid();
-                    if constexpr (std::same_as<typename sign::args_type, std::tuple<>>)
-                        lib::debug("syscall: [{}:{}]: {}()", pid, tid, name);
-                    else
-                        lib::debug("syscall: [{}:{}]: {}{}", pid, tid, name, ptr(args));
-#else
-                    lib::unused(name);
-                    lib::unused(log_exit);
-#endif
+                    std::size_t pid = 0, tid = 0;
+                    if (log_enabled)
+                    {
+                        std::tie(pid, tid) = get_ptid();
+                        if constexpr (std::same_as<typename sign::args_type, std::tuple<>>)
+                            lib::debug("syscall: [{}:{}]: {}()", pid, tid, name);
+                        else
+                            lib::debug("syscall: [{}:{}]: {}{}", pid, tid, name, ptr(args));
+                    }
 
                     std::uintptr_t uptr_ret = 0;
                     if constexpr (!is_void)
@@ -108,16 +108,16 @@ namespace lib::syscall
 
                     if (const auto iptr_ret = static_cast<std::intptr_t>(uptr_ret); iptr_ret < 0)
                     {
-#if ILOBILIX_SYSCALL_LOG
-                        lib::debug(
-                            "syscall: [{}:{}]: {} -> {}", pid, tid, name,
-                            magic_enum::enum_name(static_cast<errnos>(-iptr_ret))
-                        );
-#endif
+                        if (log_enabled)
+                        {
+                            lib::debug(
+                                "syscall: [{}:{}]: {} -> {}", pid, tid, name,
+                                magic_enum::enum_name(static_cast<errnos>(-iptr_ret))
+                            );
+                        }
                         return uptr_ret;
                     }
-#if ILOBILIX_SYSCALL_LOG
-                    if (log_exit)
+                    if (log_enabled && log_exit)
                     {
                         if constexpr (is_void)
                             lib::debug("syscall: [{}:{}]: {} -> void", pid, tid, name);
@@ -127,7 +127,6 @@ namespace lib::syscall
                         else
                             lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
                     }
-#endif
                     if constexpr (is_void)
                         return 0;
                     return uptr_ret;

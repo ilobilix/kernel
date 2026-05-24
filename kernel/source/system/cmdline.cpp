@@ -11,6 +11,22 @@ namespace cmdline
     {
         std::optional<std::string> data;
         std::vector<std::pair<std::string_view, std::string_view>> cache;
+
+        constexpr bool key_equal(std::string_view a, std::string_view b)
+        {
+            if (a.size() != b.size())
+                return false;
+
+            for (std::size_t i = 0; i < a.size(); i++)
+            {
+                const auto norm = [](char chr) {
+                    return chr == '-' ? '_' : chr;
+                };
+                if (norm(a[i]) != norm(b[i]))
+                    return false;
+            }
+            return true;
+        }
     } // namespace
 
     std::string_view raw()
@@ -30,7 +46,7 @@ namespace cmdline
         {
             for (const auto &[key, val] : cache)
             {
-                if (key == req)
+                if (key_equal(key, req))
                     return val;
             }
             return std::nullopt;
@@ -38,7 +54,7 @@ namespace cmdline
 
         for (const auto &[key, val] : lib::kvparse_view { raw(), ' ' })
         {
-            if (key == req)
+            if (key_equal(key, req))
                 return val;
         }
         return std::nullopt;

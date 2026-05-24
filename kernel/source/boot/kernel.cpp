@@ -82,6 +82,8 @@ void kthread()
 
 extern "C"  [[noreturn]] void kmain()
 {
+    lib::syscall::log_enabled = cmdline::has("syscall-log");
+
     arch::early_init();
     output::early_init();
 

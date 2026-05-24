@@ -31,21 +31,23 @@ namespace lib::log
 
         constinit logger *loggers = nullptr;
 
-        // stolen from https://github.com/rdmsr/zag/blob/de98aab7f068221872f2b110d371c1037e2cfe15/src/kern/log_ring.zig
-        template<std::size_t DataBits, std::size_t MsgBits>
+        // based on printk_ringbuffer.c from linux and https://github.com/rdmsr/zag/blob/de98aab7f068221872f2b110d371c1037e2cfe15/src/kern/log_ring.zig
+        template<std::size_t DataBits, std::size_t DescBits>
         class ring
         {
+            static_assert(DataBits > DescBits);
+            static_assert(DescBits >= 1);
+
             public:
             using id_t = unsigned _BitInt(62);
 
             enum class error
             {
-                no_space,
-                reservation_failed,
-                invalid_desc,
+                too_large,
+                ring_full,
+                invalid_seq,
                 data_lost,
-                not_yet_available,
-                zero_size,
+                not_yet_available
             };
 
             struct info
@@ -58,54 +60,72 @@ namespace lib::log
 
             struct reservation
             {
-                bool irqs;
+                bool prev_irqs;
                 id_t id;
-                info *info_ptr;
+                info *meta;
                 std::span<char> buf;
             };
 
+            static constexpr std::size_t data_size = 1ul << DataBits;
+            static constexpr std::size_t desc_count = 1ul << DescBits;
+            static constexpr std::size_t max_size = data_size / 2;
+
             private:
-            struct blk_pos { std::size_t begin, end; };
+            static constexpr std::size_t data_mask = data_size - 1;
+            static constexpr std::size_t desc_mask = desc_count - 1;
 
-            struct alignas(sizeof(std::uint64_t)) desc_state
+            static constexpr std::size_t no_data = 1;
+
+            enum : std::uint32_t
             {
-                enum : int {
-                    reserved = 0,
-                    published = 1,
-                    free = 2,
-                    miss = 3
-                };
-
-                union {
-                    struct {
-                        id_t id : 62;
-                        std::size_t state : 2;
-                    };
-                    std::uint64_t raw;
-                };
-
-                bool operator==(const desc_state &o) const { return raw == o.raw; }
+                st_reserved = 0,
+                st_finalised = 1,
+                st_reusable = 2,
+                st_miss = 3
             };
-            static_assert(sizeof(desc_state) == 8);
+
+            struct desc_state
+            {
+                id_t id;
+                std::uint32_t state;
+
+                constexpr std::uint64_t pack() const
+                {
+                    return static_cast<std::uint64_t>(id) |
+                          (static_cast<std::uint64_t>(state) << 62);
+                }
+
+                static constexpr desc_state unpack(std::uint64_t raw)
+                {
+                    return {
+                        .id = static_cast<id_t>(raw & ((1ul << 62) - 1)),
+                        .state = static_cast<std::uint32_t>(raw >> 62)
+                    };
+                }
+            };
 
             struct desc
             {
-                alignas(sizeof(std::uint64_t)) mutable desc_state state;
-                blk_pos text_pos;
+                mutable std::uint64_t state;
+                std::size_t data_begin;
+                std::size_t data_end;
             };
 
-            struct data_block
+            struct alignas(std::uint64_t) data_block
             {
-                alignas(sizeof(std::uint64_t)) std::uint64_t id;
-                char data[];
+                std::uint64_t owner;
+                char text[];
             };
 
-            static constexpr std::size_t lpos_no_data = 1;
-            static constexpr std::size_t data_size = 1ul << DataBits;
-            static constexpr std::size_t desc_bits = DataBits - MsgBits;
-            static constexpr std::size_t desc_count = 1ul << desc_bits;
-            static constexpr std::size_t desc_mask = desc_count - 1;
-            static constexpr std::size_t data_mask = data_size - 1;
+            static std::atomic_ref<std::uint64_t> state_ref(const desc &dsc)
+            {
+                return std::atomic_ref<std::uint64_t> { dsc.state };
+            }
+
+            static std::atomic_ref<std::uint64_t> owner_ref(data_block &blk)
+            {
+                return std::atomic_ref<std::uint64_t> { blk.owner };
+            }
 
             std::array<desc, desc_count> descs;
             std::array<info, desc_count> infos;
@@ -116,245 +136,197 @@ namespace lib::log
             std::atomic_size_t head_lpos;
             std::atomic_size_t tail_lpos;
 
-            static constexpr std::atomic_ref<desc_state> state_ref(const desc &d)
-            {
-                return std::atomic_ref<desc_state> { d.state };
-            }
+            desc *desc_at(id_t id) { return &descs[id & desc_mask]; }
+            const desc *desc_at(id_t id) const { return &descs[id & desc_mask]; }
+            info *info_at(id_t id) { return &infos[id & desc_mask]; }
+            const info *info_at(id_t id) const { return &infos[id & desc_mask]; }
 
-            int get_desc_state(id_t id, desc_state s) const
-            {
-                if (id != s.id)
-                    return desc_state::miss;
-                return static_cast<int>(s.state);
-            }
-
-            static id_t prev_wrap(id_t id)
-            {
-                return id - static_cast<id_t>(desc_count);
-            }
-
-            static std::size_t to_block_size(std::size_t size)
-            {
-                constexpr auto a = sizeof(std::size_t);
-                return (size + sizeof(data_block) + a - 1u) & ~(a - 1u);
-            }
-
-            desc *to_desc(id_t id)
-            {
-                return &descs[id & desc_mask];
-            }
-
-            const desc *to_desc(id_t id) const
-            {
-                return &descs[id & desc_mask];
-            }
-
-            info *to_info(id_t id)
-            {
-                return &infos[id & desc_mask];
-            }
-
-            const info *to_info(id_t id) const
-            {
-                return &infos[id & desc_mask];
-            }
-
-            data_block *to_block(std::size_t lpos)
+            data_block *block_at(std::size_t lpos)
             {
                 return std::launder(reinterpret_cast<data_block *>(&data[lpos & data_mask]));
             }
 
-            static bool check_size(std::size_t size)
+            static constexpr id_t prev_wrap(id_t id)
             {
-                return size <= data_size / 2;
+                return id - static_cast<id_t>(desc_count);
             }
 
-            static bool need_more_space(std::size_t cur, std::size_t nxt)
+            static constexpr id_t sentinel_id()
             {
-                return nxt - cur - 1 < data_size;
+                return static_cast<id_t>(0) - static_cast<id_t>(desc_count + 1);
             }
 
-            static bool data_wraps(std::size_t begin, std::size_t end)
+            static constexpr std::size_t block_size(std::size_t payload)
+            {
+                constexpr auto align = sizeof(std::size_t);
+                return (payload + sizeof(data_block) + align - 1) & ~(align - 1);
+            }
+
+            static constexpr bool wraps(std::size_t begin, std::size_t end)
             {
                 return (begin >> DataBits) != ((end - 1) >> DataBits);
             }
 
-            static std::size_t get_next_lpos(std::size_t lpos, std::size_t size)
+            static constexpr std::size_t next_lpos(std::size_t lpos, std::size_t size)
             {
-                const auto next = lpos + size;
-                if (data_wraps(lpos, next))
-                    return ((next >> DataBits) << DataBits) + size;
-                return next;
+                const auto end = lpos + size;
+                if (wraps(lpos, end))
+                    return ((end >> DataBits) << DataBits) + size;
+                return end;
             }
 
-            struct read_desc_res
+            static constexpr bool needs_room(std::size_t cur, std::size_t target)
             {
-                int state;
+                return target - cur - 1 < data_size;
+            }
+
+            static std::uint32_t classify(id_t expected, desc_state s)
+            {
+                return expected != s.id ? st_miss : s.state;
+            }
+
+            struct snapshot_t
+            {
+                std::uint32_t state;
                 std::uint64_t seq;
-                desc desc_copy;
+                desc_state ds;
+                std::size_t data_begin;
+                std::size_t data_end;
             };
 
-            read_desc_res read_desc(id_t id) const
+            snapshot_t snapshot(id_t id) const
             {
-                const auto d = to_desc(id);
-                const auto inf = to_info(id);
+                const auto desc = desc_at(id);
+                const auto info = info_at(id);
 
-                auto dstate = state_ref(*d).load(std::memory_order_acquire);
-                const auto state = get_desc_state(id, dstate);
+                auto ds = desc_state::unpack(state_ref(*desc).load(std::memory_order_acquire));
+                snapshot_t out {
+                    .state = classify(id, ds),
+                    .seq = 0,
+                    .ds = ds,
+                    .data_begin = 0,
+                    .data_end = 0
+                };
 
-                read_desc_res ret { .state = state, .seq = 0, .desc_copy = { } };
+                if (out.state == st_miss || out.state == st_reserved)
+                    return out;
 
-                if (state == desc_state::miss || state == desc_state::reserved)
-                {
-                    ret.desc_copy.state = dstate;
-                    return ret;
-                }
-
-                ret.desc_copy.text_pos = d->text_pos;
-                ret.desc_copy.state = dstate;
-                ret.seq = inf->seq;
+                out.data_begin = desc->data_begin;
+                out.data_end = desc->data_end;
+                out.seq = info->seq;
 
                 rmb();
 
-                dstate = state_ref(*d).load(std::memory_order_acquire);
-                ret.state = get_desc_state(id, dstate);
-                ret.desc_copy.state = dstate;
-
-                return ret;
+                ds = desc_state::unpack(state_ref(*desc).load(std::memory_order_acquire));
+                out.state = classify(id, ds);
+                out.ds = ds;
+                return out;
             }
-
-            std::expected<void, error> read_desc_finalised(id_t id, std::uint64_t seq, desc &out) const
+            void mark_reusable(id_t id)
             {
-                const auto res = read_desc(id);
-                out = res.desc_copy;
-
-                if (res.state == desc_state::miss || res.state == desc_state::reserved || res.seq != seq)
-                    return std::unexpected { error::invalid_desc };
-
-                if (res.state == desc_state::free || out.text_pos.begin == lpos_no_data)
-                    return std::unexpected { error::data_lost };
-
-                return { };
-            }
-
-            void free_desc(id_t id)
-            {
-                auto d = to_desc(id);
-                desc_state expected { .id = id, .state = desc_state::published };
-                const desc_state nxt { .id = id, .state = desc_state::free };
-
-                state_ref(*d).compare_exchange_strong(
-                    expected, nxt,
+                auto from = desc_state { .id = id, .state = st_finalised } .pack();
+                const auto to = desc_state { .id = id, .state = st_reusable } .pack();
+                state_ref(*desc_at(id)).compare_exchange_strong(
+                    from, to,
                     std::memory_order_release,
                     std::memory_order_relaxed
                 );
             }
 
-            std::optional<std::size_t> free_data(std::size_t begin, std::size_t end)
+            std::optional<std::size_t> free_data(std::size_t begin, std::size_t target)
             {
-                std::size_t cur = begin;
-                while (need_more_space(cur, end))
+                auto cur = begin;
+                while (needs_room(cur, target))
                 {
-                    const auto blk = to_block(cur);
-                    const id_t id = static_cast<id_t>(
-                        std::atomic_ref<std::uint64_t> { blk->id }
-                            .load(std::memory_order_relaxed)
-                    );
-                    const auto res = read_desc(id);
-                    const auto &d = res.desc_copy;
+                    auto blk = block_at(cur);
+                    const auto owner = static_cast<id_t>(owner_ref(*blk).load(std::memory_order_relaxed));
 
-                    switch (res.state)
+                    const auto snap = snapshot(owner);
+                    switch (snap.state)
                     {
-                        case desc_state::miss:
-                        case desc_state::reserved:
+                        case st_miss:
+                        case st_reserved:
                             return std::nullopt;
-                        case desc_state::published:
-                            if (d.text_pos.begin != cur)
+                        case st_finalised:
+                            if (snap.data_begin != cur)
                                 return std::nullopt;
-                            free_desc(id);
+                            mark_reusable(owner);
                             break;
-                        case desc_state::free:
-                            if (d.text_pos.begin != cur)
+                        case st_reusable:
+                            if (snap.data_begin != cur)
                                 return std::nullopt;
                             break;
                     }
-
-                    cur = d.text_pos.end;
+                    cur = snap.data_end;
                 }
-
                 return cur;
             }
 
-            std::expected<void, error> data_advance_tail(std::size_t new_tail_lpos)
+            std::expected<void, error> advance_data_tail(std::size_t target)
             {
-                if (new_tail_lpos & 1)
+                if (target & 1)
                     return { };
 
                 auto tail = tail_lpos.load(std::memory_order_relaxed);
-                while (need_more_space(tail, new_tail_lpos))
+                while (needs_room(tail, target))
                 {
-                    if (const auto next = free_data(tail, new_tail_lpos))
+                    if (const auto next = free_data(tail, target))
                     {
                         if (tail_lpos.compare_exchange_weak(tail, *next,
-                            std::memory_order_release, std::memory_order_relaxed))
+                                std::memory_order_release,
+                                std::memory_order_relaxed
+                            ))
                             break;
                     }
                     else
                     {
                         const auto cur = tail_lpos.load(std::memory_order_acquire);
                         if (cur == tail)
-                            return std::unexpected { error::reservation_failed };
+                            return std::unexpected { error::ring_full };
                         tail = cur;
                     }
                     arch::pause();
                 }
-
                 return { };
             }
 
-            std::expected<void, error> advance_tail(id_t tid)
+            std::expected<void, error> advance_desc_tail(id_t tid)
             {
-                const auto res = read_desc(tid);
-                const auto &tdesc = res.desc_copy;
-
-                switch (res.state)
+                const auto snap = snapshot(tid);
+                switch (snap.state)
                 {
-                    case desc_state::published:
-                        free_desc(tid);
+                    case st_finalised:
+                        mark_reusable(tid);
                         break;
-                    case desc_state::reserved:
-                        return std::unexpected { error::reservation_failed };
-
-                    case desc_state::miss:
-                        if (tdesc.state.id == prev_wrap(tid))
-                            return std::unexpected { error::reservation_failed };
+                    case st_reserved:
+                        return std::unexpected { error::ring_full };
+                    case st_miss:
+                        if (snap.ds.id == prev_wrap(tid))
+                            return std::unexpected { error::ring_full };
                         return { };
-
-                    case desc_state::free:
+                    case st_reusable:
                         break;
                 }
 
-                if (const auto ret = data_advance_tail(tdesc.text_pos.end); !ret)
-                    return ret;
+                if (const auto res = advance_data_tail(snap.data_end); !res)
+                    return res;
 
-                const auto next = read_desc(static_cast<id_t>(tid + 1));
-                if (next.state == desc_state::published || next.state == desc_state::free)
+                const auto next = snapshot(static_cast<id_t>(tid + 1));
+                if (next.state == st_finalised || next.state == st_reusable)
                 {
-                    std::size_t tmp = static_cast<std::size_t>(tid);
-                    tail_id.compare_exchange_strong(
-                        tmp, static_cast<std::size_t>(tid + 1),
-                        std::memory_order_release, std::memory_order_relaxed
+                    auto cur = static_cast<std::size_t>(tid);
+                    tail_id.compare_exchange_strong(cur,
+                        static_cast<std::size_t>(tid + 1),
+                        std::memory_order_release,
+                        std::memory_order_relaxed
                     );
-                }
-                else
-                {
-                    const auto cur = tail_id.load(std::memory_order_acquire);
-                    if (cur != static_cast<std::size_t>(tid))
-                        return { };
-                    return std::unexpected { error::reservation_failed };
+                    return { };
                 }
 
-                return { };
+                const auto cur = tail_id.load(std::memory_order_acquire);
+                if (cur != static_cast<std::size_t>(tid))
+                    return { };
+                return std::unexpected { error::ring_full };
             }
 
             std::expected<id_t, error> reserve_desc()
@@ -365,120 +337,131 @@ namespace lib::log
                 while (true)
                 {
                     new_id = head + 1;
-                    const id_t prev_id = prev_wrap(new_id);
+                    const auto prev = prev_wrap(new_id);
 
-                    const id_t cur_tail = static_cast<id_t>(tail_id.load(std::memory_order_acquire));
-                    if (prev_id == cur_tail)
+                    const auto cur_tail = static_cast<id_t>(tail_id.load(std::memory_order_acquire));
+                    if (prev == cur_tail)
                     {
-                        if (const auto ret = advance_tail(prev_id); !ret)
-                            return std::unexpected { ret.error() };
+                        if (const auto res = advance_desc_tail(prev); !res)
+                            return std::unexpected { res.error() };
                     }
 
-                    auto tmp = static_cast<std::size_t>(head);
-                    if (head_id.compare_exchange_weak(tmp, static_cast<std::size_t>(new_id),
-                        std::memory_order_acq_rel, std::memory_order_acquire))
+                    auto raw = static_cast<std::size_t>(head);
+                    if (head_id.compare_exchange_weak(raw, static_cast<std::size_t>(new_id),
+                            std::memory_order_acq_rel,
+                            std::memory_order_acquire
+                        ))
                         break;
 
-                    head = static_cast<id_t>(tmp);
+                    head = static_cast<id_t>(raw);
                     arch::pause();
                 }
 
-                auto d = to_desc(new_id);
-                auto prev_state = state_ref(*d).load(std::memory_order_relaxed);
+                auto desc = desc_at(new_id);
+                auto from_raw = state_ref(*desc).load(std::memory_order_relaxed);
+                const auto from = desc_state::unpack(from_raw);
 
-                if (prev_state.raw != 0 && get_desc_state(prev_wrap(new_id), prev_state) != desc_state::free)
-                    return std::unexpected { error::reservation_failed };
+                if (from_raw != 0 && classify(prev_wrap(new_id), from) != st_reusable)
+                    return std::unexpected { error::ring_full };
 
-                const desc_state val { .id = new_id, .state = desc_state::reserved };
-                if (!state_ref(*d).compare_exchange_strong(prev_state, val,
-                    std::memory_order_release, std::memory_order_relaxed))
-                    return std::unexpected { error::reservation_failed };
+                const auto to_raw = desc_state { .id = new_id, .state = st_reserved } .pack();
+                if (!state_ref(*desc).compare_exchange_strong(from_raw, to_raw,
+                        std::memory_order_release,
+                        std::memory_order_relaxed
+                    ))
+                    return std::unexpected { error::ring_full };
 
                 return new_id;
             }
 
-            std::expected<std::span<char>, error> alloc_data(std::size_t size, id_t id, blk_pos &out_pos)
+            std::expected<std::span<char>, error> alloc_data(
+                std::size_t size, id_t owner,
+                std::size_t &out_begin, std::size_t &out_end
+            )
             {
-                if (size == 0)
-                {
-                    out_pos = { lpos_no_data, lpos_no_data };
-                    return std::unexpected { error::zero_size };
-                }
-
-                const std::size_t blk_size = to_block_size(size);
+                const auto bsize = block_size(size);
                 auto head = head_lpos.load(std::memory_order_relaxed);
 
                 while (true)
                 {
-                    const auto new_head = get_next_lpos(head, blk_size);
-
-                    if (const auto ret = data_advance_tail(new_head - data_size); !ret)
+                    const auto new_head = next_lpos(head, bsize);
+                    if (const auto res = advance_data_tail(new_head - data_size); !res)
                     {
-                        out_pos = { lpos_no_data, lpos_no_data };
-                        return std::unexpected { ret.error() };
+                        out_begin = out_end = no_data;
+                        return std::unexpected { res.error() };
                     }
 
                     if (head_lpos.compare_exchange_weak(head, new_head,
-                            std::memory_order_acq_rel, std::memory_order_acquire))
+                            std::memory_order_acq_rel,
+                            std::memory_order_acquire
+                        ))
                     {
-                        auto blk = to_block(head);
-                        std::atomic_ref<std::uint64_t> { blk->id }
-                            .store(static_cast<std::uint64_t>(id), std::memory_order_relaxed);
+                        auto blk = block_at(head);
+                        owner_ref(*blk).store(
+                            static_cast<std::uint64_t>(owner),
+                            std::memory_order_relaxed
+                        );
 
-                        if (data_wraps(head, new_head))
+                        if (wraps(head, new_head))
                         {
-                            blk = to_block(0);
-                            std::atomic_ref<std::uint64_t> { blk->id }
-                                .store(static_cast<std::uint64_t>(id), std::memory_order_relaxed);
+                            blk = block_at(0);
+                            owner_ref(*blk).store(
+                                static_cast<std::uint64_t>(owner),
+                                std::memory_order_relaxed
+                            );
                         }
 
-                        out_pos = { head, new_head };
-                        return std::span<char>(blk->data, size);
+                        out_begin = head;
+                        out_end = new_head;
+                        return std::span<char>(blk->text, size);
                     }
                     arch::pause();
                 }
             }
 
-            std::expected<info, error> read_internal(std::uint64_t seq, std::span<char> buf)
+            std::expected<info, error> read_one(std::uint64_t seq, std::span<char> buf)
             {
-                const id_t id = state_ref(*to_desc(static_cast<id_t>(seq)))
-                    .load(std::memory_order_relaxed).id;
+                const auto id = desc_state::unpack(
+                    state_ref(*desc_at(static_cast<id_t>(seq))).load(std::memory_order_relaxed)
+                ).id;
 
-                desc d;
-                if (const auto ret = read_desc_finalised(id, seq, d); !ret)
-                    return std::unexpected { ret.error() };
+                auto snap = snapshot(id);
+                if (snap.state == st_miss || snap.state == st_reserved || snap.seq != seq)
+                    return std::unexpected { error::invalid_seq };
 
-                const info result = *to_info(static_cast<id_t>(seq));
+                if (snap.state == st_reusable || snap.data_begin == no_data)
+                    return std::unexpected { error::data_lost };
+
+                const info copy = *info_at(static_cast<id_t>(seq));
 
                 if (!buf.empty())
                 {
-                    if (d.text_pos.begin == lpos_no_data)
-                        return std::unexpected { error::data_lost };
+                    auto blk = block_at(snap.data_begin);
+                    if (wraps(snap.data_begin, snap.data_end))
+                        blk = block_at(0);
 
-                    auto blk = to_block(d.text_pos.begin);
-                    if (data_wraps(d.text_pos.begin, d.text_pos.end))
-                        blk = to_block(0);
-
-                    const std::size_t n = std::min(buf.size(), static_cast<std::size_t>(result.len));
-                    std::memcpy(buf.data(), blk->data, n);
+                    const auto num = std::min<std::size_t>(buf.size(), copy.len);
+                    std::memcpy(buf.data(), blk->text, num);
                 }
 
-                if (const auto ret = read_desc_finalised(id, seq, d); !ret)
-                    return std::unexpected { ret.error() };
+                snap = snapshot(id);
+                if (snap.state == st_miss || snap.state == st_reserved || snap.seq != seq)
+                    return std::unexpected { error::invalid_seq };
+                if (snap.state == st_reusable)
+                    return std::unexpected { error::data_lost };
 
-                return result;
-            }
-
-            static constexpr id_t dummy_id()
-            {
-                return static_cast<id_t>(0) - static_cast<id_t>(desc_count + 1);
+                return copy;
             }
 
             static constexpr std::array<desc, desc_count> make_descs()
             {
                 std::array<desc, desc_count> arr { };
-                arr[desc_count - 1].state = { .id = dummy_id(), .state = desc_state::free };
-                arr[desc_count - 1].text_pos = { lpos_no_data, lpos_no_data };
+                arr[desc_count - 1].state = desc_state {
+                    .id = sentinel_id(),
+                    .state = st_reusable
+                } .pack();
+                arr[desc_count - 1].data_begin = no_data;
+                arr[desc_count - 1].data_end = no_data;
                 return arr;
             }
 
@@ -490,78 +473,69 @@ namespace lib::log
             }
 
             public:
-            static constexpr std::size_t max_size = data_size / 2;
-
-            constexpr ring() : descs { make_descs() }, infos { make_infos() }, data { },
-                head_id { static_cast<std::size_t>(dummy_id()) },
-                tail_id { static_cast<std::size_t>(dummy_id()) },
-                head_lpos { static_cast<std::size_t>(-data_size) },
-                tail_lpos { static_cast<std::size_t>(-data_size) } { }
+            constexpr ring()
+                : descs { make_descs() }, infos { make_infos() }, data { },
+                  head_id { static_cast<std::size_t>(sentinel_id()) },
+                  tail_id { static_cast<std::size_t>(sentinel_id()) },
+                  head_lpos { 0 - data_size }, tail_lpos { 0 - data_size } { }
 
             std::expected<reservation, error> reserve(std::size_t size)
             {
-                if (!check_size(size))
-                    return std::unexpected { error::no_space };
+                if (size == 0 || size > max_size)
+                    return std::unexpected { error::too_large };
 
                 reservation res { };
-                res.irqs = arch::int_switch_status(false);
+                res.prev_irqs = arch::int_switch_status(false);
 
-                auto id_res = reserve_desc();
-                if (!id_res)
+                auto id = reserve_desc();
+                if (!id)
                 {
-                    arch::int_switch(res.irqs);
-                    return std::unexpected { id_res.error() };
+                    arch::int_switch(res.prev_irqs);
+                    return std::unexpected { id.error() };
                 }
+                res.id = *id;
 
-                res.id = *id_res;
+                auto desc = desc_at(res.id);
+                auto info = info_at(res.id);
+                res.meta = info;
 
-                auto d = to_desc(res.id);
-                auto inf = to_info(res.id);
-
-                res.info_ptr = inf;
-
-                const auto seq = inf->seq;
+                const auto seq = info->seq;
                 if (seq == 0 && (static_cast<std::size_t>(res.id) & desc_mask) != 0)
-                    inf->seq = static_cast<std::uint64_t>(res.id) & desc_mask;
+                    info->seq = static_cast<std::uint64_t>(res.id) & desc_mask;
                 else
-                    inf->seq = seq + desc_count;
+                    info->seq = seq + desc_count;
 
-                auto buf_res = alloc_data(size, res.id, d->text_pos);
-                if (!buf_res)
+                auto buf = alloc_data(size, res.id, desc->data_begin, desc->data_end);
+                if (!buf)
                 {
                     publish(res);
-                    return std::unexpected { buf_res.error() };
+                    return std::unexpected { buf.error() };
                 }
-
-                res.buf = *buf_res;
+                res.buf = *buf;
                 return res;
             }
 
             void publish(const reservation &res)
             {
-                auto d = to_desc(res.id);
-                desc_state expected { .id = res.id, .state = desc_state::reserved  };
-                const desc_state pub { .id = res.id, .state = desc_state::published };
-
-                state_ref(*d).compare_exchange_strong(
-                    expected, pub,
+                auto from = desc_state { .id = res.id, .state = st_reserved } .pack();
+                const auto to = desc_state { .id = res.id, .state = st_finalised } .pack();
+                state_ref(*desc_at(res.id)).compare_exchange_strong(
+                    from, to,
                     std::memory_order_release,
                     std::memory_order_relaxed
                 );
 
-                arch::int_switch(res.irqs);
+                arch::int_switch(res.prev_irqs);
             }
 
-            std::uint64_t first_seq()
+            std::uint64_t first_seq() const
             {
                 while (true)
                 {
-                    const id_t id  = static_cast<id_t>(tail_id.load(std::memory_order_acquire));
-                    const auto res = read_desc(id);
-
-                    if (res.state == desc_state::published || res.state == desc_state::free)
-                        return res.seq;
-
+                    const auto id = static_cast<id_t>(tail_id.load(std::memory_order_acquire));
+                    const auto snap = snapshot(id);
+                    if (snap.state == st_finalised || snap.state == st_reusable)
+                        return snap.seq;
                     arch::pause();
                 }
             }
@@ -571,13 +545,13 @@ namespace lib::log
                 auto cur = seq;
                 while (true)
                 {
-                    auto result = read_internal(cur, buf);
-                    if (result)
-                        return result;
+                    auto res = read_one(cur, buf);
+                    if (res)
+                        return res;
 
-                    switch (result.error())
+                    switch (res.error())
                     {
-                        case error::invalid_desc:
+                        case error::invalid_seq:
                         {
                             const auto first = first_seq();
                             if (cur < first)
@@ -594,13 +568,13 @@ namespace lib::log
                             continue;
                         }
                         default:
-                            return result;
+                            return res;
                     }
                 }
             }
         };
 
-        using ring_type = ring<14, 6>;
+        using ring_type = ring<14, 8>;
         constinit ring_type buffer { };
 
         constexpr std::size_t len_time = 18;
@@ -762,9 +736,6 @@ namespace lib::log
             {
                 if (add_nl)
                     len++;
-
-                const auto index = std::to_underlying(lvl);
-                const auto prefix = prefixes[index];
                 len += prefix.size();
 
                 auto res = buffer.reserve(len);
@@ -775,9 +746,9 @@ namespace lib::log
                     return;
                 }
 
-                if ((res->info_ptr->lvl = lvl) != level::none)
-                    res->info_ptr->time = nanos;
-                res->info_ptr->len = len;
+                if ((res->meta->lvl = lvl) != level::none)
+                    res->meta->time = nanos;
+                res->meta->len = len;
 
                 std::strncpy(res->buf.data(), prefix.data(), prefix.size());
                 fmt::vformat_to_n(res->buf.data() + prefix.size(), len - prefix.size(), fmt, args);
@@ -785,7 +756,7 @@ namespace lib::log
                     res->buf[len - 1] = '\n';
 
                 buffer.publish(*res);
-                last_published.store(res->info_ptr->seq, std::memory_order_release);
+                last_published.store(res->meta->seq, std::memory_order_release);
                 available.wake_all();
             }
         }
@@ -863,7 +834,6 @@ namespace lib::log
         std::unreachable();
     }
 
-#if !ILOBILIX_SYSCALL_LOG
     lib::initgraph::task log_task
     {
         "log.create-thread",
@@ -872,10 +842,10 @@ namespace lib::log
             sched::pid0_created_stage()
         },
         [] {
-            sched::spawn(consumer, 0, 5);
+            if (!lib::syscall::log_enabled)
+                sched::spawn(consumer, 0, 5);
         }
     };
-#endif
 
     extern "C" void putchar_(char chr)
     {
