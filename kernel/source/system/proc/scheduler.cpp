@@ -1668,6 +1668,8 @@ namespace sched
             stack_top, caller_thread->nice
         );
 
+        target_thread->sigmask = caller_thread->sigmask;
+
         // TODO: set_tid array
 
         if (flags & clone_child_settid)
@@ -1852,6 +1854,17 @@ namespace sched
             if (process->fdt.use_count() > 1)
                 process->fdt = process->fdt->clone();
             process->fdt->close_on_exec();
+
+            if (process->sigactions.use_count() > 1)
+                process->sigactions = process->sigactions->clone();
+            {
+                const std::unique_lock _ { process->sigactions->lock };
+                for (auto &action : process->sigactions->actions)
+                {
+                    if (action.handler != sig_dfl && action.handler != sig_ign)
+                        action = sigaction_t { };
+                }
+            }
 
             process->has_execved = true;
 

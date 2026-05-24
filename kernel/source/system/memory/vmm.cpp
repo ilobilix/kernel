@@ -1061,26 +1061,25 @@ namespace vmm
             }
             else
             {
-                anon_map::ptr tail_amap { new anon_map { } };
-                tail_amap->nslots = grow_pages;
-                tail_amap->slots = std::make_unique<anon::ptr []>(grow_pages);
+                const auto src_pages = old_len / npsize;
+                const auto total_pages = src_pages + grow_pages;
 
-                const auto tail_offp = (src->obj && src->amap)
-                    ? src->offp + (old_len / npsize) : 0;
+                anon_map::ptr merged_amap { new anon_map { } };
+                merged_amap->nslots = total_pages;
+                merged_amap->slots = std::make_unique<anon::ptr []>(total_pages);
 
-                locked->insert(new entry {
-                    .startp = grow_start,
-                    .endp = grow_end,
-                    .obj = (src->obj && src->amap) ? src->obj : object::ptr { },
-                    .offp = tail_offp,
-                    .amap = std::move(tail_amap),
-                    .anon_idx = 0,
-                    .prot = src->prot,
-                    .max_prot = src->max_prot,
-                    .flags = src->flags,
-                    .hook = { },
-                    .interval = { }
-                });
+                if (src->amap)
+                {
+                    const std::unique_lock _ { src->amap->lock };
+                    for (std::size_t i = 0; i < src_pages; i++)
+                        merged_amap->slots[i] = src->amap->slots[src->anon_idx + i];
+                }
+
+                locked->remove(src);
+                src->amap = std::move(merged_amap);
+                src->anon_idx = 0;
+                src->endp = grow_end;
+                locked->insert(src);
             }
             return opts.old_addr;
         }
@@ -1106,8 +1105,6 @@ namespace vmm
 
         if (new_len > old_len)
         {
-            const auto tail_pages = (new_len - old_len) / npsize;
-
             if (src->obj && !src->amap)
             {
                 locked->remove(src);
@@ -1116,23 +1113,24 @@ namespace vmm
             }
             else
             {
-                anon_map::ptr tail_amap { new anon_map { } };
-                tail_amap->nslots = tail_pages;
-                tail_amap->slots = std::make_unique<anon::ptr []>(tail_pages);
+                const auto total_pages = new_len / npsize;
 
-                locked->insert(new entry {
-                    .startp = dst_old_endp,
-                    .endp = dst_endp,
-                    .obj = (src->obj && src->amap) ? src->obj : object::ptr { },
-                    .offp = (src->obj && src->amap) ? src->offp + src_pages : 0,
-                    .amap = std::move(tail_amap),
-                    .anon_idx = 0,
-                    .prot = src->prot,
-                    .max_prot = src->max_prot,
-                    .flags = src->flags,
-                    .hook = { },
-                    .interval = { }
-                });
+                anon_map::ptr merged_amap { new anon_map { } };
+                merged_amap->nslots = total_pages;
+                merged_amap->slots = std::make_unique<anon::ptr []>(total_pages);
+
+                if (src->amap)
+                {
+                    const std::unique_lock _ { src->amap->lock };
+                    for (std::size_t i = 0; i < src_pages; i++)
+                        merged_amap->slots[i] = src->amap->slots[src->anon_idx + i];
+                }
+
+                locked->remove(src);
+                src->amap = std::move(merged_amap);
+                src->anon_idx = 0;
+                src->endp = dst_endp;
+                locked->insert(src);
             }
         }
 
