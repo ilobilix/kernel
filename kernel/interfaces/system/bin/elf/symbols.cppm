@@ -12,6 +12,7 @@ export namespace bin::elf::sym
         std::string_view name;
         std::uintptr_t address;
         std::size_t size;
+        char type = '?';
 
         constexpr auto operator<=>(const symbol &rhs) const { return address <=> rhs.address; }
         constexpr auto operator<=>(std::uintptr_t rhs) const { return address <=> rhs; }

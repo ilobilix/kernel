@@ -123,10 +123,7 @@ namespace cpu
                     std::string out;
                     out.reserve(num * (tail.size() + 32));
                     for (std::size_t idx = 0; idx < num; idx++)
-                    {
-                        out.append(fmt::format("processor\t: {}\n", idx));
-                        out.append(tail);
-                    }
+                        out.append(fmt::format("processor\t: {}\n{}", idx, tail));
                     return out;
                 }), node_type::file, 0444
             ));

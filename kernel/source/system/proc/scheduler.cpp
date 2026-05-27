@@ -2259,10 +2259,10 @@ namespace sched
                             const char w = (entry.prot & vmm::write) ? 'w' : '-';
                             const char x = (entry.prot & vmm::exec)  ? 'x' : '-';
                             const char p = (entry.flags & vmm::shared) ? 's' : 'p';
-                            out += fmt::format(
+                            out.append(fmt::format(
                                 "{:016x}-{:016x} {}{}{}{} {:08x} 00:00 0\n",
                                 entry.startp, entry.endp, r, w, x, p, entry.offp
-                            );
+                            ));
                         }
                         return out;
                     }), node_type::file, 0400
