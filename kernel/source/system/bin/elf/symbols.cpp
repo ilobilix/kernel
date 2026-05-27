@@ -6,9 +6,11 @@ module;
 
 module system.bin.elf;
 
+import drivers.fs.procfs;
 import system.memory;
 import boot;
 import lib;
+import fmt;
 import std;
 
 namespace bin::elf::sym
@@ -70,7 +72,7 @@ namespace bin::elf::sym
                 return name - kallsyms_names;
             }
 
-            void expand_symbol(std::size_t off, std::span<char> namebuf)
+            char expand_symbol(std::size_t off, std::span<char> namebuf)
             {
                 const std::uint8_t *data = &kallsyms_names[off];
                 int len = *data;
@@ -89,6 +91,7 @@ namespace bin::elf::sym
                 std::size_t maxlen = std::min(namebuf.size(), static_cast<std::size_t>(KSYM_NAME_LEN));
                 char *result = namebuf.data();
 
+                char type = '?';
                 bool skipped_first = false;
                 const char *tptr;
                 while (len)
@@ -107,7 +110,11 @@ namespace bin::elf::sym
                             result++;
                             maxlen--;
                         }
-                        else skipped_first = true;
+                        else
+                        {
+                            type = *tptr;
+                            skipped_first = true;
+                        }
                         tptr++;
                     }
                 }
@@ -115,7 +122,17 @@ namespace bin::elf::sym
                 exit:
                 if (maxlen)
                     *result = 0;
+                return type;
             };
+
+            std::size_t next_offset(std::size_t off)
+            {
+                const auto data = &kallsyms_names[off];
+                int len = *data;
+                if ((len & 0x80) != 0)
+                    return off + ((len & 0x7F) | (data[1] << 7)) + 2;
+                return off + len + 1;
+            }
         } // namespace
 
         auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<std::uintptr_t>
@@ -256,12 +273,86 @@ namespace bin::elf::sym
                 continue;
 #endif
 
+            const auto bind = ELF64_ST_BIND(sym->st_info);
+            const auto type = ELF64_ST_TYPE(sym->st_info);
+
+            char letter;
+            if (sym->st_shndx == SHN_ABS)
+                letter = 'a';
+            else if (sym->st_shndx == SHN_COMMON)
+                letter = 'c';
+            else
+            {
+                switch (type)
+                {
+                    case STT_FUNC:
+                        letter = 't';
+                        break;
+                    case STT_OBJECT:
+                        letter = 'd';
+                        break;
+                    case STT_SECTION:
+                        letter = 'a';
+                        break;
+                    case STT_FILE:
+                        letter = 'a';
+                        break;
+                    default:
+                        letter = '?';
+                        break;
+                }
+            }
+
+            if (bind == STB_WEAK)
+                letter = (type == STT_OBJECT) ? 'v' : 'w';
+
+            if (bind != STB_LOCAL && letter >= 'a' && letter <= 'z')
+                letter -= 'a' - 'A';
+
             const std::uintptr_t value = offset + sym->st_value;
             const std::size_t size = sym->st_size;
 
-            symbols.emplace(name, value, size);
+            symbols.emplace(name, value, size, letter);
         }
 
         return symbols;
     }
+
+    lib::initgraph::task procfs_register_task
+    {
+        "kallsyms.procfs.register",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        [] {
+            using namespace ::fs::procfs;
+            lib::bug_on(!register_global("kallsyms",
+                make_file_ops([](auto) {
+                    std::string out;
+
+                    lib::buffer<char> buf { KSYM_NAME_LEN };
+                    for (std::size_t i = 0, off = 0; i < kallsyms::kallsyms_num_syms; i++)
+                    {
+                        const auto addr = kallsyms::sym_addr(i);
+                        const char type = kallsyms::expand_symbol(off, buf.span());
+                        const std::string_view name { buf.data() };
+                        out.append(fmt::format("{:016x} {} {}\n", addr, type, name));
+                        off = kallsyms::next_offset(off);
+                    }
+
+                    for (const auto &[modname, modent] : *mod::modules.read_lock())
+                    {
+                        for (const auto &sym : modent.symbols)
+                        {
+                            out.append(fmt::format(
+                                "{:016x} {} {}\t[{}]\n",
+                                sym.address, sym.type, sym.name, modname
+                            ));
+                        }
+                    }
+
+                    return out;
+                }), node_type::file, 0444
+            ));
+        }
+    };
 } // namespace bin::elf::sym

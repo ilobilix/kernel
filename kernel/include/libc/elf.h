@@ -133,7 +133,22 @@ typedef struct
 #define ELF32_ST_TYPE(val) ((val) & 0xf)
 #define ELF64_ST_TYPE(val) ELF32_ST_TYPE (val)
 
+#define ELF32_ST_BIND(val) (((unsigned char) (val)) >> 4)
+#define ELF64_ST_BIND(val) ELF32_ST_BIND (val)
+
+#define STT_NOTYPE 0
+#define STT_OBJECT 1
 #define STT_FUNC 2
+#define STT_SECTION 3
+#define STT_FILE 4
+
+#define STB_LOCAL 0
+#define STB_GLOBAL 1
+#define STB_WEAK 2
+
+#define SHN_ABS 0xfff1
+#define SHN_COMMON 0xfff2
+
 #define SHT_RELA 4
 #define SHT_NOBITS 8
 
