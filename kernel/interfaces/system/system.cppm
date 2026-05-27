@@ -4,9 +4,9 @@ export module system;
 
 export import arch.system;
 export import system.acpi;
+export import system.bin;
 export import system.chrono;
 export import system.cmdline;
-export import system.bin;
 export import system.cpu;
 export import system.cpu.local;
 export import system.interrupts;
