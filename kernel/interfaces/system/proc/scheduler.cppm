@@ -7,8 +7,9 @@ export import system.sched.wait_queue;
 export import system.sched.mutex;
 export import system.sched.cred;
 
-export import :perm;
+export import :futex;
 export import :nice;
+export import :perm;
 export import :signal;
 export import :rlimit;
 export import :thread;
