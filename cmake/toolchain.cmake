@@ -28,6 +28,8 @@ set(_C_CXX_ASM_FLAGS
     "-Wno-unknown-attributes"
     "-Wno-unused-command-line-argument"
     "-Wno-deprecated-declarations"
+
+    "-Qunused-arguments"
 )
 
 set(_CXX_FLAGS
@@ -107,6 +109,8 @@ foreach(_define ${_ILOBILIX_BOOL_DEFINES})
 endforeach()
 
 set(_ILOBILIX_DEFINES
+    "_GLIBCXX_SYSHDR"
+
     "LIMINE_API_REVISION=2"
 
     "UACPI_OVERRIDE_LIBC"
@@ -131,10 +135,6 @@ foreach(_define ${_ILOBILIX_DEFINES})
     string (REPLACE "^" "\;" _replaced_define "${_define}")
     list(APPEND _C_CXX_ASM_FLAGS "-D'${_replaced_define}'")
 endforeach()
-
-list(APPEND _C_CXX_ASM_FLAGS
-    "-include" "${CMAKE_SOURCE_DIR}/kernel/include/stubs/gthread.h"
-)
 
 string(JOIN " " _C_CXX_ASM_FLAGS_STR ${_C_CXX_ASM_FLAGS})
 string(JOIN " " _CXX_FLAGS_STR ${_CXX_FLAGS})

@@ -23,6 +23,15 @@ namespace lib::impl
         return true;
     }
 
+    bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired)
+    {
+        auto ptr = remove_user_cast<std::uint32_t>(uaddr);
+        return std::atomic_ref<std::uint32_t> { *ptr } .compare_exchange_strong(
+            expected, desired,
+            std::memory_order_acq_rel, std::memory_order_acquire
+        );
+    }
+
     std::ssize_t strnlen_user(const char __user *str, std::size_t len)
     {
         return std::strnlen(remove_user_cast<const char>(str), len);

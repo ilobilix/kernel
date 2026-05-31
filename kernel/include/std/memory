@@ -14,7 +14,7 @@
 #define __glibcxx_smart_ptr_for_overwrite __cplusplus
 #define __glibcxx_shared_ptr_arrays __cplusplus
 #define __glibcxx_atomic_shared_ptr __cplusplus
-#define __glibcxx_make_unique __cplusplu
+#define __glibcxx_make_unique __cplusplus
 
 #include_next <memory>
 

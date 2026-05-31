@@ -54,6 +54,19 @@ user_fill_safe:
     user_safe_end
 .global user_fill_safe
 
+user_cmpxchg_safe:
+    user_safe_start
+    mov eax, [rdx]
+    lock cmpxchg [rsi], ecx
+    mov [rdx], eax
+    mov qword ptr [rbx + 8], 0
+    xor eax, eax
+    jmp 2f
+1:
+    mov eax, 1
+    user_safe_end
+.global user_cmpxchg_safe
+
 .extern strnlen
 user_strnlen_safe:
     user_safe_start

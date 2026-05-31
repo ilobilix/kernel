@@ -11,6 +11,7 @@ namespace lib::impl
     bool copy_to_user(void __user *dest, const void *src, std::size_t len);
     bool copy_from_user(void *dest, const void __user *src, std::size_t len);
     bool fill_user(void __user *dest, int value, std::size_t len);
+    bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired);
     std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 } // namespace lib::impl
 
@@ -22,6 +23,7 @@ export namespace lib
     bool copy_to_user(void __user *dest, const void *src, std::size_t len);
     bool copy_from_user(void *dest, const void __user *src, std::size_t len);
     bool fill_user(void __user *dest, int value, std::size_t len);
+    bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired);
     std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 
     template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
