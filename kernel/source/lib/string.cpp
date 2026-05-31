@@ -13,7 +13,7 @@ namespace lib
             return std::nullopt;
 
         const auto length = strnlen_user(ustr, max_length);
-        if (length == 0 || static_cast<std::size_t>(length) == max_length)
+        if (length <= 0 || static_cast<std::size_t>(length) == max_length)
             return std::nullopt;
 
         std::string ret = "";

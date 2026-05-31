@@ -98,4 +98,17 @@ export namespace lib::hash
         auto val = murmur3_128(key, len, seed);
         return static_cast<std::uint64_t>(val) ^ static_cast<std::uint64_t>(val >> 64);
     }
+
+    std::uint64_t fnv1a(const void *key, std::uint64_t len, std::uint64_t seed = 0x811C9DC5ul)
+    {
+        std::uint64_t hash = seed;
+        const auto data = static_cast<const std::uint8_t *>(key);
+
+        for (std::size_t i = 0; i < len; i++)
+        {
+            hash ^= data[i];
+            hash *= 0x100000001B3ul;
+        }
+        return hash;
+    }
 } // export namespace lib::hash

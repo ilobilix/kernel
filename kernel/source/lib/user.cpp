@@ -43,6 +43,16 @@ namespace lib
         return impl::fill_user(dest, value, len);
     }
 
+    bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired)
+    {
+        const auto space = classify_address(
+            reinterpret_cast<std::uintptr_t>(uaddr), sizeof(std::uint32_t)
+        );
+        if (space != address_space::user)
+            return false;
+        return impl::cmpxchg_user(uaddr, expected, desired);
+    }
+
     std::ssize_t strnlen_user(const char __user *str, std::size_t len)
     {
         const auto space = classify_address(reinterpret_cast<std::uintptr_t>(str), len);

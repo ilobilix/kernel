@@ -113,35 +113,19 @@ namespace std
         return lib::hash::murmur3_64(key, len, seed);
     }
 
-    // std::size_t _Fnv_hash_bytes(const void *key, std::size_t len, std::size_t seed)
-    // {
-    //     return FNV1a(key, len, seed);
-    // }
+    std::size_t _Fnv_hash_bytes(const void *key, std::size_t len, std::size_t seed)
+    {
+        return lib::hash::fnv1a(key, len, seed);
+    }
 
 #if ILOBILIX_DEBUG
     const char *bad_weak_ptr::what() const noexcept { std::abort(); }
-    const char *exception::what() const noexcept { std::abort(); }
-
     bad_weak_ptr::~bad_weak_ptr() { }
+
+#  if __cplusplus < 202400L
+    const char *exception::what() const noexcept { std::abort(); }
     exception::~exception() { }
-#endif
-
-#if __cplusplus >= 202400L
-    bool is_debugger_present() noexcept
-    {
-        return false;
-    }
-
-    void breakpoint() noexcept
-    {
-        __builtin_debugtrap();
-    }
-
-    void breakpoint_if_debugging() noexcept
-    {
-        if (is_debugger_present()) [[unlikely]]
-            breakpoint();
-    }
+#  endif
 #endif
 } // namespace std
 
