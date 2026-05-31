@@ -818,10 +818,102 @@ namespace syscall::proc
         const timespec __user *timeout, std::uint32_t __user *uaddr2, std::uint32_t val3
     )
     {
-        // TODO
-        lib::unused(uaddr, futex_op, val, timeout, uaddr2, val3);
-        // return -ENOSYS;
-        return 0;
+        using namespace sched::futex;
+
+        if (uaddr == nullptr)
+            return -EFAULT;
+
+        const bool private_ = (futex_op & futex_private_flag) != 0;
+        const bool realtime = (futex_op & futex_clock_realtime) != 0;
+
+        switch (const int cmd = futex_op & futex_cmd_mask)
+        {
+            case futex_wait:
+            case futex_wait_bitset:
+            {
+                std::uint32_t bitset = bitset_match_any;
+                if (cmd == futex_wait_bitset)
+                {
+                    if (val3 == 0)
+                        return -EINVAL;
+                    bitset = val3;
+                }
+
+                std::optional<std::uint64_t> wait_ns;
+                if (timeout != nullptr)
+                {
+                    timespec kts;
+                    if (!lib::copy_from_user(&kts, timeout, sizeof(kts)))
+                        return -EFAULT;
+                    if (kts.tv_nsec < 0 || kts.tv_nsec >= 1'000'000'000l || kts.tv_sec < 0)
+                        return -EINVAL;
+
+                    if (cmd == futex_wait_bitset)
+                    {
+                        const auto deadline_ns = kts.to_ns();
+                        const auto now_ns = chrono::now(
+                            realtime ? chrono::realtime : chrono::monotonic
+                        ).to_ns();
+                        if (deadline_ns <= now_ns)
+                            return -ETIMEDOUT;
+                        wait_ns = deadline_ns - now_ns;
+                    }
+                    else
+                    {
+                        const auto ns = kts.to_ns();
+                        if (ns == 0)
+                            return -ETIMEDOUT;
+                        wait_ns = ns;
+                    }
+                }
+
+                const auto key = resolve(uaddr, private_);
+                if (!key)
+                    return -lib::map_error(key.error());
+
+                if (const auto ret = wait(uaddr, *key, val, bitset, wait_ns); !ret)
+                    return -lib::map_error(ret.error());
+                return 0;
+            }
+            case futex_wake:
+            case futex_wake_bitset:
+            {
+                std::uint32_t bitset = bitset_match_any;
+                if (cmd == futex_wake_bitset)
+                {
+                    if (val3 == 0)
+                        return -EINVAL;
+                    bitset = val3;
+                }
+
+                const auto key = resolve(uaddr, private_);
+                if (!key)
+                    return -lib::map_error(key.error());
+
+                return wake(*key, static_cast<std::int32_t>(val), bitset);
+            }
+            case futex_wake_op:
+            {
+                const auto nr_wake = static_cast<std::int32_t>(val);
+                const auto nr_wake2 = static_cast<std::int32_t>(
+                    reinterpret_cast<std::uintptr_t>(timeout)
+                );
+
+                const auto key1 = resolve(uaddr, private_);
+                if (!key1)
+                    return -lib::map_error(key1.error());
+                const auto key2 = resolve(uaddr2, private_);
+                if (!key2)
+                    return -lib::map_error(key2.error());
+
+                const auto ret = wake_op(*key1, *key2, uaddr2, nr_wake, nr_wake2, val3);
+                if (!ret)
+                    return -lib::map_error(ret.error());
+                return *ret;
+            }
+            default:
+                return -ENOSYS;
+        }
     }
 
     long get_robust_list(

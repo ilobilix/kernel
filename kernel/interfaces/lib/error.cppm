@@ -76,6 +76,8 @@ export namespace lib
         illegal_seek = ESPIPE,
         broken_pipe = EPIPE,
 
+        timed_out = ETIMEDOUT,
+
         address_family_unsupported = EAFNOSUPPORT,
         protocol_unsupported = EPROTONOSUPPORT,
         socket_unsupported = ESOCKTNOSUPPORT,
