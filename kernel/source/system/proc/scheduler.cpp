@@ -882,13 +882,18 @@ namespace sched
         if (!thread->saved_vmspace)
             thread->saved_vmspace = proc->vmspace;
 
+        futex::cleanup_robust_list(thread);
+
         if (thread->clear_child_tid)
         {
             const pid_t zero = 0;
             const auto clear_child_tid = reinterpret_cast<pid_t __user *>(thread->clear_child_tid);
             if (!lib::copy_to_user(clear_child_tid, &zero, sizeof(pid_t)))
                 lib::error("sched: failed to write to clear_child_tid");
-            // TODO: futex wake
+
+            const auto uaddr = reinterpret_cast<std::uint32_t __user *>(thread->clear_child_tid);
+            if (auto key = futex::resolve(uaddr, true))
+                futex::wake(*key, 1, futex::bitset_match_any);
         }
 
         auto self_ptr = take_thread(thread);

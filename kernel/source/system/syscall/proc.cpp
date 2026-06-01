@@ -911,6 +911,32 @@ namespace syscall::proc
                     return -lib::map_error(ret.error());
                 return *ret;
             }
+            case futex_requeue:
+            case futex_cmp_requeue:
+            {
+                const auto nr_wake = static_cast<std::int32_t>(val);
+                const auto nr_requeue = static_cast<std::int32_t>(
+                    reinterpret_cast<std::uintptr_t>(timeout)
+                );
+
+                const auto key1 = resolve(uaddr, private_);
+                if (!key1)
+                    return -lib::map_error(key1.error());
+                const auto key2 = resolve(uaddr2, private_);
+                if (!key2)
+                    return -lib::map_error(key2.error());
+
+                std::optional<std::uint32_t> cmpval;
+                if (cmd == futex_cmp_requeue)
+                    cmpval = val3;
+
+                const auto ret = requeue(
+                    *key1, *key2, uaddr, nr_wake, nr_requeue, cmpval
+                );
+                if (!ret)
+                    return -lib::map_error(ret.error());
+                return ret->first + ret->second;
+            }
             default:
                 return -ENOSYS;
         }
@@ -921,16 +947,45 @@ namespace syscall::proc
         std::size_t __user *sizep
     )
     {
-        // TODO
-        lib::unused(pid, head_ptr, sizep);
-        return -ENOSYS;
+        if (head_ptr == nullptr || sizep == nullptr)
+            return -EFAULT;
+
+        sched::thread_t *target;
+        std::shared_ptr<sched::thread_t> hold;
+        if (pid != 0)
+        {
+            if (pid < 0)
+                return -EINVAL;
+            hold = sched::get_thread(pid);
+            if (!hold)
+                return -ESRCH;
+
+            if (hold->proc != sched::current_process())
+                return -EPERM;
+            target = hold.get();
+        }
+        else target = sched::current_thread();
+
+        using namespace sched::futex;
+        const auto stored_head = reinterpret_cast<robust_list_head_t __user *>(target->robust_list);
+        if (!lib::copy_to_user(head_ptr, &stored_head, sizeof(head_ptr)))
+            return -EFAULT;
+
+        const auto stored_len = target->robust_list_len;
+        if (!lib::copy_to_user(sizep, &stored_len, sizeof(stored_len)))
+            return -EFAULT;
+        return 0;
     }
 
     long set_robust_list(struct robust_list_head __user *head, std::size_t size)
     {
-        // TODO
-        lib::unused(head, size);
-        return -ENOSYS;
+        if (size != sizeof(sched::futex::robust_list_head_t))
+            return -EINVAL;
+
+        auto thread = sched::current_thread();
+        thread->robust_list = reinterpret_cast<std::uintptr_t>(head);
+        thread->robust_list_len = size;
+        return 0;
     }
 
     int prlimit(

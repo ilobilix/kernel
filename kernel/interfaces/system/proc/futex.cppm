@@ -79,7 +79,28 @@ export namespace sched::futex
         sleep_entry_t timeout;
 
         vmm::object::ptr obj_ref;
+        std::atomic<lib::spinlock_irq *> lock_ptr;
     };
+
+    struct robust_list_t
+    {
+        robust_list_t __user *next;
+    };
+
+    struct robust_list_head_t
+    {
+        robust_list_t list;
+        long futex_offset;
+        robust_list_t __user *list_op_pending;
+    };
+
+    enum robust_bits : std::uint32_t
+    {
+        futex_tid_mask = 0x3FFFFFFFu,
+        futex_owner_died = 0x40000000u,
+        futex_waiters = 0x80000000u,
+    };
+    constexpr std::size_t robust_list_walk_max = 2048;
 
     lib::expect<key_t> resolve(std::uint32_t __user *uaddr, bool private_);
 
@@ -96,4 +117,12 @@ export namespace sched::futex
         std::int32_t nr_wake, std::int32_t nr_wake2,
         std::uint32_t op_encoding
     );
+
+    lib::expect<std::pair<std::uint32_t, std::uint32_t>> requeue(
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp,
+        std::int32_t nr_wake, std::int32_t nr_requeue,
+        std::optional<std::uint32_t> cmpval
+    );
+
+    void cleanup_robust_list(thread_t *thread);
 } // export namespace sched::futex

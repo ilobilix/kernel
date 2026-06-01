@@ -102,6 +102,9 @@ export namespace sched
         std::uintptr_t clear_child_tid = 0;
         std::uintptr_t set_child_tid = 0;
 
+        std::uintptr_t robust_list = 0;
+        std::size_t robust_list_len = 0;
+
         sigset_t sigmask { };
         std::optional<sigset_t> saved_sigmask;
         stack_t altstack { };
