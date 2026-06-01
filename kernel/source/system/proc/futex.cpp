@@ -110,6 +110,40 @@ namespace sched::futex
                     return std::nullopt;
             }
         }
+
+        bool handle_robust_entry(robust_list_t __user *entry, long futex_offset, pid_t tid)
+        {
+            const auto entry_addr = reinterpret_cast<std::uintptr_t>(entry);
+            auto uaddr = reinterpret_cast<std::uint32_t __user *>(entry_addr + futex_offset);
+            if (!valid_uaddr(uaddr))
+                return true;
+
+            std::uint32_t cur;
+            if (!lib::copy_from_user(&cur, uaddr, sizeof(cur)))
+                return false;
+
+            while (true)
+            {
+                if ((cur & futex_tid_mask) != static_cast<std::uint32_t>(tid))
+                    return true;
+
+                const auto next = (cur & futex_waiters) | futex_owner_died;
+                std::uint32_t expected = cur;
+                if (!lib::cmpxchg_user(uaddr, expected, next))
+                    return false;
+
+                if (expected == cur)
+                {
+                    if (cur & futex_waiters)
+                    {
+                        if (auto key = resolve(uaddr, false))
+                            wake(*key, 1, bitset_match_any);
+                    }
+                    return true;
+                }
+                cur = expected;
+            }
+        }
     } // namespace
 
     lib::expect<key_t> resolve(std::uint32_t __user *uaddr, bool private_)
@@ -118,9 +152,7 @@ namespace sched::futex
             return std::unexpected { lib::err::invalid_address };
 
         auto proc = current_process();
-        const auto vaddr = reinterpret_cast<std::uintptr_t>(
-            lib::remove_user_cast<std::uint32_t>(uaddr)
-        );
+        const auto vaddr = reinterpret_cast<std::uintptr_t>(uaddr);
 
         if (private_)
         {
@@ -188,6 +220,7 @@ namespace sched::futex
             .obj_ref = (key.type == key_t::type::shared)
                 ? vmm::object::ptr { key.shr.obj }
                 : vmm::object::ptr { },
+            .lock_ptr = nullptr
         };
         waiter.timeout.thread = thread;
 
@@ -208,6 +241,7 @@ namespace sched::futex
         }
 
         bucket.waiters.push_back(&waiter);
+        waiter.lock_ptr.store(&bucket.lock, std::memory_order_release);
         thread->state.store(thread_state::sleeping, std::memory_order_seq_cst);
 
         if (thread->has_flag(thread_flags::kill_pending) ||
@@ -221,6 +255,7 @@ namespace sched::futex
                 std::memory_order_acquire))
             {
                 bucket.waiters.remove(&waiter);
+                waiter.lock_ptr.store(nullptr, std::memory_order_release);
                 bucket.lock.unlock();
                 thread->test_and_clear_flag(thread_flags::interrupted);
                 return std::unexpected { lib::err::interrupted };
@@ -239,10 +274,25 @@ namespace sched::futex
         if (wait_ns.has_value() && !waiter.timeout.expired)
             cancel_thread_timeout(&waiter.timeout);
 
+        while (true)
         {
-            const std::unique_lock _ { bucket.lock };
-            if (bucket.waiters.find(&waiter) != bucket.waiters.end())
-                bucket.waiters.remove(&waiter);
+            auto locked = waiter.lock_ptr.load(std::memory_order_acquire);
+            if (locked == nullptr)
+                break;
+
+            locked->lock();
+            if (waiter.lock_ptr.load(std::memory_order_acquire) != locked)
+            {
+                locked->unlock();
+                continue;
+            }
+
+            auto &current = bucket_for(waiter.key);
+            if (current.waiters.find(&waiter) != current.waiters.end())
+                current.waiters.remove(&waiter);
+            waiter.lock_ptr.store(nullptr, std::memory_order_release);
+            locked->unlock();
+            break;
         }
 
         if (interrupted || killed)
@@ -271,6 +321,7 @@ namespace sched::futex
                     continue;
 
                 bucket.waiters.remove(waiter);
+                waiter->lock_ptr.store(nullptr, std::memory_order_release);
                 targets.push_back(waiter);
                 collected++;
             }
@@ -307,7 +358,7 @@ namespace sched::futex
         {
             if (oparg < 0 || oparg > 31)
                 return std::unexpected { lib::err::invalid_argument };
-            oparg = 1 << oparg;
+            oparg = 1u << oparg;
         }
 
         std::uint32_t old;
@@ -337,5 +388,124 @@ namespace sched::futex
         if (*cond)
             woken += static_cast<std::int32_t>(wake(key2, nr_wake2, bitset_match_any));
         return woken;
+    }
+
+    lib::expect<std::pair<std::uint32_t, std::uint32_t>> requeue(
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp,
+        std::int32_t nr_wake, std::int32_t nr_requeue,
+        std::optional<std::uint32_t> cmpval
+    )
+    {
+        if (nr_wake < 0 || nr_requeue < 0)
+            return std::unexpected { lib::err::invalid_argument };
+
+        auto &b1 = bucket_for(key1);
+        auto &b2 = bucket_for(key2);
+
+        auto first = (&b1 <= &b2) ? &b1 : &b2;
+        auto second = (&b1 < &b2) ? &b2 : (&b1 > &b2 ? &b1 : nullptr);
+
+        first->lock.lock();
+        if (second)
+            second->lock.lock();
+
+        const auto unlock_buckets = [&] {
+            if (second)
+                second->lock.unlock();
+            first->lock.unlock();
+        };
+
+        if (cmpval.has_value())
+        {
+            std::uint32_t cur;
+            if (!lib::copy_from_user(&cur, uaddr_cmp, sizeof(cur)))
+            {
+                unlock_buckets();
+                return std::unexpected { lib::err::invalid_address };
+            }
+
+            if (cur != *cmpval)
+            {
+                unlock_buckets();
+                return std::unexpected { lib::err::try_again };
+            }
+        }
+
+        lib::intrusive_list<waiter_t, &waiter_t::hook> to_wake;
+        std::int32_t collected_wake = 0;
+        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && collected_wake < nr_wake; )
+        {
+            auto waiter = (it++).value();
+            if (waiter->key != key1)
+                continue;
+
+            b1.waiters.remove(waiter);
+            waiter->lock_ptr.store(nullptr, std::memory_order_release);
+            to_wake.push_back(waiter);
+            collected_wake++;
+        }
+
+        std::int32_t requeued = 0;
+        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && requeued < nr_requeue; )
+        {
+            auto waiter = (it++).value();
+            if (waiter->key != key1)
+                continue;
+
+            b1.waiters.remove(waiter);
+            waiter->key = key2;
+            waiter->obj_ref = (key2.type == key_t::type::shared)
+                ? vmm::object::ptr { key2.shr.obj }
+                : vmm::object::ptr { };
+            waiter->lock_ptr.store(&b2.lock, std::memory_order_release);
+            b2.waiters.push_back(waiter);
+            requeued++;
+        }
+
+        unlock_buckets();
+
+        std::uint32_t woken = 0;
+        while (!to_wake.empty())
+        {
+            auto waiter = to_wake.pop_front();
+            if (wake_up(waiter->thread, true))
+                woken++;
+        }
+
+        return std::make_pair(woken, requeued);
+    }
+
+    void cleanup_robust_list(thread_t *thread)
+    {
+        if (thread->robust_list == 0)
+            return;
+
+        robust_list_head_t head;
+        const auto uhead = reinterpret_cast<robust_list_head_t __user *>(thread->robust_list);
+        if (!lib::copy_from_user(&head, uhead, sizeof(head)))
+            return;
+
+        if (head.list_op_pending != nullptr)
+            handle_robust_entry(head.list_op_pending, head.futex_offset, thread->tid);
+
+        const auto sentinel = reinterpret_cast<robust_list_t __user *>(uhead);
+        auto current = head.list.next;
+        std::size_t visited = 0;
+
+        while (current != sentinel && visited < robust_list_walk_max)
+        {
+            if (current != head.list_op_pending)
+            {
+                if (!handle_robust_entry(current, head.futex_offset, thread->tid))
+                    break;
+            }
+
+            robust_list_t entry;
+            if (!lib::copy_from_user(&entry, current, sizeof(entry)))
+                break;
+
+            current = entry.next;
+            visited++;
+        }
     }
 } // namespace sched::futex
