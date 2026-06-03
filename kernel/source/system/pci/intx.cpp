@@ -24,9 +24,6 @@ namespace pci::intx
         else
             trig = low ? irq::trigger::edge_falling : irq::trigger::edge_rising;
 
-        return irq::request_gsi(
-            route->gsi, trig, cpu_idx,
-            std::move(fn), name
-        );
+        return irq::request_gsi(route->gsi, trig, cpu_idx, std::move(fn), name);
     }
 } // namespace pci::intx

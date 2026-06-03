@@ -285,7 +285,7 @@ namespace x86_64::output::uart8250
                     if (i < 2 || !usable[i - 2])
                     {
                         const auto gsi = 4 - (i & 1);
-                        lib::panic_if(!apic::io::request_gsi(
+                        lib::panic_if(!irq::request_gsi(
                             gsi, irq::trigger::edge_rising, cpu::bsp_idx(),
                             irq_handler, "uart8250"
                         ), "uart8250: failed to request gsi {}", gsi);
