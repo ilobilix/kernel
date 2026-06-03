@@ -458,35 +458,37 @@ extern "C"
         return UACPI_STATUS_OK;
     }
 
-    uacpi_status uacpi_kernel_install_interrupt_handler(uacpi_u32 irq, uacpi_interrupt_handler func, uacpi_handle ctx, uacpi_handle *out_irq_handle)
+    uacpi_status uacpi_kernel_install_interrupt_handler(
+        uacpi_u32 gsi, uacpi_interrupt_handler func,
+        uacpi_handle ctx, uacpi_handle *out_irq_handle
+    )
     {
 #if defined(__x86_64__)
-        const auto vector = irq + 0x20;
-#else
-        const auto vector = irq;
-#endif
+        auto handle = x86_64::apic::io::request_gsi(
+            gsi, irq::trigger::level_low, cpu::bsp_idx(),
+            [func, ctx](cpu::registers *) { func(ctx); },
+            "acpi-sci"
+        );
+        if (!handle)
+            return UACPI_STATUS_INTERNAL_ERROR;
 
-        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
-        if (handler.get().used()) [[unlikely]]
-            lib::panic("requested uACPI interrupt vector {} is already in use", vector);
+        *out_irq_handle = reinterpret_cast<uacpi_handle>(
+            static_cast<std::uintptr_t>(*handle)
+        );
 
-        handler.get().set([](cpu::registers *, auto func, auto ctx) { func(ctx); }, func, ctx);
-        interrupts::unmask(vector);
-
-        *reinterpret_cast<std::size_t *>(out_irq_handle) = vector;
-
-        lib::debug("uacpi: installed interrupt handler for irq {} (vector {})", irq, vector);
+        lib::debug("uacpi: installed interrupt handler for gsi {}", gsi);
         return UACPI_STATUS_OK;
+#else
+        lib::unused(gsi, func, ctx, out_irq_handle);
+        return UACPI_STATUS_UNIMPLEMENTED;
+#endif
     }
 
-    uacpi_status uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler, uacpi_handle irq_handle)
+    uacpi_status uacpi_kernel_uninstall_interrupt_handler(
+        uacpi_interrupt_handler, uacpi_handle irq_handle
+    )
     {
-        const auto vector = reinterpret_cast<std::size_t>(irq_handle);
-        interrupts::mask(vector);
-
-        auto handler = interrupts::get(cpu::bsp_idx(), vector).value();
-        handler.get().reset();
-
+        irq::free(static_cast<irq::handle_t>(reinterpret_cast<std::uintptr_t>(irq_handle)));
         return UACPI_STATUS_OK;
     }
 

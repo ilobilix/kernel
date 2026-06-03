@@ -54,7 +54,7 @@ namespace fs::devpts
 
     namespace
     {
-        fs *main = nullptr;
+        std::shared_ptr<fs> main;
     } // namespace
 
     lib::expect<vfs::path> attach_slave(std::uint32_t minor, mode_t mode, dev_t rdev)
@@ -79,12 +79,12 @@ namespace fs::devpts
         }, fmt::format("{}", minor));
     }
 
-    std::unique_ptr<vfs::filesystem> init()
+    std::shared_ptr<vfs::filesystem> init()
     {
         if (main != nullptr)
             lib::panic("devpts: tried to initialise twice");
 
-        return std::unique_ptr<vfs::filesystem> { main = new fs };
+        return main = std::make_shared<fs>();
     }
 
     lib::initgraph::stage *registered_stage()

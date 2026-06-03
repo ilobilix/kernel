@@ -1,5 +1,9 @@
 // Copyright (C) 2024-2026  ilobilo
 
+module;
+
+#include <uacpi/acpi.h>
+
 module x86_64.system.idt;
 
 import x86_64.system.syscall;
@@ -9,6 +13,7 @@ import x86_64.system.pic;
 import system.memory.virt;
 import system.random;
 import system.sched;
+import system.acpi;
 import system.cpu;
 import frigg;
 import arch;
@@ -40,14 +45,6 @@ namespace x86_64::idt
             "reserved", "reserved", "reserved",
             "reserved", "reserved", "reserved"
         };
-
-        void eoi(std::uint8_t vector)
-        {
-            if (apic::io::is_initialised())
-                apic::eoi();
-            else
-                pic::eoi(vector);
-        }
 
         bool deliver_fault_signal(cpu::registers *regs, std::uintptr_t cr2)
         {
@@ -101,7 +98,7 @@ namespace x86_64::idt
                     return false;
             }
 
-            sched::siginfo_t info {
+            const sched::siginfo_t info {
                 .signo = signo,
                 .code = sched::si_kernel,
                 .err = static_cast<int>(regs->error_code),
@@ -114,18 +111,51 @@ namespace x86_64::idt
             sched::send_signal(thread, info);
             return true;
         }
+
+        lib::expect<std::size_t> reserve_one(std::size_t cpu_idx, std::size_t hint)
+        {
+            if (hint >= num_ints)
+                return std::unexpected { lib::err::invalid_argument };
+
+            if (hint < irq(0))
+                hint += irq(0);
+
+            if ((!acpi::madt::hdr || (acpi::madt::hdr->flags & ACPI_PIC_ENABLED)) &&
+                hint >= irq(0) && hint <= irq(15))
+            {
+                if (auto ret = handler_at(cpu_idx, hint); ret && !ret->used())
+                {
+                    ret->reserve();
+                    return hint;
+                }
+            }
+
+            for (std::size_t i = hint; i < num_ints; i++)
+            {
+                auto handler = handler_at(cpu_idx, i);
+                if (!handler)
+                    continue;
+
+                if (!handler->used() && !handler->is_reserved())
+                {
+                    handler->reserve();
+                    return i;
+                }
+            }
+            return std::unexpected { lib::err::no_space_left };
+        }
     } // namespace
 
     using irq_vec = frg::small_vector<
-        interrupts::handler, x86_64::idt::num_preints,
-        frg::allocator<interrupts::handler>
+        slot, num_preints,
+        frg::allocator<slot>
     >;
     cpu_local(irq_vec, irq_handlers);
 
     std::array<entry, num_ints> &table() { return idt; }
 
     [[nodiscard]]
-    auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>
+    std::optional<slot &> handler_at(std::size_t cpuidx, std::uint8_t num)
     {
         if (num < irq(0))
             return std::nullopt;
@@ -137,6 +167,92 @@ namespace x86_64::idt
             handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
 
         return handlers[num];
+    }
+
+    lib::expect<void> vector_domain::alloc(
+        std::span<irq::irq_data> data,
+        const irq::fwspec &spec
+    )
+    {
+        if (data.size() != 1)
+            return std::unexpected { lib::err::not_supported };
+
+        const auto cpu_idx = (spec.param_count > vector_domain::param_cpu)
+            ? spec.params[vector_domain::param_cpu]
+            : cpu::bsp_idx();
+
+        const auto hint = (spec.param_count > vector_domain::param_hint)
+            ? spec.params[vector_domain::param_hint]
+            : 0;
+
+        auto vec = reserve_one(cpu_idx, hint);
+        if (!vec)
+            return std::unexpected { vec.error() };
+
+        data[0].hwirq = *vec;
+        data[0].aux = cpu_idx;
+        data[0].parent = nullptr;
+        return { };
+    }
+
+    void vector_domain::free(std::span<irq::irq_data> data)
+    {
+        for (const auto &entry : data)
+        {
+            const auto vec = entry.hwirq;
+            const auto cpu_idx = entry.aux;
+
+            if (auto handler = idt::handler_at(cpu_idx, vec))
+                handler->reset_all();
+        }
+    }
+
+    void vector_domain::attach(irq::irq_data &data, irq::handler_fn *fn)
+    {
+        auto handler = idt::handler_at(data.aux, data.hwirq);
+        if (!handler)
+            return;
+
+        handler->set([fn](cpu::registers *regs) { if (*fn) (*fn)(regs); });
+    }
+
+    void vector_domain::detach(irq::irq_data &data)
+    {
+        if (auto handler = idt::handler_at(data.aux, data.hwirq))
+            handler->reset();
+    }
+
+    lib::expect<void> vector_domain::set_affinity(
+        irq::irq_data &data, const lib::bitmap &cpus, bool force
+    )
+    {
+        // TODO
+        lib::unused(data, cpus, force);
+        return std::unexpected { lib::err::not_supported };
+    }
+
+    lib::expect<irq::msi_msg> vector_domain::compose_msi(irq::irq_data &data)
+    {
+        const auto vec = static_cast<std::uint8_t>(data.hwirq);
+        const auto cpu_idx = data.aux;
+        const auto core = cpu::local::nth(cpu_idx);
+        if (!core)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto apic_id = static_cast<std::uint32_t>(core->arch_id);
+        if (apic_id > 0xFE)
+            return std::unexpected { lib::err::not_supported };
+
+        return irq::msi_msg {
+            .address = 0xFEE00000ull | (static_cast<std::uint64_t>(apic_id) << 12),
+            .data = static_cast<std::uint32_t>(vec)
+        };
+    }
+
+    vector_domain *get_vector_domain()
+    {
+        static vector_domain inst { };
+        return &inst;
     }
 
     extern "C" void *isr_table[];
@@ -155,7 +271,7 @@ namespace x86_64::idt
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
-            eoi(vector);
+            apic::eoi();
             random::add_irq_jitter(vector, regs->rip);
 
             const auto idx = vector - irq(0);

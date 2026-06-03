@@ -11,12 +11,14 @@ import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
-import lib;
+import system.cpu.local;
 
 namespace x86_64::apic::io
 {
     namespace
     {
+        bool initialised = false;
+
         class ioapic
         {
             private:
@@ -117,80 +119,185 @@ namespace x86_64::apic::io
             std::unreachable();
         }
 
-        auto irq2iso(std::uint8_t irq) -> std::optional<std::uint32_t>
+        void set_gsi(
+            std::size_t gsi, std::uint8_t vector,
+            std::size_t dest,flag flags, delivery deliv
+        )
         {
-            for (const auto &entry : acpi::madt::isos)
-            {
-                if (static_cast<std::uint8_t>(entry.source) == irq)
-                    return static_cast<std::uint32_t>(entry.gsi);
-            }
-            return std::nullopt;
+            lib::debug("ioapic: redirecting gsi {} to vector 0x{:X}", gsi, vector);
+            const auto &entry = gsi2ioapic(gsi);
+            entry.set_idx(gsi - entry.gsi_range().first, vector, dest, flags, deliv);
         }
 
-        bool initialised = false;
+        void mask_gsi(std::uint32_t gsi)
+        {
+            // lib::debug("ioapic: masking gsi {}", gsi);
+            const auto &entry = gsi2ioapic(gsi);
+            entry.mask(gsi - entry.gsi_range().first);
+        }
+
+        void unmask_gsi(std::uint32_t gsi)
+        {
+            // lib::debug("ioapic: unmasking gsi {}", gsi);
+            const auto &entry = gsi2ioapic(gsi);
+            entry.unmask(gsi - entry.gsi_range().first);
+        }
+
+        flag flags_for(irq::trigger trig)
+        {
+            auto ret = flag::masked;
+            switch (trig)
+            {
+                case irq::trigger::edge_falling:
+                    ret = ret | flag::active_low;
+                    break;
+                case irq::trigger::level_high:
+                    ret = ret | flag::level_sensative;
+                    break;
+                case irq::trigger::level_low:
+                    ret = ret | flag::level_sensative | flag::active_low;
+                    break;
+                case irq::trigger::edge_rising:
+                case irq::trigger::edge_both:
+                case irq::trigger::none:
+                    break;
+            }
+            return ret;
+        }
     } // namespace
 
     bool is_initialised() { return initialised; }
 
-    void set_gsi(std::size_t gsi, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv)
+    ioapic_domain::ioapic_domain()
+        : domain { "x86_64-ioapic", idt::get_vector_domain() } { }
+
+    lib::expect<void> ioapic_domain::alloc(
+        std::span<irq::irq_data> data, const irq::fwspec &spec
+    )
     {
-        lib::debug("ioapic: redirecting gsi {} to vector 0x{:X}", gsi, vector);
-        const auto &entry = gsi2ioapic(gsi);
-        entry.set_idx(gsi - entry.gsi_range().first, vector, dest, flags, deliv);
+        if (data.size() != 1)
+            return std::unexpected { lib::err::not_supported };
+        if (!is_initialised())
+            return std::unexpected { lib::err::no_such_device };
+        if (spec.param_count <= param_gsi)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto gsi = spec.params[param_gsi];
+        const auto trig = (spec.param_count > param_trigger)
+            ? static_cast<irq::trigger>(spec.params[param_trigger])
+            : irq::trigger::edge_rising;
+
+        const auto cpu_idx = (spec.param_count > param_cpu)
+            ? spec.params[param_cpu]
+            : static_cast<std::uint32_t>(cpu::bsp_idx());
+
+        auto parent_data = std::make_unique<irq::irq_data>();
+        parent_data->virq = data[0].virq;
+        parent_data->dom = parent;
+
+        irq::fwspec pspec { .param_count = idt::vector_domain::param_count };
+        pspec.params[idt::vector_domain::param_cpu] = cpu_idx;
+        pspec.params[idt::vector_domain::param_hint] = gsi + idt::irq(0);
+
+        auto pd_ptr = parent_data.get();
+        if (auto ret = parent->alloc({ pd_ptr, 1 }, pspec); !ret)
+            return std::unexpected { ret.error() };
+
+        const auto core = cpu::local::nth(parent_data->aux);
+        if (!core)
+        {
+            parent->free({ pd_ptr, 1 });
+            return std::unexpected { lib::err::invalid_argument };
+        }
+
+        set_gsi(
+            gsi, parent_data->hwirq, core->arch_id,
+            flags_for(trig), delivery::fixed
+        );
+
+        data[0].hwirq = gsi;
+        data[0].trig = trig;
+        data[0].parent = parent_data.release();
+        return { };
     }
 
-    void mask_gsi(std::uint32_t gsi)
+    void ioapic_domain::free(std::span<irq::irq_data> data)
     {
-        // lib::debug("ioapic: masking gsi {}", gsi);
-        const auto &entry = gsi2ioapic(gsi);
-        entry.mask(gsi - entry.gsi_range().first);
+        for (auto &entry : data)
+        {
+            mask_gsi(entry.hwirq);
+
+            std::unique_ptr<irq::irq_data> pd { entry.parent };
+            entry.parent = nullptr;
+
+            if (pd)
+                parent->free({ pd.get(), 1 });
+        }
     }
 
-    void unmask_gsi(std::uint32_t gsi)
+    void ioapic_domain::attach(irq::irq_data &data, irq::handler_fn *fn)
     {
-        // lib::debug("ioapic: unmasking gsi {}", gsi);
-        const auto &entry = gsi2ioapic(gsi);
-        entry.unmask(gsi - entry.gsi_range().first);
+        if (data.parent)
+            parent->attach(*data.parent, fn);
     }
 
-    void mask(std::uint8_t vector)
+    void ioapic_domain::detach(irq::irq_data &data)
     {
-        lib::bug_on(vector < 0x20);
-
-        lib::debug("ioapic: masking vector 0x{:X}", vector);
-        const auto gsi = irq2iso(vector - 0x20);
-        if (gsi.has_value())
-            mask_gsi(gsi.value());
-        else
-            mask_gsi(vector - 0x20);
+        if (data.parent)
+            parent->detach(*data.parent);
     }
 
-    void unmask(std::uint8_t vector)
+    void ioapic_domain::mask(irq::irq_data &data)
     {
-        lib::bug_on(vector < 0x20);
+        mask_gsi(data.hwirq);
+    }
 
-        lib::debug("ioapic: unmasking vector 0x{:X}", vector);
-        const auto gsi = irq2iso(vector - 0x20);
-        if (gsi.has_value())
-            unmask_gsi(gsi.value());
-        else
-            unmask_gsi(vector - 0x20);
+    void ioapic_domain::unmask(irq::irq_data &data)
+    {
+        unmask_gsi(data.hwirq);
+    }
+
+    ioapic_domain *get_ioapic_domain()
+    {
+        static ioapic_domain inst { };
+        return &inst;
+    }
+
+    lib::expect<irq::handle_t> request_gsi(
+        std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
+        irq::handler_fn fn, std::string_view name
+    )
+    {
+        const irq::fwspec spec {
+            .param_count = ioapic_domain::param_count,
+            .params = {
+                [ioapic_domain::param_gsi] = gsi,
+                [ioapic_domain::param_trigger] = static_cast<std::uint32_t>(trig),
+                [ioapic_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
+            }
+        };
+        return irq::alloc_and_request(*get_ioapic_domain(), spec, std::move(fn), name);
     }
 
     void init()
     {
         lib::info("ioapic: setting up");
 
-        if (acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty())
-        {
-            lib::error("ioapic: no ioapics found, falling back to legacy pic");
-            return;
-        }
+        lib::panic_if(
+            acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty(),
+            "ioapic: no ioapics found"
+        );
 
-        pic::disable();
+        // masks it
+        pic::init();
 
         for (const auto &entry : acpi::madt::ioapics)
-            ioapics.emplace_back(static_cast<std::uintptr_t>(entry.address), static_cast<std::uint32_t>(entry.gsi_base));
+        {
+            ioapics.emplace_back(
+                static_cast<std::uintptr_t>(entry.address),
+                static_cast<std::uint32_t>(entry.gsi_base)
+            );
+        }
 
         if (acpi::madt::hdr->flags & ACPI_PIC_ENABLED)
         {
@@ -199,6 +306,7 @@ namespace x86_64::apic::io
                 if (i == 2)
                     continue;
 
+                bool overridden = false;
                 for (const auto &entry : acpi::madt::isos)
                 {
                     auto src = static_cast<std::uint8_t>(entry.source);
@@ -208,20 +316,18 @@ namespace x86_64::apic::io
                             static_cast<std::uint32_t>(entry.gsi), src + 0x20, cpu::bsp_aid(),
                             static_cast<flag>(entry.flags) | flag::masked, delivery::fixed
                         );
-                        if (auto handler = idt::handler_at(cpu::bsp_idx(), src + 0x20))
-                            handler.value().get().reserve();
-                        goto end;
+                        overridden = true;
+                        break;
                     }
                 }
 
-                set_gsi(
-                    i, i + 0x20, cpu::bsp_aid(),
-                    flag::masked, delivery::fixed
-                );
-
-                if (auto handler = idt::handler_at(cpu::bsp_idx(), i + 0x20))
-                    handler.value().get().reserve();
-                end:
+                if (!overridden)
+                {
+                    set_gsi(
+                        i, i + 0x20, cpu::bsp_aid(),
+                        flag::masked, delivery::fixed
+                    );
+                }
             }
         }
 

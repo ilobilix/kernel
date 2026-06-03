@@ -722,9 +722,8 @@ export namespace vfs
     path get_root(bool absolute);
     std::shared_ptr<mount> get_mount(std::size_t id);
 
-    bool register_fs(std::unique_ptr<filesystem> fs);
-    auto find_fs(std::string_view name)
-        -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>;
+    bool register_fs(std::shared_ptr<filesystem> fs);
+    auto find_fs(std::string_view name) -> lib::expect<std::shared_ptr<filesystem>>;
 
     std::string pathname_from(path path);
 

@@ -149,10 +149,8 @@ namespace acpi
             ret = uacpi_namespace_load(); check();
 
 #if defined(__x86_64__)
-            const auto intmodel = x86_64::apic::io::is_initialised()
-                ? UACPI_INTERRUPT_MODEL_IOAPIC
-                : UACPI_INTERRUPT_MODEL_PIC;
-            ret = uacpi_set_interrupt_model(intmodel); check();
+            lib::bug_on(!x86_64::apic::io::is_initialised());
+            ret = uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC); check();
 #endif
 
             // TODO: ec

@@ -82,7 +82,11 @@ namespace fs::stubs
         lib::initgraph::entail { registered_stage() },
         [] {
             for (const auto &[name, magic] : stubs)
-                lib::bug_on(!vfs::register_fs(std::make_unique<stub_fs>(std::string { name }, magic)));
+            {
+                lib::bug_on(!vfs::register_fs(
+                    std::make_shared<stub_fs>(std::string { name }, magic))
+                );
+            }
         }
     };
 } // namespace fs::stubs

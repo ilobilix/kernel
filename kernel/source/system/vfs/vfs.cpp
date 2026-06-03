@@ -26,7 +26,7 @@ namespace vfs
         lib::locker<
             lib::map::flat_hash<
                 std::string_view,
-                std::unique_ptr<filesystem>
+                std::shared_ptr<filesystem>
             >, sched::mutex
         > filesystems;
 
@@ -380,7 +380,7 @@ namespace vfs
         return it->second;
     }
 
-    bool register_fs(std::unique_ptr<filesystem> fs)
+    bool register_fs(std::shared_ptr<filesystem> fs)
     {
         auto locked = filesystems.lock();
         if (locked->contains(fs->name))
@@ -391,8 +391,7 @@ namespace vfs
         return true;
     }
 
-    auto find_fs(std::string_view name)
-        -> lib::expect<std::reference_wrapper<std::unique_ptr<filesystem>>>
+    lib::expect<std::shared_ptr<filesystem>> find_fs(std::string_view name)
     {
         auto locked = filesystems.lock();
         if (auto it = locked->find(name); it != locked->end())
@@ -688,7 +687,7 @@ namespace vfs
             return std::unexpected { fs.error() };
 
         std::optional<path> source { };
-        if (fs->get()->requires_dev)
+        if ((*fs)->requires_dev)
         {
             if (source_path.empty())
                 return std::unexpected { lib::err::invalid_path };
@@ -710,7 +709,7 @@ namespace vfs
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
 
-        auto mnt = fs->get()->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { }, data);
+        auto mnt = (*fs)->mount(source ? source->dentry : std::shared_ptr<vfs::dentry> { }, data);
         if (!mnt)
             return std::unexpected { mnt.error() };
 
@@ -724,7 +723,12 @@ namespace vfs
         (*mounts.lock())[mnt.value()->id] = mnt.value();
 
         if (!(flags & ms_silent))
-            lib::info("vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags);
+        {
+            lib::info(
+                "vfs: mount('{}', '{}', '{}', 0x{:X})",
+                source_path, target_path, fstype, flags
+            );
+        }
 
         return { };
     }

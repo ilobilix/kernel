@@ -52,7 +52,7 @@ namespace fs::devtmpfs
 
     namespace
     {
-        fs *main = nullptr;
+        std::shared_ptr<fs> main;
     } // namespace
 
     lib::expect<void> create(lib::path path, mode_t mode, dev_t rdev)
@@ -118,7 +118,7 @@ namespace fs::devtmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { main = new fs }));
+            lib::bug_on(!vfs::register_fs(main = std::make_shared<fs>()));
         }
     };
 

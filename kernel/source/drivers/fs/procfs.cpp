@@ -797,7 +797,7 @@ namespace fs::procfs
                 }), node_type::file, 0444
             ));
 
-            lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { new fs { } }));
+            lib::bug_on(!vfs::register_fs(std::make_shared<fs>()));
         }
     };
 

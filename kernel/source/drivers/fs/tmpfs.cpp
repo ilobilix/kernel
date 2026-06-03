@@ -439,7 +439,7 @@ namespace fs::tmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(std::unique_ptr<vfs::filesystem> { new fs { } }));
+            lib::bug_on(!vfs::register_fs(std::make_shared<fs>()));
         }
     };
 } // namespace fs::tmpfs
