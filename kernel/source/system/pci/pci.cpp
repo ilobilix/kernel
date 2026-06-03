@@ -262,6 +262,34 @@ namespace pci
         }
     }
 
+    lib::expect<irq::handle_t> device::request_irq(
+        irq::handler_fn fn, std::size_t cpu_idx, std::string_view name
+    )
+    {
+        if (auto handle = msix::request(*this, cpu_idx, fn, name))
+            return handle;
+        if (auto handle = msi::request(*this, cpu_idx, std::move(fn), name))
+            return handle;
+        return intx::request(*this, cpu_idx, std::move(fn), name);
+    }
+
+    lib::expect<std::vector<irq::handle_t>> device::alloc_irqs(
+        std::size_t count, std::size_t cpu_idx
+    )
+    {
+        if (auto handles = msix::alloc(*this, count, cpu_idx))
+            return handles;
+        if (auto handles = msi::alloc(*this, count, cpu_idx))
+            return handles;
+        return std::unexpected { lib::err::not_supported };
+    }
+
+    void device::release_irqs()
+    {
+        pci::msi::release(*this);
+        pci::msix::release(*this);
+    }
+
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus)
     {
         lib::bug_on(!static_cast<bool>(io));

@@ -384,7 +384,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
-        auto *mutex = reinterpret_cast<sched::mutex *>(handle);
+        auto mutex = reinterpret_cast<sched::mutex *>(handle);
         bool locked = false;
 
         if (timeout == 0xFFFF)
@@ -402,7 +402,7 @@ extern "C"
 
     void uacpi_kernel_release_mutex(uacpi_handle handle)
     {
-        auto *mutex = reinterpret_cast<sched::mutex *>(handle);
+        auto mutex = reinterpret_cast<sched::mutex *>(handle);
         mutex->unlock();
     }
 
@@ -463,8 +463,7 @@ extern "C"
         uacpi_handle ctx, uacpi_handle *out_irq_handle
     )
     {
-#if defined(__x86_64__)
-        auto handle = x86_64::apic::io::request_gsi(
+        auto handle = irq::request_gsi(
             gsi, irq::trigger::level_low, cpu::bsp_idx(),
             [func, ctx](cpu::registers *) { func(ctx); },
             "acpi-sci"
@@ -478,10 +477,6 @@ extern "C"
 
         lib::debug("uacpi: installed interrupt handler for gsi {}", gsi);
         return UACPI_STATUS_OK;
-#else
-        lib::unused(gsi, func, ctx, out_irq_handle);
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
     }
 
     uacpi_status uacpi_kernel_uninstall_interrupt_handler(

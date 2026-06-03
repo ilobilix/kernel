@@ -13,7 +13,13 @@ export namespace x86_64::idt
 {
     struct slot
     {
+        using flow_fn = void (*)(cpu::registers *, slot &);
+
         std::function<void (cpu::registers *)> handler;
+
+        flow_fn flow = nullptr;
+        std::uintptr_t flow_data = 0;
+
         bool reserved = false;
 
         bool used() const { return bool(handler); }
@@ -22,10 +28,28 @@ export namespace x86_64::idt
         void reserve() { reserved = true; }
         void set(std::function<void (cpu::registers *)> fn) { handler = std::move(fn); }
 
-        void reset() { handler = nullptr; }
+        void set_flow(flow_fn fn, std::uintptr_t data = 0)
+        {
+            flow = fn;
+            flow_data = data;
+        }
+
+        void clear_flow()
+        {
+            flow = nullptr;
+            flow_data = 0;
+        }
+
+        void reset()
+        {
+            handler = nullptr;
+            clear_flow();
+        }
+
         void reset_all()
         {
             handler = nullptr;
+            clear_flow();
             reserved = false;
         }
 
@@ -101,10 +125,10 @@ export namespace x86_64::idt
         vector_domain() : domain { "x86_64-vector" } { }
 
         lib::expect<void> alloc(
-            std::span<irq::irq_data> data, const irq::fwspec &spec
+            std::span<irq::irq_data *> data, const irq::fwspec &spec
         ) override;
 
-        void free(std::span<irq::irq_data> data) override;
+        void free(std::span<irq::irq_data *> data) override;
 
         void attach(irq::irq_data &data, irq::handler_fn *fn) override;
         void detach(irq::irq_data &data) override;

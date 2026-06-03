@@ -30,6 +30,9 @@ namespace irq
 
         std::atomic<handle_t> next_virq { 1 };
 
+        std::atomic<domain *> _msi_parent { nullptr };
+        std::atomic<gsi_requester_fn> _gsi_requester { nullptr };
+
         std::shared_ptr<desc_t> lookup(handle_t handle)
         {
             auto locked = descs.lock();
@@ -46,12 +49,52 @@ namespace irq
         desc->leaf.virq = next_virq.fetch_add(1, std::memory_order_relaxed);
         desc->leaf.dom = &leaf;
 
-        if (auto ret = leaf.alloc({ &desc->leaf, 1 }, spec); !ret)
+        auto node = &desc->leaf;
+        if (auto ret = leaf.alloc({ &node, 1 }, spec); !ret)
             return std::unexpected { ret.error() };
 
         const auto virq = desc->leaf.virq;
         descs.lock()->emplace(virq, std::move(desc));
         return virq;
+    }
+
+    lib::expect<std::vector<handle_t>> alloc_num(
+        domain &leaf, const fwspec &spec, std::size_t count
+    )
+    {
+        if (count == 0)
+            return { };
+
+        std::vector<std::shared_ptr<desc_t>> built;
+        std::vector<irq_data *> nodes;
+
+        built.reserve(count);
+        nodes.reserve(count);
+
+        for (std::size_t i = 0; i < count; i++)
+        {
+            auto desc = std::make_shared<desc_t>();
+            desc->leaf.virq = next_virq.fetch_add(1, std::memory_order_relaxed);
+            desc->leaf.dom = &leaf;
+
+            nodes.push_back(&desc->leaf);
+            built.push_back(std::move(desc));
+        }
+
+        if (auto ret = leaf.alloc(nodes, spec); !ret)
+            return std::unexpected { ret.error() };
+
+        std::vector<handle_t> handles;
+        handles.reserve(count);
+
+        auto locked = descs.lock();
+        for (auto &desc : built)
+        {
+            handles.push_back(desc->leaf.virq);
+            locked->emplace(desc->leaf.virq, std::move(desc));
+        }
+
+        return handles;
     }
 
     void free(handle_t handle)
@@ -69,7 +112,8 @@ namespace irq
         if (desc->requested)
             desc->leaf.dom->detach(desc->leaf);
 
-        desc->leaf.dom->free({ &desc->leaf, 1 });
+        auto node = &desc->leaf;
+        desc->leaf.dom->free({ &node, 1 });
     }
 
     lib::expect<void> request(handle_t handle, handler_fn fn, std::string_view name)
@@ -139,5 +183,31 @@ namespace irq
             return std::unexpected { ret.error() };
         }
         return *handle;
+    }
+
+    domain *msi_parent()
+    {
+        return _msi_parent.load(std::memory_order_acquire);
+    }
+
+    void set_msi_parent(domain *parent)
+    {
+        _msi_parent.store(parent, std::memory_order_release);
+    }
+
+    void set_gsi_requester(gsi_requester_fn fn)
+    {
+        _gsi_requester.store(fn, std::memory_order_release);
+    }
+
+    lib::expect<handle_t> request_gsi(
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
+        handler_fn fn, std::string_view name
+    )
+    {
+        const auto requester = _gsi_requester.load(std::memory_order_acquire);
+        if (!requester)
+            return std::unexpected { lib::err::not_supported };
+        return requester(gsi, trig, cpu_idx, std::move(fn), name);
     }
 } // namespace irq

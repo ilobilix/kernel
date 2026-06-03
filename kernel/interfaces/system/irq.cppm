@@ -56,13 +56,22 @@ export namespace irq
             : name { name }, parent { parent } { }
 
         virtual lib::expect<void> alloc(
-            std::span<irq_data> data, const fwspec &spec
+            std::span<irq_data *> data, const fwspec &spec
         ) = 0;
 
-        virtual void free(std::span<irq_data> data) = 0;
+        virtual void free(std::span<irq_data *> data) = 0;
 
-        virtual void attach(irq_data &data, handler_fn *fn) { lib::unused(data, fn); }
-        virtual void detach(irq_data &data) { lib::unused(data); }
+        virtual void attach(irq_data &data, handler_fn *fn)
+        {
+            if (parent && data.parent)
+                parent->attach(*data.parent, fn);
+        }
+
+        virtual void detach(irq_data &data)
+        {
+            if (parent && data.parent)
+                parent->detach(*data.parent);
+        }
 
         virtual void mask(irq_data &data) { lib::unused(data); }
         virtual void unmask(irq_data &data) { lib::unused(data); }
@@ -89,6 +98,10 @@ export namespace irq
     lib::expect<handle_t> alloc(domain &leaf, const fwspec &spec);
     void free(handle_t handle);
 
+    lib::expect<std::vector<handle_t>> alloc_num(
+        domain &leaf, const fwspec &spec, std::size_t count
+    );
+
     lib::expect<void> request(handle_t handle, handler_fn fn, std::string_view name = { });
 
     lib::expect<handle_t> alloc_and_request(
@@ -102,4 +115,18 @@ export namespace irq
     lib::expect<void> set_affinity(handle_t handle, const lib::bitmap &cpus, bool force = false);
 
     lib::expect<msi_msg> compose_msi(handle_t handle);
+
+    domain *msi_parent();
+    void set_msi_parent(domain *parent);
+
+    using gsi_requester_fn = lib::expect<handle_t> (*)(
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
+        handler_fn fn, std::string_view name
+    );
+    void set_gsi_requester(gsi_requester_fn fn);
+
+    lib::expect<handle_t> request_gsi(
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
+        handler_fn fn, std::string_view name = { }
+    );
 } // export namespace irq

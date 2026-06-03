@@ -138,7 +138,7 @@ export namespace lib
         template<typename ...Args>
         node *insert_before(node *before, Args &&...args)
         {
-            auto *new_node = allocate(std::forward<Args>(args)...);
+            auto new_node = allocate(std::forward<Args>(args)...);
             if (before == nullptr)
             {
                 if (_tail == nullptr)
@@ -306,7 +306,7 @@ export namespace lib
         {
             while (_head != nullptr)
             {
-                auto *to_erase = _head;
+                auto to_erase = _head;
                 _head = _head->next;
                 deallocate(to_erase);
             }
