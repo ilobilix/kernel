@@ -220,15 +220,9 @@ namespace x86_64::apic::io
         if (auto ret = parent->alloc({ &pd_ptr, 1 }, pspec); !ret)
             return std::unexpected { ret.error() };
 
-        const auto core = cpu::local::nth(parent_data->aux);
-        if (!core)
-        {
-            parent->free({ &pd_ptr, 1 });
-            return std::unexpected { lib::err::invalid_argument };
-        }
-
+        const auto aid = cpu::local::nth(parent_data->aux)->arch_id;
         set_gsi(
-            gsi, parent_data->hwirq, core->arch_id,
+            gsi, parent_data->hwirq, aid,
             flags_for(trig), delivery::fixed
         );
 
@@ -313,6 +307,7 @@ namespace x86_64::apic::io
         const auto aid = cpu::local::nth(data.parent->aux)->arch_id;
         const auto flags = flags_for(data.trig) & ~flag::masked;
         set_gsi(gsi, vec, aid, flags, delivery::fixed);
+
         return { };
     }
 

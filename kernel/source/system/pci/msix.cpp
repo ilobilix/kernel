@@ -3,9 +3,6 @@
 module system.pci;
 
 import system.cpu;
-import system.irq;
-import lib;
-import std;
 
 namespace pci::msix
 {
