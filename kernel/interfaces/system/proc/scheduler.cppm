@@ -162,7 +162,7 @@ export namespace sched
 
     std::size_t process_count();
 
-    void for_each_process(std::function<bool (const std::shared_ptr<process_t> &)> func);
+    void for_each_process(std::function_ref<bool (const std::shared_ptr<process_t> &)> func);
 
     // called from a timer interrupt
     void tick(bool from_user);

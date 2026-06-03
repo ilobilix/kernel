@@ -746,7 +746,7 @@ namespace sched
         return processes.lock()->size();
     }
 
-    void for_each_process(std::function<bool (const std::shared_ptr<process_t> &)> func)
+    void for_each_process(std::function_ref<bool (const std::shared_ptr<process_t> &)> func)
     {
         std::vector<std::shared_ptr<process_t>> snapshot;
         {

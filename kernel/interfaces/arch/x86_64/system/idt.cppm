@@ -3,12 +3,39 @@
 export module x86_64.system.idt;
 
 import x86_64.system.gdt;
-import system.interrupts;
 import system.cpu.local;
+import system.cpu.regs;
+import system.irq;
+import lib;
 import std;
 
 export namespace x86_64::idt
 {
+    struct slot
+    {
+        std::function<void (cpu::registers *)> handler;
+        bool reserved = false;
+
+        bool used() const { return bool(handler); }
+        bool is_reserved() const { return reserved; }
+
+        void reserve() { reserved = true; }
+        void set(std::function<void (cpu::registers *)> fn) { handler = std::move(fn); }
+
+        void reset() { handler = nullptr; }
+        void reset_all()
+        {
+            handler = nullptr;
+            reserved = false;
+        }
+
+        void operator()(cpu::registers *regs)
+        {
+            if (handler)
+                handler(regs);
+        }
+    };
+
     struct [[gnu::packed]] entry
     {
         std::uint16_t offset0;
@@ -60,7 +87,36 @@ export namespace x86_64::idt
     std::array<entry, num_ints> &table();
 
     [[nodiscard]]
-    auto handler_at(std::size_t cpuidx, std::uint8_t num) -> std::optional<std::reference_wrapper<interrupts::handler>>;
+    std::optional<slot &> handler_at(std::size_t cpuidx, std::uint8_t num);
+
+    struct vector_domain : irq::domain
+    {
+        enum fwparam : std::uint32_t
+        {
+            param_cpu = 0,
+            param_hint = 1,
+            param_count = 2
+        };
+
+        vector_domain() : domain { "x86_64-vector" } { }
+
+        lib::expect<void> alloc(
+            std::span<irq::irq_data> data, const irq::fwspec &spec
+        ) override;
+
+        void free(std::span<irq::irq_data> data) override;
+
+        void attach(irq::irq_data &data, irq::handler_fn *fn) override;
+        void detach(irq::irq_data &data) override;
+
+        lib::expect<void> set_affinity(
+            irq::irq_data &data, const lib::bitmap &cpus, bool force
+        ) override;
+
+        lib::expect<irq::msi_msg> compose_msi(irq::irq_data &data) override;
+    };
+
+    vector_domain *get_vector_domain();
 
     void init();
     void init_on(cpu::processor *cpu);

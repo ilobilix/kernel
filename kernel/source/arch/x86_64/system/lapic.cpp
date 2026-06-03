@@ -9,7 +9,6 @@ module x86_64.system.lapic;
 
 import x86_64.system.idt;
 import drivers.timers;
-import system.interrupts;
 import system.memory;
 import system.acpi;
 import system.cpu.local;
@@ -289,13 +288,13 @@ namespace x86_64::apic
             enable(val);
         }
 
-        const auto spr = interrupts::allocate(self.idx, idt::vec_spurious);
-        lib::bug_on(!spr.has_value() || spr->second != idt::vec_spurious);
-        spr->first.set([](auto) { });
+        auto spr = idt::handler_at(self.idx, idt::vec_spurious);
+        lib::bug_on(!spr.has_value() || spr->used());
+        spr->set([](cpu::registers *) { });
 
-        const auto err = interrupts::allocate(self.idx, idt::vec_lapic_error);
-        lib::bug_on(!err.has_value() || err->second != idt::vec_lapic_error);
-        err->first.set([](auto) {
+        auto err = idt::handler_at(self.idx, idt::vec_lapic_error);
+        lib::bug_on(!err.has_value() || err->used());
+        err->set([](cpu::registers *) {
             const auto err = read(reg::err);
             lib::error("lapic: got error: 0x{:X}", err);
         });

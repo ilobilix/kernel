@@ -2,12 +2,13 @@
 
 module x86_64.drivers.timers.pit;
 
-import system.interrupts;
+import x86_64.system.ioapic;
 import system.chrono;
+import system.irq;
 import system.cpu;
 import drivers.timers;
-import magic_enum;
 import arch;
+import lib;
 
 namespace x86_64::timers::pit
 {
@@ -21,7 +22,7 @@ namespace x86_64::timers::pit
             command = 0x43
         };
 
-        enum class cmd
+        enum cmd
         {
             channel0 = (0b00 << 6),
             channel1 = (0b01 << 6),
@@ -40,7 +41,6 @@ namespace x86_64::timers::pit
             mode4 = (0b100 << 1), // soft strobe
             mode5 = (0b101 << 1), // hard strobe
         };
-        using magic_enum::bitwise_operators::operator|;
 
         volatile std::size_t tick = 0;
         bool initialised = false;
@@ -100,11 +100,10 @@ namespace x86_64::timers::pit
             lib::io::out<8>(port::channel0, low);
             lib::io::out<8>(port::channel0, high);
 
-            auto ret = interrupts::allocate(cpu::bsp_idx(), 0x20);
-            lib::bug_on(!ret.has_value());
-            auto [handler, vector] = *ret;
-            handler.set([](auto) { tick += 1; });
-            interrupts::unmask(vector);
+            lib::panic_if(!apic::io::request_gsi(
+                0, irq::trigger::edge_rising, cpu::bsp_idx(),
+                [](cpu::registers *) { tick += 1; }, "pit"
+            ), "pit: failed to request gsi 0");
 
             initialised = true;
 

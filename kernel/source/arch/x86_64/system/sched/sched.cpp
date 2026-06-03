@@ -5,7 +5,6 @@ module system.sched;
 import x86_64.system.lapic;
 import x86_64.system.gdt;
 import x86_64.system.idt;
-import system.interrupts;
 import system.cpu.arch;
 import lib;
 
@@ -53,7 +52,7 @@ namespace sched::arch
                 auto set_child_tid = reinterpret_cast<pid_t __user *>(thread->set_child_tid);
                 if (!lib::copy_to_user(set_child_tid, &thread->tid, sizeof(pid_t)))
                 {
-                    sched::siginfo_t info {
+                    const sched::siginfo_t info {
                         .signo = sigsegv,
                         .code = si_kernel,
                         .err = 0,
@@ -79,13 +78,11 @@ namespace sched::arch
     {
         cpu::gs::write(reinterpret_cast<std::uintptr_t>(initial));
 
-        auto ret = interrupts::allocate(cpu::self().unsafe_get().idx, idt::vec_sched);
-        lib::bug_on(!ret.has_value());
-
-        auto [handler, vec] = *ret;
-        lib::bug_on(idt::vec_sched != vec);
-
-        handler.set([](cpu::registers *regs) { tick(arch::in_user_mode(regs)); });
+        auto slot = idt::handler_at(cpu::self().unsafe_get().idx, idt::vec_sched);
+        lib::bug_on(!slot.has_value() || slot->used());
+        slot->set([](cpu::registers *regs) {
+            tick(arch::in_user_mode(regs));
+        });
     }
 
     void init_thread(

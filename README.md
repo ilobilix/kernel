@@ -1,6 +1,6 @@
 # Ilobilix Kernel
 
-Monolithic hobby kernel written in modern C++23. Boots on x86_64 and aarch64 with Limine. Aims for Linux ABI compatibility in userspace, supports loadable kernel modules. Looking for contributors.
+Monolithic hobby kernel written in modern C++26 with modules. It aims for Linux ABI compatibility in userspace. Looking for contributors.
 
 It has been tested with Gentoo (OpenRC), Void Linux and Alpine.
 

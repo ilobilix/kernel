@@ -22,12 +22,16 @@ namespace vmm
         constinit frg::manual_box<va::allocator> kernel_va;
     } // namespace
 
-    auto pagemap::getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *
+    auto pagemap::getlvl(
+        entry &entry, bool allocate, bool split,
+        page_size psize, bool user
+    ) -> table *
     {
         table *ret = nullptr;
 
         auto accessor = entry.access();
-        if (const auto addr = accessor.getaddr(); accessor.getflags(valid_table_flags) && is_canonical(addr))
+        if (const auto addr = accessor.getaddr();
+            accessor.getflags(valid_table_flags) && is_canonical(addr))
         {
             if (accessor.is_large())
             {
@@ -36,12 +40,12 @@ namespace vmm
 
                 lib::bug_on(psize == page_size::small);
 
-                const auto smaller_psize = static_cast<page_size>(static_cast<std::size_t>(psize) - 1);
-                const auto npsize = from_page_size(smaller_psize);
+                const auto smol_psize = static_cast<page_size>(static_cast<std::size_t>(psize) - 1);
+                const auto npsize = from_page_size(smol_psize);
 
                 const auto raw_flags = accessor.getflags();
                 const auto [pflags, cache] = from_arch(raw_flags, psize);
-                const auto flags = to_arch(pflags, cache, smaller_psize);
+                const auto flags = to_arch(pflags, cache, smol_psize);
 
                 ret = new_table();
 
@@ -75,7 +79,8 @@ namespace vmm
         return lib::tohh(ret);
     }
 
-    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>
+    auto pagemap::getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split)
+        -> lib::expect<entry *>
     {
         static constexpr std::uintptr_t bits = 0b111111111;
         static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
@@ -93,7 +98,7 @@ namespace vmm
             auto &entry = pml->entries[(vaddr >> shift) & bits];
 
             if (i == retidx)
-                return std::ref(entry);
+                return std::addressof(entry);
 
             const auto current_psize = static_cast<page_size>(levels - i - 1);
             pml = getlvl(entry, allocate, split, current_psize, user);
@@ -105,7 +110,10 @@ namespace vmm
         std::unreachable();
     }
 
-    lib::expect<void> pagemap::map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
+    lib::expect<void> pagemap::map(
+        std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length,
+        pflag flags, std::optional<page_size> psize, caching cache
+    )
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
 
@@ -147,8 +155,8 @@ namespace vmm
                 return std::unexpected { ret.error() };
             }
 
-            auto &pte = ret->get();
-            auto accessor = pte.access();
+            auto pte = *ret;
+            auto accessor = pte->access();
 
             const auto addr = accessor.getaddr();
             const bool needs_invl = addr && is_canonical(addr);
@@ -170,7 +178,10 @@ namespace vmm
         return { };
     }
 
-    lib::expect<void> pagemap::protect(std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize, caching cache)
+    lib::expect<void> pagemap::protect(
+        std::uintptr_t vaddr, std::size_t length, pflag flags,
+        std::optional<page_size> psize, caching cache
+    )
     {
         lib::bug_on(!magic_enum::enum_contains(cache));
 
@@ -209,8 +220,8 @@ namespace vmm
                 continue;
             }
 
-            auto &pte = ret->get();
-            auto accessor = pte.access();
+            auto pte = *ret;
+            auto accessor = pte->access();
 
             if (!accessor.getflags(valid_table_flags))
             {
@@ -234,7 +245,10 @@ namespace vmm
         return { };
     }
 
-    lib::expect<void> pagemap::unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
+    lib::expect<void> pagemap::unmap_internal(
+        std::uintptr_t vaddr, std::size_t length,
+        std::optional<page_size> psize
+    )
     {
         std::uintptr_t current_vaddr = vaddr;
         std::size_t remaining = lib::align_up(length, pmm::page_size);
@@ -257,8 +271,8 @@ namespace vmm
                 continue;
             }
 
-            auto &pte = ret->get();
-            pte.access().clear().write();
+            auto pte = *ret;
+            pte->access().clear().write();
             invalidate(current_vaddr, npsize);
 
             current_vaddr += npsize;
@@ -267,7 +281,10 @@ namespace vmm
         return { };
     }
 
-    lib::expect<void> pagemap::unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize)
+    lib::expect<void> pagemap::unmap(
+        std::uintptr_t vaddr, std::size_t length,
+        std::optional<page_size> psize
+    )
     {
         if (length == 0)
             return { };
@@ -299,7 +316,7 @@ namespace vmm
         if (!ret.has_value())
             return std::unexpected { ret.error() };
 
-        const auto addr = ret->get().access().getaddr();
+        const auto addr = (*ret)->access().getaddr();
         if (!is_canonical(addr))
             return std::unexpected { lib::err::invalid_pml_entry };
 
@@ -401,7 +418,10 @@ namespace vmm
 
             for (std::size_t i = start; i < end; i++)
             {
-                auto lvl = getlvl(ptr->entries[i], false, false, static_cast<page_size>(level - 1), true);
+                auto lvl = getlvl(
+                    ptr->entries[i], false, false,
+                     static_cast<page_size>(level - 1), true
+                );
                 if (lvl == nullptr)
                     continue;
 
@@ -462,7 +482,9 @@ namespace vmm
             const auto kernel_addr = boot::requests::kernel_address.response;
 
             const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
-            auto phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff);
+            auto phdr = reinterpret_cast<Elf64_Phdr *>(
+                reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff
+            );
 
             lib::debug("vmm: - mapping kernel binary");
 
@@ -470,7 +492,8 @@ namespace vmm
             {
                 if (phdr->p_type == PT_LOAD)
                 {
-                    const std::uintptr_t paddr = phdr->p_vaddr - kernel_addr->virtual_base + kernel_addr->physical_base;
+                    const std::uintptr_t paddr = phdr->p_vaddr -
+                        kernel_addr->virtual_base + kernel_addr->physical_base;
                     const std::uintptr_t vaddr = phdr->p_vaddr;
                     const auto size = phdr->p_memsz;
 
@@ -490,7 +513,9 @@ namespace vmm
                     if (const auto ret = kernel_pagemap->map(vaddr, paddr, size, flags, std::nullopt, cache); !ret)
                         lib::panic("could not map virtual memory: {}", lib::error_name(ret.error()));
                 }
-                phdr = reinterpret_cast<Elf64_Phdr *>(reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize);
+                phdr = reinterpret_cast<Elf64_Phdr *>(
+                    reinterpret_cast<std::byte *>(phdr) + ehdr->e_phentsize
+                );
             }
         }
 

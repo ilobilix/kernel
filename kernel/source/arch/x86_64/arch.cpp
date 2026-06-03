@@ -134,7 +134,6 @@ namespace arch
         [] {
             x86_64::apic::init_bsp();
             cpu::init_bsp();
-            x86_64::pic::init();
             x86_64::apic::io::init();
         }
     };

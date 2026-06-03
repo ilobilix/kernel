@@ -9,7 +9,7 @@ export import system.chrono;
 export import system.cmdline;
 export import system.cpu;
 export import system.cpu.local;
-export import system.interrupts;
+export import system.irq;
 export import system.memory;
 export import system.pci;
 export import system.random;

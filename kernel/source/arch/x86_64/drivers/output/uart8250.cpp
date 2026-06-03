@@ -2,11 +2,12 @@
 
 module x86_64.drivers.output.uart8250;
 
+import x86_64.system.ioapic;
 import drivers.output.serial;
 import drivers.output.terminal;
 import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
-import system.interrupts;
+import system.irq;
 import system.cpu;
 import system.vfs;
 import arch;
@@ -283,11 +284,11 @@ namespace x86_64::output::uart8250
                     lib::info("uart8250: port {} is usable", i);
                     if (i < 2 || !usable[i - 2])
                     {
-                        auto ret = interrupts::allocate(cpu::bsp_idx(), 0x24 - (i & 1));
-                        lib::bug_on(!ret.has_value());
-                        auto [handler, vector] = *ret;
-                        handler.set(irq_handler);
-                        interrupts::unmask(vector);
+                        const auto gsi = 4 - (i & 1);
+                        lib::panic_if(!apic::io::request_gsi(
+                            gsi, irq::trigger::edge_rising, cpu::bsp_idx(),
+                            irq_handler, "uart8250"
+                        ), "uart8250: failed to request gsi {}", gsi);
                     }
                     set_irqs(ports[i], true);
                 }

@@ -166,10 +166,20 @@ export namespace vmm
 
         static asid_t alloc_asid();
 
-        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user) -> table *;
-        auto getpte(std::uintptr_t vaddr, page_size psize, bool allocate, bool split) -> lib::expect<std::reference_wrapper<entry>>;
+        static auto getlvl(
+            entry &entry, bool allocate, bool split,
+            page_size psize, bool user
+        ) -> table *;
 
-        lib::expect<void> unmap_internal(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize);
+        lib::expect<entry *> getpte(
+            std::uintptr_t vaddr, page_size psize,
+            bool allocate, bool split
+        );
+
+        lib::expect<void> unmap_internal(
+            std::uintptr_t vaddr, std::size_t length,
+            std::optional<page_size> psize
+        );
 
         void arch_load(asid_t asid, bool flush) const;
 
@@ -194,9 +204,18 @@ export namespace vmm
             return ret;
         }
 
-        lib::expect<void> map(std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
-        lib::expect<void> protect(std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw, std::optional<page_size> psize = std::nullopt, caching cache = caching::normal);
-        lib::expect<void> unmap(std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize = std::nullopt);
+        lib::expect<void> map(
+            std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags = pflag::rw,
+            std::optional<page_size> psize = std::nullopt, caching cache = caching::normal
+        );
+        lib::expect<void> protect(
+            std::uintptr_t vaddr, std::size_t length, pflag flags = pflag::rw,
+            std::optional<page_size> psize = std::nullopt, caching cache = caching::normal
+        );
+        lib::expect<void> unmap(
+            std::uintptr_t vaddr, std::size_t length,
+            std::optional<page_size> psize = std::nullopt
+        );
 
         lib::expect<std::uintptr_t> translate(std::uintptr_t vaddr, page_size psize);
 
