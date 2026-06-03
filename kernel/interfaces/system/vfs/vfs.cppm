@@ -426,6 +426,7 @@ export namespace vfs
     struct dentry : std::enable_shared_from_this<dentry>
     {
         static std::shared_ptr<dentry> root(bool absolute);
+        static std::shared_ptr<dentry> create();
 
         struct children
         {
