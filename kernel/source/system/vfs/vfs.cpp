@@ -14,7 +14,7 @@ namespace vfs
     namespace
     {
         std::shared_ptr<dentry> root = [] {
-            auto root = std::make_shared<dentry>();
+            auto root = dentry::create();
             root->name = "/";
             root->parent = root;
             root->inode = std::make_shared<inode>(nullptr);
@@ -328,7 +328,7 @@ namespace vfs
             {
                 if (!locked->lookup(entry.name))
                 {
-                    auto dentry = std::make_shared<vfs::dentry>();
+                    auto dentry = vfs::dentry::create();
                     dentry->parent = dir;
                     dentry->name = entry.name;
                     dentry->inode = entry.inode;
@@ -408,6 +408,11 @@ namespace vfs
                 return proc->vfs->root.dentry;
         }
         return vfs::root;
+    }
+
+    std::shared_ptr<dentry> dentry::create()
+    {
+        return std::make_shared<dentry>();
     }
 
     std::string pathname_from(path path)
@@ -543,7 +548,7 @@ namespace vfs
                     dentry = locked->lookup(entry.name);
                     if (dentry == nullptr)
                     {
-                        dentry = std::make_shared<vfs::dentry>();
+                        dentry = vfs::dentry::create();
                         dentry->parent = current.dentry;
                         dentry->name = entry.name;
                         dentry->inode = entry.inode;
@@ -768,7 +773,7 @@ namespace vfs
         if (!ret)
             return std::unexpected { ret.error() };
 
-        auto dentry = std::make_shared<vfs::dentry>();
+        auto dentry = vfs::dentry::create();
         dentry->parent = real_parent.dentry;
         dentry->name = name;
         dentry->inode = std::move(*ret);
@@ -793,7 +798,7 @@ namespace vfs
         if (!ret)
             return std::unexpected { ret.error() };
 
-        auto dentry = std::make_shared<vfs::dentry>();
+        auto dentry = vfs::dentry::create();
         dentry->parent = real_parent.dentry;
         dentry->name = name;
         dentry->symlinked_to = target.str();
@@ -845,7 +850,7 @@ namespace vfs
         if (!ret)
             return std::unexpected { ret.error() };
 
-        auto dentry = std::make_shared<vfs::dentry>();
+        auto dentry = vfs::dentry::create();
         dentry->parent = real_parent.dentry;
         dentry->name = name;
         dentry->inode = std::move(*ret);
@@ -1319,7 +1324,7 @@ namespace vfs
         }
         else inode = args.inode;
 
-        auto dentry = std::make_shared<vfs::dentry>();
+        auto dentry = vfs::dentry::create();
         dentry->name = args.name;
         dentry->inode = std::move(inode);
 
