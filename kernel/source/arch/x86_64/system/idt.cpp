@@ -144,6 +144,37 @@ namespace x86_64::idt
             }
             return std::unexpected { lib::err::no_space_left };
         }
+
+        lib::expect<std::size_t> reserve_num(
+            std::size_t cpu_idx, std::size_t count
+        )
+        {
+            count = lib::next_pow2(count);
+            auto base = lib::align_up(irq(0), count);
+
+            while (base + count <= num_ints)
+            {
+                bool all_free = true;
+                for (std::size_t i = 0; i < count; i++)
+                {
+                    const auto handler = handler_at(cpu_idx, base + i);
+                    if (!handler || handler->used() || handler->is_reserved())
+                    {
+                        all_free = false;
+                        break;
+                    }
+                }
+
+                if (all_free)
+                {
+                    for (std::size_t i = 0; i < count; i++)
+                        handler_at(cpu_idx, base + i)->reserve();
+                    return base;
+                }
+                base += count;
+            }
+            return std::unexpected { lib::err::no_space_left };
+        }
     } // namespace
 
     using irq_vec = frg::small_vector<
@@ -170,39 +201,51 @@ namespace x86_64::idt
     }
 
     lib::expect<void> vector_domain::alloc(
-        std::span<irq::irq_data> data,
+        std::span<irq::irq_data *> data,
         const irq::fwspec &spec
     )
     {
-        if (data.size() != 1)
-            return std::unexpected { lib::err::not_supported };
+        if (data.empty())
+            return { };
 
         const auto cpu_idx = (spec.param_count > vector_domain::param_cpu)
             ? spec.params[vector_domain::param_cpu]
             : cpu::bsp_idx();
 
-        const auto hint = (spec.param_count > vector_domain::param_hint)
-            ? spec.params[vector_domain::param_hint]
-            : 0;
+        if (data.size() == 1)
+        {
+            const auto hint = (spec.param_count > vector_domain::param_hint)
+                ? spec.params[vector_domain::param_hint]
+                : 0;
 
-        auto vec = reserve_one(cpu_idx, hint);
-        if (!vec)
-            return std::unexpected { vec.error() };
+            auto vec = reserve_one(cpu_idx, hint);
+            if (!vec)
+                return std::unexpected { vec.error() };
 
-        data[0].hwirq = *vec;
-        data[0].aux = cpu_idx;
-        data[0].parent = nullptr;
+            data[0]->hwirq = *vec;
+            data[0]->aux = cpu_idx;
+            data[0]->parent = nullptr;
+            return { };
+        }
+
+        auto base = reserve_num(cpu_idx, data.size());
+        if (!base)
+            return std::unexpected { base.error() };
+
+        for (std::size_t i = 0; i < data.size(); i++)
+        {
+            data[i]->hwirq = *base + i;
+            data[i]->aux = cpu_idx;
+            data[i]->parent = nullptr;
+        }
         return { };
     }
 
-    void vector_domain::free(std::span<irq::irq_data> data)
+    void vector_domain::free(std::span<irq::irq_data *> data)
     {
-        for (const auto &entry : data)
+        for (auto entry : data)
         {
-            const auto vec = entry.hwirq;
-            const auto cpu_idx = entry.aux;
-
-            if (auto handler = idt::handler_at(cpu_idx, vec))
+            if (auto handler = idt::handler_at(entry->aux, entry->hwirq))
                 handler->reset_all();
         }
     }
@@ -226,9 +269,46 @@ namespace x86_64::idt
         irq::irq_data &data, const lib::bitmap &cpus, bool force
     )
     {
-        // TODO
-        lib::unused(data, cpus, force);
-        return std::unexpected { lib::err::not_supported };
+        lib::unused(force);
+
+        std::size_t target = -1;
+        for (std::size_t i = 0; i < cpus.length(); i++)
+        {
+            if (!cpus.get(i))
+                continue;
+
+            target = i;
+            break;
+        }
+        if (target == -1zu)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto old_cpu = data.aux;
+        const auto old_vec = data.hwirq;
+        if (target == old_cpu)
+            return { };
+
+        auto nv = reserve_one(target, 0);
+        if (!nv)
+            return std::unexpected { nv.error() };
+
+        auto old_slot = handler_at(old_cpu, old_vec);
+        auto new_slot = handler_at(target, *nv);
+        if (!old_slot || !new_slot)
+        {
+            if (new_slot)
+                new_slot->reset_all();
+            return std::unexpected { lib::err::invalid_argument };
+        }
+
+        new_slot->set(std::move(old_slot->handler));
+        new_slot->set_flow(old_slot->flow, old_slot->flow_data);
+
+        old_slot->reset_all();
+
+        data.hwirq = *nv;
+        data.aux = target;
+        return { };
     }
 
     lib::expect<irq::msi_msg> vector_domain::compose_msi(irq::irq_data &data)
@@ -271,19 +351,23 @@ namespace x86_64::idt
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
-            apic::eoi();
             random::add_irq_jitter(vector, regs->rip);
 
             const auto idx = vector - irq(0);
             auto &irqh = irq_handlers.unsafe_get();
             if (irqh.size() > idx)
             {
-                auto &handler = irqh[idx];
-                if (handler.used()) [[likely]]
-                    handler(regs);
-                else
-                    lib::panic(regs, "unhandled irq {}", vector);
+                auto &slot = irqh[idx];
+                if (slot.flow) [[unlikely]]
+                    slot.flow(regs, slot);
+                else if (slot.used()) [[likely]]
+                {
+                    apic::eoi();
+                    slot(regs);
+                }
+                else lib::panic(regs, "unhandled irq {}", vector);
             }
+            else apic::eoi();
         }
         else if (vector < irq(0))
         {
@@ -392,4 +476,14 @@ namespace x86_64::idt
 
         idtr.load();
     }
+
+    lib::initgraph::task msi_parent_task
+    {
+        "x86_64.idt.msi-parent",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { arch::bsp_initialised_stage() },
+        [] {
+            irq::set_msi_parent(get_vector_domain());
+        }
+    };
 } // namespace x86_64::idt

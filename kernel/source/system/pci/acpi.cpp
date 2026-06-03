@@ -226,7 +226,7 @@ namespace pci::acpi
                 uacpi_namespace_for_each_child(node,
                     [](uacpi_handle opaque, uacpi_namespace_node *node, std::uint32_t)
                     {
-                        auto *ctx = reinterpret_cast<devctx *>(opaque);
+                        auto ctx = reinterpret_cast<devctx *>(opaque);
                         std::uint64_t addr = 0;
 
                         auto ret = uacpi_eval_simple_integer(node, "_ADR", &addr);

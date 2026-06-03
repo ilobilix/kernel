@@ -1138,7 +1138,7 @@ namespace sched
         std::uint64_t migrated_weight = 0;
         std::size_t migrations = 0;
 
-        auto *thread = src_rq.queue.last();
+        auto thread = src_rq.queue.last();
         while (thread && migrations < balance_max_nr && migrated_weight < target)
         {
             auto prev = thread->hook.predecessor;

@@ -39,7 +39,7 @@ namespace sched
                     self->lock.lock();
                     while (!self->queue.empty())
                     {
-                        auto *first = self->queue.first();
+                        auto first = self->queue.first();
                         const auto now = timer->ns();
                         if (first->deadline > now)
                         {

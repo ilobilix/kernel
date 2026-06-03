@@ -1236,7 +1236,7 @@ namespace syscall::proc
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        const auto get_array = [](auto &vec, auto *uarray) {
+        const auto get_array = [](auto &vec, auto uarray) {
             if (!uarray)
                 return true;
 

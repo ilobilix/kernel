@@ -6,6 +6,7 @@ module;
 
 module x86_64.system.ioapic;
 
+import x86_64.system.lapic;
 import x86_64.system.pic;
 import x86_64.system.idt;
 import system.memory;
@@ -164,6 +165,21 @@ namespace x86_64::apic::io
             }
             return ret;
         }
+
+        void level_flow(cpu::registers *regs, idt::slot &slot)
+        {
+            const std::uint32_t gsi = slot.flow_data;
+            mask_gsi(gsi);
+            apic::eoi();
+            if (slot.handler)
+                slot.handler(regs);
+            unmask_gsi(gsi);
+        }
+
+        bool is_level(irq::trigger trig)
+        {
+            return trig == irq::trigger::level_high || trig == irq::trigger::level_low;
+        }
     } // namespace
 
     bool is_initialised() { return initialised; }
@@ -172,7 +188,7 @@ namespace x86_64::apic::io
         : domain { "x86_64-ioapic", idt::get_vector_domain() } { }
 
     lib::expect<void> ioapic_domain::alloc(
-        std::span<irq::irq_data> data, const irq::fwspec &spec
+        std::span<irq::irq_data *> data, const irq::fwspec &spec
     )
     {
         if (data.size() != 1)
@@ -192,21 +208,22 @@ namespace x86_64::apic::io
             : static_cast<std::uint32_t>(cpu::bsp_idx());
 
         auto parent_data = std::make_unique<irq::irq_data>();
-        parent_data->virq = data[0].virq;
+        parent_data->virq = data[0]->virq;
         parent_data->dom = parent;
 
-        irq::fwspec pspec { .param_count = idt::vector_domain::param_count };
-        pspec.params[idt::vector_domain::param_cpu] = cpu_idx;
-        pspec.params[idt::vector_domain::param_hint] = gsi + idt::irq(0);
+        const irq::fwspec pspec {
+            .param_count = 2,
+            .params = { cpu_idx, gsi + idt::irq(0) }
+        };
 
         auto pd_ptr = parent_data.get();
-        if (auto ret = parent->alloc({ pd_ptr, 1 }, pspec); !ret)
+        if (auto ret = parent->alloc({ &pd_ptr, 1 }, pspec); !ret)
             return std::unexpected { ret.error() };
 
         const auto core = cpu::local::nth(parent_data->aux);
         if (!core)
         {
-            parent->free({ pd_ptr, 1 });
+            parent->free({ &pd_ptr, 1 });
             return std::unexpected { lib::err::invalid_argument };
         }
 
@@ -215,36 +232,55 @@ namespace x86_64::apic::io
             flags_for(trig), delivery::fixed
         );
 
-        data[0].hwirq = gsi;
-        data[0].trig = trig;
-        data[0].parent = parent_data.release();
+        data[0]->hwirq = gsi;
+        data[0]->trig = trig;
+        data[0]->parent = parent_data.release();
         return { };
     }
 
-    void ioapic_domain::free(std::span<irq::irq_data> data)
+    void ioapic_domain::free(std::span<irq::irq_data *> data)
     {
-        for (auto &entry : data)
+        for (auto entry : data)
         {
-            mask_gsi(entry.hwirq);
+            mask_gsi(entry->hwirq);
 
-            std::unique_ptr<irq::irq_data> pd { entry.parent };
-            entry.parent = nullptr;
+            std::unique_ptr<irq::irq_data> pd { entry->parent };
+            entry->parent = nullptr;
 
             if (pd)
-                parent->free({ pd.get(), 1 });
+            {
+                auto pd_ptr = pd.get();
+                parent->free({ &pd_ptr, 1 });
+            }
         }
     }
 
     void ioapic_domain::attach(irq::irq_data &data, irq::handler_fn *fn)
     {
-        if (data.parent)
-            parent->attach(*data.parent, fn);
+        if (!data.parent)
+            return;
+
+        auto &pd = *data.parent;
+        parent->attach(pd, fn);
+
+        if (auto handler = idt::handler_at(pd.aux, pd.hwirq))
+        {
+            if (is_level(data.trig))
+                handler->set_flow(level_flow, data.hwirq);
+            else
+                handler->clear_flow();
+        }
     }
 
     void ioapic_domain::detach(irq::irq_data &data)
     {
-        if (data.parent)
-            parent->detach(*data.parent);
+        if (!data.parent)
+            return;
+
+        auto &pd = *data.parent;
+        if (auto handler = idt::handler_at(pd.aux, pd.hwirq))
+            handler->clear_flow();
+        parent->detach(*data.parent);
     }
 
     void ioapic_domain::mask(irq::irq_data &data)
@@ -255,6 +291,29 @@ namespace x86_64::apic::io
     void ioapic_domain::unmask(irq::irq_data &data)
     {
         unmask_gsi(data.hwirq);
+    }
+
+    lib::expect<void> ioapic_domain::set_affinity(
+        irq::irq_data &data, const lib::bitmap &cpus, bool force
+    )
+    {
+        if (!data.parent)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const std::uint32_t gsi = data.hwirq;
+        mask_gsi(gsi);
+
+        if (auto ret = parent->set_affinity(*data.parent, cpus, force); !ret)
+        {
+            unmask_gsi(gsi);
+            return ret;
+        }
+
+        const std::uint8_t vec = data.parent->hwirq;
+        const auto aid = cpu::local::nth(data.parent->aux)->arch_id;
+        const auto flags = flags_for(data.trig) & ~flag::masked;
+        set_gsi(gsi, vec, aid, flags, delivery::fixed);
+        return { };
     }
 
     ioapic_domain *get_ioapic_domain()
@@ -334,5 +393,6 @@ namespace x86_64::apic::io
         // TODO: nmi
 
         initialised = true;
+        irq::set_gsi_requester(&request_gsi);
     }
 } // namespace x86_64::apic::io

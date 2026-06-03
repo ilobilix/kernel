@@ -591,7 +591,7 @@ export namespace lib
                 }
                 else
                 {
-                    auto *p = parent(&nh, node);
+                    auto p = parent(&nh, node);
                     if (p != nil())
                     {
                         if (left(&nh, p) == node)

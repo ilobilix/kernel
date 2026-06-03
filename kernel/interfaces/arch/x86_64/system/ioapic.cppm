@@ -27,6 +27,8 @@ export namespace x86_64::apic::io
         logical = (1 << 11)
     };
     using magic_enum::bitwise_operators::operator|;
+    using magic_enum::bitwise_operators::operator&;
+    using magic_enum::bitwise_operators::operator~;
 
     struct ioapic_domain : irq::domain
     {
@@ -41,16 +43,20 @@ export namespace x86_64::apic::io
         ioapic_domain();
 
         lib::expect<void> alloc(
-            std::span<irq::irq_data> data, const irq::fwspec &spec
+            std::span<irq::irq_data *> data, const irq::fwspec &spec
         ) override;
 
-        void free(std::span<irq::irq_data> data) override;
+        void free(std::span<irq::irq_data *> data) override;
 
         void attach(irq::irq_data &data, irq::handler_fn *fn) override;
         void detach(irq::irq_data &data) override;
 
         void mask(irq::irq_data &data) override;
         void unmask(irq::irq_data &data) override;
+
+        lib::expect<void> set_affinity(
+            irq::irq_data &data, const lib::bitmap &cpus, bool force
+        ) override;
     };
 
     ioapic_domain *get_ioapic_domain();
