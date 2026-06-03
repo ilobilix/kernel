@@ -70,19 +70,31 @@ namespace pci
                 case sizeof(std::uint8_t):
                 {
                     std::uint8_t val;
-                    asm volatile("mov al, [%1]" : "=a"(val) : "r"(reinterpret_cast<volatile std::uint8_t *>(addr)));
+                    asm volatile (
+                        "mov al, [%1]"
+                        : "=a"(val)
+                        : "r"(reinterpret_cast<volatile std::uint8_t *>(addr))
+                    );
                     return val;
                 }
                 case sizeof(std::uint16_t):
                 {
                     std::uint16_t val;
-                    asm volatile("mov ax, [%1]" : "=a"(val) : "r"(reinterpret_cast<volatile std::uint16_t *>(addr)));
+                    asm volatile (
+                        "mov ax, [%1]"
+                        : "=a"(val)
+                        : "r"(reinterpret_cast<volatile std::uint16_t *>(addr))
+                    );
                     return val;
                 }
                 case sizeof(std::uint32_t):
                 {
                     std::uint32_t val;
-                    asm volatile("mov eax, [%1]" : "=a"(val) : "r"(reinterpret_cast<volatile std::uint32_t *>(addr)));
+                    asm volatile (
+                        "mov eax, [%1]"
+                        : "=a"(val)
+                        : "r"(reinterpret_cast<volatile std::uint32_t *>(addr))
+                    );
                     return val;
                 }
             }
@@ -96,19 +108,34 @@ namespace pci
                 case sizeof(std::uint8_t):
                 {
                     std::uint8_t val = value;
-                    asm volatile ("mov [%1], al" :: "a"(val), "r"(reinterpret_cast<volatile std::uint8_t *>(addr)) : "memory");
+                    asm volatile (
+                        "mov [%1], al"
+                        :
+                        : "a"(val), "r"(reinterpret_cast<volatile std::uint8_t *>(addr))
+                        : "memory"
+                    );
                     break;
                 }
                 case sizeof(std::uint16_t):
                 {
                     std::uint16_t val = value;
-                    asm volatile ("mov [%1], ax" :: "a"(val), "r"(reinterpret_cast<volatile std::uint16_t *>(addr)) : "memory");
+                    asm volatile (
+                        "mov [%1], ax"
+                        :
+                        : "a"(val), "r"(reinterpret_cast<volatile std::uint16_t *>(addr))
+                        : "memory"
+                    );
                     break;
                 }
                 case sizeof(std::uint32_t):
                 {
                     std::uint32_t val = value;
-                    asm volatile ("mov [%1], eax" :: "a"(val), "r"(reinterpret_cast<volatile std::uint32_t *>(addr)) : "memory");
+                    asm volatile (
+                        "mov [%1], eax"
+                        :
+                        : "a"(val), "r"(reinterpret_cast<volatile std::uint32_t *>(addr))
+                        : "memory"
+                    );
                     break;
                 }
                 default:

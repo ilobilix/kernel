@@ -2,9 +2,6 @@
 
 module system.irq;
 
-import lib;
-import std;
-
 namespace irq
 {
     namespace

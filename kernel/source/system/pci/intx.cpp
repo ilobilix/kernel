@@ -2,10 +2,6 @@
 
 module system.pci;
 
-import system.irq;
-import lib;
-import std;
-
 namespace pci::intx
 {
     lib::expect<irq::handle_t> request(

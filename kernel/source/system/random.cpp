@@ -252,14 +252,14 @@ namespace random
             for (std::size_t i = 0; i < cpu::count(); i++)
             {
                 const auto base = cpu::local::nth_base(i);
-                auto &p = _irq_pool.unsafe_get(base);
+                auto &pool = _irq_pool.unsafe_get(base);
 
                 std::array<std::uint64_t, 4> snapshot;
                 bool any = false;
                 for (std::size_t j = 0; j < snapshot.size(); j++)
                 {
                     snapshot[j] = __atomic_exchange_n(
-                        &p.entries[j], 0, __ATOMIC_RELAXED
+                        &pool.entries[j], 0, __ATOMIC_RELAXED
                     );
                     any |= (snapshot[j] != 0);
                 }

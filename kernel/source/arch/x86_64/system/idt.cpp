@@ -17,7 +17,6 @@ import system.acpi;
 import system.cpu;
 import frigg;
 import arch;
-import lib;
 
 namespace x86_64::idt
 {
@@ -145,9 +144,7 @@ namespace x86_64::idt
             return std::unexpected { lib::err::no_space_left };
         }
 
-        lib::expect<std::size_t> reserve_num(
-            std::size_t cpu_idx, std::size_t count
-        )
+        lib::expect<std::size_t> reserve_num(std::size_t cpu_idx, std::size_t count)
         {
             count = lib::next_pow2(count);
             auto base = lib::align_up(irq(0), count);
@@ -315,16 +312,12 @@ namespace x86_64::idt
     {
         const auto vec = static_cast<std::uint8_t>(data.hwirq);
         const auto cpu_idx = data.aux;
-        const auto core = cpu::local::nth(cpu_idx);
-        if (!core)
-            return std::unexpected { lib::err::invalid_argument };
-
-        const auto apic_id = static_cast<std::uint32_t>(core->arch_id);
-        if (apic_id > 0xFE)
+        const auto aid = cpu::local::nth(cpu_idx)->arch_id;
+        if (aid > 0xFE)
             return std::unexpected { lib::err::not_supported };
 
         return irq::msi_msg {
-            .address = 0xFEE00000ull | (static_cast<std::uint64_t>(apic_id) << 12),
+            .address = 0xFEE00000ull | (static_cast<std::uint64_t>(aid) << 12),
             .data = static_cast<std::uint32_t>(vec)
         };
     }
@@ -423,8 +416,11 @@ namespace x86_64::idt
                     self.idx, thread->proc->pid, thread->tid
                 );
             }
-            lib::panic(regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self.idx);
 
+            lib::panic(
+                regs, "exception {}: '{}' on cpu {}",
+                vector, exception_messages[vector], self.idx
+            );
             std::unreachable();
         }
         else
