@@ -100,7 +100,7 @@ namespace x86_64::timers::pit
             lib::io::out<8>(port::channel0, low);
             lib::io::out<8>(port::channel0, high);
 
-            lib::panic_if(!apic::io::request_gsi(
+            lib::panic_if(!irq::request_gsi(
                 0, irq::trigger::edge_rising, cpu::bsp_idx(),
                 [](cpu::registers *) { tick += 1; }, "pit"
             ), "pit: failed to request gsi 0");
