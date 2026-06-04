@@ -91,7 +91,7 @@ export namespace pci
             std::int32_t func;
 
             std::uint8_t pin;
-            std::uint8_t flags;
+            irq::trigger trig;
         };
 
         protected:
@@ -100,14 +100,6 @@ export namespace pci
         model mod;
 
         public:
-        enum flags
-        {
-            edge = (1 << 0),
-            level = (1 << 1),
-            high = (1 << 2),
-            low = (1 << 3)
-        };
-
         std::weak_ptr<router> parent;
         std::weak_ptr<bus> mybus;
 

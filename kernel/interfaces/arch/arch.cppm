@@ -2,6 +2,8 @@
 
 export module arch;
 
+export import :impl;
+
 import system.cpu;
 import boot;
 import lib;

@@ -98,7 +98,7 @@ export namespace sched::futex
     {
         futex_tid_mask = 0x3FFFFFFFu,
         futex_owner_died = 0x40000000u,
-        futex_waiters = 0x80000000u,
+        futex_waiters = 0x80000000u
     };
     constexpr std::size_t robust_list_walk_max = 2048;
 

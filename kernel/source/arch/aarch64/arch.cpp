@@ -2,10 +2,10 @@
 
 module arch;
 
+import system.cpu.local;
 import system.sched;
 import drivers.timers;
 import drivers.output;
-import system.cpu.local;
 
 namespace arch
 {
@@ -27,22 +27,6 @@ namespace arch
 
     // TODO
     void halt_others() { }
-
-    void wfi() { asm volatile ("wfi"); }
-    void pause() { asm volatile ("isb" ::: "memory"); }
-
-    void int_switch(bool on)
-    {
-        if (on)
-            cpu::msr<"daifclr", "i">(0b1111);
-        else
-            cpu::msr<"daifset", "i">(0b1111);
-    }
-
-    bool int_status()
-    {
-        return cpu::mrs<"daif">() == 0;
-    }
 
     void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log::level lvl)
     {

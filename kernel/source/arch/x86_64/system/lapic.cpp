@@ -13,6 +13,7 @@ import system.memory;
 import system.acpi;
 import system.cpu.local;
 import system.cpu;
+import arch;
 import lib;
 
 namespace x86_64::apic
@@ -129,6 +130,8 @@ namespace x86_64::apic
         {
             if (reg == reg::icr)
             {
+                while (lib::mmio::in<32>(mmio + reg::icr) & (1u << 12))
+                    arch::pause();
                 asm volatile ("" ::: "memory");
                 lib::mmio::out<32>(mmio + reg::icrh, val >> 32);
             }
@@ -249,7 +252,7 @@ namespace x86_64::apic
             lib::panic("CPU does not support lapic");
 
         x2apic = _x2apic;
-        lib::debug("lapic: x2apic supported: {}", x2apic);
+        lib::info("lapic: x2apic supported: {}", x2apic);
 
         auto val = cpu::msr::read(reg::apic_base);
         enable(val);

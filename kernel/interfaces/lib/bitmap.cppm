@@ -34,9 +34,7 @@ export namespace lib
 
         bitmap(std::size_t count)
         {
-            const auto size = div_roundup(count, 8u);
-
-            _data = new std::uint8_t[size]();
+            _data = new std::uint8_t[div_roundup(count, 8u)]();
             _count = count;
             _allocated = true;
 
@@ -101,6 +99,15 @@ export namespace lib
             lib::bug_on(!!_initialised);
             _data = data;
             _count = count;
+            _initialised = true;
+        }
+
+        void initialise(std::size_t count)
+        {
+            lib::bug_on(!!_initialised);
+            _data = new std::uint8_t[div_roundup(count, 8u)]();
+            _count = count;
+            _allocated = true;
             _initialised = true;
         }
 

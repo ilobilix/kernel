@@ -4,69 +4,60 @@ module lib;
 
 import system.sched;
 import system.cpu.local;
-import system.chrono;
 import arch;
 import std;
 
-namespace lib::lock
+namespace lib
 {
-    namespace
+    namespace lock
     {
-        cpu_local(std::atomic_size_t, irq_depth, 0uz);
-        cpu_local(bool, irq_status);
-    } // namespace
-
-    void acquire_irq()
-    {
-        const auto ret = arch::int_status();
-        acquire_preempt();
-
-        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
+        namespace
         {
-            release_preempt();
-            return;
+            cpu_local(std::atomic_size_t, irq_depth, 0uz);
+            cpu_local(bool, irq_status);
+        } // namespace
+
+        void acquire_irq()
+        {
+            const bool status = arch::int_status();
+            sched::preempt_disable();
+
+            if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
+            {
+                irq_status.unsafe_get() = status;
+                if (!cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
+                    arch::int_switch(false);
+            }
+
+            sched::preempt_enable();
         }
 
-        if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
+        void release_irq()
         {
-            irq_status.unsafe_get() = ret;
-            arch::int_switch(false);
+            sched::preempt_disable();
+
+            if (irq_depth.unsafe_get().fetch_sub(1, std::memory_order_release) == 1 &&
+                !cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
+                arch::int_switch(irq_status.unsafe_get());
+
+            sched::preempt_enable();
         }
 
-        release_preempt();
-        return;
-    }
+        void pause() { arch::pause(); }
+    } // namespace lock
 
-    void release_irq()
+    void spinlock_base<lock_type::preempt>::lock()
     {
-        acquire_preempt();
-
-        if (cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
-        {
-            release_preempt();
-            return;
-        }
-
-        if (irq_depth.unsafe_get().fetch_sub(1, std::memory_order_release) == 1)
-            arch::int_switch(irq_status.unsafe_get());
-
-        release_preempt();
-    }
-
-    void acquire_preempt()
-    {
+        spinlock_base<lock_type::spin>::lock();
         sched::preempt_disable();
     }
 
-    void release_preempt()
+    bool spinlock_base<lock_type::preempt>::unlock()
     {
+        if (!spinlock_base<lock_type::spin>::unlock())
+            return false;
+
         sched::preempt_enable();
+        return true;
     }
-
-    void pause() { arch::pause(); }
-
-    std::uint64_t time()
-    {
-        return chrono::now(chrono::monotonic).to_ns();
-    }
-} // namespace lib::lock
+} // namespace lib

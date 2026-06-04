@@ -35,7 +35,10 @@ namespace pci::acpi
 
         lib::map::flat_hash<std::uintptr_t, std::uintptr_t> mappings;
 
-        std::uintptr_t getaddr(std::uint32_t bus, std::uint32_t dev, std::uint32_t func, std::size_t offset)
+        std::uintptr_t getaddr(
+            std::uint32_t bus, std::uint32_t dev,
+            std::uint32_t func, std::size_t offset
+        )
         {
             lib::bug_on(bus < _bus_start || _bus_end < bus);
             const auto paddr = (_base + ((bus - _bus_start) << 20) | (dev << 15) | (func << 12));
@@ -62,9 +65,16 @@ namespace pci::acpi
         ecam(std::uintptr_t base, std::uint16_t seg, std::uint8_t bus_start, std::uint8_t bus_end)
             : _base { base }, _seg { seg }, _bus_start { bus_start }, _bus_end { bus_end } { }
 
-        std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) override
+        std::uint32_t read(
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::size_t width
+        ) override
         {
-            lib::bug_on(width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) && width != sizeof(std::uint32_t));
+            lib::bug_on(
+                width != sizeof(std::uint8_t) &&
+                width != sizeof(std::uint16_t) &&
+                width != sizeof(std::uint32_t)
+            );
             lib::bug_on(seg != _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
@@ -85,9 +95,16 @@ namespace pci::acpi
 #endif
         }
 
-        void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) override
+        void write(
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::uint32_t value, std::size_t width
+        ) override
         {
-            lib::bug_on(width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) && width != sizeof(std::uint32_t));
+            lib::bug_on(
+                width != sizeof(std::uint8_t) &&
+                width != sizeof(std::uint16_t) &&
+                width != sizeof(std::uint32_t)
+            );
             lib::bug_on(seg != _seg);
 
             const auto addr = getaddr(bus, dev, func, offset);
@@ -134,17 +151,29 @@ namespace pci::acpi
             {
                 if (parent)
                 {
-                    lib::warn("pci: no '_PRT' for bus {:04X}:{:02X}. assuming expansion bridge routing", bus->seg, bus->id);
+                    lib::warn(
+                        "pci: no '_PRT' for bus {:04X}:{:02X}. assuming expansion bridge routing",
+                        bus->seg, bus->id
+                    );
                     for (std::size_t i = 0; i < 4; i++)
                         bridge_irq[i] = parent->resolve(bus->associated_bridge.lock()->dev, i + 1);
                     mod = model::expansion;
                 }
-                else lib::error("pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible", bus->seg, bus->id);
+                else
+                {
+                    lib::error(
+                        "pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible",
+                        bus->seg, bus->id
+                    );
+                }
                 return;
             }
             else if (ret != UACPI_STATUS_OK)
             {
-                lib::error("pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}", bus->seg, bus->id, uacpi_status_to_string(ret));
+                lib::error(
+                    "pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}",
+                    bus->seg, bus->id, uacpi_status_to_string(ret)
+                );
                 return;
             }
 
@@ -152,8 +181,8 @@ namespace pci::acpi
             {
                 const auto &route = routes->entries[i];
 
-                auto triggering = flags::level;
-                auto polarity = flags::low;
+                bool edge = false;
+                bool high = false;
                 auto gsi = route.index;
 
                 int32_t slot = (route.address >> 16) & 0xFFFF;
@@ -174,10 +203,8 @@ namespace pci::acpi
                             const auto &irq = res->entries[0].irq;
                             lib::bug_on(irq.num_irqs < 1);
                             gsi = irq.irqs[0];
-                            if (irq.triggering == UACPI_TRIGGERING_EDGE)
-                                triggering = flags::edge;
-                            if (irq.polarity == UACPI_POLARITY_ACTIVE_HIGH)
-                                polarity = flags::high;
+                            edge = irq.triggering == UACPI_TRIGGERING_EDGE;
+                            high = irq.polarity == UACPI_POLARITY_ACTIVE_HIGH;
                             break;
                         }
                         case UACPI_RESOURCE_TYPE_EXTENDED_IRQ:
@@ -185,10 +212,8 @@ namespace pci::acpi
                             const auto &irq = res->entries[0].extended_irq;
                             lib::bug_on(irq.num_irqs < 1);
                             gsi = irq.irqs[0];
-                            if (irq.triggering == UACPI_TRIGGERING_EDGE)
-                                triggering = flags::edge;
-                            if (irq.polarity == UACPI_POLARITY_ACTIVE_HIGH)
-                                polarity = flags::high;
+                            edge = irq.triggering == UACPI_TRIGGERING_EDGE;
+                            high = irq.polarity == UACPI_POLARITY_ACTIVE_HIGH;
                             break;
                         }
                         default:
@@ -198,17 +223,20 @@ namespace pci::acpi
                     uacpi_free_resources(res);
                 }
 
-                table.emplace_back(
-                    gsi, slot, func, route.pin + 1,
-                    triggering | polarity
-                );
+                const auto trig = edge
+                    ? (high ? irq::trigger::edge_rising : irq::trigger::edge_falling)
+                    : (high ? irq::trigger::level_high : irq::trigger::level_low);
+
+                table.emplace_back(gsi, slot, func, route.pin + 1, trig);
             }
 
             uacpi_free_pci_routing_table(routes);
             mod = model::root;
         }
 
-        std::shared_ptr<pci::router> downstream(std::shared_ptr<pci::router> me, std::shared_ptr<bus> &bus) override
+        std::shared_ptr<pci::router> downstream(
+            std::shared_ptr<pci::router> me, std::shared_ptr<bus> &bus
+        ) override
         {
             uacpi_namespace_node *dev_handle = nullptr;
             if (node != nullptr)
@@ -294,8 +322,8 @@ namespace pci::acpi
 
             lib::debug("pci: using ecam");
 
-            const std::size_t entries = ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation);
-            for (std::size_t i = 0; i < entries; i++)
+            for (std::size_t i = 0;
+                i < ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation); i++)
             {
                 auto &entry = mcfg->entries[i];
                 auto io = std::make_shared<ecam>(
