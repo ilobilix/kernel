@@ -105,6 +105,7 @@ export namespace x86_64::idt
     constexpr std::uint8_t vec_spurious = 0xFF;
     constexpr std::uint8_t vec_lapic_error = 0xFE;
     constexpr std::uint8_t vec_sched = 0xFD;
+    constexpr std::uint8_t vec_tlb_shootdown = 0xFC;
 
     constexpr reg invalid { 0, 0 };
 

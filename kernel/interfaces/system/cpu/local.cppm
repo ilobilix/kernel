@@ -29,7 +29,7 @@ export namespace cpu
         std::size_t idx;
         std::size_t arch_id;
 
-        std::uint64_t asid_gen = 1;
+        std::atomic<std::uint64_t> asid_gen = 1;
         std::size_t next_asid = 1;
 
         std::atomic_bool in_interrupt = false;

@@ -150,6 +150,8 @@ namespace arch
 
             x86_64::apic::init_cpu();
 
+            tlb::init_cpu(ptr->idx);
+
             ptr->online = true;
             sched::start();
         }
@@ -166,6 +168,8 @@ namespace arch
             x86_64::syscall::init_cpu();
 
             x86_64::apic::init_cpu();
+
+            tlb::init_cpu(ptr->idx);
 
             ptr->online = true;
         }

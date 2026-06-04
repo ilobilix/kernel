@@ -8,6 +8,8 @@
 sched_kthread_trampoline:
     call sched_trampoline_entry
 
+    sti
+
     mov rdi, r13
     call r12
     jmp sched_kthread_exit

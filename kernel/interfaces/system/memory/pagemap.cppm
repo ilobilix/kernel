@@ -67,6 +67,29 @@ export namespace vmm
 
     using asid_t = std::size_t;
 
+    struct flush_range
+    {
+        std::uintptr_t start = ~0ul;
+        std::uintptr_t end = 0;
+
+        void extend(std::uintptr_t start, std::uintptr_t end)
+        {
+            if (start < this->start)
+                this->start = start;
+            if (end > this->end)
+                this->end = end;
+        }
+
+        bool valid() const { return start < end; }
+        std::size_t length() const { return end - start; }
+    };
+
+    struct asid_ctx
+    {
+        std::uint64_t gen;
+        asid_t asid;
+    };
+
     class pagemap
     {
         friend class vspace;
@@ -176,9 +199,17 @@ export namespace vmm
             bool allocate, bool split
         );
 
+        lib::expect<void> map_internal(
+            std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags,
+            std::optional<page_size> psize, caching cache, flush_range &fr_out
+        );
+        lib::expect<void> protect_internal(
+            std::uintptr_t vaddr, std::size_t length, pflag flags,
+            std::optional<page_size> psize, caching cache, flush_range &fr_out
+        );
         lib::expect<void> unmap_internal(
             std::uintptr_t vaddr, std::size_t length,
-            std::optional<page_size> psize
+            std::optional<page_size> psize, flush_range &fr_out
         );
 
         void arch_load(asid_t asid, bool flush) const;
@@ -187,6 +218,22 @@ export namespace vmm
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
 
         void invalidate(std::uintptr_t vaddr, std::size_t length);
+
+        bool has_asid_ctx() const { return _asid_ctx != nullptr; }
+        std::optional<asid_ctx> cached_asid_ctx(std::size_t cpu_idx) const
+        {
+            if (!_asid_ctx)
+                return std::nullopt;
+
+            const auto raw = _asid_ctx[cpu_idx].load(std::memory_order_acquire);
+            if (raw == 0)
+                return std::nullopt;
+
+            return asid_ctx {
+                .gen  = raw >> cpu::tlb::asid_bits,
+                .asid = static_cast<asid_t>(raw & asid_mask),
+            };
+        }
 
         [[gnu::pure]] static bool is_canonical(std::uintptr_t addr);
 
