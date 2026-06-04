@@ -1548,6 +1548,7 @@ namespace vmm
             if (amap && (entry.amap != amap || (entry.anon_idx + new_offp) != (anon_idx + offp)))
                 goto fail;
 
+            prot = entry.prot;
             if ((flags & flag::private_) && (entry.prot & prot::write) && !state.is_write)
                 prot &= ~prot::write;
         }
