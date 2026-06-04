@@ -77,8 +77,8 @@ namespace slab
     };
 
     constinit policy valloc;
-    constinit frg::manual_box<frg::slab_pool<policy, lib::spinlock>> pool;
-    constinit frg::manual_box<frg::slab_allocator<policy, lib::spinlock>> kalloc;
+    constinit frg::manual_box<frg::slab_pool<policy, lib::spinlock_irq>> pool;
+    constinit frg::manual_box<frg::slab_allocator<policy, lib::spinlock_irq>> kalloc;
 
     void *alloc(std::size_t size)
     {

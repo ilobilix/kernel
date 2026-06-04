@@ -6,6 +6,7 @@ module;
 
 module system.memory.virt;
 
+import system.memory.tlb;
 import system.memory.va;
 import system.cpu.local;
 import system.sched;
@@ -110,6 +111,60 @@ namespace vmm
         std::unreachable();
     }
 
+    lib::expect<void> pagemap::map_internal(
+        std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length,
+        pflag flags, std::optional<page_size> psize, caching cache,
+        flush_range &fr_out
+    )
+    {
+        auto current_vaddr = vaddr;
+        auto current_paddr = paddr;
+        auto remaining = lib::align_up(length, pmm::page_size);
+
+        while (remaining > 0)
+        {
+            const auto max_psize = fixpsize(max_page_size(current_vaddr, remaining));
+            const auto use_psize = psize.has_value() ? psize.value() : max_psize;
+            const auto npsize = from_page_size(use_psize);
+
+            if (use_psize > max_psize)
+            {
+                lib::unused(unmap_internal(vaddr, current_vaddr - vaddr, std::nullopt, fr_out));
+                return std::unexpected { lib::err::addr_not_aligned };
+            }
+
+            const auto aflags = to_arch(flags, cache, use_psize);
+
+            const auto ret = getpte(current_vaddr, use_psize, true, true);
+            if (!ret.has_value())
+            {
+                lib::unused(unmap_internal(vaddr, current_vaddr - vaddr, std::nullopt, fr_out));
+                return std::unexpected { ret.error() };
+            }
+
+            auto pte = *ret;
+            auto accessor = pte->access();
+
+            const auto addr = accessor.getaddr();
+            const bool needs_invl = addr && is_canonical(addr);
+            lib::bug_on(needs_invl && !accessor.getflags(valid_table_flags));
+
+            accessor.clear()
+                .setaddr(current_paddr)
+                .setflags(aflags, true)
+                .write();
+
+            if (needs_invl)
+                fr_out.extend(current_vaddr, current_vaddr + npsize);
+
+            current_vaddr += npsize;
+            current_paddr += npsize;
+            remaining -= npsize;
+        }
+
+        return { };
+    }
+
     lib::expect<void> pagemap::map(
         std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length,
         pflag flags, std::optional<page_size> psize, caching cache
@@ -131,11 +186,27 @@ namespace vmm
                 return std::unexpected { lib::err::addr_not_aligned };
         }
 
-        const std::unique_lock _ { _lock };
+        flush_range fr;
+        lib::expect<void> result;
+        {
+            const std::unique_lock _ { _lock };
+            result = map_internal(vaddr, paddr, length, flags, psize, cache, fr);
+        }
 
-        std::uintptr_t current_vaddr = vaddr;
-        std::uintptr_t current_paddr = paddr;
-        std::size_t remaining = lib::align_up(length, pmm::page_size);
+        if (fr.valid())
+            invalidate(fr.start, fr.length());
+
+        return result;
+    }
+
+    lib::expect<void> pagemap::protect_internal(
+        std::uintptr_t vaddr, std::size_t length, pflag flags,
+        std::optional<page_size> psize, caching cache,
+        flush_range &fr_out
+    )
+    {
+        auto current_vaddr = vaddr;
+        auto remaining = lib::align_up(length, pmm::page_size);
 
         while (remaining > 0)
         {
@@ -146,32 +217,34 @@ namespace vmm
             if (use_psize > max_psize)
                 return std::unexpected { lib::err::addr_not_aligned };
 
-            const auto aflags = to_arch(flags, cache, use_psize);
-
-            const auto ret = getpte(current_vaddr, use_psize, true, true);
+            const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
             {
-                lib::unused(unmap_internal(vaddr, current_vaddr - vaddr, std::nullopt));
-                return std::unexpected { ret.error() };
+                current_vaddr += npsize;
+                remaining -= npsize;
+                continue;
             }
 
             auto pte = *ret;
             auto accessor = pte->access();
 
-            const auto addr = accessor.getaddr();
-            const bool needs_invl = addr && is_canonical(addr);
-            lib::bug_on(needs_invl && !accessor.getflags(valid_table_flags));
+            if (!accessor.getflags(valid_table_flags))
+            {
+                current_vaddr += npsize;
+                remaining -= npsize;
+                continue;
+            }
 
-            accessor.clear()
-                .setaddr(current_paddr)
-                .setflags(aflags, true)
+            if (use_psize != page_size::small && !accessor.is_large())
+                return std::unexpected { lib::err::address_in_use };
+
+            accessor.clearflags()
+                .setflags(to_arch(flags, cache, use_psize), true)
                 .write();
 
-            if (needs_invl)
-                invalidate(current_vaddr, npsize);
+            fr_out.extend(current_vaddr, current_vaddr + npsize);
 
             current_vaddr += npsize;
-            current_paddr += npsize;
             remaining -= npsize;
         }
 
@@ -197,61 +270,26 @@ namespace vmm
                 return std::unexpected { lib::err::addr_not_aligned };
         }
 
-        const std::unique_lock _ { _lock };
-
-        std::uintptr_t current_vaddr = vaddr;
-        std::size_t remaining = lib::align_up(length, pmm::page_size);
-
-        while (remaining > 0)
+        flush_range fr;
+        lib::expect<void> result;
         {
-            const auto max_psize = fixpsize(max_page_size(current_vaddr, remaining));
-            const auto use_psize = psize.has_value() ? psize.value() : max_psize;
-            const auto npsize = from_page_size(use_psize);
-
-            if (use_psize > max_psize)
-                return std::unexpected { lib::err::addr_not_aligned };
-
-            const auto ret = getpte(current_vaddr, use_psize, false, true);
-            if (!ret.has_value())
-            {
-                // return std::unexpected { lib::err::not_mapped };
-                current_vaddr += npsize;
-                remaining -= npsize;
-                continue;
-            }
-
-            auto pte = *ret;
-            auto accessor = pte->access();
-
-            if (!accessor.getflags(valid_table_flags))
-            {
-                current_vaddr += npsize;
-                remaining -= npsize;
-                continue;
-            }
-
-            if (use_psize != page_size::small && !accessor.is_large())
-                return std::unexpected { lib::err::address_in_use };
-
-            accessor.clearflags()
-                .setflags(to_arch(flags, cache, use_psize), true)
-                .write();
-
-            invalidate(current_vaddr, npsize);
-
-            current_vaddr += npsize;
-            remaining -= npsize;
+            const std::unique_lock _ { _lock };
+            result = protect_internal(vaddr, length, flags, psize, cache, fr);
         }
-        return { };
+
+        if (fr.valid())
+            invalidate(fr.start, fr.length());
+
+        return result;
     }
 
     lib::expect<void> pagemap::unmap_internal(
         std::uintptr_t vaddr, std::size_t length,
-        std::optional<page_size> psize
+        std::optional<page_size> psize, flush_range &fr_out
     )
     {
-        std::uintptr_t current_vaddr = vaddr;
-        std::size_t remaining = lib::align_up(length, pmm::page_size);
+        auto current_vaddr = vaddr;
+        auto remaining = lib::align_up(length, pmm::page_size);
 
         while (remaining > 0)
         {
@@ -265,7 +303,6 @@ namespace vmm
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
             {
-                // return std::unexpected { lib::err::not_mapped };
                 current_vaddr += npsize;
                 remaining -= npsize;
                 continue;
@@ -273,11 +310,13 @@ namespace vmm
 
             auto pte = *ret;
             pte->access().clear().write();
-            invalidate(current_vaddr, npsize);
+
+            fr_out.extend(current_vaddr, current_vaddr + npsize);
 
             current_vaddr += npsize;
             remaining -= npsize;
         }
+
         return { };
     }
 
@@ -298,8 +337,17 @@ namespace vmm
                 return std::unexpected { lib::err::addr_not_aligned };
         }
 
-        const std::unique_lock _ { _lock };
-        return unmap_internal(vaddr, length, psize);
+        flush_range fr;
+        lib::expect<void> result;
+        {
+            const std::unique_lock _ { _lock };
+            result = unmap_internal(vaddr, length, psize, fr);
+        }
+
+        if (fr.valid())
+            invalidate(fr.start, fr.length());
+
+        return result;
     }
 
     lib::expect<std::uintptr_t> pagemap::translate(std::uintptr_t vaddr, page_size psize)
@@ -328,7 +376,7 @@ namespace vmm
         auto &self = cpu::self().unsafe_get();
         if (self.next_asid >= max_asids)
         {
-            self.asid_gen++;
+            self.asid_gen.fetch_add(1, std::memory_order_release);
             self.next_asid = 1;
             cpu::tlb::flush_all();
         }
@@ -337,35 +385,18 @@ namespace vmm
 
     void pagemap::invalidate(std::uintptr_t vaddr, std::size_t length)
     {
-        const auto npsize = from_page_size(page_size::small);
-        const auto pages = length / npsize;
-
-        if (!_asid_ctx || !cpu::tlb::has_asids())
-        {
-            for (std::size_t i = 0; i < pages; i++)
-                cpu::tlb::flush_page(vaddr + i * npsize);
+        if (length == 0)
             return;
-        }
 
-        sched::preempt_disable();
-        auto &self = cpu::self().unsafe_get();
-        const auto val = _asid_ctx[self.idx].load(std::memory_order_acquire);
+        const auto npsize = from_page_size(page_size::small);
+        const bool kernel = (_asid_ctx == nullptr);
 
-        if ((val >> cpu::tlb::asid_bits) == self.asid_gen)
-        {
-            const asid_t asid = val & asid_mask;
-
-            constexpr std::size_t threshold = 32;
-            if (pages <= threshold)
-            {
-                for (std::size_t i = 0; i < pages; i++)
-                    cpu::tlb::flush_page(vaddr + i * npsize, asid);
-            }
-            else cpu::tlb::flush_asid(asid);
-        }
-
-        // TODO: tlb shootdown
-        sched::preempt_enable();
+        tlb::shootdown({
+            .sc = kernel ? tlb::scope::kernel_range : tlb::scope::user_range,
+            .start = vaddr,
+            .pages = length / npsize,
+            .pmap = kernel ? nullptr : this,
+        });
     }
 
     void pagemap::unload() const
@@ -395,11 +426,12 @@ namespace vmm
         const auto val = _asid_ctx[idx].load(std::memory_order_acquire);
         const auto gen = val >> cpu::tlb::asid_bits;
 
-        if (gen != self.asid_gen)
+        if (gen != self.asid_gen.load(std::memory_order_acquire))
         {
             const auto asid = alloc_asid();
+            const auto fresh_gen = self.asid_gen.load(std::memory_order_acquire);
             _asid_ctx[idx].store(
-                (self.asid_gen << cpu::tlb::asid_bits) | asid,
+                (fresh_gen << cpu::tlb::asid_bits) | asid,
                 std::memory_order_release
             );
             arch_load(asid, true);
