@@ -2276,7 +2276,11 @@ namespace sched
                 lib::bug_on(!register_per_pid("exe",
                     make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        return proc->pathname;
+                        // TODO
+                        const auto res = vfs::resolve(proc->vfs->root, proc->pathname);
+                        if (!res)
+                            return proc->pathname;
+                        return vfs::pathname_from(res->target);
                     }), node_type::symlink, 0777
                 ));
 
