@@ -117,6 +117,7 @@ namespace lib::syscall
                         }
                         return uptr_ret;
                     }
+
                     if (log_enabled && log_exit)
                     {
                         if constexpr (is_void)
@@ -127,6 +128,7 @@ namespace lib::syscall
                         else
                             lib::debug("syscall: [{}:{}]: {} -> {}", pid, tid, name, uptr_ret);
                     }
+
                     if constexpr (is_void)
                         return 0;
                     return uptr_ret;

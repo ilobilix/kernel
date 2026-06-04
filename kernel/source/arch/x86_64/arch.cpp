@@ -33,28 +33,6 @@ namespace arch
             apic::ipi(apic::shorthand::all_noself, apic::delivery::nmi, 0);
     }
 
-    void wfi() { asm volatile ("hlt"); }
-    void pause() { asm volatile ("pause"); }
-
-    void int_switch(bool on)
-    {
-        if (on)
-            asm volatile ("sti");
-        else
-            asm volatile ("cli");
-    }
-
-    bool int_status()
-    {
-        std::uint64_t rflags = 0;
-        asm volatile (
-            "pushfq \n\t"
-            "pop %[rflags]"
-            : [rflags]"=r"(rflags)
-        );
-        return rflags & (1 << 9);
-    }
-
     bool in_interrupt()
     {
         sched::preempt_disable();
