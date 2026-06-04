@@ -48,24 +48,27 @@ namespace syscall::vfs
         {
             struct entry
             {
-                sched::wait_queue_entry_t entry;
                 sched::wait_queue_t *wq;
+                sched::wait_queue_entry_t wq_entry;
+
+                entry(sched::wait_queue_t *wq, std::function<void ()> cb)
+                    : wq { wq }, wq_entry { std::move(cb) } { }
             };
 
             lib::list<entry> entries;
+            sched::wait_queue_t poll_wq;
 
             poll_table() = default;
             ~poll_table()
             {
                 for (auto &entry : entries)
-                    entry.wq->remove_entry(entry.entry);
+                    entry.wq->remove_entry(entry.wq_entry);
             }
 
             void add(sched::wait_queue_t &wq) override
             {
-                auto &entry = entries.emplace_back();
-                entry.wq = &wq;
-                wq.add_entry(entry.entry);
+                entries.emplace_back(&wq, [this] { poll_wq.wake_one(); });
+                wq.add_entry(entries.back().wq_entry);
             }
         };
 
@@ -154,30 +157,15 @@ namespace syscall::vfs
                 if (timeout && timeout_ns == 0)
                     return 0;
 
-                thread->state.store(sched::thread_state::sleeping, std::memory_order_release);
-                sched::sleep_entry_t sleep_timeout {
-                    .thread = thread,
-                    .deadline_ns = 0,
-                    .expired = false,
-                    .hook = { }
-                };
-
-                if (timeout)
-                    sched::arm_thread_timeout(&sleep_timeout, timeout_ns);
-
-                const bool interrupted = sched::yield();
-                if (timeout)
-                {
-                    if (sleep_timeout.expired)
-                        return 0;
-                    else sched::cancel_thread_timeout(&sleep_timeout);
-                }
-
-                if (interrupted)
+                const auto res = pt.poll_wq.wait(timeout ? timeout_ns : 0);
+                if (res.killed || res.interrupted)
                 {
                     guard.disarm();
                     return -EINTR;
                 }
+
+                if (timeout && res.expired)
+                    return 0;
             }
         }
 
