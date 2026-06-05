@@ -378,4 +378,14 @@ namespace syscall::misc
         lib::unused(type, buf, len);
         return -ENOSYS;
     }
+
+    int landlock_create_ruleset(
+        const struct landlock_ruleset_attr __user *const attr,
+        const std::size_t size, const std::uint32_t flags
+    )
+    {
+        // TODO
+        lib::unused(attr, size, flags);
+        return -ENOSYS;
+    }
 } // namespace syscall::misc

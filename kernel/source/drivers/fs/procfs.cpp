@@ -280,19 +280,6 @@ namespace fs::procfs
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
-        {
-            lib::unused(flags, pid);
-
-            const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
-            if (inod->type != inode_type::file)
-                return { };
-
-            if (inod->pid > 0 && !sched::get_process(inod->pid))
-                return std::unexpected { lib::err::not_found };
-            return { };
-        }
-
         lib::expect<std::size_t> read(
             std::shared_ptr<vfs::file> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
@@ -474,8 +461,10 @@ namespace fs::procfs
                 mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
-                lib::unused(parent, name, mode, rdev, ops);
-                return std::unexpected { lib::err::read_only_fs };
+                lib::unused(parent, name, rdev, ops);
+                if (stat::type(mode) == stat::s_ifreg)
+                    return std::unexpected { lib::err::permission_denied };
+                return std::unexpected { lib::err::not_permitted };
             }
 
             auto symlink(
@@ -484,7 +473,7 @@ namespace fs::procfs
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
-                return std::unexpected { lib::err::read_only_fs };
+                return std::unexpected { lib::err::not_permitted };
             }
 
             auto link(
@@ -493,13 +482,13 @@ namespace fs::procfs
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
-                return std::unexpected { lib::err::read_only_fs };
+                return std::unexpected { lib::err::not_permitted };
             }
 
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override
             {
                 lib::unused(node);
-                return std::unexpected { lib::err::read_only_fs };
+                return std::unexpected { lib::err::not_permitted };
             }
 
             auto rename(
@@ -509,7 +498,7 @@ namespace fs::procfs
             ) -> lib::expect<void> override
             {
                 lib::unused(old_parent, old_name, new_parent, new_name, replaced);
-                return std::unexpected { lib::err::read_only_fs };
+                return std::unexpected { lib::err::not_permitted };
             }
 
             auto readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)

@@ -85,6 +85,10 @@ export namespace syscall::vfs
     int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath);
     int symlink(const char __user *target, const char __user *linkpath);
 
+    int renameat2(
+        int olddfd, const char __user *oldname, int newdfd,
+        const char __user *newname, unsigned int flags
+    );
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
     int rename(const char __user *oldpath, const char __user *newpath);
 

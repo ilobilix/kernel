@@ -350,6 +350,16 @@ namespace syscall::vfs
         return symlinkat(target, at_fdcwd, linkpath);
     }
 
+    int renameat2(
+        int olddfd, const char __user *oldname, int newdfd,
+        const char __user *newname, unsigned int flags
+    )
+    {
+        // TODO: glibc seems to fall back to renameat
+        lib::unused(olddfd, oldname, newdfd, newname, flags);
+        return -ENOSYS;
+    }
+
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath)
     {
         const auto proc = sched::current_process();

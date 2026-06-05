@@ -210,6 +210,7 @@ namespace x86_64::syscall
         [295] = { "preadv", vfs::preadv, true },
         [296] = { "pwritev", vfs::pwritev, true },
         [302] = { "prlimit", proc::prlimit },
+        [316] = { "renameat2", vfs::renameat2 },
         [317] = { "seccomp", misc::seccomp, true },
         [318] = { "getrandom", misc::getrandom, true },
         [322] = { "execveat", proc::execveat },
@@ -220,6 +221,7 @@ namespace x86_64::syscall
         [436] = { "close_range", vfs::close_range },
         [439] = { "faccessat2", vfs::faccessat2 },
         [441] = { "epoll_pwait2", vfs::epoll_pwait2, true },
+        [444] = { "landlock_create_ruleset", misc::landlock_create_ruleset, true },
         [452] = { "fchmodat2", vfs::fchmodat2 }
     };
 
