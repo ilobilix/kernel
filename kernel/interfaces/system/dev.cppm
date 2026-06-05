@@ -222,6 +222,7 @@ export namespace dev
     void unregister_device(std::shared_ptr<device_t> dev);
 
     lib::initgraph::stage *core_registered_stage();
+    lib::initgraph::stage *available_stage();
 
     ktype_t *default_ktype();
 

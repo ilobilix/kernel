@@ -35,6 +35,18 @@ namespace vfs::dev
         return inserted;
     }
 
+    bool unregister_ops(dev_t rdev)
+    {
+        auto lock = cdev_table.write_lock();
+        const auto it = lock->find(rdev);
+        if (it == lock->end())
+            return false;
+
+        lock->erase(it);
+        lib::debug("dev: unregistered ops for device ({}, {})", major(rdev), minor(rdev));
+        return true;
+    }
+
     auto get_ops(dev_t rdev, mode_t mode) -> lib::expect<std::shared_ptr<vfs::ops>>
     {
         switch (stat::type(mode))

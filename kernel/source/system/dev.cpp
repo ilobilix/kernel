@@ -2,6 +2,8 @@
 
 module system.dev;
 
+import drivers.fs.devtmpfs;
+import drivers.fs.sysfs;
 import system.vfs.dev;
 import fmt;
 import lib;
@@ -349,11 +351,11 @@ namespace dev
                 prnt->children.push_back(kobj);
 
             lib::debug("dev: registering kobject '{}'", path);
-            locked.value()[path] = std::move(kobj);
+            locked.value()[path] = kobj;
         }
 
         if (auto ref = current_ref.load(std::memory_order_acquire))
-            ref->add_object(kobj);
+            ref->add_object(std::move(kobj));
         return { };
     }
 
@@ -541,7 +543,28 @@ namespace dev
             );
         }
 
-        // TODO: /dev/
+        if (dev->devt != 0 && dev->fops)
+        {
+            vfs::dev::register_ops(dev->devt, dev->fops);
+
+            mode_t mode = 0660;
+            if (dev->cls && dev->cls->is_block)
+                mode |= stat::s_ifblk;
+            else
+                mode |= stat::s_ifchr;
+
+            auto name = dev->name;
+            if (dev->cls)
+            {
+                auto node = dev->cls->devnode(*dev, mode);
+                if (!node.empty())
+                    name = std::move(node);
+            }
+
+            if (const auto ret = fs::devtmpfs::create(name, mode, dev->devt); !ret)
+                lib::error("dev: failed to create device node for '{}'", dev->name);
+        }
+
         return { };
     }
 
@@ -583,6 +606,23 @@ namespace dev
             locked->erase(std::remove(locked->begin(), locked->end(), dev), locked->end());
         }
 
+        if (dev->devt != 0 && dev->fops)
+        {
+            vfs::dev::unregister_ops(dev->devt);
+
+            auto name = dev->name;
+            if (dev->cls)
+            {
+                mode_t mode = 0;
+                auto node = dev->cls->devnode(*dev, mode);
+                if (!node.empty())
+                    name = std::move(node);
+            }
+
+            if (const auto ret = fs::devtmpfs::remove(name); !ret)
+                lib::error("dev: failed to remove device node for '{}'", dev->name);
+        }
+
         unreflect_device_links(dev);
         lib::unused(dev->emit(action::remove));
         unregister_kobject(dev);
@@ -593,6 +633,16 @@ namespace dev
         static lib::initgraph::stage stage
         {
             "dev.core-registered",
+            lib::initgraph::postsched_init_engine
+        };
+        return &stage;
+    }
+
+    lib::initgraph::stage *available_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "dev.available",
             lib::initgraph::postsched_init_engine
         };
         return &stage;
@@ -640,6 +690,19 @@ namespace dev
             lib::initgraph::postsched_init_engine,
             lib::initgraph::entail { core_registered_stage() },
             [] { init(); }
+        };
+
+        lib::initgraph::task available_task
+        {
+            "dev.available",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::require {
+                core_registered_stage(),
+                fs::sysfs::registered_stage(),
+                fs::devtmpfs::registered_stage()
+            },
+            lib::initgraph::entail { available_stage() },
+            [] { }
         };
     } // namespace
 

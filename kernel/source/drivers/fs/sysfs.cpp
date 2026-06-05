@@ -300,9 +300,11 @@ namespace fs::sysfs
                         return it->second;
                 }
 
-                auto parent = kobj->parent.lock()
-                    ? get_or_create(kobj->parent.lock())
-                    : static_cast<struct fs *>(fs)->root;
+                std::shared_ptr<vfs::dentry> parent;
+                if (auto locked = kobj->parent.lock())
+                    parent = get_or_create(locked);
+                else
+                    parent = static_cast<struct fs *>(fs)->root;
 
                 auto locked = nodes.lock();
                 if (auto it = locked->find(kobj.get()); it != locked->end())
