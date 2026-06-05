@@ -245,7 +245,17 @@ export namespace sched
         wnowait = 0x01000000
     };
 
-    pid_t waitpid(pid_t wait_pid, int options, int *status);
+    struct cputime_t
+    {
+        std::uint64_t utime_ns = 0;
+        std::uint64_t stime_ns = 0;
+    };
+
+    cputime_t process_cputime(process_t *proc);
+    cputime_t thread_cputime(thread_t *thread);
+    cputime_t children_cputime(process_t *proc);
+
+    pid_t waitpid(pid_t wait_pid, int options, int *status, cputime_t *usage);
 
     int kill(pid_t pid, int sig);
 } // export namespace sched

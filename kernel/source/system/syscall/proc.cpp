@@ -1092,8 +1092,28 @@ namespace syscall::proc
         if (who != rusage_self && who != rusage_children && who != rusage_thread)
             return -EINVAL;
 
-        const rusage kbuf { };
-        // TODO
+        if (usage == nullptr)
+            return -EFAULT;
+
+        sched::cputime_t cputime;
+        switch (who)
+        {
+            case rusage_self:
+                cputime = sched::process_cputime(sched::current_process());
+                break;
+            case rusage_children:
+                cputime = sched::children_cputime(sched::current_process());
+                break;
+            case rusage_thread:
+                cputime = sched::thread_cputime(sched::current_thread());
+                break;
+        }
+
+        rusage kbuf { };
+        kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
+        kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+        // TODO: the rest
+
         if (!lib::copy_to_user(usage, &kbuf, sizeof(kbuf)))
             return -EFAULT;
         return 0;
@@ -1294,14 +1314,25 @@ namespace syscall::proc
 
     pid_t wait4(pid_t pid, int __user *wstatus, int options, struct rusage __user *rusage)
     {
-        // TODO: rusage
-        lib::unused(rusage);
-
-        int status;
-        const auto ret = sched::waitpid(pid, options, &status);
+        int status = 0;
+        sched::cputime_t cputime;
+        const auto ret = sched::waitpid(pid, options, &status, &cputime);
+        if (ret <= 0)
+            return ret;
 
         if (wstatus && !lib::copy_to_user(wstatus, &status, sizeof(int)))
             return -EFAULT;
+
+        if (rusage)
+        {
+            // TODO: other fields
+            struct rusage kbuf { };
+            kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
+            kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+
+            if (!lib::copy_to_user(rusage, &kbuf, sizeof(kbuf)))
+                return -EFAULT;
+        }
 
         return ret;
     }

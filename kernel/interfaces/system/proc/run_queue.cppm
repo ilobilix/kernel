@@ -63,7 +63,8 @@ export namespace sched
         thread_t *pick_next();
 
         // update current thread vruntime
-        void update_current(std::uint64_t now);
+        // returns the runtime delta
+        std::uint64_t update_current(std::uint64_t now);
 
         // adjust vruntime
         void adjust(thread_t *thread, bool initial);
