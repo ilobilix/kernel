@@ -21,8 +21,7 @@ namespace fs::stubs
             { "bpf"sv, 0xCAFE4A11 },
             { "cgroup2"sv, 0x63677270 },
             { "pstore"sv, 0x6165676C },
-            { "securityfs"sv, 0x73636673 },
-            { "sysfs"sv, 0x62656572 }
+            { "securityfs"sv, 0x73636673 }
         }};
 
         struct stub_fs : vfs::filesystem

@@ -7,6 +7,7 @@ export import drivers.fs.devpts;
 export import drivers.fs.devtmpfs;
 export import drivers.fs.procfs;
 export import drivers.fs.stubs;
+export import drivers.fs.sysfs;
 export import drivers.fs.tmpfs;
 import lib;
 
