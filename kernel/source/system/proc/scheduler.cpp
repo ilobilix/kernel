@@ -2257,6 +2257,8 @@ namespace sched
                             return out;
 
                         const auto locked = vmspace->tree.lock();
+                        out.reserve(locked->size() * 64);
+                        auto out_it = std::back_inserter(out);
                         for (auto it = locked->begin(); it != locked->end(); it++)
                         {
                             const auto &entry = *it;
@@ -2264,10 +2266,10 @@ namespace sched
                             const char w = (entry.prot & vmm::write) ? 'w' : '-';
                             const char x = (entry.prot & vmm::exec)  ? 'x' : '-';
                             const char p = (entry.flags & vmm::shared) ? 's' : 'p';
-                            out.append(fmt::format(
+                            fmt::format_to(out_it,
                                 "{:016x}-{:016x} {}{}{}{} {:08x} 00:00 0\n",
                                 entry.startp, entry.endp, r, w, x, p, entry.offp
-                            ));
+                            );
                         }
                         return out;
                     }), node_type::file, 0400

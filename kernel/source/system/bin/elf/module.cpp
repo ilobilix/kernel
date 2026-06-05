@@ -133,6 +133,8 @@ namespace bin::elf::mod
                     entry.deps.push_back(deps[i]);
 
                 log_entry(entry);
+                // TODO: bump on unload too
+                generation.fetch_add(1, std::memory_order_release);
 
                 current += base_size + ndeps * sizeof(const char *);
             }

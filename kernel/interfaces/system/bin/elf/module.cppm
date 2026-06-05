@@ -48,5 +48,7 @@ export namespace bin::elf::mod
         >, lib::rwspinlock
     > modules;
 
+    std::atomic<std::uint64_t> generation { 0 };
+
     lib::initgraph::stage *modules_loaded_stage();
 } // export namespace bin::elf::mod

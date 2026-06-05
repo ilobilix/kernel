@@ -1434,6 +1434,8 @@ namespace vfs
                     make_file_ops([](auto) {
                         const auto snapshot = *mounts.lock();
                         std::string out;
+                        out.reserve(snapshot.size() * 96);
+                        auto it = std::back_inserter(out);
                         for (const auto &[_, mnt] : snapshot)
                         {
                             if (!mnt->mounted_on || !mnt->mounted_on->dentry)
@@ -1449,10 +1451,10 @@ namespace vfs
                                 ? std::string_view { mnt->fstype }
                                 : mnt->source;
 
-                            out.append(fmt::format("{} {} {} {} 0 0\n",
+                            fmt::format_to(it, "{} {} {} {} 0 0\n",
                                 source, mountpoint, mnt->fstype,
                                 get_mnt_opts(mnt->flags, mnt->fs)
-                            ));
+                            );
                         }
                         return out;
                     }), node_type::file, 0444
@@ -1462,6 +1464,8 @@ namespace vfs
                     make_file_ops([](auto) {
                         const auto snapshot = *mounts.lock();
                         std::string out;
+                        out.reserve(snapshot.size() * 128);
+                        auto it = std::back_inserter(out);
                         for (const auto &[id, mnt] : snapshot)
                         {
                             if (!mnt->mounted_on || !mnt->mounted_on->dentry)
@@ -1481,10 +1485,10 @@ namespace vfs
 
                             // TODO: root within the fs, optional_fields, super_options
                             const auto mnt_opts = get_mnt_opts(mnt->flags, mnt->fs);
-                            out.append(fmt::format("{} {} 0:{} {} {} {} - {} {} {}\n",
+                            fmt::format_to(it, "{} {} 0:{} {} {} {} - {} {} {}\n",
                                 mnt->id, mnt->parent_id, dev_id, "/", mountpoint,
                                 mnt_opts, mnt->fstype, source, mnt_opts
-                            ));
+                            );
                         }
                         return out;
                     }), node_type::file, 0444
@@ -1492,12 +1496,15 @@ namespace vfs
 
                 lib::bug_on(!register_global("filesystems",
                     make_file_ops([](auto) {
+                        const auto locked = filesystems.lock();
                         std::string out;
-                        for (const auto &[name, fs] : *filesystems.lock())
+                        out.reserve(locked->size() * 32);
+                        auto it = std::back_inserter(out);
+                        for (const auto &[name, fs] : *locked)
                         {
-                            out.append(fmt::format("{}\t{}\n",
+                            fmt::format_to(it, "{}\t{}\n",
                                 !fs->requires_dev ? "nodev" : "", name
-                            ));
+                            );
                         }
                         return out;
                     }), node_type::file, 0444
