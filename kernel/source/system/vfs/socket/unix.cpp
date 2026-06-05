@@ -1942,7 +1942,10 @@ namespace vfs::socket
                             "Num       RefCount Protocol Flags    Type St Inode Path\n"
                         };
 
-                        for (auto &sock : *sockets.lock())
+                        const auto locked = sockets.lock();
+                        out.reserve(out.size() + locked->size() * 96);
+                        auto it = std::back_inserter(out);
+                        for (auto &sock : *locked)
                         {
                             const auto slocked = sock.state.lock();
                             const std::uint32_t flags = (slocked->state == listening) ? 0x10000 : 0;
@@ -1984,7 +1987,7 @@ namespace vfs::socket
                                 else path = slocked->bound_path;
                             }
 
-                            out += fmt::format(
+                            fmt::format_to(it,
                                 "{:016x}: {:08x} {:08x} {:08x} {:04x} {:02x} {:5}{}{}\n",
                                 reinterpret_cast<std::uintptr_t>(&sock),
                                 static_cast<std::uint32_t>(sock.weak_from_this().use_count()),

@@ -133,7 +133,81 @@ namespace bin::elf::sym
                     return off + ((len & 0x7F) | (data[1] << 7)) + 2;
                 return off + len + 1;
             }
+
+            struct cache_t
+            {
+                std::string ksyms;
+                std::size_t cursor_i = 0;
+                std::size_t cursor_off = 0;
+                bool ksyms_done = false;
+
+                std::string modsyms;
+                std::uint64_t mod_gen = -1ul;
+            };
+            lib::locker<cache_t, lib::spinlock> cache;
         } // namespace
+
+        std::size_t stream(std::uint64_t offset, std::span<char> out)
+        {
+            auto locked = cache.lock();
+            {
+                if (locked->cursor_i == 0 && locked->ksyms.empty())
+                    locked->ksyms.reserve(static_cast<std::size_t>(kallsyms_num_syms) * 64);
+
+                lib::buffer<char> buf { KSYM_NAME_LEN };
+                auto it = std::back_inserter(locked->ksyms);
+                while (!locked->ksyms_done && locked->ksyms.size() < offset + out.size())
+                {
+                    const auto addr = sym_addr(locked->cursor_i);
+                    const char type = expand_symbol(locked->cursor_off, buf.span());
+
+                    fmt::format_to(it, "{:016x} {} {}\n", addr, type, buf.data());
+
+                    locked->cursor_off = next_offset(locked->cursor_off);
+                    if (++locked->cursor_i >= kallsyms_num_syms)
+                        locked->ksyms_done = true;
+                }
+            }
+
+            std::size_t produced = 0;
+            const auto append = [&](std::uint64_t base, std::string_view src) {
+                const auto pos = offset + produced;
+                if (pos < base || pos - base >= src.size())
+                    return;
+
+                const auto soff = pos - base;
+                const auto num = std::min(src.size() - soff, out.size() - produced);
+                std::memcpy(out.data() + produced, src.data() + soff, num);
+                produced += num;
+            };
+
+            append(0, locked->ksyms);
+            if (produced < out.size() && locked->ksyms_done)
+            {
+                if (locked->mod_gen != mod::generation.load(std::memory_order_acquire))
+                {
+                    locked->modsyms.clear();
+
+                    auto mlocked = mod::modules.read_lock();
+                    locked->mod_gen = mod::generation.load(std::memory_order_acquire);
+
+                    auto it = std::back_inserter(locked->modsyms);
+                    for (const auto &[modname, modent] : *mlocked)
+                    {
+                        for (const auto &sym : modent.symbols)
+                        {
+                            fmt::format_to(it,
+                                "{:016x} {} {}\t[{}]\n",
+                                sym.address, sym.type, sym.name, modname
+                            );
+                        }
+                    }
+                }
+
+                append(locked->ksyms.size(), locked->modsyms);
+            }
+            return produced;
+        }
 
         auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<std::uintptr_t>
         {
@@ -326,31 +400,8 @@ namespace bin::elf::sym
         [] {
             using namespace ::fs::procfs;
             lib::bug_on(!register_global("kallsyms",
-                make_file_ops([](auto) {
-                    std::string out;
-
-                    lib::buffer<char> buf { KSYM_NAME_LEN };
-                    for (std::size_t i = 0, off = 0; i < kallsyms::kallsyms_num_syms; i++)
-                    {
-                        const auto addr = kallsyms::sym_addr(i);
-                        const char type = kallsyms::expand_symbol(off, buf.span());
-                        const std::string_view name { buf.data() };
-                        out.append(fmt::format("{:016x} {} {}\n", addr, type, name));
-                        off = kallsyms::next_offset(off);
-                    }
-
-                    for (const auto &[modname, modent] : *mod::modules.read_lock())
-                    {
-                        for (const auto &sym : modent.symbols)
-                        {
-                            out.append(fmt::format(
-                                "{:016x} {} {}\t[{}]\n",
-                                sym.address, sym.type, sym.name, modname
-                            ));
-                        }
-                    }
-
-                    return out;
+                make_streaming_file_ops([](auto, std::uint64_t offset, std::span<char> out) {
+                    return kallsyms::stream(offset, out);
                 }), node_type::file, 0444
             ));
         }

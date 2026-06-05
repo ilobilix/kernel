@@ -122,8 +122,11 @@ namespace cpu
                     const auto num = count();
                     std::string out;
                     out.reserve(num * (tail.size() + 32));
+
+                    auto it = std::back_inserter(out);
                     for (std::size_t idx = 0; idx < num; idx++)
-                        out.append(fmt::format("processor\t: {}\n{}", idx, tail));
+                        fmt::format_to(it, "processor\t: {}\n{}", idx, tail);
+
                     return out;
                 }), node_type::file, 0444
             ));

@@ -24,6 +24,7 @@ export namespace fs::procfs
         virtual ~node_ops() = default;
 
         virtual bool can_trunc() { return false; }
+        virtual bool can_stream() { return false; }
 
         virtual lib::expect<std::string> generate(sched::process_t *proc)
         {
@@ -31,10 +32,18 @@ export namespace fs::procfs
             return std::unexpected { lib::err::not_supported };
         }
 
+        virtual lib::expect<std::size_t> read_at(
+            sched::process_t *proc, std::uint64_t offset, std::span<char> out
+        )
+        {
+            lib::unused(proc, offset, out);
+            return std::unexpected { lib::err::not_supported };
+        }
+
         virtual lib::expect<void> write(sched::process_t *proc, std::string_view data)
         {
             lib::unused(proc, data);
-            return std::unexpected { lib::err::read_only_fs };
+            return std::unexpected { lib::err::io_error };
         }
 
         virtual lib::expect<lib::path> readlink(sched::process_t *proc)
@@ -64,6 +73,9 @@ export namespace fs::procfs
 
     // I hate myself
     using gen_fn = std::function<lib::expect<std::string> (sched::process_t *)>;
+    using stream_fn = std::function<lib::expect<std::size_t> (
+        sched::process_t *, std::uint64_t, std::span<char>
+    )>;
     using write_fn = std::function<lib::expect<void> (sched::process_t *, std::string_view)>;
     using readlink_fn = std::function<lib::expect<lib::path> (sched::process_t *)>;
     using lookup_fn = std::function<lib::expect<node_t> (sched::process_t *, std::string_view)>;
@@ -71,8 +83,8 @@ export namespace fs::procfs
     using revalidate_fn = std::function<bool (sched::process_t *)>;
 
     std::shared_ptr<node_ops> make_file_ops(gen_fn gfn, write_fn wfn = nullptr);
+    std::shared_ptr<node_ops> make_streaming_file_ops(stream_fn sfn, write_fn wfn = nullptr);
     std::shared_ptr<node_ops> make_symlink_ops(readlink_fn rdlfn, revalidate_fn rvfn = nullptr);
-
     std::shared_ptr<node_ops> make_dir_ops(lookup_fn lfn = nullptr, readdir_fn rfn = nullptr);
 
     // /proc/<path>

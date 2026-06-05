@@ -137,17 +137,26 @@ namespace fs::procfs
         struct file_ops : node_ops
         {
             gen_fn gfn = nullptr;
+            stream_fn sfn = nullptr;
             write_fn wfn = nullptr;
             readlink_fn rdlfn = nullptr;
             revalidate_fn rvfn = nullptr;
 
             bool can_trunc() override { return wfn != nullptr; }
+            bool can_stream() override { return sfn != nullptr; }
 
             lib::expect<std::string> generate(sched::process_t *proc) override
             {
                 if (!gfn)
                     return node_ops::generate(proc);
                 return gfn(proc);
+            }
+
+            lib::expect<std::size_t> read_at(sched::process_t *proc, std::uint64_t offset, std::span<char> out) override
+            {
+                if (!sfn)
+                    return node_ops::read_at(proc, offset, out);
+                return sfn(proc, offset, out);
             }
 
             lib::expect<void> write(sched::process_t *proc, std::string_view data) override
@@ -183,6 +192,14 @@ namespace fs::procfs
     {
         auto ret = std::shared_ptr<file_ops>(new file_ops { });
         ret->gfn = gfn;
+        ret->wfn = wfn;
+        return ret;
+    }
+
+    std::shared_ptr<node_ops> make_streaming_file_ops(stream_fn sfn, write_fn wfn)
+    {
+        auto ret = std::shared_ptr<file_ops>(new file_ops { });
+        ret->sfn = sfn;
         ret->wfn = wfn;
         return ret;
     }
@@ -271,21 +288,8 @@ namespace fs::procfs
             if (inod->type != inode_type::file)
                 return { };
 
-            std::shared_ptr<sched::process_t> proc;
-            if (inod->pid > 0)
-            {
-                proc = sched::get_process(inod->pid);
-                if (!proc)
-                    return std::unexpected { lib::err::not_found };
-            }
-
-            auto content = inod->ops->generate(proc.get());
-            if (!content)
-                return std::unexpected { content.error() };
-
-            file->private_data = std::shared_ptr<std::string> {
-                new std::string { std::move(*content) }
-            };
+            if (inod->pid > 0 && !sched::get_process(inod->pid))
+                return std::unexpected { lib::err::not_found };
             return { };
         }
 
@@ -302,6 +306,24 @@ namespace fs::procfs
                 proc = sched::get_process(inod->pid);
                 if (!proc)
                     return std::unexpected { lib::err::not_found };
+            }
+
+            if (inod->ops->can_stream())
+            {
+                if (buffer.size() == 0)
+                    return 0uz;
+
+                lib::buffer<char> tmp { buffer.size() };
+                const auto produced = inod->ops->read_at(proc.get(), offset, tmp.span());
+                if (!produced)
+                    return std::unexpected { produced.error() };
+                if (*produced == 0)
+                    return 0uz;
+
+                if (!buffer.subspan(0, *produced)
+                    .copy_from(reinterpret_cast<const std::byte *>(tmp.data())))
+                    return std::unexpected { lib::err::invalid_address };
+                return *produced;
             }
 
             if (!file->private_data || offset == 0)
@@ -361,11 +383,6 @@ namespace fs::procfs
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(size);
-
-            const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
-            if (!inod->ops->can_trunc())
-                return std::unexpected { lib::err::read_only_fs };
-
             file->private_data.reset();
             return { };
         }
