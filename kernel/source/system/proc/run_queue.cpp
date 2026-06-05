@@ -29,21 +29,22 @@ namespace sched
         return queue.first();
     }
 
-    void run_queue_t::update_current(std::uint64_t now)
+    std::uint64_t run_queue_t::update_current(std::uint64_t now)
     {
         if (current == nullptr)
-            return;
+            return 0;
 
         const auto delta = now - current->sched_time;
 
         if (static_cast<std::int64_t>(delta) <= 0)
-            return;
+            return 0;
 
         current->sched_time = now;
         current->total_runtime += delta;
 
         current->vruntime += calc_vruntime(delta, current->weight, current->inv_weight);
         update_min_vruntime();
+        return delta;
     }
 
     void run_queue_t::adjust(thread_t *thread, bool initial)

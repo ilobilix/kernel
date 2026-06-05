@@ -70,6 +70,9 @@ export namespace sched
         std::uint64_t prev_runtime = 0;
         std::uint64_t sched_time = 0;
 
+        std::uint64_t utime_ns = 0;
+        std::uint64_t stime_ns = 0;
+
         nice_t nice;
         std::uint64_t weight;
         std::uint64_t inv_weight;

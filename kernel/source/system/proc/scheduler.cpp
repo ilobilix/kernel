@@ -54,6 +54,12 @@ namespace sched
             need_reaper_wake.unsafe_get() = true;
         }
 
+        void add_cputime(process_t *proc, const thread_t *thread)
+        {
+            proc->utime_ns.fetch_add(thread->utime_ns, std::memory_order_relaxed);
+            proc->stime_ns.fetch_add(thread->stime_ns, std::memory_order_relaxed);
+        }
+
         std::shared_ptr<thread_t> take_thread(thread_t *thread)
         {
             auto locked = thread->proc->threads.lock();
@@ -405,7 +411,9 @@ namespace sched
         const auto timer = chrono::main_timer();
         const auto now = timer->ns();
 
-        rq.update_current(now);
+        const auto delta = rq.update_current(now);
+        if (!prev->is_idle())
+            prev->stime_ns += delta;
 
         switch (prev->state.load(std::memory_order_relaxed))
         {
@@ -899,6 +907,8 @@ namespace sched
         auto self_ptr = take_thread(thread);
         threads.lock()->erase(thread->tid);
 
+        add_cputime(proc, thread);
+
         if (proc->alive_threads.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
             lib::panic_if(proc->pid == 0, "attempted to kill kernel process");
@@ -1027,7 +1037,12 @@ namespace sched
                 {
                     const auto timer = chrono::main_timer();
                     const auto now = timer->ns();
-                    rq.update_current(now);
+                    const auto delta = rq.update_current(now);
+
+                    if (from_user)
+                        curr->utime_ns += delta;
+                    else
+                        curr->stime_ns += delta;
 
                     if (rq.tick_last_ns != 0 && now > rq.tick_last_ns)
                     {
@@ -1851,6 +1866,8 @@ namespace sched
             }
             lib::bug_on(new_thread->tid != process->pid);
 
+            add_cputime(process, old_thread);
+
             old_thread->state.store(thread_state::dead, std::memory_order_release);
             old_thread->saved_vmspace = std::move(old_vmspace);
             if (old_ptr)
@@ -1887,7 +1904,36 @@ namespace sched
         std::unreachable();
     }
 
-    pid_t waitpid(pid_t wait_pid, int options, int *status)
+    cputime_t process_cputime(process_t *proc)
+    {
+        cputime_t ret {
+            proc->utime_ns.load(std::memory_order_relaxed),
+            proc->stime_ns.load(std::memory_order_relaxed),
+        };
+
+        const auto locked = proc->threads.lock();
+        for (const auto &[tid, thread] : *locked)
+        {
+            ret.utime_ns += thread->utime_ns;
+            ret.stime_ns += thread->stime_ns;
+        }
+        return ret;
+    }
+
+    cputime_t thread_cputime(thread_t *thread)
+    {
+        return { thread->utime_ns, thread->stime_ns };
+    }
+
+    cputime_t children_cputime(process_t *proc)
+    {
+        return {
+            proc->children_utime_ns.load(std::memory_order_relaxed),
+            proc->children_stime_ns.load(std::memory_order_relaxed),
+        };
+    }
+
+    pid_t waitpid(pid_t wait_pid, int options, int *status, cputime_t *usage)
     {
         const auto proc = current_process();
         const bool no_hang = options & wnohang;
@@ -1900,6 +1946,15 @@ namespace sched
             if (wait_pid == 0)
                 return child.group->pgid == proc->group->pgid;
             return child.group->pgid == -wait_pid;
+        };
+
+        const auto child_cputime = [](process_t *child) {
+            const auto self = process_cputime(child);
+            const auto reaped = children_cputime(child);
+            return cputime_t {
+                self.utime_ns + reaped.utime_ns,
+                self.stime_ns + reaped.stime_ns,
+            };
         };
 
         while (true)
@@ -1924,6 +1979,12 @@ namespace sched
                     const bool killed = child->killed_by_signal;
                     const int term_sig = child->term_signal;
                     const bool core = child->dumped_core;
+
+                    const auto ctime = child_cputime(child.get());
+                    proc->children_utime_ns.fetch_add(ctime.utime_ns, std::memory_order_relaxed);
+                    proc->children_stime_ns.fetch_add(ctime.stime_ns, std::memory_order_relaxed);
+                    if (usage != nullptr)
+                        *usage = ctime;
 
                     locked->erase(it);
                     processes.lock()->erase(cpid);
@@ -1957,6 +2018,8 @@ namespace sched
 
                             if (status != nullptr)
                                 *status = (sig << 8) | 0x7F;
+                            if (usage != nullptr)
+                                *usage = child_cputime(child.get());
                             return child->pid;
                         }
 
@@ -1968,6 +2031,8 @@ namespace sched
                             if (status != nullptr)
                                 *status = 0xFFFF;
 
+                            if (usage != nullptr)
+                                *usage = child_cputime(child.get());
                             return child->pid;
                         }
                     }

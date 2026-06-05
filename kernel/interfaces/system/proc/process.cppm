@@ -91,6 +91,11 @@ export namespace sched
 
         std::atomic<std::size_t> alive_threads = 0;
 
+        std::atomic<std::uint64_t> utime_ns = 0;
+        std::atomic<std::uint64_t> stime_ns = 0;
+        std::atomic<std::uint64_t> children_utime_ns = 0;
+        std::atomic<std::uint64_t> children_stime_ns = 0;
+
         std::atomic<dumpable_t> dumpable = dumpable_t::user;
 
         int exit_code = 0;
