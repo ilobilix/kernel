@@ -218,11 +218,11 @@ namespace dev
         void collect_env(device_t &self, uevent_t &uev)
         {
             if (self.bus != nullptr)
-                lib::unused(self.bus->fill_uevent(self, uev));
+                self.bus->fill_uevent(self, uev);
             if (self.cls != nullptr)
-                lib::unused(self.cls->fill_uevent(self, uev));
+                self.cls->fill_uevent(self, uev);
             if (self.type != nullptr)
-                lib::unused(self.type->fill_uevent(self, uev));
+                self.type->fill_uevent(self, uev);
 
             if (!self.modalias.empty())
                 uev.add("MODALIAS", self.modalias);
@@ -373,8 +373,7 @@ namespace dev
                 auto &kids = prnt->children;
                 kids.erase(
                     std::remove_if(kids.begin(), kids.end(),
-                        [&](const std::weak_ptr<kobject_t> &wp)
-                        {
+                        [&](const std::weak_ptr<kobject_t> &wp) {
                             const auto sp = wp.lock();
                             return !sp || sp.get() == kobj.get();
                         }
@@ -664,23 +663,22 @@ namespace dev
         std::shared_ptr<kobject_t> dev_block_kobj;
         std::shared_ptr<kobject_t> virtual_kobj;
 
-        void install_root(
-            std::shared_ptr<kobject_t> &slot, std::string_view name,
-            std::shared_ptr<kobject_t> parent = { }
-        )
-        {
-            slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
-            lib::bug_on(!register_kobject(slot));
-        }
-
         void init()
         {
-            install_root(devices_kobj, "devices");
-            install_root(bus_kobj, "bus");
-            install_root(class_kobj, "class");
-            install_root(dev_kobj, "dev");
-            install_root(dev_char_kobj, "char",    dev_kobj);
-            install_root(dev_block_kobj, "block",   dev_kobj);
+            const auto install_root = [&](
+                std::shared_ptr<kobject_t> &slot, std::string_view name,
+                std::shared_ptr<kobject_t> parent = { }
+            ) {
+                slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
+                lib::bug_on(!register_kobject(slot));
+            };
+
+            install_root(devices_kobj, "devices", nullptr);
+            install_root(bus_kobj, "bus", nullptr);
+            install_root(class_kobj, "class", nullptr);
+            install_root(dev_kobj, "dev", nullptr);
+            install_root(dev_char_kobj, "char", dev_kobj);
+            install_root(dev_block_kobj, "block", dev_kobj);
             install_root(virtual_kobj, "virtual", devices_kobj);
         }
 
@@ -689,7 +687,9 @@ namespace dev
             "dev.init",
             lib::initgraph::postsched_init_engine,
             lib::initgraph::entail { core_registered_stage() },
-            [] { init(); }
+            [] {
+                init();
+            }
         };
 
         lib::initgraph::task available_task

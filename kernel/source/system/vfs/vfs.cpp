@@ -192,9 +192,11 @@ namespace vfs
         return check_access(target, sched::current_process()->cred, mode);
     }
 
-    std::shared_ptr<ops> file::get_ops(dev_t rdev, mode_t mode)
+    std::shared_ptr<ops> inode::get_ops()
     {
-        return dev::get_ops(rdev, mode).value_or(nullptr);
+        if (ops)
+            return ops;
+        return dev::get_ops(stat.st_rdev, stat.st_mode).value_or(nullptr);
     }
 
     lib::expect<std::size_t> file::getdents(lib::maybe_uspan<std::byte> buffer)

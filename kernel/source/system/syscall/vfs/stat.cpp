@@ -23,7 +23,15 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        if (!lib::copy_to_user(statbuf, &target->dentry->inode->stat, sizeof(::stat)))
+        const auto &inode = target->dentry->inode;
+        if (const auto ops = inode->get_ops())
+        {
+            if (const auto err = ops->getattr(inode); !err)
+                return -lib::map_error(err.error());
+        }
+
+        const std::unique_lock _ { inode->lock };
+        if (!lib::copy_to_user(statbuf, &inode->stat, sizeof(::stat)))
             return -EFAULT;
         return 0;
     }
@@ -77,10 +85,17 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
+        const auto &inode = target->dentry->inode;
+        if (const auto ops = inode->get_ops())
+        {
+            if (const auto err = ops->getattr(inode); !err)
+                return -lib::map_error(err.error());
+        }
+
         kstat val;
         {
-            const std::unique_lock _ { target->dentry->inode->lock };
-            val = target->dentry->inode->stat;
+            const std::unique_lock _ { inode->lock };
+            val = inode->stat;
         }
 
         constexpr auto to_statx_timestamp = [](const timespec &ts)

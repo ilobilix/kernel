@@ -3,6 +3,7 @@
 export module system.pci;
 
 export import :core;
+export import :dev;
 export import :regs;
 export import :intx;
 export import :msi;

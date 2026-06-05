@@ -19,6 +19,8 @@ export namespace pci
     class configio
     {
         public:
+        virtual std::size_t size() const = 0;
+
         virtual std::uint32_t read(
             std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
             std::uint8_t func, std::size_t offset, std::size_t width
@@ -171,10 +173,10 @@ export namespace pci
         std::weak_ptr<pci::bus> parent;
         std::vector<std::pair<std::uint8_t, std::uint16_t>> caps;
 
-        bool is_pcie;
-        bool is_secondary;
+        bool is_pcie = false;
+        bool is_secondary = false;
 
-        entity(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func);
+        entity(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func);
 
         template<typename Type>
         Type read(auto offset) const
@@ -217,8 +219,8 @@ export namespace pci
 
         std::array<bar, 2> bars;
 
-        bridge(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
-            : entity { bus, dev, func } { read_bars(2); }
+        bridge(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
+            : entity { parent, dev, func } { read_bars(2); }
 
         std::span<bar> get_bars() override { return bars; }
     };
@@ -226,6 +228,7 @@ export namespace pci
     struct device : entity
     {
         std::uint16_t venid, devid;
+        std::uint16_t subsysdevid, subsysvenid;
         std::uint8_t progif, subclass, class_;
         std::array<bar, 6> bars;
 
@@ -235,8 +238,8 @@ export namespace pci
             std::size_t idx;
         } irq;
 
-        device(std::weak_ptr<pci::bus> bus, std::uint8_t dev, std::uint8_t func)
-            : entity { bus, dev, func } { read_bars(6); }
+        device(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
+            : entity { parent, dev, func } { read_bars(6); }
 
         std::span<bar> get_bars() override { return bars; }
 

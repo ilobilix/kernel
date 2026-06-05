@@ -6,7 +6,12 @@ namespace pci
 {
     struct legacy : configio
     {
-        std::uint32_t read(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::size_t width) override
+        std::size_t size() const override { return 256; }
+
+        std::uint32_t read(
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::size_t width
+        ) override
         {
             lib::bug_on(seg != 0);
 
@@ -32,7 +37,10 @@ namespace pci
             std::unreachable();
         }
 
-        void write(std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width) override
+        void write(
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::uint32_t value, std::size_t width
+        ) override
         {
             lib::bug_on(seg != 0);
 

@@ -17,7 +17,6 @@ namespace pci
         lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> devs;
 
         void enum_bus(const auto &bus);
-
         void enum_func(const auto &bus, std::uint8_t dev, std::uint8_t func)
         {
             const auto venid = bus->template read<16>(dev, func, reg::venid);
@@ -38,6 +37,8 @@ namespace pci
                 auto device = std::make_shared<pci::device>(bus, dev, func);
                 device->venid = venid;
                 device->devid = devid;
+                device->subsysdevid = device->template read<16>(reg::subsysdevid);
+                device->subsysvenid = device->template read<16>(reg::subsysvenid);
                 device->progif = progif;
                 device->subclass = subclass;
                 device->class_ = class_;

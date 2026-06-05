@@ -2,6 +2,7 @@
 
 export module system.dev;
 
+import system.memory.virt;
 import system.vfs;
 import magic_enum;
 import lib;
@@ -45,16 +46,55 @@ export namespace dev
         virtual lib::expect<std::string> show(kobject_t &kobj)
         {
             lib::unused(kobj);
-            return std::unexpected { lib::err::not_supported };
+            return std::unexpected { lib::err::io_error };
         }
 
         virtual lib::expect<void> store(kobject_t &kobj, std::string_view data)
         {
             lib::unused(kobj, data);
-            return std::unexpected { lib::err::not_supported };
+            return std::unexpected { lib::err::io_error };
         }
 
         virtual ~attribute_t() = default;
+    };
+
+    struct bin_attribute_t
+    {
+        std::string name;
+        mode_t mode;
+
+        bin_attribute_t(std::string_view name, mode_t mode)
+            : name { name }, mode { mode } { }
+
+        virtual std::size_t size(kobject_t &kobj)
+        {
+            lib::unused(kobj);
+            return 0;
+        }
+
+        virtual lib::expect<std::size_t> read(
+            kobject_t &kobj, std::span<std::byte> buffer, std::size_t offset
+        )
+        {
+            lib::unused(kobj, buffer, offset);
+            return std::unexpected { lib::err::io_error };
+        }
+
+        virtual lib::expect<std::size_t> write(
+            kobject_t &kobj, std::span<const std::byte> buffer, std::size_t offset
+        )
+        {
+            lib::unused(kobj, buffer, offset);
+            return std::unexpected { lib::err::io_error };
+        }
+
+        virtual lib::expect<vmm::object::ptr> mmap(kobject_t &kobj)
+        {
+            lib::unused(kobj);
+            return std::unexpected { lib::err::mapping_unsupported };
+        }
+
+        virtual ~bin_attribute_t() = default;
     };
 
     struct ktype_t
@@ -64,10 +104,14 @@ export namespace dev
             return { };
         }
 
-        virtual lib::expect<void> fill_uevent(kobject_t &kobj, uevent_t &uev)
+        virtual std::span<bin_attribute_t *const> bin_attributes()
+        {
+            return { };
+        }
+
+        virtual void fill_uevent(kobject_t &kobj, uevent_t &uev)
         {
             lib::unused(kobj, uev);
-            return { };
         }
 
         virtual ~ktype_t() = default;
@@ -138,10 +182,9 @@ export namespace dev
             return drv.remove(dev);
         }
 
-        virtual lib::expect<void> fill_uevent(device_t &dev, uevent_t &uev)
+        virtual void fill_uevent(device_t &dev, uevent_t &uev)
         {
             lib::unused(dev, uev);
-            return { };
         }
 
         virtual ~bus_t() = default;
@@ -163,10 +206,9 @@ export namespace dev
             return { };
         }
 
-        virtual lib::expect<void> fill_uevent(device_t &dev, uevent_t &uev)
+        virtual void fill_uevent(device_t &dev, uevent_t &uev)
         {
             lib::unused(dev, uev);
-            return { };
         }
 
         virtual ~class_t() = default;

@@ -65,6 +65,8 @@ namespace pci::acpi
         ecam(std::uintptr_t base, std::uint16_t seg, std::uint8_t bus_start, std::uint8_t bus_end)
             : _base { base }, _seg { seg }, _bus_start { bus_start }, _bus_end { bus_end } { }
 
+        std::size_t size() const override { return 4096; }
+
         std::uint32_t read(
             std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
             std::size_t offset, std::size_t width

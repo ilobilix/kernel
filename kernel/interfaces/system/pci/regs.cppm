@@ -28,6 +28,8 @@ export namespace pci
         bar0 = 0x10,
         secondary_bus = 0x19,
         subordinate_bus = 0x1A,
+        subsysdevid = 0x2C,
+        subsysvenid = 0x2E,
         capabilities = 0x34,
         intline = 0x3C,
         intpin = 0x3D
