@@ -92,6 +92,25 @@ namespace fs::devtmpfs
         return { };
     }
 
+    lib::expect<void> remove(lib::path path)
+    {
+        if (main == nullptr)
+            return std::unexpected { lib::err::invalid_filesystem };
+
+        if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
+            return std::unexpected { lib::err::invalid_path };
+
+        const vfs::path devroot {
+            .mnt = main->internal_mnt,
+            .dentry = main->root
+        };
+
+        if (const auto ret = vfs::unlink(devroot, path); !ret)
+            return std::unexpected { ret.error() };
+
+        return { };
+    }
+
     lib::initgraph::stage *registered_stage()
     {
         static lib::initgraph::stage stage

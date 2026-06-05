@@ -499,7 +499,7 @@ namespace vfs
 
                 current = resolve_mounts(current);
                 current.dentry = current.dentry->parent.lock();
-                current = resolve_mounts(current);
+                // current = resolve_mounts(current);
 
                 if (current.mnt == nullptr)
                     current = proc_root;

@@ -32,5 +32,7 @@ export namespace vfs::dev
     }
 
     bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops);
+    bool unregister_ops(dev_t rdev);
+
     lib::expect<std::shared_ptr<vfs::ops>> get_ops(dev_t rdev, mode_t mode);
 } // export namespace vfs::dev
