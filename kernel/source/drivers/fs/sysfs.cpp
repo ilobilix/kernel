@@ -2,6 +2,7 @@
 
 module drivers.fs.sysfs;
 
+import system.memory.virt;
 import system.sched;
 import system.vfs.dev;
 import system.vfs;
@@ -16,6 +17,7 @@ namespace fs::sysfs
         {
             dir,
             attr,
+            bin,
             uevent,
             symlink
         };
@@ -23,15 +25,17 @@ namespace fs::sysfs
         type typ;
         std::shared_ptr<dev::kobject_t> kobj;
         dev::attribute_t *attr;
+        dev::bin_attribute_t *battr;
 
         inode(
             type typ, std::shared_ptr<dev::kobject_t> kobj, dev::attribute_t *attr,
-            dev_t dev, ino_t ino, std::shared_ptr<vfs::ops> iops
-        ) : vfs::inode { iops }, typ { typ }, kobj { kobj }, attr { attr }
+            dev::bin_attribute_t *battr, dev_t dev, ino_t ino, std::shared_ptr<vfs::ops> iops
+        ) : vfs::inode { iops }, typ { typ }, kobj { kobj }, attr { attr }, battr { battr }
         {
             stat.st_dev = dev;
             stat.st_rdev = 0;
             stat.st_ino = ino;
+            stat.st_size = 0;
 
             switch (typ)
             {
@@ -41,6 +45,11 @@ namespace fs::sysfs
                 case type::attr:
                     lib::bug_on(!attr);
                     stat.st_mode = stat::s_ifreg | attr->mode;
+                    break;
+                case type::bin:
+                    lib::bug_on(!battr);
+                    stat.st_mode = stat::s_ifreg | battr->mode;
+                    stat.st_size = battr->size(*kobj);
                     break;
                 case type::uevent:
                     stat.st_mode = stat::s_ifreg | 0644;
@@ -53,7 +62,6 @@ namespace fs::sysfs
             stat.st_nlink = 1;
             stat.st_uid = 0;
             stat.st_gid = 0;
-            stat.st_size = 0;
             stat.st_blksize = 4096;
             stat.st_blocks = 0;
 
@@ -80,6 +88,27 @@ namespace fs::sysfs
         ) override
         {
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
+
+            if (inod->typ == inode::type::bin)
+            {
+                const auto total = inod->battr->size(*inod->kobj);
+                if (offset >= total)
+                    return 0uz;
+
+                const auto count = std::min(buffer.size(), total - offset);
+                if (count == 0)
+                    return 0uz;
+
+                lib::membuffer buf { count };
+                const auto ret = inod->battr->read(*inod->kobj, buf.span(), offset);
+                if (!ret)
+                    return std::unexpected { ret.error() };
+
+                const auto sub = buffer.subspan(0, *ret);
+                if (!sub.copy_from(buf.span()))
+                    return std::unexpected { lib::err::invalid_address };
+                return *ret;
+            }
 
             if (!file->private_data || offset == 0)
             {
@@ -123,9 +152,20 @@ namespace fs::sysfs
             lib::maybe_uspan<std::byte> buffer
         ) override
         {
-            lib::unused(offset);
-
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
+
+            if (inod->typ == inode::type::bin)
+            {
+                std::vector<std::byte> data(buffer.size());
+                if (!buffer.copy_to(data.data()))
+                    return std::unexpected { lib::err::invalid_address };
+
+                const auto ret = inod->battr->write(*inod->kobj, data, offset);
+                if (!ret)
+                    return std::unexpected { ret.error() };
+                return *ret;
+            }
+
             if (inod->typ != inode::type::attr)
                 return std::unexpected { lib::err::invalid_argument };
 
@@ -144,8 +184,28 @@ namespace fs::sysfs
         {
             lib::unused(size);
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
-            if (inod->typ != inode::type::attr && inod->typ != inode::type::uevent)
+            if (inod->typ != inode::type::attr && inod->typ != inode::type::bin &&
+                inod->typ != inode::type::uevent)
                 return std::unexpected { lib::err::read_only_fs };
+            return { };
+        }
+
+        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override
+        {
+            const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
+            if (inod->typ != inode::type::bin)
+                return std::unexpected { lib::err::mapping_unsupported };
+            return inod->battr->mmap(*inod->kobj);
+        }
+
+        lib::expect<void> getattr(std::shared_ptr<vfs::inode> node) override
+        {
+            const auto inod = std::static_pointer_cast<inode>(node);
+            if (inod->typ == inode::type::bin)
+            {
+                const std::unique_lock _ { inod->lock };
+                inod->stat.st_size = inod->battr->size(*inod->kobj);
+            }
             return { };
         }
     };
@@ -261,7 +321,7 @@ namespace fs::sysfs
             std::shared_ptr<inode> mkdir(const std::shared_ptr<dev::kobject_t> &kobj)
             {
                 return std::make_shared<inode>(
-                    inode::type::dir, kobj, nullptr,
+                    inode::type::dir, kobj, nullptr, nullptr,
                     dev_id, next_inode++, ops::singleton()
                 );
             }
@@ -269,7 +329,7 @@ namespace fs::sysfs
             std::shared_ptr<inode> mksym()
             {
                 return std::make_shared<inode>(
-                    inode::type::symlink, nullptr, nullptr,
+                    inode::type::symlink, nullptr, nullptr, nullptr,
                     dev_id, next_inode++, ops::singleton()
                 );
             }
@@ -277,7 +337,7 @@ namespace fs::sysfs
             std::shared_ptr<inode> mkuevent(const std::shared_ptr<dev::kobject_t> &kobj)
             {
                 return std::make_shared<inode>(
-                    inode::type::uevent, kobj, nullptr,
+                    inode::type::uevent, kobj, nullptr, nullptr,
                     dev_id, next_inode++, ops::singleton()
                 );
             }
@@ -287,7 +347,17 @@ namespace fs::sysfs
             )
             {
                 return std::make_shared<inode>(
-                    inode::type::attr, kobj, attr,
+                    inode::type::attr, kobj, attr, nullptr,
+                    dev_id, next_inode++, ops::singleton()
+                );
+            }
+
+            std::shared_ptr<inode> mkbin(
+                const std::shared_ptr<dev::kobject_t> &kobj, dev::bin_attribute_t *battr
+            )
+            {
+                return std::make_shared<inode>(
+                    inode::type::bin, kobj, nullptr, battr,
                     dev_id, next_inode++, ops::singleton()
                 );
             }
@@ -321,7 +391,16 @@ namespace fs::sysfs
                     child->name = attr->name;
                     child->inode = mkattr(kobj, attr);
                     child->parent = dentry;
-                    dentry->children.lock()->insert(child);
+                    dentry->children.lock()->insert(std::move(child));
+                }
+
+                for (const auto &battr : kobj->type->bin_attributes())
+                {
+                    auto child = std::make_shared<vfs::dentry>();
+                    child->name = battr->name;
+                    child->inode = mkbin(kobj, battr);
+                    child->parent = dentry;
+                    dentry->children.lock()->insert(std::move(child));
                 }
 
                 if (kobj->as_device())
@@ -330,7 +409,7 @@ namespace fs::sysfs
                     child->name = "uevent";
                     child->inode = mkuevent(kobj);
                     child->parent = dentry;
-                    dentry->children.lock()->insert(child);
+                    dentry->children.lock()->insert(std::move(child));
                 }
 
                 parent->children.lock()->insert(dentry);

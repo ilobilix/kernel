@@ -210,6 +210,7 @@ export namespace vfs
     };
 
     struct file;
+    struct inode;
     struct ops
     {
         virtual lib::expect<void> open(std::shared_ptr<file> file, int flags, pid_t pid)
@@ -233,6 +234,12 @@ export namespace vfs
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
         virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
+
+        virtual lib::expect<void> getattr(std::shared_ptr<inode> inode)
+        {
+            lib::unused(inode);
+            return { };
+        }
 
         virtual bool seekable() const { return true; }
 
@@ -419,6 +426,8 @@ export namespace vfs
         > xattrs;
 
         std::shared_ptr<void> private_data;
+
+        std::shared_ptr<struct ops> get_ops();
 
         inode(std::shared_ptr<struct ops> ops) : ops { ops } { }
     };
@@ -656,7 +665,6 @@ export namespace vfs
             return { };
         }
 
-        static std::shared_ptr<struct ops> get_ops(dev_t rdev, mode_t mode);
         static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
         {
             auto file = std::make_shared<vfs::file>();
@@ -665,13 +673,7 @@ export namespace vfs
             file->offset = offset;
             file->flags = flags;
             if (path.dentry && path.dentry->inode)
-            {
-                if (!(file->ops = path.dentry->inode->ops))
-                {
-                    const auto &stat = path.dentry->inode->stat;
-                    file->ops = get_ops(stat.st_rdev, stat.st_mode);
-                }
-            }
+                file->ops = path.dentry->inode->get_ops();
             return file;
         }
     };

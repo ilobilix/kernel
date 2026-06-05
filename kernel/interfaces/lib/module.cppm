@@ -34,7 +34,8 @@ export namespace mod
 
         consteval deps() requires (NDeps == 0) : list { } { }
 
-        template<typename ...Args> requires (!(... && std::same_as<std::decay_t<Args>, deps>))
+        template<typename ...Args>
+            requires (!(... && std::same_as<std::decay_t<Args>, deps>))
         consteval deps(Args &&...deps) : list { deps... } { }
     };
 
@@ -57,7 +58,8 @@ export namespace mod
         const deps<NDeps> dependencies;
 
         consteval declare(const char *name, const char *description, auto interface, auto &&...args)
-            : name { name }, description { description }, interface { interface }, dependencies { args... } { }
+            : name { name }, description { description },
+              interface { interface }, dependencies { args... } { }
     };
 
     template<typename ...Args>
