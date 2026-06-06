@@ -9,7 +9,10 @@ import std;
 
 namespace lib
 {
-    constexpr comptime_string panic_if_message { "an unfortunate occurrence, which was definitively supposed to have been avoided or precluded, has regrettably come to fruition in the present temporal reality." };
+    constexpr comptime_string panic_if_message {
+        "an unfortunate occurrence, which was definitively supposed to have been avoided "
+        "or precluded, has regrettably come to fruition in the present temporal reality."
+    };
 } // namespace lib
 
 export namespace lib

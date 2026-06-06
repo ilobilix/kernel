@@ -140,6 +140,8 @@ export namespace dev
         }
 
         virtual device_t *as_device() { return nullptr; }
+        virtual std::string uevent_text();
+
         virtual ~kobject_t() = default;
     };
 
@@ -247,7 +249,7 @@ export namespace dev
         bool bound() const { return drv != nullptr; }
 
         lib::expect<void> emit(action act);
-        std::string uevent_attribute_text();
+        std::string uevent_text() override;
     };
 
     struct reflector_t

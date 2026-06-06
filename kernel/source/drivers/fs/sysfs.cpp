@@ -40,7 +40,7 @@ namespace fs::sysfs
             switch (typ)
             {
                 case type::dir:
-                    stat.st_mode = stat::s_ifdir | 0555;
+                    stat.st_mode = stat::s_ifdir | 0755;
                     break;
                 case type::attr:
                     lib::bug_on(!attr);
@@ -52,7 +52,7 @@ namespace fs::sysfs
                     stat.st_size = battr->size(*kobj);
                     break;
                 case type::uevent:
-                    stat.st_mode = stat::s_ifreg | 0644;
+                    stat.st_mode = stat::s_ifreg | (kobj->as_device() ? 0644 : 0200);
                     break;
                 case type::symlink:
                     stat.st_mode = stat::s_iflnk | 0777;
@@ -125,7 +125,7 @@ namespace fs::sysfs
                 else if (inod->typ == inode::type::uevent)
                 {
                     file->private_data = std::shared_ptr<std::string> {
-                        new std::string { inod->kobj->as_device()->uevent_attribute_text() }
+                        new std::string { inod->kobj->uevent_text() }
                     };
                 }
                 else return std::unexpected { lib::err::io_error };
@@ -403,7 +403,7 @@ namespace fs::sysfs
                     dentry->children.lock()->insert(std::move(child));
                 }
 
-                if (kobj->as_device())
+                if (kobj->as_device() || kobj->type != dev::default_ktype())
                 {
                     auto child = std::make_shared<vfs::dentry>();
                     child->name = "uevent";
