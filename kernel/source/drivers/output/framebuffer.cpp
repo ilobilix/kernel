@@ -12,6 +12,7 @@ import system.memory.virt;
 import system.vfs.dev;
 import system.vfs;
 import system.dev;
+import system.pci;
 import boot;
 import lib;
 import fmt;
@@ -344,7 +345,10 @@ namespace output::frm
         {
             "vfs.dev.fbdev.register",
             lib::initgraph::postsched_init_engine,
-            lib::initgraph::require { dev::available_stage() },
+            lib::initgraph::require {
+                dev::available_stage(),
+                pci::registered_stage()
+            },
             [] {
                 // TODO: move this somewhere else
                 struct graphics_class : dev::class_t
@@ -449,11 +453,42 @@ namespace output::frm
                         };
                     }
 
+                    // TODO: temporary workaround to make xorg happy
+                    std::shared_ptr<pci::device_t> found;
+                    for (const auto &device : pci::get_bus()->get_devices())
+                    {
+                        auto dev = static_cast<pci::device_t *>(device.get())->dev;
+                        if (dev->class_ != 0x03)
+                            continue;
+
+                        for (const auto &bar : dev->get_bars())
+                        {
+                            if (bar.type == pci::bar::type::mem && bar.phys <= fix.smem_start &&
+                                bar.phys + bar.size >= fix.smem_start + fix.smem_len)
+                            {
+                                lib::println("yay");
+
+                                found = std::static_pointer_cast<pci::device_t>(device);
+                                break;
+                            }
+                        }
+                    }
+
+                    std::shared_ptr<dev::kobject_t> root;
+                    if (found)
+                    {
+                        root = std::make_shared<dev::kobject_t>(
+                            "graphics", dev::default_ktype(), found
+                        );
+                        lib::bug_on(!dev::register_kobject(root));
+                    }
+                    else root = dev::virtual_root();
+
                     auto device = std::make_shared<dev::device_t>(
                         "fb" + std::to_string(i), ktype_t::instance()
                     );
                     device->cls = &cls;
-                    device->parent = dev::virtual_root();
+                    device->parent = root;
                     device->devt = vfs::dev::makedev(29, i);
                     device->fops = std::move(ops);
 

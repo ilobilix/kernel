@@ -11,7 +11,8 @@ import :core;
 
 namespace pci
 {
-    dev::bus_t *get_bus();
+    // exported for fbdev
+    export dev::bus_t *get_bus();
     dev::ktype_t *get_ktype();
     dev::ktype_t *get_driver_ktype();
 
@@ -106,4 +107,6 @@ export namespace pci
 
         void fill_uevent(dev::device_t &dev, dev::uevent_t &uev) override;
     };
+
+    lib::initgraph::stage *registered_stage();
 } // export namespace pci
