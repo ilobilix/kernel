@@ -36,13 +36,13 @@ export namespace pci
         std::uint16_t vendor, device;
         std::uint32_t class_mask, class_val;
 
-        id_t(
+        constexpr id_t(
             std::uint16_t vendor, std::uint16_t device,
             std::uint32_t class_mask, std::uint32_t class_val
         ) : vendor { vendor }, device { device },
             class_mask { class_mask }, class_val { class_val } { }
 
-        static std::uint32_t make_class(
+        static constexpr std::uint32_t make_class(
             std::uint8_t progif, std::uint8_t subclass, std::uint8_t class_
         )
         {
@@ -55,7 +55,7 @@ export namespace pci
             return make_class(dev->progif, dev->subclass, dev->class_);
         }
 
-        bool match(std::uint16_t ven, std::uint16_t dev, std::uint32_t cls) const
+        bool constexpr match(std::uint16_t ven, std::uint16_t dev, std::uint32_t cls) const
         {
             return vendor == ven && device == dev &&
                 (class_mask == 0xFFFFFFFF || (cls & class_mask) == class_val);
@@ -65,6 +65,8 @@ export namespace pci
         {
             return match(dev->venid, dev->devid, make_class(dev));
         }
+
+        std::string get_modalias() const;
     };
 
     struct driver_t : dev::driver_t
@@ -82,6 +84,7 @@ export namespace pci
         device_t(const std::shared_ptr<pci::device> &device)
             : dev::device_t { get_slot_name(device), ktype_t::instance() }, dev { device }
         {
+            bus = get_bus();
             modalias = get_modalias(device);
         }
     };

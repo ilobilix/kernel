@@ -194,7 +194,7 @@ namespace bin::elf::sym
                     auto it = std::back_inserter(locked->modsyms);
                     for (const auto &[modname, modent] : *mlocked)
                     {
-                        for (const auto &sym : modent.symbols)
+                        for (const auto &sym : modent->symbols)
                         {
                             fmt::format_to(it,
                                 "{:016x} {} {}\t[{}]\n",
@@ -308,7 +308,7 @@ namespace bin::elf::sym
         {
             for (const auto &[name, mod] : mod::modules.read_lock().value())
             {
-                auto [sym, offset] = search_in(mod.symbols);
+                auto [sym, offset] = search_in(mod->symbols);
                 if (sym != empty)
                 {
                     if (namebuf.size() > 1)

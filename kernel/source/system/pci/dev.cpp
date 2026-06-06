@@ -2,6 +2,8 @@
 
 module system.pci;
 
+import system.bin.elf;
+
 namespace pci
 {
     namespace
@@ -46,13 +48,18 @@ namespace pci
 
         std::size_t config_space_size(const std::shared_ptr<device> &dev)
         {
+            if (dev->config_size != 0)
+                return dev->config_size;
+
             const auto bus = dev->parent.lock();
             const auto io = bus ? bus->io.lock() : nullptr;
-            if (!dev->is_pcie || !io || io->size() < 4096)
-                return 256;
-            if (dev->read<std::uint32_t>(0x100) == 0xFFFFFFFF)
-                return 256;
-            return 4096;
+
+            std::size_t size = 256;
+            if (dev->is_pcie && io && io->size() >= 4096 &&
+                dev->read<std::uint32_t>(0x100) != 0xFFFFFFFF)
+                size = 4096;
+
+            return dev->config_size = size;
         }
 
         struct config_attribute_t : dev::bin_attribute_t
@@ -198,7 +205,7 @@ namespace pci
     std::string get_slot_name(const std::shared_ptr<pci::device> &dev)
     {
         return fmt::format(
-            "0000:{:02x}:{:02x}.{:02x}",
+            "0000:{:02x}:{:02x}.{:x}",
             dev->parent.lock()->id, dev->dev, dev->func
         );
     }
@@ -209,6 +216,20 @@ namespace pci
             "pci:v{:08x}d{:08x}sv{:08x}sd{:08x}bc{:02x}sc{:02x}i{:02x}",
             dev->venid, dev->devid, dev->subsysvenid, dev->subsysdevid,
             dev->class_, dev->subclass, dev->progif
+        );
+    }
+
+    std::string id_t::get_modalias() const
+    {
+        const auto byte = [&](const char *tag, auto shift) {
+            if (class_mask != 0xFFFFFFFF && ((class_mask >> shift) & 0xFF) == 0xFF)
+                return fmt::format("{}{:02x}", tag, (class_val >> shift) & 0xFF);
+            return fmt::format("{}*", tag);
+        };
+
+        return fmt::format(
+            "pci:v{:08x}d{:08x}sv*sd*{}{}{}",
+            vendor, device, byte("bc", 16), byte("sc", 8), byte("i", 0)
         );
     }
 
@@ -238,6 +259,36 @@ namespace pci
             pcidev->subsysvenid, pcidev->subsysdevid)
         );
         uev.add("PCI_SLOT_NAME", dev.name);
-        uev.add("MODALIAS", dev.modalias);
     }
+
+    namespace
+    {
+        lib::initgraph::task dev_task
+        {
+            "pci.dev.register",
+            lib::initgraph::postsched_init_engine,
+            lib::initgraph::require {
+                bin::elf::mod::modules_loaded_stage(),
+                dev::available_stage(),
+                enumerated_stage()
+            },
+            [] {
+                lib::bug_on(!dev::register_bus(*get_bus()));
+
+                auto host = std::make_shared<dev::kobject_t>(
+                    "pci0000:00",
+                    dev::default_ktype(),
+                    dev::devices_root()
+                );
+                lib::bug_on(!dev::register_kobject(host));
+
+                for (const auto &[_, device] : devices())
+                {
+                    auto ddev = std::make_shared<device_t>(device);
+                    ddev->parent = host;
+                    lib::bug_on(!dev::register_device(ddev));
+                }
+            }
+        };
+    } // namespace
 } // namespace pci

@@ -10,6 +10,8 @@ module system.bin.elf;
 import drivers.initramfs;
 import system.memory;
 import system.vfs;
+import system.pci;
+import magic_enum;
 import lib;
 import std;
 
@@ -17,9 +19,9 @@ namespace bin::elf::mod
 {
     extern "C" char __start_modules[], __end_modules[];
 
-    void initfini::init()
+    void initfini_t::init()
     {
-        if (init_array == 0 || init_array_size == 0)
+        if (init_array == 0 || init_array_size == 0 || inited)
             return;
 
         auto arr = reinterpret_cast<void (**)()>(init_array);
@@ -28,11 +30,13 @@ namespace bin::elf::mod
             if (auto func = arr[i])
                 func();
         }
+
+        inited = true;
     }
 
-    void initfini::fini()
+    void initfini_t::fini()
     {
-        if (fini_array == 0 || fini_array_size == 0)
+        if (fini_array == 0 || fini_array_size == 0 || finied)
             return;
 
         auto arr = reinterpret_cast<void (**)()>(fini_array);
@@ -41,162 +45,197 @@ namespace bin::elf::mod
             if (auto func = arr[i])
                 func();
         }
+
+        finied = true;
+    }
+
+    bool alias_t::match(std::string_view modalias) const
+    {
+        auto str = modalias.data();
+        auto pat = pattern.data();
+
+        const char *sp = nullptr;
+        const char *ss = nullptr;
+
+        while (*str)
+        {
+            if (*str == *pat)
+            {
+                str++;
+                pat++;
+            }
+            else if (*pat == '*')
+            {
+                sp = pat;
+                ss = str;
+                pat++;
+            }
+            else if (sp)
+            {
+                pat = sp + 1;
+                str = ++ss;
+            }
+            else return false;
+        }
+
+        while (*pat == '*')
+            pat++;
+
+        return *pat == '\0';
     }
 
     namespace
     {
-        void log_entry(auto &entry)
+        void log_entry(entry_t &entry)
         {
             auto ptr = entry.header;
             const std::string_view desc { ptr->description };
             lib::info("elf: - description: '{}'", desc);
+            lib::info("elf: - type: {}", magic_enum::enum_name(ptr->type));
 
-            std::visit(
-                lib::overloaded {
-                    [&](const ::mod::generic &) { lib::info("elf: - type: generic"); },
-                    [&](const ::mod::pci &) { lib::info("elf: - type: pci"); },
-                    [&](const ::mod::acpi &) { lib::info("elf: - type: acpi"); }
-                }, ptr->interface
-            );
-
-            const auto ndeps = entry.deps.size();
+            const auto deps = entry.header->dependencies();
+            const auto ndeps = deps.size();
             lib::info("elf: - dependencies: {}", ndeps);
 
             if (ndeps != 0)
                 lib::print(lib::log::level::info, "elf: -  ");
             for (std::size_t i = 0; i < ndeps; i++)
-            {
-                auto mod = entry.deps[i];
-                lib::print("'{}'{}", mod, i == ndeps - 1 ? "" : ", ");
-            }
+                lib::print("'{}'{}", std::string_view { deps[i] }, i == ndeps - 1 ? "" : ", ");
             if (ndeps != 0)
                 lib::println();
         }
 
-        std::size_t load(bool internal, std::uintptr_t start, std::uintptr_t end, decltype(entry::pages) &&pages, sym::symbol_table &&symbols, initfini initfini)
+        std::size_t load(
+            bool internal, std::uintptr_t start, std::uintptr_t end,
+            decltype(entry_t::pages) &&pages, sym::symbol_table &&symbols,
+            std::shared_ptr<initfini_t> initfini
+        )
         {
-            using base_type = ::mod::declare<0>;
-            constexpr std::size_t base_size = sizeof(base_type);
+            using base_type = ::mod::declare<0, 0>;
 
-            std::size_t nmod = 0;
-
-            auto current = start;
-            while (current < end)
+            std::size_t count = 0;
+            for (auto current = start; current < end; )
             {
-                const auto magic = *reinterpret_cast<std::uint64_t *>(current);
-                if (magic != base_type::header_magic)
+                const auto ptr = reinterpret_cast<base_type *>(current);
+                if (ptr->magic != base_type::header_magic)
                 {
                     current += 8;
                     continue;
                 }
 
-                const auto ptr = reinterpret_cast<base_type *>(current);
-
                 const std::string_view version = ptr->version;
                 if (version != base_type::build_version)
                 {
                     lib::error(
-                        "elf: module: incompatible build version: '{}' (expected '{}')",
+                        "elf: incompatible module build version: '{}' (expected '{}')",
                         version, base_type::build_version
                     );
-                    lib::bug_on(nmod != 0);
+                    lib::bug_on(count != 0);
                     return 0;
                 }
 
-                nmod++;
-
-                const auto ndeps = ptr->dependencies.ndeps;
-                const auto deps = ptr->dependencies.list;
-
-                const std::string_view name { ptr->name };
-                lib::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", name);
-
-                entry *entryptr;
+                if (!magic_enum::enum_contains(ptr->type))
                 {
-                    auto locked = modules.write_lock();
-                    if (locked->contains(name))
-                        lib::panic("elf: a module with the same name already exists");
-
-                    entryptr = std::addressof(locked.value()[name]);
+                    lib::error("elf: unsupported module type: {}", std::to_underlying(ptr->type));
+                    current += ptr->struct_size;
+                    continue;
                 }
-                auto &entry = *entryptr;
 
-                entry.internal = internal;
-                entry.header = ptr;
+                auto locked = modules.write_lock();
+                if (locked->contains(ptr->name()))
+                {
+                    lib::error("elf: module with the name '{}' is already loaded", ptr->name());
+                    current += ptr->struct_size;
+                    continue;
+                }
 
-                entry.pages = std::move(pages);
-                entry.symbols = std::move(symbols);
+                lib::info("elf: {}ternal module: '{}'", internal ? "in" : "ex", ptr->name());
 
-                entry.initfini = initfini;
+                auto entry = std::make_shared<entry_t>();
+                entry->internal = internal;
+                entry->pages = std::move(pages);
+                entry->symbols = std::move(symbols);
+                entry->initfini = initfini;
+                entry->header = ptr;
+                entry->status = status::loaded;
+                entry->dependents = 0;
 
-                for (std::size_t i = 0; i < ndeps; i++)
-                    entry.deps.push_back(deps[i]);
+                switch (ptr->type)
+                {
+                    case ::mod::type::pci:
+                    {
+                        const auto match = ptr->matches();
+                        for (std::size_t off = 0; ptr->match_stride != 0 &&
+                            off + ptr->match_stride <= match.size(); off += ptr->match_stride)
+                        {
+                            const auto &id = *reinterpret_cast<const pci::id_t *>(
+                                match.data() + off
+                            );
+                            entry->aliases.emplace_back(id.get_modalias());
+                        }
+                        break;
+                    }
+                    case ::mod::type::acpi:
+                        // TODO
+                        break;
+                    case ::mod::type::generic:
+                        break;
+                }
 
-                log_entry(entry);
-                // TODO: bump on unload too
+                log_entry(*entry);
+
+                locked.value()[ptr->name()] = std::move(entry);
                 generation.fetch_add(1, std::memory_order_release);
 
-                current += base_size + ndeps * sizeof(const char *);
+                count++;
+                current += ptr->struct_size;
             }
 
-            return nmod;
+            return count;
         }
 
-        void load_internal()
+        std::size_t load(const lib::path &dir, std::shared_ptr<vfs::file> file)
         {
-            const auto start = reinterpret_cast<std::uintptr_t>(__start_modules);
-            const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
-
-            auto nmod = load(true, start, end, { }, { }, { });
-            lib::info("elf: module: found {} internal module{}", nmod, nmod == 1 ? "" : "s");
-        }
-
-        bool load(lib::path path, std::shared_ptr<vfs::file> file)
-        {
-            lib::info("elf: module: loading '{}'", path / file->path.dentry->name);
+            lib::info("elf: loading '{}'", dir / file->path.dentry->name);
 
             auto &inode = file->path.dentry->inode;
             lib::membuffer buffer { static_cast<std::size_t>(inode->stat.st_size) };
             const auto buffer_uspan = buffer.maybe_uspan();
-            if (!buffer_uspan.has_value())
-            {
-                lib::error("elf: module: could not create a buffer");
-                return false;
-            }
+            lib::bug_on(!buffer_uspan.has_value());
 
             if (const auto ret = file->pread(0, buffer_uspan.value());
                 !ret.has_value() || *ret != static_cast<std::size_t>(inode->stat.st_size))
             {
-                lib::error("elf: module: could not read the module file");
-                return false;
+                lib::error("elf: could not read module file");
+                return 0;
             }
 
             const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(buffer.data());
 
             if (std::memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
             {
-                lib::error("elf: module: invalid magic");
-                return false;
+                lib::error("elf: invalid module magic");
+                return 0;
             }
             if (ehdr->e_ident[EI_CLASS] != ELFCLASS64)
             {
-                lib::error("elf: module: invalid class");
-                return false;
+                lib::error("elf: invalid module class");
+                return 0;
             }
             if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB)
             {
-                lib::error("elf: module: invalid data type");
-                return false;
+                lib::error("elf: invalid module data type");
+                return 0;
             }
             if (ehdr->e_ident[EI_OSABI] != ELFOSABI_SYSV)
             {
-                lib::error("elf: module: invalid os abi");
-                return false;
+                lib::error("elf: invalid module os abi");
+                return 0;
             }
             if (ehdr->e_type != ET_DYN)
             {
-                lib::error("elf: module: not a shared object");
-                return false;
+                lib::error("elf: module is not a shared object");
+                return 0;
             }
 
             const std::span<std::uint8_t> phdrs {
@@ -217,7 +256,7 @@ namespace bin::elf::mod
                     max_size = seghi;
             }
 
-            decltype(entry::pages) memory;
+            decltype(entry_t::pages) memory;
 
             const auto loaded_at = vmm::alloc_vspace(max_size);
 
@@ -230,7 +269,12 @@ namespace bin::elf::mod
             {
                 const auto paddr = pmm::alloc(npages, true);
                 if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize); !ret)
-                    lib::panic("could not map memory for a module: {}", lib::error_name(ret.error()));
+                {
+                    lib::panic(
+                        "could not map memory for a module: {}",
+                        lib::error_name(ret.error())
+                    );
+                }
 
                 memory.emplace_back(loaded_at + i, paddr);
             }
@@ -241,7 +285,12 @@ namespace bin::elf::mod
                 for (auto [vaddr, paddr] : memory)
                 {
                     if (auto ret = pmap->unmap(vaddr, pmm::page_size); !ret)
-                        lib::panic("could not unmap memory for a module: {}", lib::error_name(ret.error()));
+                    {
+                        lib::panic(
+                            "could not unmap memory for a module: {}",
+                            lib::error_name(ret.error())
+                        );
+                    }
                     pmm::free(paddr);
                 }
                 memory.clear();
@@ -303,19 +352,45 @@ namespace bin::elf::mod
 
                             switch (dyn.d_tag)
                             {
-                                case DT_PLTRELSZ: dt_pltrelsz = dyn.d_un.d_val; break;
-                                case DT_STRTAB: dt_strtab = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_SYMTAB: dt_symtab = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_RELA: dt_rela = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_RELASZ: dt_relasz = dyn.d_un.d_val; break;
-                                case DT_RELAENT: dt_relaent = dyn.d_un.d_val; break;
-                                // case DT_STRSZ: dt_strsz = dyn.d_un.d_val; break;
-                                case DT_SYMENT: dt_syment = dyn.d_un.d_val; break;
-                                case DT_JMPREL: dt_jmprel = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_INIT_ARRAY: dt_init_array = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_FINI_ARRAY: dt_fini_array = loaded_at + dyn.d_un.d_ptr; break;
-                                case DT_INIT_ARRAYSZ: dt_init_arraysz = dyn.d_un.d_val; break;
-                                case DT_FINI_ARRAYSZ: dt_fini_arraysz = dyn.d_un.d_val; break;
+                                case DT_PLTRELSZ:
+                                    dt_pltrelsz = dyn.d_un.d_val;
+                                    break;
+                                case DT_STRTAB:
+                                    dt_strtab = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_SYMTAB:
+                                    dt_symtab = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_RELA:
+                                    dt_rela = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_RELASZ:
+                                    dt_relasz = dyn.d_un.d_val;
+                                    break;
+                                case DT_RELAENT:
+                                    dt_relaent = dyn.d_un.d_val;
+                                    break;
+                                // case DT_STRSZ:
+                                //     dt_strsz = dyn.d_un.d_val;
+                                //     break;
+                                case DT_SYMENT:
+                                    dt_syment = dyn.d_un.d_val;
+                                    break;
+                                case DT_JMPREL:
+                                    dt_jmprel = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_INIT_ARRAY:
+                                    dt_init_array = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_FINI_ARRAY:
+                                    dt_fini_array = loaded_at + dyn.d_un.d_ptr;
+                                    break;
+                                case DT_INIT_ARRAYSZ:
+                                    dt_init_arraysz = dyn.d_un.d_val;
+                                    break;
+                                case DT_FINI_ARRAYSZ:
+                                    dt_fini_arraysz = dyn.d_un.d_val;
+                                    break;
                                 default: break;
                             }
                         }
@@ -328,7 +403,7 @@ namespace bin::elf::mod
                     case PT_NULL:
                         break;
                     default:
-                        lib::warn("elf: module: ignoring phdr type 0x{:X}", type);
+                        lib::warn("elf: ignoring module phdr type 0x{:X}", type);
                         break;
                 }
             }
@@ -348,7 +423,9 @@ namespace bin::elf::mod
                     case R_X86_64_GLOB_DAT:
                     case R_X86_64_JUMP_SLOT:
                     {
-                        const auto sym = reinterpret_cast<Elf64_Sym *>(symtab + ELF64_R_SYM(rel.r_info) * dt_syment);
+                        const auto sym = reinterpret_cast<Elf64_Sym *>(
+                            symtab + ELF64_R_SYM(rel.r_info) * dt_syment
+                        );
 
                         std::uintptr_t resolved = 0;
                         if (sym->st_shndx == 0)
@@ -360,7 +437,7 @@ namespace bin::elf::mod
                             auto symaddr = sym::klookup(name);
                             if (symaddr == -1ul)
                             {
-                                lib::error("elf: module: symbol '{}' not found", name);
+                                lib::error("elf: symbol '{}' not found", name);
                                 return false;
                             }
                             resolved = symaddr;
@@ -378,7 +455,7 @@ namespace bin::elf::mod
                     default:
                         // TODO: remove me when aarch64 relocation is implemented!
                         lib::unused(loc);
-                        lib::error("elf: module: unknown relocation 0x{:X}", type);
+                        lib::error("elf: unknown module relocation 0x{:X}", type);
                         return false;
                 }
                 return true;
@@ -387,22 +464,22 @@ namespace bin::elf::mod
             for (std::size_t i = 0; i < static_cast<std::size_t>(dt_relasz) / dt_relaent; i++)
             {
                 auto &rela = *reinterpret_cast<Elf64_Rela *>(dt_rela + i * dt_relaent);
-                if (reloc(rela) == false)
+                if (!reloc(rela))
                 {
-                    lib::error("elf: module: relocation failed");
+                    lib::error("elf: module relocation failed");
                     unmap_all();
-                    return false;
+                    return 0;
                 }
             }
 
             for (std::size_t i = 0; i < static_cast<std::size_t>(dt_pltrelsz) / dt_relaent; i++)
             {
                 auto &rela = *reinterpret_cast<Elf64_Rela *>(dt_jmprel + i * dt_relaent);
-                if (reloc(rela) == false)
+                if (!reloc(rela))
                 {
-                    lib::error("elf: module: relocation failed");
+                    lib::error("elf: module relocation failed");
                     unmap_all();
-                    return false;
+                    return 0;
                 }
             }
 
@@ -424,67 +501,187 @@ namespace bin::elf::mod
                     flags |= vmm::pflag::exec;
 
                 const auto aligned = lib::align_down(loaded_at + phdr->p_vaddr, pmm::page_size);
-                const auto size = lib::align_up(phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size);
+                const auto size = lib::align_up(
+                    phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned),
+                    pmm::page_size
+                );
+                const auto psize = vmm::page_size::small;
 
-                if (auto ret = vmm::kernel_pagemap->protect(aligned, size, flags, vmm::page_size::small); !ret)
-                    lib::panic("could not change module memory mapping flags: {}", lib::error_name(ret.error()));
+                if (auto ret = vmm::kernel_pagemap->protect(aligned, size, flags, psize); !ret)
+                {
+                    lib::panic(
+                        "could not change module memory mapping flags: {}",
+                        lib::error_name(ret.error())
+                    );
+                }
             }
 
-            const auto nmod = load(
+            const auto count = load(
                 false, modules_start, modules_start + modules_size,
                 std::move(memory), std::move(symbols),
-                {
+                std::make_shared<initfini_t>(
                     dt_init_array, dt_fini_array,
                     static_cast<std::size_t>(dt_init_arraysz),
                     static_cast<std::size_t>(dt_fini_arraysz)
-                }
+                )
             );
-            if (nmod == 0)
-            {
-                lib::error("elf: module: no drivers found");
+
+            if (count == 0)
                 unmap_all();
+            return count;
+        }
+
+        std::size_t load_external_from(const lib::path &dir)
+        {
+            auto ret = vfs::resolve(std::nullopt, dir);
+            if (!ret || ret->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+            {
+                lib::error("elf: directory '{}' not found", dir);
+                return 0;
+            }
+
+            std::size_t offset = 3;
+            std::size_t count = 0;
+            while (true)
+            {
+                auto res = ret->target.mnt->fs.lock()->readdir(ret->target.dentry, offset);
+                if (!res || res->empty())
+                    break;
+
+                for (const auto &[name, inode, cookie] : *res)
+                {
+                    offset = cookie + 1;
+
+                    if (!name.ends_with(".ko") || inode->stat.type() != stat::type::s_ifreg)
+                        continue;
+
+                    auto res = vfs::resolve(ret->target, name);
+                    if (!res)
+                        continue;
+
+                    count += load(dir, vfs::file::create(res->target, 0, 0));
+                }
+            }
+            return count;
+        }
+
+        bool activate(entry_t &entry)
+        {
+            if (entry.status == status::active)
+                return true;
+            if (entry.status == status::failed)
+                return false;
+
+            if (entry.status == status::activating)
+            {
+                lib::error("elf: module cycle at '{}'", entry.header->name());
                 return false;
             }
 
+            entry.status = status::activating;
+
+            const auto deps = entry.header->dependencies();
+            for (const std::string_view name : deps)
+            {
+                std::shared_ptr<entry_t> dep;
+                {
+                    const auto rlocked = modules.read_lock();
+                    if (auto it = rlocked->find(name); it != rlocked->end())
+                        dep = it->second;
+                }
+
+                if (dep == nullptr)
+                {
+                    lib::error(
+                        "elf: could not find dependency '{}' of module '{}'",
+                        name, entry.header->name()
+                    );
+                    entry.status = status::failed;
+                    return false;
+                }
+
+                if (!activate(*dep))
+                {
+                    lib::error(
+                        "elf: failed to activate dependency '{}' of module '{}'",
+                        name, entry.header->name()
+                    );
+                    entry.status = status::failed;
+                    return false;
+                }
+            }
+
+            if (entry.initfini)
+                entry.initfini->init();
+
+            const bool success = entry.header->init ? entry.header->init() : true;
+            if (!success)
+            {
+                lib::error("elf: failed to activate module '{}'", entry.header->name());
+                entry.status = status::failed;
+                return false;
+            }
+
+            for (const std::string_view name : deps)
+            {
+                auto wlocked = modules.write_lock();
+                if (auto it = wlocked->find(name); it != wlocked->end())
+                    it->second->dependents++;
+            }
+
+            entry.status = status::active;
             return true;
         }
 
-        void load_external()
+        [[maybe_unused]] bool deactivate(entry_t &entry)
         {
-            const auto load_from = [](auto path)
+            if (entry.status != status::active)
+                return true;
+
+            if (entry.initfini)
             {
-                auto ret = vfs::resolve(std::nullopt, path);
-                if (!ret || ret->target.dentry->inode->stat.type() != stat::type::s_ifdir)
+                if (++entry.initfini->fini_request ==
+                    static_cast<std::size_t>(entry.initfini.use_count()))
                 {
-                    lib::error("elf: module: directory '{}' not found", path);
-                    return;
+                    entry.initfini->fini();
+                    entry.initfini->fini_request = 0;
                 }
+            }
 
-                std::size_t offset = 3;
-                while (true)
-                {
-                    auto res = ret->target.mnt->fs.lock()->readdir(ret->target.dentry, offset);
-                    if (!res || res->empty())
-                        break;
+            const bool success = entry.header->fini ? entry.header->fini() : true;
+            for (const std::string_view name : entry.header->dependencies())
+            {
+                auto wlocked = modules.write_lock();
+                if (auto it = wlocked->find(name); it != wlocked->end() && it->second->dependents)
+                    it->second->dependents--;
+            }
 
-                    for (const auto &[name, inode, cookie] : *res)
-                    {
-                        offset = cookie + 1;
-
-                        if (!name.ends_with(".ko") || inode->stat.type() != stat::type::s_ifreg)
-                            continue;
-
-                        auto res = vfs::resolve(ret->target, name);
-                        if (!res)
-                            continue;
-
-                        load(path, vfs::file::create(res->target, 0, 0));
-                    }
-                }
-            };
-            load_from("/usr/lib/modules/" ILOBILIX_RELEASE);
+            entry.status = status::loaded;
+            return success;
         }
     } // namespace
+
+    bool request_alias(std::string_view modalias)
+    {
+        std::vector<std::shared_ptr<entry_t>> entries;
+        for (const auto rlocked = modules.read_lock(); const auto &[_, entry] : *rlocked)
+        {
+            for (const auto &alias : entry->aliases)
+            {
+                if (alias.match(modalias))
+                    entries.push_back(entry);
+            }
+        }
+        if (entries.empty())
+            return false;
+
+        for (const auto &entry : entries)
+        {
+            if (!activate(*entry))
+                return false;
+        }
+        return true;
+    }
 
     lib::initgraph::stage *modules_loaded_stage()
     {
@@ -496,15 +693,49 @@ namespace bin::elf::mod
         return &stage;
     }
 
-    lib::initgraph::task modules_load_task
+    lib::initgraph::task load_task
     {
         "bin.elf.load-modules",
         lib::initgraph::postsched_init_engine,
         lib::initgraph::require { initramfs::extracted_stage() },
         lib::initgraph::entail { modules_loaded_stage() },
         [] {
-            load_internal();
-            load_external();
+            const auto start = reinterpret_cast<std::uintptr_t>(__start_modules);
+            const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
+
+            const auto icount = load(true, start, end, { }, { }, nullptr);
+            lib::info(
+                "elf: loaded {} internal module{}",
+                icount, icount == 1 ? "" : "s"
+            );
+
+            const auto ecount = load_external_from("/usr/lib/modules/" ILOBILIX_RELEASE);
+            lib::info(
+                "elf: loaded {} external module{}",
+                ecount, ecount == 1 ? "" : "s"
+            );
+        }
+    };
+
+    lib::initgraph::task activate_task
+    {
+        "bin.elf.activate-modules",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require {
+            modules_loaded_stage(),
+            pci::enumerated_stage()
+        },
+        [] {
+            std::vector<std::shared_ptr<entry_t>> entries;
+            for (const auto rlocked = modules.read_lock(); const auto &[name, entry] : *rlocked)
+            {
+                if (entry->header->type == ::mod::type::generic &&
+                    entry->status == status::loaded)
+                    entries.push_back(entry);
+            }
+
+            for (const auto &entry : entries)
+                activate(*entry);
         }
     };
 } // namespace bin::elf::mod
