@@ -41,8 +41,7 @@ file(WRITE "${tmp0_syms}" "")
 function(run_kallsyms SYMS STAGE_PREFIX OUT_S OUT_O)
     set(stage_S "${TMP_DIR}/${STAGE_PREFIX}.S")
     execute_process(
-        # COMMAND "${KALLSYMS_TOOL}" --all-symbols "${SYMS}"
-        COMMAND "${KALLSYMS_TOOL}" "${SYMS}"
+        COMMAND "${KALLSYMS_TOOL}" --all-symbols "${SYMS}"
         OUTPUT_FILE "${stage_S}"
         RESULT_VARIABLE res
     )

@@ -232,6 +232,8 @@ export namespace pci
         std::uint8_t progif, subclass, class_;
         std::array<bar, 6> bars;
 
+        std::size_t config_size = 0;
+
         struct {
             router::entry *route;
             bool registered;

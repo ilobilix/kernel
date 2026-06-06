@@ -5,6 +5,7 @@ module system.dev;
 import drivers.fs.devtmpfs;
 import drivers.fs.sysfs;
 import system.vfs.dev;
+import system.bin.elf;
 import fmt;
 import lib;
 import std;
@@ -287,10 +288,7 @@ namespace dev
         collect_env(*this, uev);
 
         // TODO: NETLINK_KOBJECT_UEVENT
-        lib::debug(
-            "dev: uevent {}@{} {}",
-            action_name(act), uev.devpath, uev.envp
-        );
+        // lib::debug("dev: uevent {}", uev.envp);
         return { };
     }
 
@@ -359,10 +357,10 @@ namespace dev
         return { };
     }
 
-    void unregister_kobject(std::shared_ptr<kobject_t> kobj)
+    bool unregister_kobject(std::shared_ptr<kobject_t> kobj)
     {
         if (!kobj)
-            return;
+            return false;
 
         {
             const auto path = kobj->path().str();
@@ -390,11 +388,12 @@ namespace dev
 
         if (auto ref = current_ref.load(std::memory_order_acquire))
             ref->remove_object(kobj);
+        return true;
     }
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        // TODO: types
+        // TODO: bus ktype
         auto kobj = std::make_shared<kobject_t>(bus.name, default_ktype(), bus_root());
         if (auto res = register_kobject(kobj); !res)
             return res;
@@ -433,7 +432,7 @@ namespace dev
 
     lib::expect<void> register_class(class_t &cls)
     {
-        // TODO: type
+        // TODO: class ktype
         auto kobj = std::make_shared<kobject_t>(cls.name, default_ktype(), class_root());
         if (auto res = register_kobject(kobj); !res)
             return res;
@@ -463,8 +462,8 @@ namespace dev
             if (it == locked->end())
                 return std::unexpected { lib::err::no_such_device };
 
-            // TODO: type
-            auto kobj = std::make_shared<kobject_t>(drv.name, default_ktype(), it->second.kobj);
+            // TODO: drivers ktype
+            auto kobj = std::make_shared<kobject_t>(drv.name, default_ktype(), it->second.drivers_kobj);
             if (auto res = register_kobject(kobj); !res)
                 return res;
 
@@ -483,6 +482,52 @@ namespace dev
                 lib::unused(do_probe(dev, drv));
         }
         return { };
+    }
+
+    bool unregister_driver(driver_t &drv)
+    {
+        if (drv.bus == nullptr)
+            return false;
+
+        std::vector<std::shared_ptr<device_t>> bound;
+        std::shared_ptr<kobject_t> drv_kobj;
+        {
+            auto locked = buses.write_lock();
+            const auto it = locked->find(drv.bus->name);
+            if (it == locked->end())
+                return false;
+
+            auto &st = it->second;
+            for (const auto &dev : st.devices)
+            {
+                if (dev->drv == &drv)
+                    bound.push_back(dev);
+            }
+
+            auto &drvs = st.drivers;
+            drvs.erase(std::remove(drvs.begin(), drvs.end(), &drv), drvs.end());
+
+            if (auto kobj = st.driver_kobjs.find(&drv); kobj != st.driver_kobjs.end())
+            {
+                drv_kobj = std::move(kobj->second);
+                st.driver_kobjs.erase(kobj);
+            }
+        }
+
+        for (auto &dev : bound)
+        {
+            lib::unused(dev->bus->remove(*dev, *dev->drv));
+            lib::unused(dev->emit(action::unbind));
+            unreflect_driver_links(dev, *dev->drv);
+            dev->drv = nullptr;
+        }
+
+        if (drv_kobj)
+            unregister_kobject(drv_kobj);
+
+        // TODO: module unload?
+
+        return true;
     }
 
     lib::expect<void> register_device(std::shared_ptr<device_t> dev)
@@ -533,9 +578,8 @@ namespace dev
                 lib::unused(do_probe(dev, *drv));
         }
 
-        if (!dev->bound() && !dev->modalias.empty())
+        if (!dev->bound() && !dev->modalias.empty() && !bin::elf::mod::request_alias(dev->modalias))
         {
-            // TODO: module autoload?
             lib::debug(
                 "dev: no driver for '{}', modalias '{}'",
                 dev->name, dev->modalias
@@ -567,10 +611,10 @@ namespace dev
         return { };
     }
 
-    void unregister_device(std::shared_ptr<device_t> dev)
+    bool unregister_device(std::shared_ptr<device_t> dev)
     {
         if (!dev)
-            return;
+            return false;
 
         if (dev->bound())
         {
@@ -625,6 +669,8 @@ namespace dev
         unreflect_device_links(dev);
         lib::unused(dev->emit(action::remove));
         unregister_kobject(dev);
+
+        return true;
     }
 
     lib::initgraph::stage *core_registered_stage()

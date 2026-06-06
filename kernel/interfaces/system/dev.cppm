@@ -254,14 +254,16 @@ export namespace dev
     void detach_reflector();
 
     lib::expect<void> register_kobject(std::shared_ptr<kobject_t> kobj);
-    void unregister_kobject(std::shared_ptr<kobject_t> kobj);
+    bool unregister_kobject(std::shared_ptr<kobject_t> kobj);
 
     lib::expect<void> register_bus(bus_t &bus);
     lib::expect<void> register_class(class_t &cls);
+
     lib::expect<void> register_driver(driver_t &drv);
+    bool unregister_driver(driver_t &drv);
 
     lib::expect<void> register_device(std::shared_ptr<device_t> dev);
-    void unregister_device(std::shared_ptr<device_t> dev);
+    bool unregister_device(std::shared_ptr<device_t> dev);
 
     lib::initgraph::stage *core_registered_stage();
     lib::initgraph::stage *available_stage();

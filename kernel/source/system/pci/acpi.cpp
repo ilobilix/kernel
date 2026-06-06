@@ -47,8 +47,7 @@ namespace pci::acpi
                 return mappings[paddr] + offset;
 
             static constexpr auto size = 1zu << 20;
-            // TODO: random page faults when it's in higher half
-            const auto vaddr = lib::fromhh(vmm::alloc_vspace(size));
+            const auto vaddr = vmm::alloc_vspace(size);
 
             const auto flags = vmm::pflag::rw;
             const auto psize = vmm::page_size::small;

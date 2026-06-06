@@ -8,20 +8,36 @@ import std;
 
 export namespace bin::elf::mod
 {
-    enum class status { };
-
-    struct initfini
+    struct initfini_t
     {
         std::uintptr_t init_array = 0;
         std::uintptr_t fini_array = 0;
         std::size_t init_array_size = 0;
         std::size_t fini_array_size = 0;
 
+        std::size_t fini_request = 0;
+        bool inited = false;
+        bool finied = false;
+
         void init();
         void fini();
     };
 
-    struct entry
+    enum class status
+    {
+        loaded,
+        activating,
+        active,
+        failed
+    };
+
+    struct alias_t
+    {
+        std::string pattern;
+        bool match(std::string_view modalias) const;
+    };
+
+    struct entry_t
     {
         bool internal;
 
@@ -31,24 +47,26 @@ export namespace bin::elf::mod
                 std::uintptr_t
             >
         > pages;
-
-        ::mod::declare<0> *header;
-        std::vector<std::string_view> deps;
         sym::symbol_table symbols;
+        std::shared_ptr<initfini_t> initfini;
 
-        initfini initfini;
+        ::mod::declare<0, 0> *header;
+        std::vector<alias_t> aliases;
 
         status status;
+        std::size_t dependents;
     };
 
     lib::locker<
         lib::map::flat_hash<
             std::string_view,
-            entry
+            std::shared_ptr<entry_t>
         >, lib::rwspinlock
     > modules;
 
     std::atomic<std::uint64_t> generation { 0 };
+
+    bool request_alias(std::string_view modalias);
 
     lib::initgraph::stage *modules_loaded_stage();
 } // export namespace bin::elf::mod
