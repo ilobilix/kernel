@@ -44,15 +44,13 @@ namespace syscall::misc
                         return std::string { hostname_buf } + '\n';
                     },
                     [](std::string_view data) -> lib::expect<void> {
-                        auto trimmed = data;
-                        while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == '\r'))
-                            trimmed.remove_suffix(1);
-                        if (trimmed.size() > hostname_max)
+                        data = lib::trim(data);
+                        if (data.size() > hostname_max)
                             return std::unexpected { lib::err::invalid_argument };
 
                         const std::unique_lock _ { hostname_lock };
                         std::memset(hostname_buf, 0, sizeof(hostname_buf));
-                        std::memcpy(hostname_buf, trimmed.data(), trimmed.size());
+                        std::memcpy(hostname_buf, data.data(), data.size());
                         return { };
                     }, 0644
                 );

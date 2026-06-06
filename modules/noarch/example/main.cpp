@@ -48,11 +48,11 @@ namespace pci
             return { }; // success
         }
 
-        lib::expect<void> remove(dev::device_t &dev) override
+        bool remove(dev::device_t &dev) override
         {
             lib::unused(dev);
             lib::info("removing pci-driver");
-            return { };
+            return true;
         }
     } driver;
 } // namespace pci

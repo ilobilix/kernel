@@ -148,23 +148,35 @@ export namespace dev
     {
         std::string name;
         bus_t *bus;
+        ktype_t *type = nullptr;
 
         driver_t(std::string_view name, bus_t *bus)
             : name { name }, bus { bus } { }
 
         virtual lib::expect<void> probe(device_t &dev) = 0;
-        virtual lib::expect<void> remove(device_t &dev)
+        virtual bool remove(device_t &dev)
         {
             lib::unused(dev);
-            return { };
+            return true;
         }
 
         virtual ~driver_t() = default;
     };
 
+    struct driver_kobject_t : kobject_t
+    {
+        driver_t &drv;
+
+        driver_kobject_t(
+            std::string_view name, ktype_t *type,
+            std::weak_ptr<kobject_t> parent, driver_t &drv
+        ) : kobject_t { name, type, parent }, drv { drv } { }
+    };
+
     struct bus_t
     {
         std::string name;
+        ktype_t *type = nullptr;
 
         bus_t(std::string_view name) : name { name } { }
 
@@ -177,7 +189,7 @@ export namespace dev
             return drv.probe(dev);
         }
 
-        virtual lib::expect<void> remove(device_t &dev, driver_t &drv)
+        virtual bool remove(device_t &dev, driver_t &drv)
         {
             return drv.remove(dev);
         }
@@ -194,6 +206,7 @@ export namespace dev
     {
         std::string name;
         bool is_block;
+        ktype_t *type = nullptr;
 
         class_t(std::string_view name, bool is_block = false)
             : name { name }, is_block { is_block } { }
@@ -261,6 +274,14 @@ export namespace dev
 
     lib::expect<void> register_driver(driver_t &drv);
     bool unregister_driver(driver_t &drv);
+
+    lib::expect<void> bind_device(driver_t &drv, std::string_view name);
+    lib::expect<void> unbind_device(driver_t &drv, std::string_view name);
+    void probe_driver(driver_t &drv);
+
+    attribute_t *bind_attribute();
+    attribute_t *unbind_attribute();
+    ktype_t *driver_ktype();
 
     lib::expect<void> register_device(std::shared_ptr<device_t> dev);
     bool unregister_device(std::shared_ptr<device_t> dev);

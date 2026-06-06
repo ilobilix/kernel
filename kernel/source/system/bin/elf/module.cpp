@@ -36,7 +36,7 @@ namespace bin::elf::mod
 
     void initfini_t::fini()
     {
-        if (fini_array == 0 || fini_array_size == 0 || finied)
+        if (fini_array == 0 || fini_array_size == 0 || finied || !inited)
             return;
 
         auto arr = reinterpret_cast<void (**)()>(fini_array);
@@ -86,6 +86,22 @@ namespace bin::elf::mod
 
     namespace
     {
+        void unmap_pages(const decltype(image_t::pages) &pages)
+        {
+            auto &pmap = vmm::kernel_pagemap;
+            for (const auto [vaddr, paddr] : pages)
+            {
+                if (auto ret = pmap->unmap(vaddr, pmm::page_size); !ret)
+                {
+                    lib::panic(
+                        "could not unmap memory for a module: {}",
+                        lib::error_name(ret.error())
+                    );
+                }
+                pmm::free(paddr);
+            }
+        }
+
         void log_entry(entry_t &entry)
         {
             auto ptr = entry.header;
@@ -107,8 +123,7 @@ namespace bin::elf::mod
 
         std::size_t load(
             bool internal, std::uintptr_t start, std::uintptr_t end,
-            decltype(entry_t::pages) &&pages, sym::symbol_table &&symbols,
-            std::shared_ptr<initfini_t> initfini
+            std::shared_ptr<image_t> image
         )
         {
             using base_type = ::mod::declare<0, 0>;
@@ -153,9 +168,7 @@ namespace bin::elf::mod
 
                 auto entry = std::make_shared<entry_t>();
                 entry->internal = internal;
-                entry->pages = std::move(pages);
-                entry->symbols = std::move(symbols);
-                entry->initfini = initfini;
+                entry->image = image;
                 entry->header = ptr;
                 entry->status = status::loaded;
                 entry->dependents = 0;
@@ -256,7 +269,7 @@ namespace bin::elf::mod
                     max_size = seghi;
             }
 
-            decltype(entry_t::pages) memory;
+            decltype(image_t::pages) memory;
 
             const auto loaded_at = vmm::alloc_vspace(max_size);
 
@@ -278,23 +291,6 @@ namespace bin::elf::mod
 
                 memory.emplace_back(loaded_at + i, paddr);
             }
-
-            auto unmap_all = [&memory] mutable
-            {
-                auto &pmap = vmm::kernel_pagemap;
-                for (auto [vaddr, paddr] : memory)
-                {
-                    if (auto ret = pmap->unmap(vaddr, pmm::page_size); !ret)
-                    {
-                        lib::panic(
-                            "could not unmap memory for a module: {}",
-                            lib::error_name(ret.error())
-                        );
-                    }
-                    pmm::free(paddr);
-                }
-                memory.clear();
-            };
 
             std::uintptr_t modules_start = 0;
             std::size_t modules_size = 0;
@@ -467,7 +463,7 @@ namespace bin::elf::mod
                 if (!reloc(rela))
                 {
                     lib::error("elf: module relocation failed");
-                    unmap_all();
+                    unmap_pages(memory);
                     return 0;
                 }
             }
@@ -478,13 +474,21 @@ namespace bin::elf::mod
                 if (!reloc(rela))
                 {
                     lib::error("elf: module relocation failed");
-                    unmap_all();
+                    unmap_pages(memory);
                     return 0;
                 }
             }
 
             const std::size_t symsz = dt_strtab - dt_symtab;
-            auto symbols = sym::get_symbols(strtab, symtab, dt_syment, symsz, loaded_at);
+            auto image = std::make_shared<image_t>(
+                std::move(memory),
+                sym::get_symbols(strtab, symtab, dt_syment, symsz, loaded_at),
+                initfini_t {
+                    dt_init_array, dt_fini_array,
+                    static_cast<std::size_t>(dt_init_arraysz),
+                    static_cast<std::size_t>(dt_fini_arraysz)
+                }
+            );
 
             for (std::ssize_t i = ehdr->e_phnum - 1; i >= 0; i--)
             {
@@ -517,17 +521,10 @@ namespace bin::elf::mod
             }
 
             const auto count = load(
-                false, modules_start, modules_start + modules_size,
-                std::move(memory), std::move(symbols),
-                std::make_shared<initfini_t>(
-                    dt_init_array, dt_fini_array,
-                    static_cast<std::size_t>(dt_init_arraysz),
-                    static_cast<std::size_t>(dt_fini_arraysz)
-                )
+                false, modules_start, modules_start + modules_size, std::move(image)
             );
-
             if (count == 0)
-                unmap_all();
+                lib::error("elf: no modules found in file");
             return count;
         }
 
@@ -611,8 +608,8 @@ namespace bin::elf::mod
                 }
             }
 
-            if (entry.initfini)
-                entry.initfini->init();
+            if (entry.image)
+                entry.image->initfini.init();
 
             const bool success = entry.header->init ? entry.header->init() : true;
             if (!success)
@@ -633,20 +630,10 @@ namespace bin::elf::mod
             return true;
         }
 
-        [[maybe_unused]] bool deactivate(entry_t &entry)
+        bool deactivate(entry_t &entry)
         {
             if (entry.status != status::active)
                 return true;
-
-            if (entry.initfini)
-            {
-                if (++entry.initfini->fini_request ==
-                    static_cast<std::size_t>(entry.initfini.use_count()))
-                {
-                    entry.initfini->fini();
-                    entry.initfini->fini_request = 0;
-                }
-            }
 
             const bool success = entry.header->fini ? entry.header->fini() : true;
             for (const std::string_view name : entry.header->dependencies())
@@ -660,6 +647,50 @@ namespace bin::elf::mod
             return success;
         }
     } // namespace
+
+    image_t::~image_t()
+    {
+        initfini.fini();
+        unmap_pages(pages);
+    }
+
+    bool unload(std::string_view name)
+    {
+        std::shared_ptr<entry_t> entry;
+        {
+            const auto rlocked = modules.read_lock();
+            if (const auto it = rlocked->find(name); it != rlocked->end())
+                entry = it->second;
+        }
+
+        if (entry == nullptr)
+        {
+            lib::error("elf: cannot unload unknown module '{}'", name);
+            return false;
+        }
+        if (entry->internal)
+        {
+            lib::error("elf: cannot unload internal module '{}'", name);
+            return false;
+        }
+        if (entry->dependents != 0)
+        {
+            lib::error(
+                "elf: cannot unload module '{}': {} module(s) still depend on it",
+                name, entry->dependents
+            );
+            return false;
+        }
+
+        if (!deactivate(*entry))
+            lib::warn("elf: module '{}' reported failure on fini", name);
+
+        modules.write_lock()->erase(name);
+        generation.fetch_add(1, std::memory_order_release);
+
+        lib::info("elf: unloaded module '{}'", name);
+        return true;
+    }
 
     bool request_alias(std::string_view modalias)
     {
@@ -703,7 +734,7 @@ namespace bin::elf::mod
             const auto start = reinterpret_cast<std::uintptr_t>(__start_modules);
             const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
 
-            const auto icount = load(true, start, end, { }, { }, nullptr);
+            const auto icount = load(true, start, end, nullptr);
             lib::info(
                 "elf: loaded {} internal module{}",
                 icount, icount == 1 ? "" : "s"

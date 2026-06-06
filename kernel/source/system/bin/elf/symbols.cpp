@@ -192,9 +192,15 @@ namespace bin::elf::sym
                     locked->mod_gen = mod::generation.load(std::memory_order_acquire);
 
                     auto it = std::back_inserter(locked->modsyms);
+                    std::vector<const mod::image_t *> checked;
                     for (const auto &[modname, modent] : *mlocked)
                     {
-                        for (const auto &sym : modent->symbols)
+                        const auto image = modent->image.get();
+                        if (image == nullptr || std::ranges::find(checked, image) != checked.end())
+                            continue;
+                        checked.push_back(image);
+
+                        for (const auto &sym : image->symbols)
                         {
                             fmt::format_to(it,
                                 "{:016x} {} {}\t[{}]\n",
@@ -308,7 +314,10 @@ namespace bin::elf::sym
         {
             for (const auto &[name, mod] : mod::modules.read_lock().value())
             {
-                auto [sym, offset] = search_in(mod->symbols);
+                if (!mod->image)
+                    continue;
+
+                auto [sym, offset] = search_in(mod->image->symbols);
                 if (sym != empty)
                 {
                     if (namebuf.size() > 1)
