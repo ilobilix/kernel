@@ -27,21 +27,24 @@ namespace pci
             const auto header = bus->template read<8>(dev, func, reg::header) & 0x7F;
             if (header == 0x00) // device
             {
-                // lib::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: general device: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
                 lib::info("pci: general device: {:04X}:{:04X}", venid, devid);
 
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
                 const auto class_ = bus->template read<8>(dev, func, reg::class_);
+                const auto subsysdevid = bus->template read<16>(dev, func, reg::subsysdevid);
+                const auto subsysvenid = bus->template read<16>(dev, func, reg::subsysvenid);
+                const auto revision = bus->template read<8>(dev, func, reg::revision);
 
                 auto device = std::make_shared<pci::device>(bus, dev, func);
                 device->venid = venid;
                 device->devid = devid;
-                device->subsysdevid = device->template read<16>(reg::subsysdevid);
-                device->subsysvenid = device->template read<16>(reg::subsysvenid);
+                device->subsysdevid = subsysdevid;
+                device->subsysvenid = subsysvenid;
                 device->progif = progif;
                 device->subclass = subclass;
                 device->class_ = class_;
+                device->revision = revision;
 
                 const auto pin = device->template read<8>(reg::intpin);
                 if (pin != 0 && bus->router)
@@ -52,7 +55,6 @@ namespace pci
             }
             else if (header == 0x01) // PCI-to-PCI bridge
             {
-                // lib::info("pci: {:04X}:{:02X}:{:02X}:{:02X}: bridge: {:04X}:{:04X}", bus->seg, bus->id, dev, func, venid, devid);
                 lib::info("pci: bridge: {:04X}:{:04X}", venid, devid);
                 auto bridge = std::make_shared<pci::bridge>(bus, dev, func);
 
@@ -64,7 +66,9 @@ namespace pci
                     bridge->secondary_bus = secondary_id;
                     bridge->subordinate_bus = bridge->template read<8>(reg::subordinate_bus);
 
-                    auto secondary_bus = std::make_shared<pci::bus>(bus->seg, secondary_id, bus->io, bridge, nullptr);
+                    auto secondary_bus = std::make_shared<pci::bus>(
+                        bus->seg, secondary_id, bus->io, bridge, nullptr
+                    );
                     if (bus->router)
                         secondary_bus->router = bus->router->downstream(bus->router, secondary_bus);
 

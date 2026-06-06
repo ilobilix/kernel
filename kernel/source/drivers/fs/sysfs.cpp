@@ -165,8 +165,17 @@ namespace fs::sysfs
                     return std::unexpected { ret.error() };
                 return *ret;
             }
+            else if (inod->typ == inode::type::uevent)
+            {
+                std::string data(buffer.size(), '\0');
+                if (!buffer.copy_to(reinterpret_cast<std::byte *>(data.data())))
+                    return std::unexpected { lib::err::invalid_address };
 
-            if (inod->typ != inode::type::attr)
+                if (const auto ret = dev::uevent_store(*inod->kobj, data); !ret)
+                    return std::unexpected { ret.error() };
+                return buffer.size();
+            }
+            else if (inod->typ != inode::type::attr)
                 return std::unexpected { lib::err::invalid_argument };
 
             std::string data(buffer.size(), '\0');

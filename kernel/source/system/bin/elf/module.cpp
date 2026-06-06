@@ -564,20 +564,29 @@ namespace bin::elf::mod
 
         bool activate(entry_t &entry)
         {
-            if (entry.status == status::active)
-                return true;
-            if (entry.status == status::failed)
-                return false;
-
-            if (entry.status == status::activating)
             {
-                lib::error("elf: module cycle at '{}'", entry.header->name());
-                return false;
+                auto locked = modules.write_lock();
+                switch (entry.status)
+                {
+                    case status::active:
+                        return true;
+                    case status::failed:
+                        return false;
+                    case status::activating:
+                        lib::error(
+                            "elf: module '{}' is already being activated",
+                            entry.header->name()
+                        );
+                        return false;
+                    case status::loaded:
+                        entry.status = status::activating;
+                        break;
+                }
             }
 
-            entry.status = status::activating;
-
             const auto deps = entry.header->dependencies();
+
+            bool success = true;
             for (const std::string_view name : deps)
             {
                 std::shared_ptr<entry_t> dep;
@@ -593,8 +602,8 @@ namespace bin::elf::mod
                         "elf: could not find dependency '{}' of module '{}'",
                         name, entry.header->name()
                     );
-                    entry.status = status::failed;
-                    return false;
+                    success = false;
+                    break;
                 }
 
                 if (!activate(*dep))
@@ -603,26 +612,31 @@ namespace bin::elf::mod
                         "elf: failed to activate dependency '{}' of module '{}'",
                         name, entry.header->name()
                     );
-                    entry.status = status::failed;
-                    return false;
+                    success = false;
+                    break;
                 }
             }
 
-            if (entry.image)
-                entry.image->initfini.init();
+            if (success)
+            {
+                if (entry.image)
+                    entry.image->initfini.init();
 
-            const bool success = entry.header->init ? entry.header->init() : true;
+                success = entry.header->init ? entry.header->init() : true;
+                if (!success)
+                    lib::error("elf: failed to activate module '{}'", entry.header->name());
+            }
+
+            auto locked = modules.write_lock();
             if (!success)
             {
-                lib::error("elf: failed to activate module '{}'", entry.header->name());
                 entry.status = status::failed;
                 return false;
             }
 
             for (const std::string_view name : deps)
             {
-                auto wlocked = modules.write_lock();
-                if (auto it = wlocked->find(name); it != wlocked->end())
+                if (auto it = locked->find(name); it != locked->end())
                     it->second->dependents++;
             }
 
@@ -632,14 +646,18 @@ namespace bin::elf::mod
 
         bool deactivate(entry_t &entry)
         {
-            if (entry.status != status::active)
-                return true;
+            {
+                const auto locked = modules.write_lock();
+                if (entry.status != status::active)
+                    return true;
+            }
 
             const bool success = entry.header->fini ? entry.header->fini() : true;
+
+            auto locked = modules.write_lock();
             for (const std::string_view name : entry.header->dependencies())
             {
-                auto wlocked = modules.write_lock();
-                if (auto it = wlocked->find(name); it != wlocked->end() && it->second->dependents)
+                if (auto it = locked->find(name); it != locked->end() && it->second->dependents)
                     it->second->dependents--;
             }
 
@@ -659,27 +677,27 @@ namespace bin::elf::mod
         std::shared_ptr<entry_t> entry;
         {
             const auto rlocked = modules.read_lock();
-            if (const auto it = rlocked->find(name); it != rlocked->end())
-                entry = it->second;
-        }
+            const auto it = rlocked->find(name);
+            if (it == rlocked->end())
+            {
+                lib::error("elf: cannot unload unknown module '{}'", name);
+                return false;
+            }
+            entry = it->second;
 
-        if (entry == nullptr)
-        {
-            lib::error("elf: cannot unload unknown module '{}'", name);
-            return false;
-        }
-        if (entry->internal)
-        {
-            lib::error("elf: cannot unload internal module '{}'", name);
-            return false;
-        }
-        if (entry->dependents != 0)
-        {
-            lib::error(
-                "elf: cannot unload module '{}': {} module(s) still depend on it",
-                name, entry->dependents
-            );
-            return false;
+            if (entry->internal)
+            {
+                lib::error("elf: cannot unload internal module '{}'", name);
+                return false;
+            }
+            if (entry->dependents != 0)
+            {
+                lib::error(
+                    "elf: cannot unload module '{}': {} module(s) still depend on it",
+                    name, entry->dependents
+                );
+                return false;
+            }
         }
 
         if (!deactivate(*entry))

@@ -19,6 +19,8 @@ SECTIONS
         *(.plt.*)
     } :text
 
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+
     .rodata : {
         *(.rodata)
         *(.rodata.*)
@@ -43,6 +45,8 @@ SECTIONS
         KEEP(*(.fini_array .dtors))
         PROVIDE_HIDDEN(__end_fini_array = .);
     } :rodata
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .data : {
         *(.data)

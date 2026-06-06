@@ -24,6 +24,7 @@ export namespace pci
         progif = 0x09,
         subclass = 0x0A,
         class_ = 0x0B,
+        revision = 0x0C,
         header = 0x0E,
         bar0 = 0x10,
         secondary_bus = 0x19,
