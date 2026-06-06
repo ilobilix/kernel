@@ -33,7 +33,7 @@ export namespace pci
             class_mask { class_mask }, class_val { class_val } { }
 
         static constexpr std::uint32_t make_class(
-            std::uint8_t progif, std::uint8_t subclass, std::uint8_t class_
+            std::uint8_t class_, std::uint8_t subclass, std::uint8_t progif
         )
         {
             return (static_cast<std::uint32_t>(class_) << 16) |
@@ -42,13 +42,14 @@ export namespace pci
 
         static std::uint32_t make_class(const std::shared_ptr<pci::device> &dev)
         {
-            return make_class(dev->progif, dev->subclass, dev->class_);
+            return make_class(dev->class_, dev->subclass, dev->progif);
         }
 
         bool constexpr match(std::uint16_t ven, std::uint16_t dev, std::uint32_t cls) const
         {
-            return vendor == ven && device == dev &&
-                (class_mask == 0xFFFFFFFF || (cls & class_mask) == class_val);
+            return (vendor == 0xFFFF || vendor == ven) &&
+                   (device == 0xFFFF || device == dev) &&
+                   (class_mask == 0 || (cls & class_mask) == class_val);
         }
 
         bool match(const std::shared_ptr<pci::device> &dev) const
@@ -65,13 +66,13 @@ export namespace pci
         lib::locker<
             std::vector<id_t>,
             lib::rwspinlock
-        > dynamic_ids;
+        > _dynamic_ids;
+
+        std::span<const id_t> _ids;
 
         public:
-        std::span<const id_t> ids;
-
         driver_t(std::string_view name, std::span<const id_t> ids)
-            : dev::driver_t { name, get_bus() }, ids { ids }
+            : dev::driver_t { name, get_bus() }, _ids { ids }
         {
             type = get_driver_ktype();
         }

@@ -353,33 +353,40 @@ namespace pci
 
     std::string id_t::get_modalias() const
     {
+        const auto id = [](const char *tag, std::uint16_t id) {
+            if (id == 0xFFFF)
+                return fmt::format("{}*", tag);
+            return fmt::format("{}{:08x}", tag, id);
+        };
+
         const auto byte = [&](const char *tag, auto shift) {
-            if (class_mask != 0xFFFFFFFF && ((class_mask >> shift) & 0xFF) == 0xFF)
+            if (((class_mask >> shift) & 0xFF) == 0xFF)
                 return fmt::format("{}{:02x}", tag, (class_val >> shift) & 0xFF);
             return fmt::format("{}*", tag);
         };
 
         return fmt::format(
-            "pci:v{:08x}d{:08x}sv*sd*{}{}{}",
-            vendor, device, byte("bc", 16), byte("sc", 8), byte("i", 0)
+            "pci:{}{}sv*sd*{}{}{}*",
+            id("v", vendor), id("d", device),
+            byte("bc", 16), byte("sc", 8), byte("i", 0)
         );
     }
 
     bool driver_t::matches(const std::shared_ptr<pci::device> &dev)
     {
         const auto pred = [&](const id_t &id) { return id.match(dev); };
-        return std::ranges::any_of(ids, pred) ||
-            std::ranges::any_of(*dynamic_ids.read_lock(), pred);
+        return std::ranges::any_of(_ids, pred) ||
+            std::ranges::any_of(*_dynamic_ids.read_lock(), pred);
     }
 
     void driver_t::add_id(const id_t &id)
     {
-        dynamic_ids.write_lock()->push_back(id);
+        _dynamic_ids.write_lock()->push_back(id);
     }
 
     bool driver_t::remove_id(std::uint16_t vendor, std::uint16_t device)
     {
-        auto locked = dynamic_ids.write_lock();
+        auto locked = _dynamic_ids.write_lock();
         const auto [first, last] = std::ranges::remove_if(*locked, [&](const id_t &id) {
             return id.vendor == vendor && id.device == device;
         });
