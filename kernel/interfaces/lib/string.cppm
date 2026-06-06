@@ -52,6 +52,18 @@ export namespace lib
         }
     };
 
+    constexpr std::string_view trim(std::string_view str)
+    {
+        const auto check = [](char chr) {
+            return chr == ' ' || chr == '\t' || chr == '\n' || chr == '\r';
+        };
+        while (!str.empty() && check(str.front()))
+            str.remove_prefix(1);
+        while (!str.empty() && check(str.back()))
+            str.remove_suffix(1);
+        return str;
+    }
+
     // from mlibc
     template<typename Ret>
     constexpr std::optional<Ret> str2int(const char *nptr, char **endptr, int _base)

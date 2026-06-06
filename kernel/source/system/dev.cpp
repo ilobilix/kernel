@@ -216,6 +216,18 @@ namespace dev
             return { };
         }
 
+        void do_unbind(const std::shared_ptr<device_t> &dev)
+        {
+            auto &drv = *dev->drv;
+            if (!dev->bus->remove(*dev, drv))
+                lib::warn("dev: driver '{}' failed to remove '{}'", drv.name, dev->name);
+
+            lib::info("dev: unbound '{}' from driver '{}'", dev->name, drv.name);
+            lib::unused(dev->emit(action::unbind));
+            unreflect_driver_links(dev, drv);
+            dev->drv = nullptr;
+        }
+
         void collect_env(device_t &self, uevent_t &uev)
         {
             if (self.bus != nullptr)
@@ -244,6 +256,35 @@ namespace dev
             for (const auto &[key, value] : self.props)
                 uev.add(key, value);
         }
+
+        struct bind_attribute_t : attribute_t
+        {
+            bind_attribute_t() : attribute_t { "bind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return bind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
+        struct unbind_attribute_t : attribute_t
+        {
+            unbind_attribute_t() : attribute_t { "unbind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return unbind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
+        struct driver_ktype_t : ktype_t
+        {
+            std::span<attribute_t *const> attributes() override
+            {
+                static attribute_t *attrs[] { bind_attribute(), unbind_attribute() };
+                return attrs;
+            }
+        };
     } // namespace
 
     void uevent_t::add(std::string_view key, std::string_view value)
@@ -393,8 +434,7 @@ namespace dev
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        // TODO: bus ktype
-        auto kobj = std::make_shared<kobject_t>(bus.name, default_ktype(), bus_root());
+        auto kobj = std::make_shared<kobject_t>(bus.name, bus.type ?: default_ktype(), bus_root());
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -432,8 +472,9 @@ namespace dev
 
     lib::expect<void> register_class(class_t &cls)
     {
-        // TODO: class ktype
-        auto kobj = std::make_shared<kobject_t>(cls.name, default_ktype(), class_root());
+        auto kobj = std::make_shared<kobject_t>(
+            cls.name, cls.type ?: default_ktype(), class_root()
+        );
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -455,33 +496,91 @@ namespace dev
         if (drv.bus == nullptr)
             return std::unexpected { lib::err::invalid_argument };
 
-        std::vector<std::shared_ptr<device_t>> devices;
         {
             auto locked = buses.write_lock();
             const auto it = locked->find(drv.bus->name);
             if (it == locked->end())
                 return std::unexpected { lib::err::no_such_device };
 
-            // TODO: drivers ktype
-            auto kobj = std::make_shared<kobject_t>(drv.name, default_ktype(), it->second.drivers_kobj);
+            auto kobj = std::make_shared<driver_kobject_t>(
+                drv.name, drv.type ?: default_ktype(), it->second.drivers_kobj, drv
+            );
             if (auto res = register_kobject(kobj); !res)
                 return res;
 
             it->second.driver_kobjs[&drv] = std::move(kobj);
             it->second.drivers.push_back(&drv);
-            devices = it->second.devices;
         }
 
         lib::info("dev: registering driver '{}' on bus '{}'", drv.name, drv.bus->name);
 
-        for (const auto &dev : devices)
+        probe_driver(drv);
+        return { };
+    }
+
+    void probe_driver(driver_t &drv)
+    {
+        if (drv.bus == nullptr)
+            return;
+
+        for (const auto &dev : drv.bus->get_devices())
         {
             if (dev->bound())
                 continue;
             if (drv.bus->match(*dev, drv))
                 lib::unused(do_probe(dev, drv));
         }
-        return { };
+    }
+
+    lib::expect<void> bind_device(driver_t &drv, std::string_view name)
+    {
+        if (drv.bus == nullptr)
+            return std::unexpected { lib::err::invalid_argument };
+
+        for (const auto &dev : drv.bus->get_devices())
+        {
+            if (dev->name != name)
+                continue;
+            if (dev->bound())
+                return std::unexpected { lib::err::target_is_busy };
+            return do_probe(dev, drv);
+        }
+        return std::unexpected { lib::err::no_such_device };
+    }
+
+    lib::expect<void> unbind_device(driver_t &drv, std::string_view name)
+    {
+        if (drv.bus == nullptr)
+            return std::unexpected { lib::err::invalid_argument };
+
+        for (const auto &dev : drv.bus->get_devices())
+        {
+            if (dev->name != name)
+                continue;
+            if (dev->drv != &drv)
+                return std::unexpected { lib::err::invalid_argument };
+            do_unbind(dev);
+            return { };
+        }
+        return std::unexpected { lib::err::no_such_device };
+    }
+
+    attribute_t *bind_attribute()
+    {
+        static bind_attribute_t attr { };
+        return &attr;
+    }
+
+    attribute_t *unbind_attribute()
+    {
+        static unbind_attribute_t attr { };
+        return &attr;
+    }
+
+    ktype_t *driver_ktype()
+    {
+        static driver_ktype_t ktype { };
+        return &ktype;
     }
 
     bool unregister_driver(driver_t &drv)
@@ -515,12 +614,7 @@ namespace dev
         }
 
         for (auto &dev : bound)
-        {
-            lib::unused(dev->bus->remove(*dev, *dev->drv));
-            lib::unused(dev->emit(action::unbind));
-            unreflect_driver_links(dev, *dev->drv);
-            dev->drv = nullptr;
-        }
+            do_unbind(dev);
 
         if (drv_kobj)
             unregister_kobject(drv_kobj);
@@ -617,12 +711,7 @@ namespace dev
             return false;
 
         if (dev->bound())
-        {
-            lib::unused(dev->bus->remove(*dev, *dev->drv));
-            lib::unused(dev->emit(action::unbind));
-            unreflect_driver_links(dev, *dev->drv);
-            dev->drv = nullptr;
-        }
+            do_unbind(dev);
 
         if (dev->bus != nullptr)
         {

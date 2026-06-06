@@ -12,6 +12,8 @@ import :core;
 namespace pci
 {
     dev::bus_t *get_bus();
+    dev::ktype_t *get_ktype();
+    dev::ktype_t *get_driver_ktype();
 
     std::string get_slot_name(const std::shared_ptr<pci::device> &dev);
     std::string get_modalias(const std::shared_ptr<pci::device> &dev);
@@ -19,18 +21,6 @@ namespace pci
 
 export namespace pci
 {
-    struct ktype_t : dev::ktype_t
-    {
-        std::span<dev::attribute_t *const> attributes() override;
-        std::span<dev::bin_attribute_t *const> bin_attributes() override;
-
-        static ktype_t *instance()
-        {
-            static ktype_t ktype { };
-            return &ktype;
-        }
-    };
-
     struct id_t
     {
         std::uint16_t vendor, device;
@@ -71,10 +61,25 @@ export namespace pci
 
     struct driver_t : dev::driver_t
     {
+        private:
+        lib::locker<
+            std::vector<id_t>,
+            lib::rwspinlock
+        > dynamic_ids;
+
+        public:
         std::span<const id_t> ids;
 
         driver_t(std::string_view name, std::span<const id_t> ids)
-            : dev::driver_t { name, get_bus() }, ids { ids } { }
+            : dev::driver_t { name, get_bus() }, ids { ids }
+        {
+            type = get_driver_ktype();
+        }
+
+        bool matches(const std::shared_ptr<pci::device> &dev);
+
+        void add_id(const id_t &id);
+        bool remove_id(std::uint16_t vendor, std::uint16_t device);
     };
 
     struct device_t : dev::device_t
@@ -82,7 +87,7 @@ export namespace pci
         std::shared_ptr<pci::device> dev;
 
         device_t(const std::shared_ptr<pci::device> &device)
-            : dev::device_t { get_slot_name(device), ktype_t::instance() }, dev { device }
+            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device }
         {
             bus = get_bus();
             modalias = get_modalias(device);
@@ -95,15 +100,7 @@ export namespace pci
 
         bool match(dev::device_t &dev, dev::driver_t &drv) override
         {
-            const auto pcidev = static_cast<device_t *>(&dev)->dev;
-            const auto pcidrv = static_cast<driver_t *>(&drv);
-
-            for (const auto &id : pcidrv->ids)
-            {
-                if (id.match(pcidev))
-                    return true;
-            }
-            return false;
+            return static_cast<driver_t &>(drv).matches(static_cast<device_t &>(dev).dev);
         }
 
         void fill_uevent(dev::device_t &dev, dev::uevent_t &uev) override;

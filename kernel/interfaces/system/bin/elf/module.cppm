@@ -15,7 +15,6 @@ export namespace bin::elf::mod
         std::size_t init_array_size = 0;
         std::size_t fini_array_size = 0;
 
-        std::size_t fini_request = 0;
         bool inited = false;
         bool finied = false;
 
@@ -37,10 +36,8 @@ export namespace bin::elf::mod
         bool match(std::string_view modalias) const;
     };
 
-    struct entry_t
+    struct image_t
     {
-        bool internal;
-
         std::vector<
             std::pair<
                 std::uintptr_t,
@@ -48,7 +45,15 @@ export namespace bin::elf::mod
             >
         > pages;
         sym::symbol_table symbols;
-        std::shared_ptr<initfini_t> initfini;
+        initfini_t initfini;
+
+        ~image_t();
+    };
+
+    struct entry_t
+    {
+        bool internal;
+        std::shared_ptr<image_t> image;
 
         ::mod::declare<0, 0> *header;
         std::vector<alias_t> aliases;
@@ -67,6 +72,7 @@ export namespace bin::elf::mod
     std::atomic<std::uint64_t> generation { 0 };
 
     bool request_alias(std::string_view modalias);
+    bool unload(std::string_view name);
 
     lib::initgraph::stage *modules_loaded_stage();
 } // export namespace bin::elf::mod
