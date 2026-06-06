@@ -257,6 +257,17 @@ namespace dev
                 uev.add(key, value);
         }
 
+        std::string format_uevent(const uevent_t &uev)
+        {
+            std::string out;
+            for (const auto &line : uev.envp)
+            {
+                out.append(line);
+                out.push_back('\n');
+            }
+            return out;
+        }
+
         struct bind_attribute_t : attribute_t
         {
             bind_attribute_t() : attribute_t { "bind", 0200 } { }
@@ -333,7 +344,19 @@ namespace dev
         return { };
     }
 
-    std::string device_t::uevent_attribute_text()
+    std::string kobject_t::uevent_text()
+    {
+        uevent_t uev {
+            .action = action::add,
+            .devpath = path(),
+            .envp = { }
+        };
+        if (type != nullptr)
+            type->fill_uevent(*this, uev);
+        return format_uevent(uev);
+    }
+
+    std::string device_t::uevent_text()
     {
         uevent_t uev {
             .action = action::add,
@@ -341,14 +364,7 @@ namespace dev
             .envp = { }
         };
         collect_env(*this, uev);
-
-        std::string out;
-        for (const auto &line : uev.envp)
-        {
-            out.append(line);
-            out.push_back('\n');
-        }
-        return out;
+        return format_uevent(uev);
     }
 
     void attach_reflector(reflector_t *ref)
