@@ -229,10 +229,11 @@ export namespace pci
     {
         std::uint16_t venid, devid;
         std::uint16_t subsysdevid, subsysvenid;
-        std::uint8_t progif, subclass, class_;
+        std::uint8_t progif, subclass, class_, revision;
         std::array<bar, 6> bars;
 
         std::size_t config_size = 0;
+        std::size_t enable_count = 0;
 
         struct {
             router::entry *route;

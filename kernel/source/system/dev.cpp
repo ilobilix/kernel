@@ -6,6 +6,7 @@ import drivers.fs.devtmpfs;
 import drivers.fs.sysfs;
 import system.vfs.dev;
 import system.bin.elf;
+import magic_enum;
 import fmt;
 import lib;
 import std;
@@ -197,10 +198,19 @@ namespace dev
 
         lib::expect<void> do_probe(const std::shared_ptr<device_t> &dev, driver_t &drv)
         {
-            // TODO: guard against recursive probing
+            if (dev->probing)
+            {
+                lib::warn("dev: recursive probe of '{}' detected", dev->name);
+                return std::unexpected { lib::err::already_in_progress };
+            }
+
+            dev->probing = true;
             dev->drv = &drv;
 
-            if (const auto res = dev->bus->probe(*dev, drv); !res)
+            const auto res = dev->bus->probe(*dev, drv);
+            dev->probing = false;
+
+            if (!res)
             {
                 dev->drv = nullptr;
                 lib::warn(
@@ -214,6 +224,41 @@ namespace dev
             lib::unused(dev->emit(action::bind));
             reflect_driver_links(dev, drv);
             return { };
+        }
+
+        void probe_device(const std::shared_ptr<device_t> &dev)
+        {
+            if (dev->bus == nullptr || dev->bound())
+                return;
+
+            std::vector<driver_t *> drivers;
+            {
+                const auto locked = buses.read_lock();
+                if (const auto it = locked->find(dev->bus->name); it != locked->end())
+                    drivers = it->second.drivers;
+            }
+
+            for (auto drv : drivers)
+            {
+                if (dev->bound())
+                    break;
+                if (dev->bus->match(*dev, *drv))
+                    lib::unused(do_probe(dev, *drv));
+            }
+        }
+
+        lib::expect<void> probe_bus(bus_t &bus, std::string_view name)
+        {
+            for (const auto &dev : bus.get_devices())
+            {
+                if (dev->name != name)
+                    continue;
+                if (dev->bound())
+                    return std::unexpected { lib::err::target_is_busy };
+                probe_device(dev);
+                return { };
+            }
+            return std::unexpected { lib::err::no_such_device };
         }
 
         void do_unbind(const std::shared_ptr<device_t> &dev)
@@ -296,6 +341,54 @@ namespace dev
                 return attrs;
             }
         };
+
+        bus_t &bus_of(kobject_t &kobj)
+        {
+            return static_cast<bus_kobject_t &>(kobj).bus;
+        }
+
+        struct autoprobe_attribute_t : attribute_t
+        {
+            autoprobe_attribute_t() : attribute_t { "drivers_autoprobe", 0644 } { }
+
+            lib::expect<std::string> show(kobject_t &kobj) override
+            {
+                return bus_of(kobj).drivers_autoprobe ? "1\n" : "0\n";
+            }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                const auto value = lib::trim(data);
+                if (value == "0")
+                    bus_of(kobj).drivers_autoprobe = false;
+                else if (value == "1")
+                    bus_of(kobj).drivers_autoprobe = true;
+                else
+                    return std::unexpected { lib::err::invalid_argument };
+                return { };
+            }
+        };
+
+        struct drivers_probe_attribute_t : attribute_t
+        {
+            drivers_probe_attribute_t() : attribute_t { "drivers_probe", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return probe_bus(bus_of(kobj), lib::trim(data));
+            }
+        };
+
+        struct bus_ktype_t : ktype_t
+        {
+            std::span<attribute_t *const> attributes() override
+            {
+                static autoprobe_attribute_t autoprobe { };
+                static drivers_probe_attribute_t drivers_probe { };
+                static attribute_t *attrs[] { &autoprobe, &drivers_probe };
+                return attrs;
+            }
+        };
     } // namespace
 
     void uevent_t::add(std::string_view key, std::string_view value)
@@ -342,6 +435,31 @@ namespace dev
         // TODO: NETLINK_KOBJECT_UEVENT
         // lib::debug("dev: uevent {}", uev.envp);
         return { };
+    }
+
+    lib::expect<void> kobject_t::emit(action act)
+    {
+        uevent_t uev {
+            .action = act,
+            .devpath = path(),
+            .envp = { }
+        };
+
+        uev.add("ACTION", action_name(act));
+        uev.add("DEVPATH", uev.devpath);
+        if (type != nullptr)
+            type->fill_uevent(*this, uev);
+
+        // TODO: NETLINK_KOBJECT_UEVENT
+        return { };
+    }
+
+    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data)
+    {
+        const auto act = magic_enum::enum_cast<action>(lib::trim(data));
+        if (!act)
+            return std::unexpected { lib::err::invalid_argument };
+        return kobj.emit(*act);
     }
 
     std::string kobject_t::uevent_text()
@@ -450,7 +568,9 @@ namespace dev
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        auto kobj = std::make_shared<kobject_t>(bus.name, bus.type ?: default_ktype(), bus_root());
+        auto kobj = std::make_shared<bus_kobject_t>(
+            bus.name, bus.type ?: bus_ktype(), bus_root(), bus
+        );
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -599,6 +719,12 @@ namespace dev
         return &ktype;
     }
 
+    ktype_t *bus_ktype()
+    {
+        static bus_ktype_t ktype { };
+        return &ktype;
+    }
+
     bool unregister_driver(driver_t &drv)
     {
         if (drv.bus == nullptr)
@@ -648,7 +774,6 @@ namespace dev
         if (auto res = register_kobject(dev); !res)
             return res;
 
-        std::vector<driver_t *> drivers;
         if (dev->bus != nullptr)
         {
             auto locked = buses.write_lock();
@@ -660,7 +785,6 @@ namespace dev
             }
 
             it->second.devices.push_back(dev);
-            drivers = it->second.drivers;
         }
 
         if (dev->cls != nullptr)
@@ -680,20 +804,18 @@ namespace dev
         lib::unused(dev->emit(action::add));
         reflect_device_links(dev);
 
-        for (auto drv : drivers)
+        if (dev->bus == nullptr || dev->bus->drivers_autoprobe)
         {
-            if (dev->bound())
-                break;
-            if (dev->bus->match(*dev, *drv))
-                lib::unused(do_probe(dev, *drv));
-        }
+            probe_device(dev);
 
-        if (!dev->bound() && !dev->modalias.empty() && !bin::elf::mod::request_alias(dev->modalias))
-        {
-            lib::debug(
-                "dev: no driver for '{}', modalias '{}'",
-                dev->name, dev->modalias
-            );
+            if (!dev->bound() && !dev->modalias.empty() &&
+                !bin::elf::mod::request_alias(dev->modalias))
+            {
+                lib::debug(
+                    "dev: no driver for '{}', modalias '{}'",
+                    dev->name, dev->modalias
+                );
+            }
         }
 
         if (dev->devt != 0 && dev->fops)

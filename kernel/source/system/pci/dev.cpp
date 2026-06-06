@@ -10,13 +10,18 @@ namespace pci
     {
         struct attribute_t : dev::attribute_t
         {
-            using fn_t = lib::expect<std::string> (*)(
+            using rfn_t = lib::expect<std::string> (*)(
                 dev::device_t &, std::shared_ptr<pci::device>
             );
-            fn_t fn;
+            using wfn_t = lib::expect<void> (*)(
+                dev::device_t &, std::shared_ptr<pci::device>, std::string_view
+            );
 
-            attribute_t(fn_t fn, std::string_view name, mode_t mode)
-                : dev::attribute_t { name, mode }, fn { fn } { }
+            rfn_t rfn;
+            wfn_t wfn;
+
+            attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
+                : dev::attribute_t { name, mode }, rfn { rfn }, wfn { wfn } { }
 
             lib::expect<std::string> show(dev::kobject_t &kobj) override
             {
@@ -28,9 +33,24 @@ namespace pci
                 if (!dev)
                     return std::unexpected { lib::err::io_error };
 
-                if (!fn)
+                if (!rfn)
                     return dev::attribute_t::show(kobj);
-                return fn(*device, std::move(dev));
+                return rfn(*device, std::move(dev));
+            }
+
+            lib::expect<void> store(dev::kobject_t &kobj, std::string_view value) override
+            {
+                const auto device = kobj.as_device();
+                if (!device || device->bus != get_bus())
+                    return std::unexpected { lib::err::io_error };
+
+                auto dev = static_cast<device_t *>(device)->dev;
+                if (!dev)
+                    return std::unexpected { lib::err::io_error };
+
+                if (!wfn)
+                    return dev::attribute_t::store(kobj, value);
+                return wfn(*device, std::move(dev), value);
             }
         };
 
@@ -253,32 +273,75 @@ namespace pci
         attribute_t ven {
             [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->venid);
-            }, "vendor", 0444
+            }, nullptr, "vendor", 0444
         };
 
         attribute_t dev {
             [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->devid);
-            }, "device", 0444
+            }, nullptr, "device", 0444
         };
 
         attribute_t cls {
             [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:06x}\n", id_t::make_class(dev));
-            }, "class", 0444
+            }, nullptr, "class", 0444
         };
 
         attribute_t subsysven {
             [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysvenid);
-            }, "subsystem_vendor", 0444
+            }, nullptr, "subsystem_vendor", 0444
         };
 
         attribute_t subsysdev {
             [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysdevid);
-            }, "subsystem_device", 0444
+            }, nullptr, "subsystem_device", 0444
         };
+
+        attribute_t modalias {
+            [](dev::device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
+                return dev.modalias + "\n";
+            }, nullptr, "modalias", 0444
+        };
+
+        attribute_t revision {
+            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+                return fmt::format("0x{:02x}\n", dev->revision);
+            }, nullptr, "revision", 0444
+        };
+
+        attribute_t enable {
+            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+                return fmt::format("{}\n", dev->enable_count);
+            },
+            [](dev::device_t &, std::shared_ptr<device> dev, std::string_view data) -> lib::expect<void> {
+                data = lib::trim(data);
+                if (data == "1")
+                {
+                    if (dev->enable_count++ == 0)
+                    {
+                        // TODO
+                    }
+                }
+                else if (data == "0")
+                {
+                    if (dev->enable_count == 0)
+                        return std::unexpected { lib::err::io_error };
+
+                    if (dev->enable_count-- == 1)
+                    {
+                        // TODO
+                    }
+                }
+                else return std::unexpected { lib::err::invalid_argument };
+                return { };
+            },
+            "enable", 0644
+        };
+
+        // TODO: resource, irq, local_cpus, rom
 
         config_attribute_t config { };
 
@@ -289,9 +352,9 @@ namespace pci
         {
             std::span<dev::attribute_t *const> attributes() override
             {
-                // TODO: revision, irq, local_cpus, etc
                 static dev::attribute_t *list[] {
-                    &ven, &dev, &cls, &subsysven, &subsysdev
+                    &ven, &dev, &cls, &subsysven, &subsysdev,
+                    &modalias, &revision, &enable
                 };
                 return list;
             }

@@ -141,6 +141,7 @@ export namespace dev
 
         virtual device_t *as_device() { return nullptr; }
         virtual std::string uevent_text();
+        virtual lib::expect<void> emit(action act);
 
         virtual ~kobject_t() = default;
     };
@@ -179,6 +180,7 @@ export namespace dev
     {
         std::string name;
         ktype_t *type = nullptr;
+        bool drivers_autoprobe = true;
 
         bus_t(std::string_view name) : name { name } { }
 
@@ -202,6 +204,16 @@ export namespace dev
         }
 
         virtual ~bus_t() = default;
+    };
+
+    struct bus_kobject_t : kobject_t
+    {
+        bus_t &bus;
+
+        bus_kobject_t(
+            std::string_view name, ktype_t *type,
+            std::weak_ptr<kobject_t> parent, bus_t &bus
+        ) : kobject_t { name, type, parent }, bus { bus } { }
     };
 
     struct class_t
@@ -239,6 +251,8 @@ export namespace dev
         std::shared_ptr<vfs::ops> fops;
         std::string modalias;
 
+        bool probing = false;
+
         std::vector<std::pair<std::string, std::string>> props;
 
         device_t(std::string_view name, ktype_t *type)
@@ -248,7 +262,7 @@ export namespace dev
 
         bool bound() const { return drv != nullptr; }
 
-        lib::expect<void> emit(action act);
+        lib::expect<void> emit(action act) override;
         std::string uevent_text() override;
     };
 
@@ -279,11 +293,16 @@ export namespace dev
 
     lib::expect<void> bind_device(driver_t &drv, std::string_view name);
     lib::expect<void> unbind_device(driver_t &drv, std::string_view name);
+
     void probe_driver(driver_t &drv);
+
+    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data);
 
     attribute_t *bind_attribute();
     attribute_t *unbind_attribute();
+
     ktype_t *driver_ktype();
+    ktype_t *bus_ktype();
 
     lib::expect<void> register_device(std::shared_ptr<device_t> dev);
     bool unregister_device(std::shared_ptr<device_t> dev);
