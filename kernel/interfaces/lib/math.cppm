@@ -87,12 +87,18 @@ export namespace lib
         return szudzik(a, unique_from(std::forward<Args>(args)...));
     }
 
-    inline constexpr bool range_overlaps(std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2)
+    inline constexpr bool range_overlaps(
+        std::uintptr_t start1, std::uintptr_t end1,
+        std::uintptr_t start2, std::uintptr_t end2
+    )
     {
         return start1 < end2 && start2 < end1;
     }
 
-    inline constexpr std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2)
+    inline constexpr auto range_intersection(
+        std::uintptr_t start1, std::uintptr_t end1,
+        std::uintptr_t start2, std::uintptr_t end2
+    ) -> std::pair<std::uintptr_t, std::uintptr_t>
     {
         if (!range_overlaps(start1, end1, start2, end2))
             return { 0, 0 };

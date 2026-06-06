@@ -472,6 +472,16 @@ namespace pci
         uev.add("PCI_SLOT_NAME", dev.name);
     }
 
+    lib::initgraph::stage *registered_stage()
+    {
+        static lib::initgraph::stage stage
+        {
+            "pci.dev.registered",
+            lib::initgraph::postsched_init_engine
+        };
+        return &stage;
+    }
+
     namespace
     {
         lib::initgraph::task dev_task
@@ -483,6 +493,7 @@ namespace pci
                 dev::available_stage(),
                 enumerated_stage()
             },
+            lib::initgraph::entail { registered_stage() },
             [] {
                 lib::bug_on(!dev::register_bus(*get_bus()));
 
