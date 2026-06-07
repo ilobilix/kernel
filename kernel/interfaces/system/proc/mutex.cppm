@@ -75,12 +75,15 @@ export namespace sched
 
         bool unlock()
         {
-            const std::unique_lock _ { _lock };
+            {
+                const std::unique_lock _ { _lock };
 
-            if (_owner != current_thread())
-                return false;
+                if (_owner != current_thread())
+                    return false;
 
-            _owner = nullptr;
+                _owner = nullptr;
+            }
+
             _waiters.wake_one();
             return true;
         }
@@ -210,16 +213,22 @@ export namespace sched
 
         bool unlock()
         {
-            const std::unique_lock _ { _lock };
-
-            if (_owner != current_thread())
-                return false;
-
-            if (--_depth == 0)
+            bool wake = false;
             {
-                _owner = nullptr;
-                _waiters.wake_one();
+                const std::unique_lock _ { _lock };
+
+                if (_owner != current_thread())
+                    return false;
+
+                if (--_depth == 0)
+                {
+                    _owner = nullptr;
+                    wake = true;
+                }
             }
+
+            if (wake)
+                _waiters.wake_one();
             return true;
         }
 

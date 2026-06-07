@@ -10,9 +10,8 @@ namespace lib
 {
     enum class lock_type
     {
-        spin,
-        irq,
-        preempt
+        preempt,
+        irq
     };
 
     namespace lock
@@ -36,11 +35,29 @@ export namespace lib
     class spinlock_base { };
 
     template<>
-    class spinlock_base<lock_type::spin>
+    class spinlock_base<lock_type::preempt>
     {
         private:
         std::atomic_size_t _next_ticket;
         std::atomic_size_t _serving_ticket;
+
+        protected:
+        void acquire()
+        {
+            const auto ticket = _next_ticket.fetch_add(1, std::memory_order_relaxed);
+            while (_serving_ticket.load(std::memory_order_acquire) != ticket)
+                lock::pause();
+        }
+
+        bool release()
+        {
+            if (is_locked() == false)
+                return false;
+
+            const auto current = _serving_ticket.load(std::memory_order_relaxed);
+            _serving_ticket.store(current + 1, std::memory_order_release);
+            return true;
+        }
 
         public:
         constexpr spinlock_base()
@@ -54,18 +71,16 @@ export namespace lib
 
         void lock()
         {
-            const auto ticket = _next_ticket.fetch_add(1, std::memory_order_relaxed);
-            while (_serving_ticket.load(std::memory_order_acquire) != ticket)
-                lock::pause();
+            lock::acquire_preempt();
+            acquire();
         }
 
         bool unlock()
         {
-            if (is_locked() == false)
+            if (!release())
                 return false;
 
-            const auto current = _serving_ticket.load(std::memory_order_relaxed);
-            _serving_ticket.store(current + 1, std::memory_order_release);
+            lock::release_preempt();
             return true;
         }
 
@@ -87,51 +102,26 @@ export namespace lib
     };
 
     template<>
-    class spinlock_base<lock_type::irq> : public spinlock_base<lock_type::spin>
+    class spinlock_base<lock_type::irq> : public spinlock_base<lock_type::preempt>
     {
         public:
         constexpr spinlock_base()
-            : spinlock_base<lock_type::spin> { } { }
+            : spinlock_base<lock_type::preempt> { } { }
 
-        using spinlock_base<lock_type::spin>::spinlock_base;
+        using spinlock_base<lock_type::preempt>::spinlock_base;
 
         void lock()
         {
             lock::acquire_irq();
-            spinlock_base<lock_type::spin>::lock();
+            acquire();
         }
 
         bool unlock()
         {
-            if (!spinlock_base<lock_type::spin>::unlock())
+            if (!release())
                 return false;
 
             lock::release_irq();
-            return true;
-        }
-    };
-
-    template<>
-    class spinlock_base<lock_type::preempt> : public spinlock_base<lock_type::spin>
-    {
-        public:
-        constexpr spinlock_base()
-            : spinlock_base<lock_type::spin> { } { }
-
-        using spinlock_base<lock_type::spin>::spinlock_base;
-
-        void lock()
-        {
-            spinlock_base<lock_type::spin>::lock();
-            lock::acquire_preempt();
-        }
-
-        bool unlock()
-        {
-            if (!spinlock_base<lock_type::spin>::unlock())
-                return false;
-
-            lock::release_preempt();
             return true;
         }
     };
@@ -149,7 +139,7 @@ export namespace lib
         };
 
         std::atomic_size_t state;
-        spinlock_base<lock_type::spin> wlock;
+        spinlock_base<lock_type::preempt> wlock;
 
         static void acquire()
         {
@@ -261,11 +251,9 @@ export namespace lib
         }
     };
 
-    using spinlock = spinlock_base<lock_type::spin>;
+    using spinlock = spinlock_base<lock_type::preempt>;
     using spinlock_irq = spinlock_base<lock_type::irq>;
-    using spinlock_preempt = spinlock_base<lock_type::preempt>;
 
-    using rwspinlock = rwlock_base<lock_type::spin>;
+    using rwspinlock = rwlock_base<lock_type::preempt>;
     using rwspinlock_irq = rwlock_base<lock_type::irq>;
-    using rwspinlock_preempt = rwlock_base<lock_type::preempt>;
 } // export namespace lib
