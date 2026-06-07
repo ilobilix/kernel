@@ -22,6 +22,10 @@
 	path = dependencies/frigg/frigg
 	url = https://github.com/managarm/frigg
 	shallow = true
+[submodule "dependencies/libarch/libarch"]
+	path = dependencies/libarch/libarch
+	url = https://github.com/managarm/libarch
+	shallow = true
 [submodule "dependencies/magic_enum/magic_enum"]
 	path = dependencies/magic_enum/magic_enum
 	url = https://github.com/Neargye/magic_enum

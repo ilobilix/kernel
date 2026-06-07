@@ -466,8 +466,6 @@ namespace output::frm
                             if (bar.type == pci::bar::type::mem && bar.phys <= fix.smem_start &&
                                 bar.phys + bar.size >= fix.smem_start + fix.smem_len)
                             {
-                                lib::println("yay");
-
                                 found = std::static_pointer_cast<pci::device_t>(device);
                                 break;
                             }
