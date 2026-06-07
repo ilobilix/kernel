@@ -792,13 +792,16 @@ namespace sched
 
         preempt_disable();
 
-        while (thread->on_cpu.load(std::memory_order_acquire))
-            arch::pause();
-
         const auto &self = cpu::self().unsafe_get();
         const auto self_idx = self.idx;
+
         std::size_t target;
-        if (should_start.load(std::memory_order_relaxed))
+        if (thread->on_cpu.load(std::memory_order_acquire))
+        {
+            const auto on = thread->running_on;
+            target = on ? on->idx : self_idx;
+        }
+        else if (should_start.load(std::memory_order_relaxed))
             target = find_least_loaded(thread);
         else
             target = self_idx;

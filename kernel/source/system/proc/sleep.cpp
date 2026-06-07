@@ -138,17 +138,24 @@ namespace sched
         const auto timer = chrono::main_timer();
         const auto now = timer->ns();
 
-        auto locked = sleep_list.lock();
-        auto it = locked->begin();
-        while (it != locked->end())
+        while (true)
         {
-            auto entry = (it++).value();
-            if (entry->deadline_ns > now)
-                break;
+            thread_t *thread;
+            {
+                auto locked = sleep_list.lock();
+                auto it = locked->begin();
+                if (it == locked->end())
+                    break;
 
-            locked->remove(entry);
-            entry->expired = true;
-            wake_up(entry->thread, false);
+                auto entry = it.value();
+                if (entry->deadline_ns > now)
+                    break;
+
+                locked->remove(entry);
+                entry->expired = true;
+                thread = entry->thread;
+            }
+            wake_up(thread, false);
         }
     }
 
