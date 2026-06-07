@@ -2,7 +2,6 @@
 
 export module lib:types;
 
-import :log;
 import fmt;
 import std;
 

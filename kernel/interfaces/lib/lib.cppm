@@ -33,7 +33,6 @@ export import :path;
 export import :ranged;
 export import :rbtree;
 export import :ringbuffer;
-export import :rwlock;
 export import :set;
 export import :spinlock;
 export import :stat;

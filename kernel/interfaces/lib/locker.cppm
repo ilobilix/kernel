@@ -24,7 +24,6 @@ namespace lib::detail
         { l.write_unlock() };
         { l.is_read_locked() } -> std::same_as<bool>;
         { l.is_write_locked() } -> std::same_as<bool>;
-        // { l.upgrade() };
     };
 
     template<typename Type, typename Lock>
