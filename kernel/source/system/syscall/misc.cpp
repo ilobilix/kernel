@@ -118,8 +118,7 @@ namespace syscall::misc
             case 0x00000000: // LINUX_REBOOT_CMD_CAD_OFF
                 break;
             case 0x4321FEDC: // LINUX_REBOOT_CMD_POWER_OFF
-                uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
-                uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
+                uacpi_enter_sleep_state_simple(UACPI_SLEEP_STATE_S5);
                 lib::panic("power off failed");
                 break;
             case 0x01234567: // LINUX_REBOOT_CMD_RESTART
@@ -244,30 +243,29 @@ namespace syscall::misc
                 return 0;
             case 15: // PR_SET_NAME
             {
-                constexpr std::size_t comm_max = 15;
-                char tmp[comm_max + 1] = { };
-                if (!lib::copy_from_user(tmp, reinterpret_cast<const char __user *>(arg2), comm_max))
+                char tmp[sched::comm_max + 1] { };
+                if (!lib::copy_from_user(
+                    tmp, reinterpret_cast<const char __user *>(arg2), sched::comm_max))
                     return -EFAULT;
-                tmp[comm_max] = '\0';
+                tmp[sched::comm_max] = '\0';
 
                 const auto proc = sched::current_process();
                 const std::unique_lock _ { proc->lock };
-                proc->comm = tmp;
+                proc->comm = lib::trim(tmp);
                 return 0;
             }
             case 16: // PR_GET_NAME
             {
-                constexpr std::size_t comm_buf = 16;
-                char tmp[comm_buf] = { };
-
-                const auto proc = sched::current_process();
+                char tmp[sched::comm_max + 1] { };
                 {
+                    const auto proc = sched::current_process();
                     const std::unique_lock _ { proc->lock };
                     const auto src = proc->comm;
-                    const auto len = std::min(src.size(), comm_buf - 1);
-                    std::memcpy(tmp, src.data(), len);
+                    std::memcpy(tmp, src.data(), std::min(src.size(), sched::comm_max));
                 }
-                if (!lib::copy_to_user(reinterpret_cast<char __user *>(arg2), tmp, comm_buf))
+
+                if (!lib::copy_to_user(
+                    reinterpret_cast<char __user *>(arg2), tmp, sched::comm_max + 1))
                     return -EFAULT;
                 return 0;
             }

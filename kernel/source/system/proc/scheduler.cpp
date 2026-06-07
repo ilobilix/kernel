@@ -2161,14 +2161,9 @@ namespace sched
         {
             if (!proc->comm.empty())
                 return proc->comm;
-
             if (proc->pathname.empty())
                 return fmt::format("pid_{}", proc->pid);
-
-            const auto sep = proc->pathname.rfind('/');
-            if (sep == std::string::npos)
-                return proc->pathname;
-            return proc->pathname.substr(sep + 1);
+            return proc->pathname.basename();
         }
 
         lib::initgraph::task procfs_register_task
@@ -2293,10 +2288,17 @@ namespace sched
                 ));
 
                 lib::bug_on(!register_per_pid("comm",
-                    make_file_ops([](process_t *proc) {
-                        const std::unique_lock _ { proc->lock };
-                        return proc_comm(proc) + '\n';
-                    }), node_type::file, 0444
+                    make_file_ops(
+                        [](process_t *proc) {
+                            const std::unique_lock _ { proc->lock };
+                            return proc_comm(proc) + '\n';
+                        },
+                        [](process_t *proc, std::string_view data) -> lib::expect<void> {
+                            const std::unique_lock _ { proc->lock };
+                            proc->comm = lib::trim(data.substr(0, 15));
+                            return { };
+                        }
+                    ), node_type::file, 0644
                 ));
 
                 lib::bug_on(!register_per_pid("cmdline",
@@ -2346,7 +2348,7 @@ namespace sched
                         // TODO
                         const auto res = vfs::resolve(proc->vfs->root, proc->pathname);
                         if (!res)
-                            return proc->pathname;
+                            return proc->pathname.str();
                         return vfs::pathname_from(res->target);
                     }), node_type::symlink, 0777
                 ));
