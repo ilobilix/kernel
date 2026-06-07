@@ -11,10 +11,10 @@ namespace pci
         struct attribute_t : dev::attribute_t
         {
             using rfn_t = lib::expect<std::string> (*)(
-                dev::device_t &, std::shared_ptr<pci::device>
+                device_t &, std::shared_ptr<pci::device>
             );
             using wfn_t = lib::expect<void> (*)(
-                dev::device_t &, std::shared_ptr<pci::device>, std::string_view
+                device_t &, std::shared_ptr<pci::device>, std::string_view
             );
 
             rfn_t rfn;
@@ -25,11 +25,11 @@ namespace pci
 
             lib::expect<std::string> show(dev::kobject_t &kobj) override
             {
-                const auto device = kobj.as_device();
+                auto device = static_cast<device_t *>(kobj.as_device());
                 if (!device || device->bus != get_bus())
                     return std::unexpected { lib::err::io_error };
 
-                auto dev = static_cast<device_t *>(device)->dev;
+                auto dev = device->dev;
                 if (!dev)
                     return std::unexpected { lib::err::io_error };
 
@@ -40,11 +40,11 @@ namespace pci
 
             lib::expect<void> store(dev::kobject_t &kobj, std::string_view value) override
             {
-                const auto device = kobj.as_device();
+                auto device = static_cast<device_t *>(kobj.as_device());
                 if (!device || device->bus != get_bus())
                     return std::unexpected { lib::err::io_error };
 
-                auto dev = static_cast<device_t *>(device)->dev;
+                auto dev = device->dev;
                 if (!dev)
                     return std::unexpected { lib::err::io_error };
 
@@ -53,55 +53,52 @@ namespace pci
                 return wfn(*device, std::move(dev), value);
             }
         };
-
-        lib::expect<std::shared_ptr<device>> pci_device(dev::kobject_t &kobj)
-        {
-            const auto dev = kobj.as_device();
-            if (!dev || dev->bus != get_bus())
-                return std::unexpected { lib::err::io_error };
-
-            auto pcidev = static_cast<device_t *>(dev)->dev;
-            if (!pcidev)
-                return std::unexpected { lib::err::io_error };
-            return pcidev;
-        }
-
-        std::size_t config_space_size(const std::shared_ptr<device> &dev)
-        {
-            if (dev->config_size != 0)
-                return dev->config_size;
-
-            const auto bus = dev->parent.lock();
-            const auto io = bus ? bus->io.lock() : nullptr;
-
-            std::size_t size = 256;
-            if (dev->is_pcie && io && io->size() >= 4096 &&
-                dev->read<std::uint32_t>(0x100) != 0xFFFFFFFF)
-                size = 4096;
-
-            return dev->config_size = size;
-        }
-
         struct config_attribute_t : dev::bin_attribute_t
         {
             config_attribute_t() : bin_attribute_t { "config", 0644 } { }
 
+            std::size_t config_space_size(device_t *kdev)
+            {
+                if (kdev->config_size != 0)
+                    return kdev->config_size;
+
+                const auto dev = kdev->dev;
+                if (!dev)
+                    return 0;
+
+                const auto bus = dev->parent.lock();
+                const auto io = bus ? bus->io.lock() : nullptr;
+
+                std::size_t size = 256;
+                if (dev->is_pcie && io && io->size() >= 4096 &&
+                    dev->read<std::uint32_t>(0x100) != 0xFFFFFFFF)
+                    size = 4096;
+
+                return kdev->config_size = size;
+            }
+
             std::size_t size(dev::kobject_t &kobj) override
             {
-                auto dev = pci_device(kobj);
-                return dev ? config_space_size(std::move(*dev)) : 0;
+                const auto dev = static_cast<device_t *>(kobj.as_device());
+                if (!dev || dev->bus != get_bus())
+                    return 0;
+
+                return config_space_size(dev);
             }
 
             lib::expect<std::size_t> read(
                 dev::kobject_t &kobj, std::span<std::byte> buffer, std::size_t offset
             ) override
             {
-                const auto dres = pci_device(kobj);
-                if (!dres)
-                    return std::unexpected { dres.error() };
-                const auto dev = std::move(*dres);
+                const auto kdev = static_cast<device_t *>(kobj.as_device());
+                if (!kdev || kdev->bus != get_bus())
+                    return std::unexpected { lib::err::io_error };
 
-                const auto total = config_space_size(dev);
+                const auto dev = kdev->dev;
+                if (!dev)
+                    return std::unexpected { lib::err::io_error };
+
+                const auto total = config_space_size(kdev);
                 if (offset >= total)
                     return 0uz;
 
@@ -140,12 +137,15 @@ namespace pci
                 dev::kobject_t &kobj, std::span<const std::byte> buffer, std::size_t offset
             ) override
             {
-                const auto dres = pci_device(kobj);
-                if (!dres)
-                    return std::unexpected { dres.error() };
-                const auto dev = std::move(*dres);
+                const auto kdev = static_cast<device_t *>(kobj.as_device());
+                if (!kdev || kdev->bus != get_bus())
+                    return std::unexpected { lib::err::io_error };
 
-                const auto total = config_space_size(dev);
+                const auto dev = kdev->dev;
+                if (!dev)
+                    return std::unexpected { lib::err::io_error };
+
+                const auto total = config_space_size(kdev);
                 if (offset >= total)
                     return 0uz;
 
@@ -271,69 +271,83 @@ namespace pci
         };
 
         attribute_t ven {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->venid);
             }, nullptr, "vendor", 0444
         };
 
         attribute_t dev {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->devid);
             }, nullptr, "device", 0444
         };
 
         attribute_t cls {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:06x}\n", id_t::make_class(dev));
             }, nullptr, "class", 0444
         };
 
         attribute_t subsysven {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysvenid);
             }, nullptr, "subsystem_vendor", 0444
         };
 
         attribute_t subsysdev {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysdevid);
             }, nullptr, "subsystem_device", 0444
         };
 
         attribute_t modalias {
-            [](dev::device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
+            [](device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
                 return dev.modalias + "\n";
             }, nullptr, "modalias", 0444
         };
 
         attribute_t revision {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
+            [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:02x}\n", dev->revision);
             }, nullptr, "revision", 0444
         };
 
         attribute_t enable {
-            [](dev::device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
-                return fmt::format("{}\n", dev->enable_count);
+            [](device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
+                return fmt::format("{}\n", dev.enable_count);
             },
-            [](dev::device_t &, std::shared_ptr<device> dev, std::string_view data) -> lib::expect<void> {
+            [](device_t &kdev, std::shared_ptr<device> dev, std::string_view data) -> lib::expect<void> {
                 data = lib::trim(data);
+
+                // TODO: D3 to D0
+                const auto set = [&](bool enable) {
+                    const auto cmd = dev->read<16>(reg::cmd);
+                    std::uint16_t bits = 0;
+                    for (const auto &bar : dev->get_bars())
+                    {
+                        if (bar.type == bar::type::mem)
+                            bits |= 1 << 1;
+                        else if (bar.type == bar::type::io)
+                            bits |= 1 << 0;
+                    }
+                    if (enable)
+                        dev->write<16>(reg::cmd, cmd | bits);
+                    else
+                        dev->write<16>(reg::cmd, cmd & ~bits);
+                };
+
                 if (data == "1")
                 {
-                    if (dev->enable_count++ == 0)
-                    {
-                        // TODO
-                    }
+                    if (kdev.enable_count++ == 0)
+                        set(true);
                 }
                 else if (data == "0")
                 {
-                    if (dev->enable_count == 0)
+                    if (kdev.enable_count == 0)
                         return std::unexpected { lib::err::io_error };
 
-                    if (dev->enable_count-- == 1)
-                    {
-                        // TODO
-                    }
+                    if (kdev.enable_count-- == 1)
+                        set(false);
                 }
                 else return std::unexpected { lib::err::invalid_argument };
                 return { };

@@ -936,32 +936,27 @@ namespace dev
         std::shared_ptr<kobject_t> dev_block_kobj;
         std::shared_ptr<kobject_t> virtual_kobj;
 
-        void init()
-        {
-            const auto install_root = [&](
-                std::shared_ptr<kobject_t> &slot, std::string_view name,
-                std::shared_ptr<kobject_t> parent = { }
-            ) {
-                slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
-                lib::bug_on(!register_kobject(slot));
-            };
-
-            install_root(devices_kobj, "devices", nullptr);
-            install_root(bus_kobj, "bus", nullptr);
-            install_root(class_kobj, "class", nullptr);
-            install_root(dev_kobj, "dev", nullptr);
-            install_root(dev_char_kobj, "char", dev_kobj);
-            install_root(dev_block_kobj, "block", dev_kobj);
-            install_root(virtual_kobj, "virtual", devices_kobj);
-        }
-
         lib::initgraph::task init_task
         {
             "dev.init",
             lib::initgraph::postsched_init_engine,
             lib::initgraph::entail { core_registered_stage() },
             [] {
-                init();
+                const auto install_root = [&](
+                    std::shared_ptr<kobject_t> &slot, std::string_view name,
+                    std::shared_ptr<kobject_t> parent = { }
+                ) {
+                    slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
+                    lib::bug_on(!register_kobject(slot));
+                };
+
+                install_root(devices_kobj, "devices", nullptr);
+                install_root(bus_kobj, "bus", nullptr);
+                install_root(class_kobj, "class", nullptr);
+                install_root(dev_kobj, "dev", nullptr);
+                install_root(dev_char_kobj, "char", dev_kobj);
+                install_root(dev_block_kobj, "block", dev_kobj);
+                install_root(virtual_kobj, "virtual", devices_kobj);
             }
         };
 

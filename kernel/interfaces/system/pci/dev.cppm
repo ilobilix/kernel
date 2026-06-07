@@ -88,8 +88,12 @@ export namespace pci
     {
         std::shared_ptr<pci::device> dev;
 
+        std::size_t config_size;
+        std::size_t enable_count;
+
         device_t(const std::shared_ptr<pci::device> &device)
-            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device }
+            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device },
+              config_size { 0 }, enable_count { 0 }
         {
             bus = get_bus();
             modalias = get_modalias(device);
