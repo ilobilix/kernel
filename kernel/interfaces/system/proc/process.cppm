@@ -17,6 +17,8 @@ import :thread;
 
 export namespace sched
 {
+    constexpr std::size_t comm_max = 15;
+
     struct group_t;
     struct session_t;
 
@@ -112,7 +114,7 @@ export namespace sched
         int pending_stop_sig = 0;
         lib::spinlock report_lock;
 
-        std::string pathname;
+        lib::path pathname;
         std::vector<std::string> argv;
         std::string comm;
 
