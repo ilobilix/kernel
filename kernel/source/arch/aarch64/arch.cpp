@@ -29,9 +29,9 @@ namespace arch
     // TODO
     void halt_others() { }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs, lib::log::level lvl)
+    void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs)
     {
-        lib::unused(regs, lvl);
+        lib::unused(idx, regs, eregs);
     }
 
     std::uint64_t cycle_count()

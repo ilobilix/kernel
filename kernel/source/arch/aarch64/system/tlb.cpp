@@ -13,7 +13,7 @@ namespace tlb::arch
         lib::unused(cpu_idx);
     }
 
-    void send_ipi_mask(const lib::bitmap &mask)
+    void notify_mask(const lib::bitmap &mask)
     {
         if (mask.empty())
             return;

@@ -5,6 +5,7 @@ module lib;
 import drivers.output.terminal;
 import drivers.output.serial;
 
+import system.cpu.local;
 import system.cpu;
 import boot;
 import arch;
@@ -17,7 +18,9 @@ namespace
         #embed "../../embed/nooo.ascii"
     };
 
-    std::atomic_bool panicking = false;
+    std::atomic<bool> panicking = false;
+    std::atomic<std::size_t> reported = 0;
+    lib::spinlock dump;
 } // namespace
 
 namespace lib
@@ -30,10 +33,19 @@ namespace lib
         std::unreachable();
     }
 
-    void check_if_panicking()
+    void check_if_panicking(cpu::registers *regs)
     {
         if (panicking.load())
         {
+            if (cpu::local::available())
+            {
+                dump.lock();
+                arch::dump_regs(cpu::self().unsafe_get().idx, regs, cpu::extra_regs::read());
+                dump.unlock();
+            }
+
+            reported.fetch_add(1);
+
             arch::halt(false);
             std::unreachable();
         }
@@ -45,25 +57,38 @@ namespace lib
         cpu::registers *regs, std::source_location location
     )
     {
+        std::size_t cpu_idx = 0;
         if (panicking.exchange(true))
             goto end;
-
-        arch::halt_others();
 
         log::set_direct_print(true);
         log::force_unlock();
 
+        arch::halt_others();
+
+        if (cpu::local::available())
+        {
+            while (reported.load() < cpu::count() - 1)
+                arch::pause();
+
+            cpu_idx = cpu::self().unsafe_get().idx;
+        }
+
+        arch::dump_regs(cpu_idx, regs, cpu::extra_regs::read());
+
         println("\n{}\n", nooo_ascii);
         fatal("kernel panicked with the following message:");
         vfatal(len, fmt, args);
-        fatal("at {}:{}:{}: {}", location.file_name(), location.line(), location.column(), location.function_name());
+        fatal(
+            "at {}:{}:{}: {}",
+            location.file_name(), location.line(),
+            location.column(), location.function_name()
+        );
 
         if (regs)
-        {
-            arch::dump_regs(regs, cpu::extra_regs::read(), log::level::fatal);
             trace(log::level::fatal, regs->fp(), regs->ip());
-        }
-        else trace(log::level::fatal, 0, 0);
+        else
+            trace(log::level::fatal, 0, 0);
 
         end:
         arch::halt(false);

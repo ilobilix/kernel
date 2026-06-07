@@ -131,10 +131,8 @@ namespace tlb
         }
     } // namespace
 
-    void handle_ipi(cpu::registers *regs)
+    void handle_request()
     {
-        lib::unused(regs);
-
         auto batch = inbox.unsafe_get().head.exchange(nullptr, std::memory_order_acquire);
         if (!batch)
             return;
@@ -228,7 +226,7 @@ namespace tlb
         for (std::size_t i = 0; i < nt; i++)
             publish(state.data[i].target_idx, &state.data[i].records);
 
-        arch::send_ipi_mask(state.mask);
+        arch::notify_mask(state.mask);
 
         const auto clock = chrono::main_timer();
         const auto deadline = clock->ns() + timeout_ns;
