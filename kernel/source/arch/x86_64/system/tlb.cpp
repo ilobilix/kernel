@@ -8,7 +8,7 @@ import system.cpu.local;
 
 namespace tlb
 {
-    void handle_ipi(cpu::registers *regs);
+    void handle_request();
 } // namespace tlb
 
 namespace tlb::arch
@@ -19,10 +19,10 @@ namespace tlb::arch
     {
         auto slot = idt::handler_at(cpu_idx, idt::vec_tlb_shootdown);
         lib::bug_on(!slot.has_value() || slot->used());
-        slot->set(handle_ipi);
+        slot->set([](auto) { handle_request(); });
     }
 
-    void send_ipi_mask(const lib::bitmap &mask)
+    void notify_mask(const lib::bitmap &mask)
     {
         const auto self_idx = cpu::self().unsafe_get().idx;
         for (std::size_t i = 0; i < mask.length(); i++)

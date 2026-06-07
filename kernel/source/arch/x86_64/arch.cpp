@@ -81,20 +81,34 @@ namespace arch
     }
 
     // called from panic() only
-    void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log::level lvl)
+    void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs)
     {
-        lib::println(lvl, "cpu context:");
-        lib::println(lvl, " - r15: 0x{:016X}, r14: 0x{:016X}", regs->r15, regs->r14);
-        lib::println(lvl, " - r13: 0x{:016X}, r12: 0x{:016X}", regs->r13, regs->r12);
-        lib::println(lvl, " - r11: 0x{:016X}, r10: 0x{:016X}", regs->r11, regs->r10);
-        lib::println(lvl, " - r9:  0x{:016X}, r8:  0x{:016X}", regs->r9, regs->r8);
-        lib::println(lvl, " - rbp: 0x{:016X}, rdi: 0x{:016X}", regs->rbp, regs->rdi);
-        lib::println(lvl, " - rsi: 0x{:016X}, rdx: 0x{:016X}", regs->rsi, regs->rdx);
-        lib::println(lvl, " - rcx: 0x{:016X}, rbx: 0x{:016X}", regs->rcx, regs->rbx);
-        lib::println(lvl, " - rax: 0x{:016X}, rsp: 0x{:016X}", regs->rax, regs->rsp);
-        lib::println(lvl, " - rip: 0x{0:016X}, err: 0x{1:X} : 0b{1:b}", regs->rip, regs->error_code);
-        lib::println(lvl, " - rflags: 0x{:X}, cs: 0x{:X}, ss: 0x{:X}", regs->rflags, regs->cs, regs->ss);
-        lib::println(lvl, " - cr2: 0x{:X}, cr3: 0x{:X}, cr4: 0x{:X}", eregs.cr2, eregs.cr3, eregs.cr4);
+        lib::println("\ncpu {} context:", idx);
+        lib::println(
+            " r15: 0x{:016X}, r14: 0x{:016X}, r13: 0x{:016X}, r12: 0x{:016X}",
+            regs->r15, regs->r14, regs->r13, regs->r12
+        );
+        lib::println(
+            " r11: 0x{:016X}, r10: 0x{:016X}, r9:  0x{:016X}, r8:  0x{:016X}",
+            regs->r11, regs->r10, regs->r9, regs->r8
+        );
+        lib::println(
+            " rdi: 0x{:016X}, rsi: 0x{:016X}, rdx: 0x{:016X}, rcx: 0x{:016X}",
+            regs->rdi, regs->rsi, regs->rdx, regs->rcx
+        );
+        lib::println(
+            " rbp: 0x{:016X}, rsp: 0x{:016X}, rax: 0x{:016X}, rbx: 0x{:016X}",
+            regs->rbp, regs->rsp, regs->rax, regs->rbx
+        );
+        lib::println(
+            " rip: 0x{0:016X}, err: 0x{1:X} = 0b{1:b}",
+            regs->rip, regs->error_code
+        );
+        lib::println(
+            " rflags: 0x{:X}, cs: 0x{:X}, ss: 0x{:X}",
+            regs->rflags, regs->cs, regs->ss
+        );
+        lib::println(" cr2: 0x{:X}, cr3: 0x{:X}", eregs.cr2, eregs.cr3);
     }
 
     void early_init()

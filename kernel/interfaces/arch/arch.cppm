@@ -29,7 +29,7 @@ export namespace arch
         return ret;
     }
 
-    void dump_regs(cpu::registers *regs, cpu::extra_regs eregs, lib::log::level lvl);
+    void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs);
 
     std::size_t hardware_random(std::span<std::byte> out);
     std::uint64_t cycle_count();

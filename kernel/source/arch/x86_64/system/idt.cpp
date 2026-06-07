@@ -334,7 +334,10 @@ namespace x86_64::idt
         const auto vector = regs->vector;
         if (early) [[unlikely]]
         {
-            lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            if (vector < irq(0))
+                lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            else
+                lib::panic(regs, "unknown interrupt {}", vector);
             std::unreachable();
         }
 
@@ -366,7 +369,7 @@ namespace x86_64::idt
         {
             if (vector == 2)
             {
-                lib::check_if_panicking();
+                lib::check_if_panicking(regs);
 
                 const auto status = lib::io::in<8>(0x61);
                 if (status & (1 << 7))

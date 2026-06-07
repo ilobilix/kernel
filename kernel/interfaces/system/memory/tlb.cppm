@@ -10,7 +10,7 @@ import std;
 namespace tlb::arch
 {
     void install_handler(std::size_t cpu_idx);
-    void send_ipi_mask(const lib::bitmap &mask);
+    void notify_mask(const lib::bitmap &mask);
 } // namespace tlb::arch
 
 export namespace tlb

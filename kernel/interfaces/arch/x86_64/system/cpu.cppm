@@ -27,11 +27,11 @@ export namespace cpu
 
     struct extra_regs
     {
-        std::uint64_t cr2, cr3, cr4;
+        std::uint64_t cr2, cr3;
 
         static extra_regs read()
         {
-            return { read_reg<"cr2">(), read_reg<"cr3">(), read_reg<"cr4">() };
+            return { read_reg<"cr2">(), read_reg<"cr3">() };
         }
     };
 
