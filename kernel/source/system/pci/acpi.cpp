@@ -36,8 +36,7 @@ namespace pci::acpi
         lib::map::flat_hash<std::uintptr_t, std::uintptr_t> mappings;
 
         std::uintptr_t getaddr(
-            std::uint32_t bus, std::uint32_t dev,
-            std::uint32_t func, std::size_t offset
+            std::uint32_t bus, std::uint32_t dev, std::uint32_t func, std::size_t offset
         )
         {
             lib::bug_on(bus < _bus_start || _bus_end < bus);
@@ -53,7 +52,9 @@ namespace pci::acpi
             const auto psize = vmm::page_size::small;
             const auto caching = vmm::caching::mmio;
 
-            if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, size, flags, psize, caching); !ret)
+            if (const auto ret =
+                    vmm::kernel_pagemap->map(vaddr, paddr, size, flags, psize, caching);
+                !ret)
                 lib::panic("could not map ecam memory: {}", lib::error_name(ret.error()));
 
             mappings[paddr] = vaddr;
@@ -62,7 +63,8 @@ namespace pci::acpi
 
         public:
         ecam(std::uintptr_t base, std::uint16_t seg, std::uint8_t bus_start, std::uint8_t bus_end)
-            : _base { base }, _seg { seg }, _bus_start { bus_start }, _bus_end { bus_end } { }
+            : _base { base }, _seg { seg }, _bus_start { bus_start }, _bus_end { bus_end }
+        { }
 
         std::size_t size() const override { return 4096; }
 
@@ -72,8 +74,7 @@ namespace pci::acpi
         ) override
         {
             lib::bug_on(
-                width != sizeof(std::uint8_t) &&
-                width != sizeof(std::uint16_t) &&
+                width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) &&
                 width != sizeof(std::uint32_t)
             );
             lib::bug_on(seg != _seg);
@@ -102,8 +103,7 @@ namespace pci::acpi
         ) override
         {
             lib::bug_on(
-                width != sizeof(std::uint8_t) &&
-                width != sizeof(std::uint16_t) &&
+                width != sizeof(std::uint8_t) && width != sizeof(std::uint16_t) &&
                 width != sizeof(std::uint32_t)
             );
             lib::bug_on(seg != _seg);
@@ -135,7 +135,10 @@ namespace pci::acpi
         uacpi_namespace_node *node;
 
         public:
-        router(std::shared_ptr<pci::router> parent, std::shared_ptr<bus> bus, uacpi_namespace_node *node)
+        router(
+            std::shared_ptr<pci::router> parent, std::shared_ptr<bus> bus,
+            uacpi_namespace_node *node
+        )
             : pci::router { parent, bus }, node { node }
         {
             if (node == nullptr)
@@ -163,8 +166,8 @@ namespace pci::acpi
                 else
                 {
                     lib::error(
-                        "pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible",
-                        bus->seg, bus->id
+                        "pci: no '_PRT' for bus {:04X}:{:02X}. no irq routing possible", bus->seg,
+                        bus->id
                     );
                 }
                 return;
@@ -172,8 +175,8 @@ namespace pci::acpi
             else if (ret != UACPI_STATUS_OK)
             {
                 lib::error(
-                    "pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}",
-                    bus->seg, bus->id, uacpi_status_to_string(ret)
+                    "pci: failed to evaluate '_PRT' for bus {:04X}:{:02X}: {}", bus->seg, bus->id,
+                    uacpi_status_to_string(ret)
                 );
                 return;
             }
@@ -252,9 +255,9 @@ namespace pci::acpi
                     .out = nullptr
                 };
 
-                uacpi_namespace_for_each_child(node,
-                    [](uacpi_handle opaque, uacpi_namespace_node *node, std::uint32_t)
-                    {
+                uacpi_namespace_for_each_child(
+                    node,
+                    [](uacpi_handle opaque, uacpi_namespace_node *node, std::uint32_t) {
                         auto ctx = reinterpret_cast<devctx *>(opaque);
                         std::uint64_t addr = 0;
 
@@ -268,7 +271,8 @@ namespace pci::acpi
                             return UACPI_ITERATION_DECISION_BREAK;
                         }
                         return UACPI_ITERATION_DECISION_CONTINUE;
-                    }, nullptr, UACPI_OBJECT_DEVICE_BIT, UACPI_MAX_DEPTH_ANY, &ctx
+                    },
+                    nullptr, UACPI_OBJECT_DEVICE_BIT, UACPI_MAX_DEPTH_ANY, &ctx
                 );
                 dev_handle = ctx.out;
             }
@@ -278,20 +282,16 @@ namespace pci::acpi
 
     lib::initgraph::stage *ios_discovered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "pci.acpi.ios-discovered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "pci.acpi.ios-discovered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *rbs_discovered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "pci.acpi.rbs-discovered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "pci.acpi.rbs-discovered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
@@ -299,13 +299,10 @@ namespace pci::acpi
     bool need_arch_ios = true;
     bool need_arch_rbs = true;
 
-    lib::initgraph::task ios_task
-    {
-        "pci.acpi.discover-ios",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task ios_task {
+        "pci.acpi.discover-ios", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { ::acpi::tables_stage() },
-        lib::initgraph::entail { ios_discovered_stage() },
-        [] {
+        lib::initgraph::entail { ios_discovered_stage() }, [] {
             uacpi_table table;
             if (uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &table) != UACPI_STATUS_OK)
             {
@@ -324,7 +321,7 @@ namespace pci::acpi
             lib::debug("pci: using ecam");
 
             for (std::size_t i = 0;
-                i < ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation); i++)
+                 i < ((mcfg->hdr.length) - sizeof(acpi_mcfg)) / sizeof(acpi_mcfg_allocation); i++)
             {
                 auto &entry = mcfg->entries[i];
                 auto io = std::make_shared<ecam>(
@@ -345,15 +342,11 @@ namespace pci::acpi
         }
     };
 
-    lib::initgraph::task rbs_task
-    {
-        "pci.acpi.discover-rbs",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task rbs_task {
+        "pci.acpi.discover-rbs", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { ::acpi::initialised_stage() },
-        lib::initgraph::entail { rbs_discovered_stage() },
-        [] {
-            static constexpr const char *root_ids[]
-            {
+        lib::initgraph::entail { rbs_discovered_stage() }, [] {
+            static constexpr const char *root_ids[] {
                 "PNP0A03", // PCI
                 "PNP0A08", // PCIe
                 nullptr
@@ -361,9 +354,8 @@ namespace pci::acpi
 
             std::size_t num = 0;
             uacpi_find_devices_at(
-                uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
-                root_ids, [](void *ptr, uacpi_namespace_node *node, std::uint32_t)
-                {
+                uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB), root_ids,
+                [](void *ptr, uacpi_namespace_node *node, std::uint32_t) {
                     auto &num = *static_cast<std::size_t *>(ptr);
                     num++;
 
@@ -384,7 +376,8 @@ namespace pci::acpi
                     addrb(rbus);
 
                     return UACPI_ITERATION_DECISION_CONTINUE;
-                }, &num
+                },
+                &num
             );
 
             if (num)

@@ -40,10 +40,7 @@ export namespace vmm
     {
     };
 
-    constexpr page_size default_page_size()
-    {
-        return page_size::small;
-    }
+    constexpr page_size default_page_size() { return page_size::small; }
 
     struct page;
     struct anon
@@ -62,7 +59,7 @@ export namespace vmm
         lib::intrusive_ptr_hook hook;
 
         // TODO: some kind of tree
-        std::unique_ptr<anon::ptr []> slots;
+        std::unique_ptr<anon::ptr[]> slots;
         std::size_t nslots;
 
         using ptr = lib::intrusive_ptr<anon_map, &anon_map::hook>;
@@ -82,29 +79,30 @@ export namespace vmm
         std::atomic<flag_t> flags;
         std::atomic<std::uint32_t> refcount;
 
-        void ref()
-        {
-            refcount.fetch_add(1, std::memory_order_relaxed);
-        }
+        void ref() { refcount.fetch_add(1, std::memory_order_relaxed); }
 
         bool unref(std::size_t num = 1)
         {
             return refcount.fetch_sub(num, std::memory_order_acq_rel) == num;
         }
 
-        struct {
+        struct
+        {
             std::uint64_t next_paddr : pmm::paddr_bits - pmm::page_bits;
             std::uint64_t order : std::bit_width(pmm::max_order);
             std::uint64_t allocated : 1;
         } buddy;
 
-        union {
-            struct {
+        union
+        {
+            struct
+            {
                 object *obj_ptr;
                 std::uint64_t offp;
             };
 
-            struct {
+            struct
+            {
                 anon *anon_ptr;
             };
         };
@@ -126,10 +124,7 @@ export namespace vmm
         static_assert(!(max_readahead & 0x07));
 
         private:
-        lib::locker<
-            lib::btree::map<std::size_t, page *>,
-            sched::mutex
-        > cache;
+        lib::locker<lib::btree::map<std::size_t, page *>, sched::mutex> cache;
 
         protected:
         virtual lib::expect<void> fetch_pages(std::size_t idx, std::span<page *> pages) = 0;
@@ -186,7 +181,8 @@ export namespace vmm
         caching cache;
 
         pmemobject(std::uintptr_t base, std::size_t num_pages, caching cache = caching::normal)
-            : object { object_type::mmio }, base { base }, num_pages { num_pages }, cache { cache } { }
+            : object { object_type::mmio }, base { base }, num_pages { num_pages }, cache { cache }
+        { }
 
         std::optional<std::uintptr_t> direct_paddr(std::uint64_t offp) override
         {
@@ -241,6 +237,7 @@ export namespace vmm
         static constexpr std::uintptr_t vspace_top = 0x7FFFFFFFF000; // TODO: arch?
 
         std::shared_ptr<pagemap> pmap;
+        // clang-format off
         lib::locker<
             lib::interval_tree<
                 entry,
@@ -252,13 +249,13 @@ export namespace vmm
             >,
             sched::mutex
         > tree;
+        // clang-format on
 
         std::uintptr_t brk_start;
         std::uintptr_t current_brk;
 
         lib::expect<std::uintptr_t> map(
-            std::uintptr_t hint, std::size_t length,
-            prot_t prot, prot_t max_prot, flag_t flags,
+            std::uintptr_t hint, std::size_t length, prot_t prot, prot_t max_prot, flag_t flags,
             object::ptr obj, std::uint64_t offset
         );
         lib::expect<void> unmap(std::uintptr_t address, std::size_t length);
@@ -293,7 +290,7 @@ export namespace vmm
     std::uintptr_t paddr_from(page *pg);
 
     template<typename Type>
-        requires (std::is_pointer_v<Type>)
+        requires(std::is_pointer_v<Type>)
     inline page *page_for(Type ptr)
     {
         return page_for(reinterpret_cast<std::uintptr_t>(ptr));

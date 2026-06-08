@@ -34,10 +34,7 @@ namespace arch
         lib::unused(idx, regs, eregs);
     }
 
-    std::uint64_t cycle_count()
-    {
-        return cpu::mrs<"cntvct_el0">();
-    }
+    std::uint64_t cycle_count() { return cpu::mrs<"cntvct_el0">(); }
 
     // TODO: ID_AA64ISAR0_EL1.RNDR
     std::size_t hardware_random(std::span<std::byte> out)
@@ -48,29 +45,16 @@ namespace arch
 
     void early_init() { }
 
-    lib::initgraph::task bsp_task
-    {
-        "arch.bsp.initialise",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task bsp_task {
+        "arch.bsp.initialise", lib::initgraph::presched_init_engine,
         lib::initgraph::require { lib::initgraph::base_stage() },
-        lib::initgraph::entail { bsp_initialised_stage() },
-        [] {
-            cpu::init_bsp();
-        }
+        lib::initgraph::entail { bsp_initialised_stage() }, [] { cpu::init_bsp(); }
     };
 
-    lib::initgraph::task cpus_task
-    {
-        "arch.cpus.initialise",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            bsp_initialised_stage(),
-            timers::initialised_stage()
-        },
-        lib::initgraph::entail { cpus_stage() },
-        [] {
-            cpu::init();
-        }
+    lib::initgraph::task cpus_task {
+        "arch.cpus.initialise", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { bsp_initialised_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { cpus_stage() }, [] { cpu::init(); }
     };
 
     namespace core

@@ -224,10 +224,7 @@ namespace sched
             locked->remove(&waiter);
     }
 
-    void update_signal_waiter(
-        process_t *proc, signal_waiter_t &waiter,
-        const sigset_t &interest
-    )
+    void update_signal_waiter(process_t *proc, signal_waiter_t &waiter, const sigset_t &interest)
     {
         const auto guard = proc->sig_waiters.lock();
         waiter.interest = interest;

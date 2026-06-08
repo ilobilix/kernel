@@ -31,9 +31,6 @@ export namespace frg
             return static_cast<Type *>(::operator new(size));
         }
 
-        constexpr void free(Type *ptr, std::size_t = 0)
-        {
-            ::operator delete(ptr);
-        }
+        constexpr void free(Type *ptr, std::size_t = 0) { ::operator delete(ptr); }
     };
 } // export namespace frg

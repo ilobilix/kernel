@@ -36,24 +36,24 @@ export namespace sched
 
     struct rlimits_t
     {
-        std::array<rlimit, rlimit_nlimits> limits { {
-            [rlimit_cpu]        = { rlim_inf, rlim_inf },
-            [rlimit_fsize]      = { rlim_inf, rlim_inf },
-            [rlimit_data]       = { rlim_inf, rlim_inf },
-            [rlimit_stack]      = { 8 * 1024 * 1024, rlim_inf }, // _STK_LIM
-            [rlimit_core]       = { 0, rlim_inf },
-            [rlimit_rss]        = { rlim_inf, rlim_inf },
-            [rlimit_nproc]      = { 0, 0 },
-            [rlimit_nofile]     = { 1024, 4096 }, // INR_OPEN_CUR, INR_OPEN_MAX
-            [rlimit_memlock]    = { 8 * 1024 * 1024, 8 * 1024 * 1024 }, // MLOCK_LIMIT
-            [rlimit_as]         = { rlim_inf, rlim_inf },
-            [rlimit_locks]      = { rlim_inf, rlim_inf },
+        rlimit limits[rlimit_nlimits] {
+            [rlimit_cpu] = { rlim_inf, rlim_inf },
+            [rlimit_fsize] = { rlim_inf, rlim_inf },
+            [rlimit_data] = { rlim_inf, rlim_inf },
+            [rlimit_stack] = { 8 * 1024 * 1024, rlim_inf }, // _STK_LIM
+            [rlimit_core] = { 0, rlim_inf },
+            [rlimit_rss] = { rlim_inf, rlim_inf },
+            [rlimit_nproc] = { 0, 0 },
+            [rlimit_nofile] = { 1024, 4096 }, // INR_OPEN_CUR, INR_OPEN_MAX
+            [rlimit_memlock] = { 8 * 1024 * 1024, 8 * 1024 * 1024 }, // MLOCK_LIMIT
+            [rlimit_as] = { rlim_inf, rlim_inf },
+            [rlimit_locks] = { rlim_inf, rlim_inf },
             [rlimit_sigpending] = { 0, 0 },
-            [rlimit_msgqueue]   = { 819200, 819200 }, // MQ_BYTES_MAX
-            [rlimit_nice]       = { 0, 0 },
-            [rlimit_rtprio]     = { 0, 0 },
-            [rlimit_rttime]     = { rlim_inf, rlim_inf }
-        } };
+            [rlimit_msgqueue] = { 819200, 819200 }, // MQ_BYTES_MAX
+            [rlimit_nice] = { 0, 0 },
+            [rlimit_rtprio] = { 0, 0 },
+            [rlimit_rttime] = { rlim_inf, rlim_inf }
+        };
         mutable lib::spinlock lock;
 
         constexpr rlimits_t() = default;
@@ -74,7 +74,7 @@ export namespace sched
         {
             auto cloned = std::make_shared<rlimits_t>();
             const std::unique_lock _ { lock };
-            cloned->limits = limits;
+            std::memcpy(cloned->limits, limits, sizeof(limits));
             return cloned;
         }
     };

@@ -35,9 +35,7 @@ namespace tlb::arch
                 continue;
 
             apic::ipi(
-                proc->arch_id,
-                apic::destination::physical,
-                apic::delivery::fixed,
+                proc->arch_id, apic::destination::physical, apic::delivery::fixed,
                 idt::vec_tlb_shootdown
             );
         }

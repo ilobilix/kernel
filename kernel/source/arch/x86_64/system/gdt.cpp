@@ -11,10 +11,11 @@ namespace x86_64::gdt
     namespace
     {
         extern "C" void load_early(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code);
-        extern "C" void load(std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss);
+        extern "C" void load(
+            std::uintptr_t gdtr, std::uint8_t data, std::uint8_t code, std::uint16_t tss
+        );
 
-        constinit entries default_gdt
-        {
+        constinit entries default_gdt {
             { 0x0000, 0x0000, 0x00, 0b00000000, 0x0, 0b0000, 0x00 }, // null
             { 0x0000, 0x0000, 0x00, 0b10011010, 0x0, 0b0010, 0x00 }, // kernel code
             { 0x0000, 0x0000, 0x00, 0b10010010, 0x0, 0b0010, 0x00 }, // kernel data

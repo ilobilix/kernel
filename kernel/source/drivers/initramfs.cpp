@@ -55,18 +55,15 @@ namespace initramfs
 
             std::byte *payload() const
             {
-                return reinterpret_cast<std::byte *>(
-                    const_cast<header *>(this)
-                ) + block_size;
+                return reinterpret_cast<std::byte *>(const_cast<header *>(this)) + block_size;
             }
         };
 
-        template<typename Type> requires std::is_array_v<Type>
+        template<typename Type>
+            requires std::is_array_v<Type>
         constexpr std::string_view get_string(const Type &member)
         {
-            return std::string_view {
-                member, std::strnlen(member, sizeof(member))
-            };
+            return std::string_view { member, std::strnlen(member, sizeof(member)) };
         }
 
         header *advance(header *cur, std::size_t payload_size)
@@ -130,12 +127,12 @@ namespace initramfs
                     name_buf.append(prefix).append("/").append(nam);
                     name = name_buf;
                 }
-                else name = get_string(current->name);
+                else
+                    name = get_string(current->name);
 
                 const auto linkname {
-                    have_long_linkname
-                        ? std::string_view { long_linkname }
-                        : get_string(current->linkname)
+                    have_long_linkname ? std::string_view { long_linkname }
+                                       : get_string(current->linkname)
                 };
 
                 const auto mode = lib::oct2int<mode_t>(current->mode);
@@ -161,22 +158,23 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create regular file '{}': {}",
-                                name, lib::error_name(ret.error())
+                                "ustar: could not create regular file '{}': {}", name,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
 
-                        const auto payload = lib::maybe_uspan<std::byte>::create(
-                            current->payload(), payload_size
-                        ).value();
+                        const auto payload =
+                            lib::maybe_uspan<std::byte>::create(current->payload(), payload_size)
+                                .value();
 
                         auto file = vfs::file::create(ret.value(), 0, 0);
-                        if (const auto res = file->pwrite(0, payload); !res.has_value() || res.value() != payload_size)
+                        if (const auto res = file->pwrite(0, payload);
+                            !res.has_value() || res.value() != payload_size)
                         {
                             lib::error(
-                                "ustar: could not write to regular file '{}': {}",
-                                name, res.has_value() ? "size mismatch" : lib::error_name(res.error())
+                                "ustar: could not write to regular file '{}': {}", name,
+                                res.has_value() ? "size mismatch" : lib::error_name(res.error())
                             );
 
                             if (const auto ret = vfs::unlink(std::nullopt, name); !ret)
@@ -197,8 +195,8 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create hardlink '{}' -> '{}': {}",
-                                name, linkname, lib::error_name(ret.error())
+                                "ustar: could not create hardlink '{}' -> '{}': {}", name, linkname,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -211,8 +209,8 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create symlink '{}' -> '{}': {}",
-                                name, linkname, lib::error_name(ret.error())
+                                "ustar: could not create symlink '{}' -> '{}': {}", name, linkname,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -225,8 +223,8 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create character device file '{}': {}",
-                                name, lib::error_name(ret.error())
+                                "ustar: could not create character device file '{}': {}", name,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -239,8 +237,8 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create block device file '{}': {}",
-                                name, lib::error_name(ret.error())
+                                "ustar: could not create block device file '{}': {}", name,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -253,8 +251,8 @@ namespace initramfs
                         if (!ret)
                         {
                             lib::error(
-                                "ustar: could not create directory '{}': {}",
-                                name, lib::error_name(ret.error())
+                                "ustar: could not create directory '{}': {}", name,
+                                lib::error_name(ret.error())
                             );
                             break;
                         }
@@ -269,7 +267,9 @@ namespace initramfs
                         lib::panic("ustar: TODO: extended header");
                         break;
                     default:
-                        lib::error("ustar: unknown typeflag '{}' for file '{}'", current->typeflag, name);
+                        lib::error(
+                            "ustar: unknown typeflag '{}' for file '{}'", current->typeflag, name
+                        );
                         break;
                 }
 
@@ -280,7 +280,7 @@ namespace initramfs
                     inode->stat.st_mtim = timespec { mtim, 0 };
                 }
 
-                next:
+            next:
                 long_name.clear();
                 long_linkname.clear();
                 have_long_name = false;
@@ -293,28 +293,22 @@ namespace initramfs
 
     lib::initgraph::stage *extracted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.initramfs.extracted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.initramfs.extracted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task init_task
-    {
-        "vfs.initramfs.extract",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task init_task {
+        "vfs.initramfs.extract", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { vfs::root_mounted_stage() },
-        lib::initgraph::entail { extracted_stage() },
-        [] {
+        lib::initgraph::entail { extracted_stage() }, [] {
             auto module = boot::find_module("initramfs");
             if (module == nullptr)
                 lib::panic("could not find initramfs");
 
             std::span<std::byte> data {
-                reinterpret_cast<std::byte *>(module->address),
-                module->size
+                reinterpret_cast<std::byte *>(module->address), module->size
             };
 
             if (!ustar::load(data))

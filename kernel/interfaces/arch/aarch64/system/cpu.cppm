@@ -24,7 +24,7 @@ export namespace cpu
     void msr(std::uint64_t val)
     {
         using namespace fmt::literals;
-        asm volatile ((fmt::format("msr {}, %0"_cf, Reg.value)) :: (Cns)(val));
+        asm volatile ((fmt::format("msr {}, %0"_cf, Reg.value)) : : (Cns)(val));
     }
 
     template<lib::comptime_string Reg>
@@ -40,7 +40,7 @@ export namespace cpu
     void write_reg(std::uint64_t val)
     {
         using namespace fmt::literals;
-        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) :: (Cns)(val));
+        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) : : (Cns)(val));
     }
 
     struct extra_regs
@@ -57,7 +57,7 @@ export namespace cpu
 
         inline void flush_page(std::uintptr_t addr)
         {
-            asm volatile ("dsb st; tlbi vale1, %0; dsb sy; isb" :: "r"(addr >> 12) : "memory");
+            asm volatile ("dsb st; tlbi vale1, %0; dsb sy; isb" : : "r"(addr >> 12) : "memory");
         }
 
         inline void flush_page(std::uintptr_t addr, std::size_t asid)
@@ -66,51 +66,39 @@ export namespace cpu
                 return flush_page(addr);
 
             const std::uint64_t op = (addr >> 12) | (static_cast<std::uint64_t>(asid) << 48);
-            asm volatile ("dsb ishst; tlbi vae1, %0; dsb ish; isb" :: "r"(op) : "memory");
+            asm volatile ("dsb ishst; tlbi vae1, %0; dsb ish; isb" : : "r"(op) : "memory");
         }
 
         inline void flush_asid(std::size_t asid)
         {
             if (!_enabled)
             {
-                asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" ::: "memory");
+                asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" : : : "memory");
                 return;
             }
 
             const std::uint64_t op = static_cast<std::uint64_t>(asid) << 48;
-            asm volatile ("dsb ishst; tlbi aside1, %0; dsb ish; isb" :: "r"(op) : "memory");
+            asm volatile ("dsb ishst; tlbi aside1, %0; dsb ish; isb" : : "r"(op) : "memory");
         }
 
         inline void flush_all()
         {
-            asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" ::: "memory");
+            asm volatile ("dsb ishst; tlbi vmalle1; dsb ish; isb" : : : "memory");
         }
     } // namespace tlb
 
-    void write_el1_base(std::uintptr_t base)
-    {
-        msr<"tpidr_el1">(base);
-    }
+    void write_el1_base(std::uintptr_t base) { msr<"tpidr_el1">(base); }
 
-    std::uintptr_t read_el1_base()
-    {
-        return mrs<"tpidr_el1">();
-    }
+    std::uintptr_t read_el1_base() { return mrs<"tpidr_el1">(); }
 
-    void write_el0_base(std::uintptr_t base)
-    {
-        msr<"tpidr_el0">(base);
-    }
+    void write_el0_base(std::uintptr_t base) { msr<"tpidr_el0">(base); }
 
-    std::uintptr_t read_el0_base()
-    {
-        return mrs<"tpidr_el0">();
-    }
+    std::uintptr_t read_el0_base() { return mrs<"tpidr_el0">(); }
 
     std::uintptr_t self_addr()
     {
         std::uintptr_t addr;
-        asm volatile ("mrs %0, tpidr_el1; ldr %0, [%0]" : "=r"(addr) :: "memory");
+        asm volatile ("mrs %0, tpidr_el1; ldr %0, [%0]" : "=r"(addr) : : "memory");
         return addr;
     }
 } // export namespace cpu

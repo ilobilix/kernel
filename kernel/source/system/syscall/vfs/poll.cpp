@@ -34,15 +34,13 @@ namespace syscall::vfs
             return set->fds_bits[fd / 8] & (1 << (fd % 8));
         }
 
-        inline void FD_SET(int fd, fd_set *set) {
+        inline void FD_SET(int fd, fd_set *set)
+        {
             lib::bug_on(fd >= FD_SETSIZE);
             set->fds_bits[fd / 8] |= 1 << (fd % 8);
         }
 
-        inline void FD_ZERO(fd_set *set)
-        {
-            std::memset(set->fds_bits, 0, sizeof(fd_set));
-        }
+        inline void FD_ZERO(fd_set *set) { std::memset(set->fds_bits, 0, sizeof(fd_set)); }
 
         struct poll_table : ::vfs::poll_table
         {
@@ -51,8 +49,9 @@ namespace syscall::vfs
                 sched::wait_queue_t *wq;
                 sched::wait_queue_entry_t wq_entry;
 
-                entry(sched::wait_queue_t *wq, std::function<void ()> cb)
-                    : wq { wq }, wq_entry { std::move(cb) } { }
+                entry(sched::wait_queue_t *wq, std::function<void()> cb)
+                    : wq { wq }, wq_entry { std::move(cb) }
+                { }
             };
 
             lib::list<entry> entries;
@@ -169,7 +168,10 @@ namespace syscall::vfs
             }
         }
 
-        int pselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout, bool update_timeout, const sigset_t *sigmask)
+        int pselect(
+            int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, timespec *timeout,
+            bool update_timeout, const sigset_t *sigmask
+        )
         {
             if (nfds < 0 || nfds > FD_SETSIZE)
                 return -EINVAL;
@@ -231,7 +233,7 @@ namespace syscall::vfs
             for (auto &pfd : pfds)
             {
                 bool any = false;
-                if (readfds && (pfd.revents & (pollin  | pollhup | pollrdhup)))
+                if (readfds && (pfd.revents & (pollin | pollhup | pollrdhup)))
                 {
                     FD_SET(pfd.fd, readfds);
                     any = true;
@@ -252,25 +254,26 @@ namespace syscall::vfs
             return ready;
         }
 
-        int pselect(int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds, timespec *timeout, bool update_timeout, const sigset_t __user *sigmask)
+        int pselect(
+            int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
+            timespec *timeout, bool update_timeout, const sigset_t __user *sigmask
+        )
         {
             fd_set kreadfds, kwritefds, kexceptfds;
             sigset_t ksigmask;
 
             if (readfds && !lib::copy_from_user(&kreadfds, readfds, sizeof(fd_set)))
-                    return -EFAULT;
+                return -EFAULT;
             if (writefds && !lib::copy_from_user(&kwritefds, writefds, sizeof(fd_set)))
-                    return -EFAULT;
+                return -EFAULT;
             if (exceptfds && !lib::copy_from_user(&kexceptfds, exceptfds, sizeof(fd_set)))
-                    return -EFAULT;
+                return -EFAULT;
             if (sigmask && !lib::copy_from_user(&ksigmask, sigmask, sizeof(sigset_t)))
-                    return -EFAULT;
+                return -EFAULT;
 
-            const auto ret = pselect(nfds,
-                readfds ? &kreadfds : nullptr,
-                writefds ? &kwritefds : nullptr,
-                exceptfds ? &kexceptfds : nullptr,
-                timeout, update_timeout,
+            const auto ret = pselect(
+                nfds, readfds ? &kreadfds : nullptr, writefds ? &kwritefds : nullptr,
+                exceptfds ? &kexceptfds : nullptr, timeout, update_timeout,
                 sigmask ? &ksigmask : nullptr
             );
 
@@ -279,19 +282,16 @@ namespace syscall::vfs
                 if (readfds && !lib::copy_to_user(readfds, &kreadfds, sizeof(fd_set)))
                     return -EFAULT;
                 if (writefds && !lib::copy_to_user(writefds, &kwritefds, sizeof(fd_set)))
-                        return -EFAULT;
+                    return -EFAULT;
                 if (exceptfds && !lib::copy_to_user(exceptfds, &kexceptfds, sizeof(fd_set)))
-                        return -EFAULT;
+                    return -EFAULT;
             }
 
             return ret;
         }
     } // namespace
 
-    int ppoll(
-        pollfd __user *fds, nfds_t nfds, timespec __user *timeout,
-        sigset_t __user *sigmask
-    )
+    int ppoll(pollfd __user *fds, nfds_t nfds, timespec __user *timeout, sigset_t __user *sigmask)
     {
         if (fds == nullptr)
             return -EFAULT;
@@ -318,11 +318,7 @@ namespace syscall::vfs
                 return -EFAULT;
         }
 
-        const auto ret = ppoll(
-            kfds,
-            timeout ? &ktimeout : nullptr,
-            sigmask ? &ksigmask : nullptr
-        );
+        const auto ret = ppoll(kfds, timeout ? &ktimeout : nullptr, sigmask ? &ksigmask : nullptr);
 
         for (nfds_t i = 0; i < nfds; i++)
         {
@@ -355,13 +351,11 @@ namespace syscall::vfs
         int ret;
         if (timeout >= 0)
         {
-            timespec ts {
-                timeout / 1000,
-                (timeout % 1000) * 1'000'000L
-            };
+            timespec ts { timeout / 1000, (timeout % 1000) * 1'000'000L };
             ret = ppoll(kfds, &ts, nullptr);
         }
-        else ret = ppoll(kfds, nullptr, nullptr);
+        else
+            ret = ppoll(kfds, nullptr, nullptr);
 
         for (nfds_t i = 0; i < nfds; i++)
         {
@@ -373,8 +367,8 @@ namespace syscall::vfs
     }
 
     int select(
-        int nfds, fd_set __user *readfds, fd_set __user *writefds,
-        fd_set __user *exceptfds, timeval __user *timeout
+        int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
+        timeval __user *timeout
     )
     {
         timespec ktimeout;
@@ -387,9 +381,8 @@ namespace syscall::vfs
         }
 
         const auto ret = pselect(
-            nfds, readfds, writefds, exceptfds,
-            timeout ? &ktimeout : nullptr,
-            (timeout != nullptr), nullptr
+            nfds, readfds, writefds, exceptfds, timeout ? &ktimeout : nullptr, (timeout != nullptr),
+            nullptr
         );
 
         if (ret >= 0 && timeout != nullptr)
@@ -415,9 +408,7 @@ namespace syscall::vfs
         }
 
         return pselect(
-            nfds, readfds, writefds, exceptfds,
-            timeout ? &ktimeout : nullptr,
-            false, sigmask
+            nfds, readfds, writefds, exceptfds, timeout ? &ktimeout : nullptr, false, sigmask
         );
     }
 } // namespace syscall::vfs

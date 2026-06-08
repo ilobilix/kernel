@@ -8,6 +8,7 @@ namespace sched
 {
     namespace
     {
+        // clang-format off
         lib::locker<
             lib::rbtree<
                 sleep_entry_t,
@@ -19,7 +20,9 @@ namespace sched
                 >
             >, lib::spinlock_irq
         > sleep_list;
+        // clang-format on
 
+        // clang-format off
         lib::locker<
             lib::rbtree<
                 alarm_entry_t,
@@ -31,6 +34,7 @@ namespace sched
                 >
             >, lib::spinlock_irq
         > alarm_list;
+        // clang-format on
 
         bool consume_itimer(cpu_itimer_t &it, std::uint64_t delta_ns)
         {
@@ -95,10 +99,7 @@ namespace sched
 
         auto thread = current_thread();
         sleep_entry_t entry {
-            .thread = thread,
-            .deadline_ns = deadline,
-            .expired = false,
-            .hook = { }
+            .thread = thread, .deadline_ns = deadline, .expired = false, .hook = { }
         };
 
         {
@@ -160,8 +161,7 @@ namespace sched
     }
 
     std::uint64_t arm_alarm(
-        alarm_entry_t *entry, process_t *proc,
-        std::uint64_t ns, std::uint64_t interval_ns
+        alarm_entry_t *entry, process_t *proc, std::uint64_t ns, std::uint64_t interval_ns
     )
     {
         const auto timer = chrono::main_timer();

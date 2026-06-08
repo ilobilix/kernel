@@ -26,23 +26,39 @@ namespace x86_64::idt
         constinit reg idtr { };
         constinit bool early = true;
 
-        constexpr std::array<std::string_view, 32> exception_messages
-        {
-            "division by zero", "debug",
+        constexpr std::array<std::string_view, 32> exception_messages {
+            "division by zero",
+            "debug",
             "non-maskable interrupt",
-            "breakpoint", "detected overflow",
-            "out-of-bounds", "invalid opcode",
-            "no coprocessor", "double fault",
+            "breakpoint",
+            "detected overflow",
+            "out-of-bounds",
+            "invalid opcode",
+            "no coprocessor",
+            "double fault",
             "coprocessor segment overrun",
-            "bad TSS", "segment not present",
-            "stack fault", "general protection fault",
-            "page fault", "unknown interrupt",
-            "coprocessor fault", "alignment check",
-            "machine check", "reserved",
-            "reserved", "reserved", "reserved",
-            "reserved", "reserved", "reserved",
-            "reserved", "reserved", "reserved",
-            "reserved", "reserved", "reserved"
+            "bad TSS",
+            "segment not present",
+            "stack fault",
+            "general protection fault",
+            "page fault",
+            "unknown interrupt",
+            "coprocessor fault",
+            "alignment check",
+            "machine check",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved",
+            "reserved"
         };
 
         bool deliver_fault_signal(cpu::registers *regs, std::uintptr_t cr2)
@@ -174,10 +190,7 @@ namespace x86_64::idt
         }
     } // namespace
 
-    using irq_vec = frg::small_vector<
-        slot, num_preints,
-        frg::allocator<slot>
-    >;
+    using irq_vec = frg::small_vector<slot, num_preints, frg::allocator<slot>>;
     cpu_local(irq_vec, irq_handlers);
 
     std::array<entry, num_ints> &table() { return idt; }
@@ -197,10 +210,7 @@ namespace x86_64::idt
         return handlers[num];
     }
 
-    lib::expect<void> vector_domain::alloc(
-        std::span<irq::irq_data *> data,
-        const irq::fwspec &spec
-    )
+    lib::expect<void> vector_domain::alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec)
     {
         if (data.empty())
             return { };
@@ -253,7 +263,10 @@ namespace x86_64::idt
         if (!handler)
             return;
 
-        handler->set([fn](cpu::registers *regs) { if (*fn) (*fn)(regs); });
+        handler->set([fn](cpu::registers *regs) {
+            if (*fn)
+                (*fn)(regs);
+        });
     }
 
     void vector_domain::detach(irq::irq_data &data)
@@ -361,9 +374,11 @@ namespace x86_64::idt
                     apic::eoi();
                     slot(regs);
                 }
-                else lib::panic(regs, "unhandled irq {}", vector);
+                else
+                    lib::panic(regs, "unhandled irq {}", vector);
             }
-            else apic::eoi();
+            else
+                apic::eoi();
         }
         else if (vector < irq(0))
         {
@@ -385,11 +400,8 @@ namespace x86_64::idt
             {
                 cr2 = cpu::read_reg<"cr2">();
                 vmm::pfault_state state {
-                    cr2,
-                    (regs->error_code & (1 << 0)) != 0,
-                    (regs->error_code & (1 << 1)) != 0,
-                    (regs->error_code & (1 << 4)) != 0,
-                    (regs->error_code & (1 << 2)) != 0
+                    cr2, (regs->error_code & (1 << 0)) != 0, (regs->error_code & (1 << 1)) != 0,
+                    (regs->error_code & (1 << 4)) != 0, (regs->error_code & (1 << 2)) != 0
                 };
                 if (vmm::handle_pfault(state))
                     goto end;
@@ -414,15 +426,14 @@ namespace x86_64::idt
             if (sched::is_running())
             {
                 const auto thread = sched::current_thread();
-                lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
-                    vector, exception_messages[vector],
-                    self.idx, thread->proc->pid, thread->tid
+                lib::panic(
+                    regs, "exception {}: '{}' on cpu {} on [{}:{}]", vector,
+                    exception_messages[vector], self.idx, thread->proc->pid, thread->tid
                 );
             }
 
             lib::panic(
-                regs, "exception {}: '{}' on cpu {}",
-                vector, exception_messages[vector], self.idx
+                regs, "exception {}: '{}' on cpu {}", vector, exception_messages[vector], self.idx
             );
             std::unreachable();
         }
@@ -432,7 +443,7 @@ namespace x86_64::idt
             std::unreachable();
         }
 
-        end:
+    end:
         if (sched::is_running())
         {
             if (!sched::is_preempt_disabled() && sched::current_thread()->needs_resched())
@@ -445,7 +456,7 @@ namespace x86_64::idt
             }
         }
 
-        skip_sched:
+    skip_sched:
         std::atomic_signal_fence(std::memory_order_release);
         self.in_interrupt.store(false, std::memory_order_relaxed);
     }
@@ -465,7 +476,9 @@ namespace x86_64::idt
         if (cpu->idx == cpu::bsp_idx())
         {
             lib::info("idt: setting up irq handlers");
-            idt[2].ist = 1; idt[8].ist = 2; idt[18].ist = 3;
+            idt[2].ist = 1;
+            idt[8].ist = 2;
+            idt[18].ist = 3;
         }
 
         irq_handlers.unsafe_get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
@@ -476,13 +489,9 @@ namespace x86_64::idt
         idtr.load();
     }
 
-    lib::initgraph::task msi_parent_task
-    {
-        "x86_64.idt.msi-parent",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task msi_parent_task {
+        "x86_64.idt.msi-parent", lib::initgraph::presched_init_engine,
         lib::initgraph::require { arch::bsp_initialised_stage() },
-        [] {
-            irq::set_msi_parent(get_vector_domain());
-        }
+        [] { irq::set_msi_parent(get_vector_domain()); }
     };
 } // namespace x86_64::idt

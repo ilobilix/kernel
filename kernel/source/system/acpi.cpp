@@ -48,7 +48,8 @@ namespace acpi
 
             auto madt = reinterpret_cast<acpi_entry_hdr *>(start);
 
-            for (auto entry = start; entry < end; entry += madt->length, madt = reinterpret_cast<acpi_entry_hdr *>(entry))
+            for (auto entry = start; entry < end;
+                 entry += madt->length, madt = reinterpret_cast<acpi_entry_hdr *>(entry))
             {
                 switch (madt->type)
                 {
@@ -62,16 +63,22 @@ namespace acpi
                         madt::ioapics.push_back(*reinterpret_cast<acpi_madt_ioapic *>(entry));
                         break;
                     case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE:
-                        madt::isos.push_back(*reinterpret_cast<acpi_madt_interrupt_source_override *>(entry));
+                        madt::isos.push_back(
+                            *reinterpret_cast<acpi_madt_interrupt_source_override *>(entry)
+                        );
                         break;
                     case ACPI_MADT_ENTRY_TYPE_NMI_SOURCE:
-                        madt::nmi_sources.push_back(*reinterpret_cast<acpi_madt_nmi_source *>(entry));
+                        madt::nmi_sources.push_back(
+                            *reinterpret_cast<acpi_madt_nmi_source *>(entry)
+                        );
                         break;
                     case ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC:
                         madt::x2apics.push_back(*reinterpret_cast<acpi_madt_x2apic *>(entry));
                         break;
                     case ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC_NMI:
-                        madt::x2apic_nmis.push_back(*reinterpret_cast<acpi_madt_x2apic_nmi *>(entry));
+                        madt::x2apic_nmis.push_back(
+                            *reinterpret_cast<acpi_madt_x2apic_nmi *>(entry)
+                        );
                         break;
                 }
             }
@@ -89,114 +96,102 @@ namespace acpi
 
     std::uintptr_t get_rsdp()
     {
-        static const auto cached = [] {
-            return boot::requests::rsdp.response->address;
-        } ();
+        static const auto cached = [] { return boot::requests::rsdp.response->address; } ();
         return reinterpret_cast<std::uintptr_t>(cached);
     }
 
     lib::initgraph::stage *tables_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "acpi.tables-available",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "acpi.tables-available", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "acpi.initialised",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "acpi.initialised", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *workers_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "acpi.workers-created",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "acpi.workers-created", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task full_task
-    {
-        "acpi.initialise",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            pci::acpi::ios_discovered_stage(),
-            workers_stage()
-        },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
+    lib::initgraph::task full_task {
+        "acpi.initialise", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { pci::acpi::ios_discovered_stage(), workers_stage() },
+        lib::initgraph::entail { initialised_stage() }, [] {
             delete[] early_table_buffer;
 
             uacpi_status ret = UACPI_STATUS_OK;
-            auto check = [ret]
-            {
+            auto check = [ret] {
                 if (ret != UACPI_STATUS_OK) [[unlikely]]
                     lib::panic("could not initialise ACPI: {}", uacpi_status_to_string(ret));
             };
 
-            ret = uacpi_initialize(0); check();
-            ret = uacpi_namespace_load(); check();
+            ret = uacpi_initialize(0);
+            check();
+            ret = uacpi_namespace_load();
+            check();
 
 #if defined(__x86_64__)
             lib::bug_on(!x86_64::apic::io::is_initialised());
-            ret = uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC); check();
+            ret = uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
+            check();
 #endif
 
             // TODO: ec
 
-            ret = uacpi_namespace_initialize(); check();
-            ret = uacpi_finalize_gpe_initialization(); check();
+            ret = uacpi_namespace_initialize();
+            check();
+            ret = uacpi_finalize_gpe_initialization();
+            check();
 
             ret = uacpi_install_fixed_event_handler(
                 UACPI_FIXED_EVENT_POWER_BUTTON,
-                [](uacpi_handle) -> uacpi_interrupt_ret
-                {
+                [](uacpi_handle) -> uacpi_interrupt_ret {
                     uacpi_kernel_schedule_work(
-                        UACPI_WORK_GPE_EXECUTION,
-                        [](uacpi_handle) { shutdown(); }, nullptr
+                        UACPI_WORK_GPE_EXECUTION, [](uacpi_handle) { shutdown(); }, nullptr
                     );
                     return UACPI_INTERRUPT_HANDLED;
-                }, nullptr
+                },
+                nullptr
             );
             check();
 
-            ret = uacpi_find_devices("PNP0C0C",
-                [](void *, uacpi_namespace_node *node, uacpi_u32)
-                {
-                    uacpi_install_notify_handler(node,
-                        [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status
-                        {
+            ret = uacpi_find_devices(
+                "PNP0C0C",
+                [](void *, uacpi_namespace_node *node, uacpi_u32) {
+                    uacpi_install_notify_handler(
+                        node,
+                        [](uacpi_handle, uacpi_namespace_node *, uacpi_u64 value) -> uacpi_status {
                             if (value != 0x80)
                                 return UACPI_STATUS_OK;
 
                             shutdown();
                             return UACPI_STATUS_OK;
-                        }, nullptr
+                        },
+                        nullptr
                     );
                     return UACPI_ITERATION_DECISION_CONTINUE;
-                }, nullptr
+                },
+                nullptr
             );
             check();
         }
     };
 
-    lib::initgraph::task early_task
-    {
-        "acpi.early-tables",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task early_task {
+        "acpi.early-tables", lib::initgraph::presched_init_engine,
         lib::initgraph::require { lib::initgraph::base_stage() },
-        lib::initgraph::entail { tables_stage() },
-        [] {
+        lib::initgraph::entail { tables_stage() }, [] {
             lib::info("acpi: setting up early table access");
 
             early_table_buffer = new std::uint8_t[early_table_buffer_size];

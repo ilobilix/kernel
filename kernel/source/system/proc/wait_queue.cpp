@@ -10,21 +10,19 @@ namespace sched
     {
         void visit(auto &type, bool preempt)
         {
-            std::visit(lib::overloaded {
-                [preempt](thread_base_t *thread) {
-                    wake_up(static_cast<thread_t *>(thread), preempt);
+            std::visit(
+                lib::overloaded {
+                    [preempt](thread_base_t *thread) {
+                        wake_up(static_cast<thread_t *>(thread), preempt);
+                    },
+                    [](wait_queue_entry_t::callback_t &func) { func(); }
                 },
-                [](wait_queue_entry_t::callback_t &func) {
-                    func();
-                }
-            }, type);
+                type
+            );
         }
     } // namespace
 
-    thread_base_t *wait_queue_entry_t::current_thread()
-    {
-        return sched::current_thread();
-    }
+    thread_base_t *wait_queue_entry_t::current_thread() { return sched::current_thread(); }
 
     bool wait_queue_t::try_dec_pending()
     {
@@ -32,9 +30,8 @@ namespace sched
         while (expected > 0)
         {
             if (pending.compare_exchange_weak(
-                expected, expected - 1,
-                std::memory_order_acquire,
-                std::memory_order_acquire))
+                    expected, expected - 1, std::memory_order_acquire, std::memory_order_acquire
+                ))
                 return true;
         }
         return false;
@@ -54,8 +51,7 @@ namespace sched
     }
 
     void wait_queue_t::unlink_atomic(
-        std::atomic<wait_queue_t *> &on_queue_ref,
-        std::atomic<wait_queue_entry_t *> &entry_ref
+        std::atomic<wait_queue_t *> &on_queue_ref, std::atomic<wait_queue_entry_t *> &entry_ref
     )
     {
         const std::unique_lock _ { lock };
@@ -77,9 +73,8 @@ namespace sched
         return generation.load(std::memory_order_acquire);
     }
 
-    auto wait_queue_t::wait_common(
-        std::size_t gen, std::uint64_t ns, wait_mode mode
-    ) -> wait_result_t
+    auto wait_queue_t::wait_common(std::size_t gen, std::uint64_t ns, wait_mode mode)
+        -> wait_result_t
     {
         auto thread = static_cast<thread_t *>(current_thread());
         const bool kill_aware = (mode != wait_mode::unkillable);
@@ -104,9 +99,8 @@ namespace sched
             return { false, false, false };
         }
 
-        const auto sleep_state = (mode == wait_mode::interruptible)
-            ? thread_state::sleeping
-            : thread_state::blocked;
+        const auto sleep_state =
+            (mode == wait_mode::interruptible) ? thread_state::sleeping : thread_state::blocked;
 
         entries.push_back(&entry);
         thread->on_wait_queue.store(this, std::memory_order_relaxed);
@@ -123,9 +117,9 @@ namespace sched
         {
             auto expected = sleep_state;
             if (thread->state.compare_exchange_strong(
-                expected, thread_state::running,
-                std::memory_order_acq_rel,
-                std::memory_order_acquire))
+                    expected, thread_state::running, std::memory_order_acq_rel,
+                    std::memory_order_acquire
+                ))
             {
                 thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
                 thread->wait_entry.store(nullptr, std::memory_order_relaxed);
@@ -141,12 +135,7 @@ namespace sched
             }
         }
 
-        sleep_entry_t timeout {
-            .thread = thread,
-            .deadline_ns = 0,
-            .expired = false,
-            .hook = { }
-        };
+        sleep_entry_t timeout { .thread = thread, .deadline_ns = 0, .expired = false, .hook = { } };
         if (ns != 0)
             arm_thread_timeout(&timeout, ns);
 
@@ -224,7 +213,7 @@ namespace sched
             generation.fetch_add(1, std::memory_order_release);
 
             bool exclusive = false;
-            for (auto it = entries.begin(); it != entries.end(); )
+            for (auto it = entries.begin(); it != entries.end();)
             {
                 auto entry = it.value();
                 it++;

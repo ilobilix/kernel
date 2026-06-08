@@ -33,11 +33,14 @@ namespace timers::acpipm
             if (!fast)
             {
                 std::uint32_t v1 = 0, v2 = 0, v3 = 0;
-                do {
+                do
+                {
                     v1 = read_internal();
                     v2 = read_internal();
                     v3 = read_internal();
-                } while (__builtin_expect(((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0));
+                } while (__builtin_expect(
+                    ((v1 > v2 && v1 < v3) || (v2 > v3 && v2 < v1) || (v3 > v1 && v3 < v2)), 0
+                ));
 
                 return v2;
             }
@@ -57,8 +60,7 @@ namespace timers::acpipm
 
     bool supported()
     {
-        static const auto cached = [] -> bool
-        {
+        static const auto cached = [] -> bool {
             if (acpi::fadt == nullptr)
                 return false;
 
@@ -92,9 +94,7 @@ namespace timers::acpipm
         if (last_val - value > (mask >> 1))
         {
             last.compare_exchange_strong(
-                last_val, value,
-                std::memory_order_relaxed,
-                std::memory_order_relaxed
+                last_val, value, std::memory_order_relaxed, std::memory_order_relaxed
             );
         }
 
@@ -122,21 +122,16 @@ namespace timers::acpipm
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.acpipm.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.acpipm.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task acpipm_task
-    {
-        "timers.acpipm",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task acpipm_task {
+        "timers.acpipm", lib::initgraph::presched_init_engine,
         lib::initgraph::require { acpi::tables_stage() },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
+        lib::initgraph::entail { initialised_stage() }, [] {
             const auto pmtimer = supported();
             lib::info("acpipm: timer supported: {}", pmtimer);
             if (!pmtimer)
@@ -147,16 +142,9 @@ namespace timers::acpipm
         }
     };
 
-    lib::initgraph::task acpipm_thread_task
-    {
-        "timers.acpipm.create-thread",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage(),
-            initialised_stage()
-        },
-        [] {
-            sched::spawn(handle_overflow);
-        }
+    lib::initgraph::task acpipm_thread_task {
+        "timers.acpipm.create-thread", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { sched::pid0_created_stage(), initialised_stage() },
+        [] { sched::spawn(handle_overflow); }
     };
 } // namespace timers::acpipm

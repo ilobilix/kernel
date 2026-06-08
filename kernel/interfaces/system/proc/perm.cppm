@@ -18,10 +18,10 @@ export namespace sched
 
     enum class access_mode
     {
-        none  = 0,
-        read  = (1 << 0),
+        none = 0,
+        read = (1 << 0),
         write = (1 << 1),
-        exec  = (1 << 2) // search
+        exec = (1 << 2) // search
     };
 
     using namespace magic_enum::bitwise_operators;
@@ -63,7 +63,5 @@ export namespace sched
 
     lib::expect<void> set_securebits(secbit_t securebits);
 
-    void apply_exec_caps(
-        process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps
-    );
+    void apply_exec_caps(process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps);
 } // export namespace sched

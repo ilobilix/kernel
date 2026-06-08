@@ -16,32 +16,34 @@ namespace sysctl
 
     bool register_entry(std::string_view path, read_fn read, write_fn write, mode_t mode)
     {
-        return register_global(lib::path { "sys" } / path,
+        return register_global(
+            lib::path { "sys" } / path,
             make_file_ops(
-                [read = std::move(read)](auto) -> lib::expect<std::string> {
-                    return read();
-                },
+                [read = std::move(read)](auto) -> lib::expect<std::string> { return read(); },
                 [write = std::move(write)](auto, std::string_view data) -> lib::expect<void> {
                     return write(data);
                 }
-            ), node_type::file, mode
+            ),
+            node_type::file, mode
         );
     }
 
     bool register_ro(std::string_view path, read_fn read, mode_t mode)
     {
-        return register_global(lib::path { "sys" } / path,
+        return register_global(
+            lib::path { "sys" } / path,
             make_file_ops(
-                [read = std::move(read)](auto) -> lib::expect<std::string> {
-                    return read();
-                }, nullptr
-            ), node_type::file, mode
+                [read = std::move(read)](auto) -> lib::expect<std::string> { return read(); },
+                nullptr
+            ),
+            node_type::file, mode
         );
     }
 
     bool register_int(std::string_view path, int_read_fn read, int_write_fn write, mode_t mode)
     {
-        return register_global(lib::path { "sys" } / path,
+        return register_global(
+            lib::path { "sys" } / path,
             make_file_ops(
                 [read = std::move(read)](auto) -> lib::expect<std::string> {
                     return fmt::format("{}\n", read());
@@ -67,7 +69,8 @@ namespace sysctl
                     }
                     return write(neg ? -val : val);
                 }
-            ), node_type::file, mode
+            ),
+            node_type::file, mode
         );
     }
 
@@ -75,46 +78,36 @@ namespace sysctl
     {
         auto storage = std::make_shared<std::atomic<int>>(default_value);
         return register_int(
-            std::move(path),
-            [storage] { return storage->load(std::memory_order_relaxed); },
+            std::move(path), [storage] { return storage->load(std::memory_order_relaxed); },
             [storage](int val) -> lib::expect<void> {
                 storage->store(val, std::memory_order_relaxed);
                 return { };
-            }, mode
+            },
+            mode
         );
     }
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "sysctl.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "sysctl.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task sysctl_task
-    {
-        "sysctl.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task sysctl_task {
+        "sysctl.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::procfs::registered_stage() },
-        lib::initgraph::entail { registered_stage() },
-        [] {
-            register_global("sys",
-                make_dir_ops(),
-                node_type::dir, 0555
-            );
+        lib::initgraph::entail { registered_stage() }, [] {
+            register_global("sys", make_dir_ops(), node_type::dir, 0555);
 
-            lib::bug_on(!register_ro("kernel/ostype",
-                [] { return std::string { "Ilobilix\n" }; }
-            ));
-            lib::bug_on(!register_ro("kernel/osrelease",
-                [] { return std::string { ILOBILIX_RELEASE "\n" }; }
-            ));
-            lib::bug_on(!register_ro("kernel/version",
-                [] { return std::string { __DATE__ " " __TIME__ "\n" }; }
-            ));
+            lib::bug_on(!register_ro("kernel/ostype", [] { return std::string { "Ilobilix\n" }; }));
+            lib::bug_on(!register_ro("kernel/osrelease", [] {
+                return std::string { ILOBILIX_RELEASE "\n" };
+            }));
+            lib::bug_on(!register_ro("kernel/version", [] {
+                return std::string { __DATE__ " " __TIME__ "\n" };
+            }));
 
             // TODO
             const auto checked = [](std::string_view path, int value) {

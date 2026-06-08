@@ -26,10 +26,8 @@ export namespace lib
             swap(lhs._count, rhs._count);
         }
 
-        buffer()
-            : _alloc { }, _ptr { nullptr }, _count { 0 } { }
-        buffer(std::size_t count)
-            : _alloc { }, _ptr { _alloc.allocate(count) }, _count { count } { }
+        buffer() : _alloc { }, _ptr { nullptr }, _count { 0 } { }
+        buffer(std::size_t count) : _alloc { }, _ptr { _alloc.allocate(count) }, _count { count } { }
 
         buffer(Type *ptr, std::size_t count) : buffer { count }
         {
@@ -81,29 +79,34 @@ export namespace lib
         template<typename Self>
         auto span(this Self &&self)
         {
-            return std::span<Type> {
-                std::forward<Self>(self)._ptr,
-                std::forward<Self>(self)._count
-            };
+            return std::span<Type> { std::forward<Self>(self)._ptr, std::forward<Self>(self)._count };
         }
 
         template<typename Self>
         std::optional<maybe_uspan<Type>> maybe_uspan(this Self &&self)
         {
             return lib::maybe_uspan<Type>::create(
-                std::forward<Self>(self)._ptr,
-                std::forward<Self>(self)._count
+                std::forward<Self>(self)._ptr, std::forward<Self>(self)._count
             );
         }
 
         template<typename Self>
-        auto data(this Self &&self) { return std::forward<Self>(self)._ptr; }
+        auto data(this Self &&self)
+        {
+            return std::forward<Self>(self)._ptr;
+        }
 
         template<typename Self>
-        auto virt_data(this Self &&self) { return std::forward<Self>(self)._ptr; }
+        auto virt_data(this Self &&self)
+        {
+            return std::forward<Self>(self)._ptr;
+        }
 
         template<typename Self>
-        auto phys_data(this Self &&self) { return fromhh(std::forward<Self>(self)._ptr); }
+        auto phys_data(this Self &&self)
+        {
+            return fromhh(std::forward<Self>(self)._ptr);
+        }
 
         template<typename Self>
         auto at(this Self &&self, std::size_t index)

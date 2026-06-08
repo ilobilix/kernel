@@ -15,7 +15,9 @@ export namespace lib
         discard
     };
 
-    template<typename Type, std::size_t Cap, rb_mode Mode, bool MultiProducer = false, bool MultiConsumer = true>
+    template<
+        typename Type, std::size_t Cap, rb_mode Mode, bool MultiProducer = false,
+        bool MultiConsumer = true>
     class ringbuffer
     {
         static_assert(Mode == rb_mode::overwrite || Mode == rb_mode::discard, "invalid rb_mode");
@@ -66,15 +68,19 @@ export namespace lib
                 {
                     auto &cell_first = _storage[pos & mask];
                     const auto seq_first = cell_first.sequence.load(std::memory_order_acquire);
-                    const auto dif_first = static_cast<std::ssize_t>(seq_first) - static_cast<std::ssize_t>(pos);
+                    const auto dif_first =
+                        static_cast<std::ssize_t>(seq_first) - static_cast<std::ssize_t>(pos);
 
                     auto &cell_last = _storage[(pos + count - 1) & mask];
                     const auto seq_last = cell_last.sequence.load(std::memory_order_acquire);
-                    const auto dif_last = static_cast<std::ssize_t>(seq_last) - static_cast<std::ssize_t>(pos + count - 1);
+                    const auto dif_last = static_cast<std::ssize_t>(seq_last) -
+                        static_cast<std::ssize_t>(pos + count - 1);
 
                     if (dif_first == 0 && dif_last == 0)
                     {
-                        if (_head.value.compare_exchange_weak(pos, pos + count, std::memory_order_relaxed))
+                        if (_head.value.compare_exchange_weak(
+                                pos, pos + count, std::memory_order_relaxed
+                            ))
                         {
                             for (std::size_t i = 0; i < count; i++)
                             {
@@ -92,24 +98,32 @@ export namespace lib
                             auto current_tail = _tail.value.load(std::memory_order_relaxed);
                             auto target_tail = pos + count > capacity ? pos + count - capacity : 0;
 
-                            if (static_cast<std::ssize_t>(current_tail) < static_cast<std::ssize_t>(target_tail))
+                            if (static_cast<std::ssize_t>(current_tail) <
+                                static_cast<std::ssize_t>(target_tail))
                             {
-                                if (_tail.value.compare_exchange_weak(current_tail, target_tail, std::memory_order_relaxed))
+                                if (_tail.value.compare_exchange_weak(
+                                        current_tail, target_tail, std::memory_order_relaxed
+                                    ))
                                 {
                                     overwritten = true;
                                     for (std::size_t i = current_tail; i < target_tail; i++)
                                     {
                                         auto &tail_cell = _storage[i & mask];
-                                        reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
-                                        tail_cell.sequence.store(i + mask + 1, std::memory_order_release);
+                                        reinterpret_cast<value_type *>(tail_cell.data)
+                                            ->~value_type();
+                                        tail_cell.sequence.store(
+                                            i + mask + 1, std::memory_order_release
+                                        );
                                     }
                                 }
                             }
                             pos = _head.value.load(std::memory_order_relaxed);
                         }
-                        else return { false, false };
+                        else
+                            return { false, false };
                     }
-                    else pos = _head.value.load(std::memory_order_relaxed);
+                    else
+                        pos = _head.value.load(std::memory_order_relaxed);
                 }
             }
             else
@@ -137,13 +151,17 @@ export namespace lib
                         auto t = current_tail;
                         while (true)
                         {
-                            if (_tail.value.compare_exchange_weak(t, t + needed, std::memory_order_relaxed))
+                            if (_tail.value.compare_exchange_weak(
+                                    t, t + needed, std::memory_order_relaxed
+                                ))
                             {
                                 for (std::size_t i = 0; i < needed; i++)
                                 {
                                     auto &tail_cell = _storage[(t + i) & mask];
                                     reinterpret_cast<value_type *>(tail_cell.data)->~value_type();
-                                    tail_cell.sequence.store(t + i + mask + 1, std::memory_order_release);
+                                    tail_cell.sequence.store(
+                                        t + i + mask + 1, std::memory_order_release
+                                    );
                                 }
                                 overwritten = true;
                                 break;
@@ -177,7 +195,9 @@ export namespace lib
         template<typename Func>
         std::size_t _pop_batch(std::size_t max_count, Func &&func)
         {
-            bug_on(max_count == 0 || max_count > capacity, "ringbuffer::_pop_batch(): invalid count");
+            bug_on(
+                max_count == 0 || max_count > capacity, "ringbuffer::_pop_batch(): invalid count"
+            );
 
             if constexpr (tail_is_atomic)
             {
@@ -190,7 +210,8 @@ export namespace lib
                     {
                         auto &cell = _storage[(pos + i) & mask];
                         const auto seq = cell.sequence.load(std::memory_order_acquire);
-                        const auto dif = static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos + i + 1);
+                        const auto dif =
+                            static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos + i + 1);
 
                         if (dif == 0)
                             available++;
@@ -200,7 +221,8 @@ export namespace lib
                             retry = true;
                             break;
                         }
-                        else break;
+                        else
+                            break;
                     }
 
                     if (retry)
@@ -209,7 +231,9 @@ export namespace lib
                     if (available == 0)
                         return 0;
 
-                    if (_tail.value.compare_exchange_weak(pos, pos + available, std::memory_order_relaxed))
+                    if (_tail.value.compare_exchange_weak(
+                            pos, pos + available, std::memory_order_relaxed
+                        ))
                     {
                         for (std::size_t i = 0; i < available; i++)
                         {
@@ -231,7 +255,8 @@ export namespace lib
                 {
                     auto &cell = _storage[(pos + i) & mask];
                     const auto seq = cell.sequence.load(std::memory_order_acquire);
-                    const auto dif = static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos + i + 1);
+                    const auto dif =
+                        static_cast<std::ssize_t>(seq) - static_cast<std::ssize_t>(pos + i + 1);
 
                     if (dif != 0)
                         break;
@@ -299,16 +324,12 @@ export namespace lib
 
         std::pair<bool, bool> push(const value_type &value)
         {
-            return _emplace([&](void *slot) {
-                new (slot) value_type { value };
-            });
+            return _emplace([&](void *slot) { new (slot) value_type { value }; });
         }
 
         std::pair<bool, bool> push(value_type &&value)
         {
-            return _emplace([&](void *slot) {
-                new (slot) value_type { std::move(value) };
-            });
+            return _emplace([&](void *slot) { new (slot) value_type { std::move(value) }; });
         }
 
         std::pair<bool, bool> push(std::span<const value_type> values)
@@ -373,7 +394,8 @@ export namespace lib
         void clear()
         {
             // ehhh
-            while (pop().has_value()) { }
+            while (pop().has_value())
+            { }
         }
     };
 

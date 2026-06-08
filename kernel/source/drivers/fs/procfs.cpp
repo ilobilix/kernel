@@ -27,12 +27,7 @@ namespace fs::procfs
             symlink,
         };
 
-        using registry_t = lib::locker<
-            lib::map::flat_hash<
-                std::string,
-                node_t
-            >, sched::mutex
-        >;
+        using registry_t = lib::locker<lib::map::flat_hash<std::string, node_t>, sched::mutex>;
         registry_t global_registry;
 
         struct dir_ops : node_ops
@@ -67,8 +62,8 @@ namespace fs::procfs
         };
 
         bool register_in(
-            registry_t &registry, lib::path path,
-            std::shared_ptr<node_ops> ops, node_type type, mode_t mode
+            registry_t &registry, lib::path path, std::shared_ptr<node_ops> ops, node_type type,
+            mode_t mode
         )
         {
             auto current = std::addressof(registry);
@@ -96,10 +91,8 @@ namespace fs::procfs
                     if (it == locked->end())
                     {
                         next_dir = std::static_pointer_cast<dir_ops>(make_dir_ops());
-                        (*locked)[segment] = node_t {
-                            std::string { segment },
-                            def_dir_mode, node_type::dir, next_dir
-                        };
+                        (*locked)[segment] =
+                            node_t { std::string { segment }, def_dir_mode, node_type::dir, next_dir };
                     }
                     else
                     {
@@ -116,10 +109,7 @@ namespace fs::procfs
                 if (it != locked->end())
                     return false;
 
-                (*locked)[segment] = node_t {
-                    std::string { segment },
-                    mode, type, ops
-                };
+                (*locked)[segment] = node_t { std::string { segment }, mode, type, ops };
                 return true;
             }
             std::unreachable();
@@ -152,7 +142,9 @@ namespace fs::procfs
                 return gfn(proc);
             }
 
-            lib::expect<std::size_t> read_at(sched::process_t *proc, std::uint64_t offset, std::span<char> out) override
+            lib::expect<std::size_t> read_at(
+                sched::process_t *proc, std::uint64_t offset, std::span<char> out
+            ) override
             {
                 if (!sfn)
                     return node_ops::read_at(proc, offset, out);
@@ -220,18 +212,14 @@ namespace fs::procfs
         return ret;
     }
 
-    bool register_global(
-        lib::path path, std::shared_ptr<node_ops> ops,
-        node_type type, mode_t mode
-    )
+    bool register_global(lib::path path, std::shared_ptr<node_ops> ops, node_type type, mode_t mode)
     {
         lib::bug_on(path.empty() || !ops);
         return register_in(global_registry, path, ops, type, mode);
     }
 
     bool register_per_pid(
-        lib::path path, std::shared_ptr<node_ops> ops,
-        node_type type, mode_t mode
+        lib::path path, std::shared_ptr<node_ops> ops, node_type type, mode_t mode
     )
     {
         lib::bug_on(path.empty() || !ops);
@@ -247,10 +235,10 @@ namespace fs::procfs
         int fd;
 
         inode(
-            inode_type type, std::shared_ptr<node_ops> ops, pid_t pid, int fd,
-            dev_t dev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> iops
-        ) : vfs::inode { iops }, type { type },
-            ops { ops }, pid { pid }, fd { fd }
+            inode_type type, std::shared_ptr<node_ops> ops, pid_t pid, int fd, dev_t dev, ino_t ino,
+            mode_t mode, std::shared_ptr<vfs::ops> iops
+        )
+            : vfs::inode { iops }, type { type }, ops { ops }, pid { pid }, fd { fd }
         {
             stat.st_dev = dev;
             stat.st_rdev = 0;
@@ -264,10 +252,7 @@ namespace fs::procfs
             stat.st_blocks = 0;
 
             stat.update_time(
-                kstat::time::access |
-                kstat::time::modify |
-                kstat::time::status |
-                kstat::time::birth
+                kstat::time::access | kstat::time::modify | kstat::time::status | kstat::time::birth
             );
         }
     };
@@ -308,7 +293,7 @@ namespace fs::procfs
                     return 0uz;
 
                 if (!buffer.subspan(0, *produced)
-                    .copy_from(reinterpret_cast<const std::byte *>(tmp.data())))
+                         .copy_from(reinterpret_cast<const std::byte *>(tmp.data())))
                     return std::unexpected { lib::err::invalid_address };
                 return *produced;
             }
@@ -318,9 +303,8 @@ namespace fs::procfs
                 auto content = inod->ops->generate(proc.get());
                 if (!content)
                     return std::unexpected { content.error() };
-                file->private_data = std::shared_ptr<std::string> {
-                    new std::string { std::move(*content) }
-                };
+                file->private_data =
+                    std::shared_ptr<std::string> { new std::string { std::move(*content) } };
             }
 
             auto content = std::static_pointer_cast<std::string>(file->private_data);
@@ -399,20 +383,16 @@ namespace fs::procfs
             std::shared_ptr<inode> mkroot()
             {
                 return std::make_shared<inode>(
-                    inode_type::root_dir, nullptr, -1, -1,
-                    dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifdir) | 0555,
-                    ops::singleton()
+                    inode_type::root_dir, nullptr, -1, -1, dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_ifdir) | 0555, ops::singleton()
                 );
             }
 
             std::shared_ptr<inode> mkfile(pid_t pid, std::shared_ptr<node_ops> ops, mode_t mode)
             {
                 auto ret = std::make_shared<inode>(
-                    inode_type::file, std::move(ops), pid, -1,
-                    dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifreg) | mode,
-                    ops::singleton()
+                    inode_type::file, std::move(ops), pid, -1, dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_ifreg) | mode, ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -421,10 +401,8 @@ namespace fs::procfs
             std::shared_ptr<inode> mksym(pid_t pid, std::shared_ptr<node_ops> ops, mode_t mode)
             {
                 auto ret = std::make_shared<inode>(
-                    inode_type::symlink, std::move(ops), pid, -1,
-                    dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_iflnk) | mode,
-                    ops::singleton()
+                    inode_type::symlink, std::move(ops), pid, -1, dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_iflnk) | mode, ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -433,10 +411,8 @@ namespace fs::procfs
             std::shared_ptr<inode> mkdir(pid_t pid, std::shared_ptr<node_ops> ops, mode_t mode)
             {
                 auto ret = std::make_shared<inode>(
-                    inode_type::dir, std::move(ops), pid, -1,
-                    dev_id, next_inode++,
-                    static_cast<mode_t>(stat::s_ifdir) | mode,
-                    ops::singleton()
+                    inode_type::dir, std::move(ops), pid, -1, dev_id, next_inode++,
+                    static_cast<mode_t>(stat::s_ifdir) | mode, ops::singleton()
                 );
                 apply_owner(*ret, pid);
                 return ret;
@@ -457,8 +433,8 @@ namespace fs::procfs
             }
 
             auto create(
-                std::shared_ptr<vfs::inode> &parent, std::string_view name,
-                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev,
+                std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, rdev, ops);
@@ -468,8 +444,7 @@ namespace fs::procfs
             }
 
             auto symlink(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, lib::path target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
@@ -477,8 +452,8 @@ namespace fs::procfs
             }
 
             auto link(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, std::shared_ptr<vfs::inode> target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name,
+                std::shared_ptr<vfs::inode> target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
@@ -519,10 +494,7 @@ namespace fs::procfs
                                 if (idx++ <= cookie)
                                     continue;
 
-                                result.emplace_back(
-                                    std::string { name },
-                                    mkinode(-1, node), idx
-                                );
+                                result.emplace_back(std::string { name }, mkinode(-1, node), idx);
 
                                 if (result.size() >= max_readdir_batch)
                                     return result;
@@ -537,8 +509,8 @@ namespace fs::procfs
                                 return false;
 
                             result.emplace_back(
-                                std::to_string(proc->pid),
-                                mkdir(proc->pid, pid_dir_ops(), 0555), idx
+                                std::to_string(proc->pid), mkdir(proc->pid, pid_dir_ops(), 0555),
+                                idx
                             );
                             return true;
                         });
@@ -569,8 +541,7 @@ namespace fs::procfs
                                 continue;
 
                             result.emplace_back(
-                                std::string { node.name },
-                                mkinode(inod->pid, node), idx
+                                std::string { node.name }, mkinode(inod->pid, node), idx
                             );
 
                             if (result.size() >= max_readdir_batch)
@@ -595,12 +566,7 @@ namespace fs::procfs
                     case inode_type::root_dir:
                     {
                         if (const auto node = find_in(global_registry, name))
-                        {
-                            return vfs::dir_entry {
-                                std::string { name },
-                                mkinode(-1, *node), 0
-                            };
-                        }
+                            return vfs::dir_entry { std::string { name }, mkinode(-1, *node), 0 };
 
                         char *end;
                         const auto res = lib::str2int<pid_t>(name.data(), &end, 10);
@@ -612,8 +578,7 @@ namespace fs::procfs
                             return std::unexpected { lib::err::not_found };
 
                         return vfs::dir_entry {
-                            std::string { name },
-                            mkdir(pid, pid_dir_ops(), 0555), 0
+                            std::string { name }, mkdir(pid, pid_dir_ops(), 0555), 0
                         };
                     }
                     case inode_type::dir:
@@ -633,10 +598,7 @@ namespace fs::procfs
                         if (!result)
                             return std::unexpected { result.error() };
 
-                        return vfs::dir_entry {
-                            std::string { name },
-                            mkinode(inod->pid, *result), 0
-                        };
+                        return vfs::dir_entry { std::string { name }, mkinode(inod->pid, *result), 0 };
                     }
                     case inode_type::file:
                     case inode_type::symlink:
@@ -676,8 +638,7 @@ namespace fs::procfs
             }
 
             bool permission(
-                std::shared_ptr<vfs::dentry> dentry,
-                const std::shared_ptr<sched::cred_t> &cred,
+                std::shared_ptr<vfs::dentry> dentry, const std::shared_ptr<sched::cred_t> &cred,
                 std::uint32_t mode
             ) override
             {
@@ -722,15 +683,10 @@ namespace fs::procfs
         std::shared_ptr<vfs::dentry> root;
 
         std::shared_ptr<struct vfs::mount> internal_mnt;
-        mutable lib::locker<
-            lib::list<
-                std::shared_ptr<struct vfs::mount>
-            >, sched::mutex
-        > mounts;
+        mutable lib::locker<lib::list<std::shared_ptr<struct vfs::mount>>, sched::mutex> mounts;
 
         auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
+            std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src, data);
@@ -757,81 +713,67 @@ namespace fs::procfs
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.procfs.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.procfs.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *mounted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.procfs.mounted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.procfs.mounted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.procfs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::entail { registered_stage() },
-        [] {
-            lib::bug_on(!register_global("version",
-                make_file_ops([](auto) {
+    lib::initgraph::task register_task {
+        "vfs.procfs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::entail { registered_stage() }, [] {
+            lib::bug_on(!register_global(
+                "version", make_file_ops([](auto) {
                     return fmt::format(
-                        "Ilobilix version {} (built " __DATE__ " " __TIME__ ")\n",
-                        ILOBILIX_RELEASE
+                        "Ilobilix version {} (built " __DATE__ " " __TIME__ ")\n", ILOBILIX_RELEASE
                     );
-                }), node_type::file, 0444
+                }),
+                node_type::file, 0444
             ));
 
-            lib::bug_on(!register_global("self",
-                make_symlink_ops([](auto) {
+            lib::bug_on(!register_global(
+                "self", make_symlink_ops([](auto) {
                     return fmt::format("{}", sched::current_process()->pid);
-                }), node_type::symlink, 0777
+                }),
+                node_type::symlink, 0777
             ));
 
             // TODO: stub
-            lib::bug_on(!register_per_pid("cgroup",
-                make_file_ops([](auto) {
-                    return "0::/\n";
-                }), node_type::file, 0444
+            lib::bug_on(!register_per_pid(
+                "cgroup", make_file_ops([](auto) { return "0::/\n"; }), node_type::file, 0444
             ));
 
             lib::bug_on(!vfs::register_fs(std::make_shared<fs>()));
         }
     };
 
-    lib::initgraph::task mount_task
-    {
-        "vfs.procfs.mount",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            vfs::root_mounted_stage(),
-            registered_stage()
-        },
-        lib::initgraph::entail { mounted_stage() },
-        [] {
+    lib::initgraph::task mount_task {
+        "vfs.procfs.mount", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { vfs::root_mounted_stage(), registered_stage() },
+        lib::initgraph::entail { mounted_stage() }, [] {
             const auto cerr = vfs::create(std::nullopt, "/proc", stat::s_ifdir | 0555);
             if (!cerr && cerr.error() != lib::err::already_exists)
             {
                 lib::panic(
-                    "procfs: failed to create directory '/proc': {}",
-                    lib::error_name(cerr.error())
+                    "procfs: failed to create directory '/proc': {}", lib::error_name(cerr.error())
                 );
             }
 
-            if (const auto merr = vfs::mount("", "/proc", "proc",
-                vfs::ms_nosuid | vfs::ms_nodev | vfs::ms_noexec); !merr)
+            if (const auto merr = vfs::mount(
+                    "", "/proc", "proc", vfs::ms_nosuid | vfs::ms_nodev | vfs::ms_noexec
+                );
+                !merr)
             {
                 lib::panic(
-                    "procfs: failed to mount procfs at '/proc': {}",
-                    lib::error_name(merr.error())
+                    "procfs: failed to mount procfs at '/proc': {}", lib::error_name(merr.error())
                 );
             }
         }

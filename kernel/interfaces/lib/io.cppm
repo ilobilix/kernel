@@ -12,10 +12,16 @@ export namespace lib::io
     constexpr bool supported = true;
 
     template<typename Type>
-    inline Type in(auto port) { return lib::x86_64::io::in<Type>(port); }
+    inline Type in(auto port)
+    {
+        return lib::x86_64::io::in<Type>(port);
+    }
 
     template<typename Type>
-    inline void out(auto port, auto val) { lib::x86_64::io::out<Type>(port, val); }
+    inline void out(auto port, auto val)
+    {
+        lib::x86_64::io::out<Type>(port, val);
+    }
 } // export namespace lib::io
 #else
 export namespace lib::io
@@ -23,18 +29,31 @@ export namespace lib::io
     constexpr bool supported = false;
 
     template<typename Type>
-    inline Type in(auto) { static_assert(false, "io::in is not supported on this architecture"); return 0; }
+    inline Type in(auto)
+    {
+        static_assert(false, "io::in is not supported on this architecture");
+        return 0;
+    }
 
     template<typename>
-    inline void out(auto, auto) { static_assert(false, "io::out is not supported on this architecture"); }
+    inline void out(auto, auto)
+    {
+        static_assert(false, "io::out is not supported on this architecture");
+    }
 } // export namespace lib::io
 #endif
 
 export namespace lib::io
 {
     template<std::size_t N, typename Type = bits2uint_t<N>>
-    inline Type in(auto port) { return in<Type>(port); }
+    inline Type in(auto port)
+    {
+        return in<Type>(port);
+    }
 
     template<std::size_t N, typename Type = bits2uint_t<N>>
-    inline void out(auto port, auto val) { out<Type>(port, val); }
+    inline void out(auto port, auto val)
+    {
+        out<Type>(port, val);
+    }
 } // export namespace lib::io

@@ -6,7 +6,12 @@ import std;
 // phd memcpy from managarm
 
 template<typename Type>
-struct word_helper { enum class [[gnu::may_alias, gnu::aligned(1)]] word_enum : Type { }; };
+struct word_helper
+{
+    enum class [[gnu::may_alias, gnu::aligned(1)]] word_enum : Type
+    {
+    };
+};
 
 template<typename Type>
 using word = typename word_helper<Type>::word_enum;
@@ -110,15 +115,15 @@ extern "C"
         }
 
         auto pattern64 = static_cast<word<std::uint64_t>>(
-            static_cast<std::uint64_t>(byte) | (static_cast<std::uint64_t>(byte) << 8)
-            | (static_cast<std::uint64_t>(byte) << 16) | (static_cast<std::uint64_t>(byte) << 24)
-            | (static_cast<std::uint64_t>(byte) << 32) | (static_cast<std::uint64_t>(byte) << 40)
-            | (static_cast<std::uint64_t>(byte) << 48) | (static_cast<std::uint64_t>(byte) << 56)
+            static_cast<std::uint64_t>(byte) | (static_cast<std::uint64_t>(byte) << 8) |
+            (static_cast<std::uint64_t>(byte) << 16) | (static_cast<std::uint64_t>(byte) << 24) |
+            (static_cast<std::uint64_t>(byte) << 32) | (static_cast<std::uint64_t>(byte) << 40) |
+            (static_cast<std::uint64_t>(byte) << 48) | (static_cast<std::uint64_t>(byte) << 56)
         );
 
         auto pattern32 = static_cast<word<std::uint32_t>>(
-            static_cast<std::uint32_t>(byte) | (static_cast<std::uint32_t>(byte) << 8)
-            | (static_cast<std::uint32_t>(byte) << 16) | (static_cast<std::uint32_t>(byte) << 24)
+            static_cast<std::uint32_t>(byte) | (static_cast<std::uint32_t>(byte) << 8) |
+            (static_cast<std::uint32_t>(byte) << 16) | (static_cast<std::uint32_t>(byte) << 24)
         );
 
         auto pattern16 = static_cast<word<std::uint16_t>>(
@@ -254,7 +259,7 @@ extern "C"
 
     char *strncat(char *dest, const char *src, std::size_t len)
     {
-        char* ptr = dest + strlen(dest);
+        char *ptr = dest + strlen(dest);
         while (*src != '\0' && len--)
             *ptr++ = *src++;
         *ptr = '\0';

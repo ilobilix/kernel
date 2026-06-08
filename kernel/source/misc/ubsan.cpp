@@ -168,7 +168,9 @@ extern "C"
         print("load-invalid-value", data->location);
     }
 
-    void __ubsan_handle_alignment_assumption(alignment_assumption_data *data, unsigned long, unsigned long, unsigned long)
+    void __ubsan_handle_alignment_assumption(
+        alignment_assumption_data *data, unsigned long, unsigned long, unsigned long
+    )
     {
         print("alignment-assumption", data->location);
     }

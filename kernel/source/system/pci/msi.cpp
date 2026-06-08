@@ -32,12 +32,14 @@ namespace pci::msi
             mc_per_vec_mask = 1 << 8
         };
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 pci::device *,
                 std::unique_ptr<msi_domain>
             >, lib::spinlock
         > domains;
+        // clang-format on
 
         std::uint16_t find_msi_cap(const pci::device &dev)
         {
@@ -67,15 +69,9 @@ namespace pci::msi
             }
         };
 
-        std::uint16_t mask_reg_off(bool addr64)
-        {
-            return addr64 ? reg::mask_64 : reg::mask_32;
-        }
+        std::uint16_t mask_reg_off(bool addr64) { return addr64 ? reg::mask_64 : reg::mask_32; }
 
-        std::uint16_t data_reg_off(bool addr64)
-        {
-            return addr64 ? reg::data_64 : reg::data_32;
-        }
+        std::uint16_t data_reg_off(bool addr64) { return addr64 ? reg::data_64 : reg::data_32; }
     } // namespace
 
     bool is_enabled(const pci::device &dev)
@@ -88,8 +84,7 @@ namespace pci::msi
     }
 
     msi_domain::msi_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent)
-        : domain { "pci-msi", parent }, _dev { &dev },
-          _cap_offset { cap_offset }, _allocated_vecs { 0 }
+        : domain { "pci-msi", parent }, _dev { &dev }, _cap_offset { cap_offset }, _allocated_vecs { 0 }
     {
         const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
         _addr64 = (mc_val & mc_addr64) != 0;
@@ -102,9 +97,7 @@ namespace pci::msi
         lib::bug_on(!_spare_parents.empty());
     }
 
-    lib::expect<void> msi_domain::alloc(
-        std::span<irq::irq_data *> data, const irq::fwspec &spec
-    )
+    lib::expect<void> msi_domain::alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec)
     {
         if (data.empty())
             return { };
@@ -143,10 +136,7 @@ namespace pci::msi
             parents.push_back(std::move(pd));
         }
 
-        const irq::fwspec pspec {
-            .param_count = 2,
-            .params = { cpu_idx, 0 }
-        };
+        const irq::fwspec pspec { .param_count = 2, .params = { cpu_idx, 0 } };
 
         if (auto ret = parent->alloc(parent_ptrs, pspec); !ret)
         {
@@ -368,8 +358,7 @@ namespace pci::msi
     }
 
     lib::expect<irq::handle_t> request(
-        pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        pci::device &dev, std::size_t cpu_idx, irq::handler_fn fn, std::string_view name
     )
     {
         auto dom = for_device(dev);
@@ -378,9 +367,7 @@ namespace pci::msi
 
         const irq::fwspec spec {
             .param_count = msi_domain::param_count,
-            .params = {
-                [msi_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
-            }
+            .params = { [msi_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx) }
         };
         return irq::alloc_and_request(*dom, spec, std::move(fn), name);
     }
@@ -395,9 +382,7 @@ namespace pci::msi
 
         const irq::fwspec spec {
             .param_count = msi_domain::param_count,
-            .params = {
-                [msi_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
-            }
+            .params = { [msi_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx) }
         };
         return irq::alloc_num(*dom, spec, count);
     }

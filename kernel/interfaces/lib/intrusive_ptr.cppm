@@ -31,10 +31,7 @@ export namespace lib
         private:
         Type *_ptr;
 
-        inline constexpr intrusive_ptr_hook &hook() const
-        {
-            return _ptr->*Hook;
-        }
+        inline constexpr intrusive_ptr_hook &hook() const { return _ptr->*Hook; }
 
         constexpr void ref()
         {
@@ -61,28 +58,33 @@ export namespace lib
         constexpr intrusive_ptr() : _ptr { nullptr } { }
         constexpr intrusive_ptr(std::nullptr_t) : _ptr { nullptr } { }
 
-        explicit constexpr intrusive_ptr(Type *ptr)
-            : _ptr { ptr } { ref(); }
+        explicit constexpr intrusive_ptr(Type *ptr) : _ptr { ptr } { ref(); }
 
         template<typename UType>
             requires std::is_convertible_v<UType *, Type *>
-        explicit constexpr intrusive_ptr(UType *ptr)
-            : _ptr { static_cast<Type *>(ptr) } { ref(); }
+        explicit constexpr intrusive_ptr(UType *ptr) : _ptr { static_cast<Type *>(ptr) }
+        {
+            ref();
+        }
 
-        constexpr intrusive_ptr(const intrusive_ptr &rhs)
-            : _ptr { rhs._ptr } { ref(); }
-        constexpr intrusive_ptr(intrusive_ptr &&rhs)
-            : _ptr { rhs._ptr } { rhs._ptr = nullptr; }
+        constexpr intrusive_ptr(const intrusive_ptr &rhs) : _ptr { rhs._ptr } { ref(); }
+        constexpr intrusive_ptr(intrusive_ptr &&rhs) : _ptr { rhs._ptr } { rhs._ptr = nullptr; }
 
         template<typename UType, auto UHook>
             requires std::is_convertible_v<UType *, Type *>
         constexpr intrusive_ptr(const intrusive_ptr<UType, UHook> &rhs)
-            : _ptr { static_cast<Type *>(rhs._ptr) } { ref(); }
+            : _ptr { static_cast<Type *>(rhs._ptr) }
+        {
+            ref();
+        }
 
         template<typename UType, auto UHook>
             requires std::is_convertible_v<UType *, Type *>
         constexpr intrusive_ptr(intrusive_ptr<UType, UHook> &&rhs)
-            : _ptr { static_cast<Type *>(rhs._ptr) } { rhs._ptr = nullptr; }
+            : _ptr { static_cast<Type *>(rhs._ptr) }
+        {
+            rhs._ptr = nullptr;
+        }
 
         constexpr intrusive_ptr &operator=(Type *ptr)
         {
@@ -165,14 +167,13 @@ export namespace lib
             return hook()._count.load(std::memory_order_relaxed);
         }
 
-        void swap(intrusive_ptr &other)
-        {
-            std::swap(_ptr, other._ptr);
-        }
+        void swap(intrusive_ptr &other) { std::swap(_ptr, other._ptr); }
     };
 
     template<typename Type1, auto Hook1, typename Type2, auto Hook2>
-    constexpr bool operator==(const intrusive_ptr<Type1, Hook1> &lhs, const intrusive_ptr<Type2, Hook2> &rhs) noexcept
+    constexpr bool operator==(
+        const intrusive_ptr<Type1, Hook1> &lhs, const intrusive_ptr<Type2, Hook2> &rhs
+    ) noexcept
     {
         return lhs.get() == rhs.get();
     }
@@ -184,7 +185,9 @@ export namespace lib
     }
 
     template<typename Type1, auto Hook1, typename Type2, auto Hook2>
-    constexpr auto operator<=>(const intrusive_ptr<Type1, Hook1> &lhs, const intrusive_ptr<Type2, Hook2> &rhs) noexcept
+    constexpr auto operator<=>(
+        const intrusive_ptr<Type1, Hook1> &lhs, const intrusive_ptr<Type2, Hook2> &rhs
+    ) noexcept
     {
         return lhs.get() <=> rhs.get();
     }
@@ -195,7 +198,7 @@ export namespace lib
         return lhs.get() <=> static_cast<Type *>(nullptr);
     }
 
-    template<typename Type, auto Hook, typename ...Args>
+    template<typename Type, auto Hook, typename... Args>
     constexpr intrusive_ptr<Type, Hook> make_intrusive(Args &&...args)
     {
         return intrusive_ptr<Type, Hook> { new Type { std::forward<Args>(args)... } };

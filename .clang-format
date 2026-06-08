@@ -1,0 +1,88 @@
+---
+
+Language: Cpp
+BasedOnStyle: WebKit
+Standard: Latest
+
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+MaxEmptyLinesToKeep: 1
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterExternBlock: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+NamespaceIndentation: All
+CompactNamespaces: false
+FixNamespaceComments: false
+
+AccessModifierOffset: 0
+
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+
+AlignAfterOpenBracket: BlockIndent
+AlignEscapedNewlines: LeftWithLastLine
+AlignOperands: DontAlign
+BinPackArguments: true
+BinPackParameters: BinPack
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+PackConstructorInitializers: BinPack
+BreakTemplateDeclarations: Yes
+PenaltyReturnTypeOnItsOwnLine: 1000
+
+IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+PPIndentWidth: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+
+Cpp11BracedListStyle: FunctionCall
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpacesInParens: Never
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInSquareBrackets: false
+
+ReflowComments: Never
+SortIncludes: false
+SortUsingDeclarations: false
+IncludeBlocks: Preserve
+...

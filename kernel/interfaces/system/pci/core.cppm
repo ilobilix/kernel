@@ -22,32 +22,31 @@ export namespace pci
         virtual std::size_t size() const = 0;
 
         virtual std::uint32_t read(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, std::size_t offset, std::size_t width
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::size_t width
         ) = 0;
         virtual void write(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, std::size_t offset, std::uint32_t value, std::size_t width
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            std::size_t offset, std::uint32_t value, std::size_t width
         ) = 0;
 
         template<std::unsigned_integral Type>
-            requires (sizeof(Type) <= sizeof(std::uint32_t))
+            requires(sizeof(Type) <= sizeof(std::uint32_t))
         Type read(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, enum_or_int auto offset
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            enum_or_int auto offset
         )
         {
-            return static_cast<Type>(read(
-                seg, bus, dev, func,
-                static_cast<std::size_t>(offset), sizeof(Type)
-            ));
+            return static_cast<Type>(
+                read(seg, bus, dev, func, static_cast<std::size_t>(offset), sizeof(Type))
+            );
         }
 
         template<std::unsigned_integral Type>
-            requires (sizeof(Type) <= sizeof(std::uint32_t))
+            requires(sizeof(Type) <= sizeof(std::uint32_t))
         void write(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, enum_or_int auto offset, enum_or_int auto value
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func,
+            enum_or_int auto offset, enum_or_int auto value
         )
         {
             write(
@@ -58,8 +57,7 @@ export namespace pci
 
         template<std::size_t N>
         auto read(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, auto offset
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, auto offset
         )
         {
             return read<lib::bits2uint_t<N>>(seg, bus, dev, func, offset);
@@ -67,8 +65,8 @@ export namespace pci
 
         template<std::size_t N>
         void write(
-            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev,
-            std::uint8_t func, auto offset, auto value
+            std::uint16_t seg, std::uint8_t bus, std::uint8_t dev, std::uint8_t func, auto offset,
+            auto value
         )
         {
             write<lib::bits2uint_t<N>>(seg, bus, dev, func, offset, value);
@@ -84,7 +82,12 @@ export namespace pci
     class router
     {
         public:
-        enum class model { none, root, expansion };
+        enum class model
+        {
+            none,
+            root,
+            expansion
+        };
 
         struct entry
         {
@@ -106,7 +109,8 @@ export namespace pci
         std::weak_ptr<bus> mybus;
 
         router(std::weak_ptr<router> parent, std::weak_ptr<bus> mybus)
-            : parent { parent }, mybus { mybus } { }
+            : parent { parent }, mybus { mybus }
+        { }
 
         virtual std::shared_ptr<router> downstream(
             std::shared_ptr<router> me, std::shared_ptr<bus> &bus
@@ -161,7 +165,12 @@ export namespace pci
         std::size_t size;
         bool prefetch, bits64;
 
-        enum class type { invalid, io, mem };
+        enum class type
+        {
+            invalid,
+            io,
+            mem
+        };
         type type;
 
         std::uintptr_t map();
@@ -220,7 +229,10 @@ export namespace pci
         std::array<bar, 2> bars;
 
         bridge(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-            : entity { parent, dev, func } { read_bars(2); }
+            : entity { parent, dev, func }
+        {
+            read_bars(2);
+        }
 
         std::span<bar> get_bars() override { return bars; }
     };
@@ -232,14 +244,18 @@ export namespace pci
         std::uint8_t progif, subclass, class_, revision;
         std::array<bar, 6> bars;
 
-        struct {
+        struct
+        {
             router::entry *route;
             bool registered;
             std::size_t idx;
         } irq;
 
         device(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-            : entity { parent, dev, func } { read_bars(6); }
+            : entity { parent, dev, func }
+        {
+            read_bars(6);
+        }
 
         std::span<bar> get_bars() override { return bars; }
 
@@ -247,9 +263,7 @@ export namespace pci
             irq::handler_fn fn, std::size_t cpu_idx, std::string_view name
         );
 
-        lib::expect<std::vector<irq::handle_t>> alloc_irqs(
-            std::size_t count, std::size_t cpu_idx
-        );
+        lib::expect<std::vector<irq::handle_t>> alloc_irqs(std::size_t count, std::size_t cpu_idx);
 
         // irq::free must be called on every handle before this
         void release_irqs();
@@ -260,8 +274,7 @@ export namespace pci
     void addrb(std::shared_ptr<bus> rb);
 
     constexpr std::uint32_t devidx(
-        std::uint32_t seg, std::uint32_t bus,
-        std::uint32_t dev, std::uint32_t func
+        std::uint32_t seg, std::uint32_t bus, std::uint32_t dev, std::uint32_t func
     )
     {
         return (seg << 24) | (bus << 16) | (dev << 8) | func;

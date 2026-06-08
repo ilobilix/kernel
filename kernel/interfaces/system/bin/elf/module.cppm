@@ -38,12 +38,7 @@ export namespace bin::elf::mod
 
     struct image_t
     {
-        std::vector<
-            std::pair<
-                std::uintptr_t,
-                std::uintptr_t
-            >
-        > pages;
+        std::vector<std::pair<std::uintptr_t, std::uintptr_t>> pages;
         sym::symbol_table symbols;
         initfini_t initfini;
 
@@ -62,12 +57,14 @@ export namespace bin::elf::mod
         std::size_t dependents;
     };
 
+    // clang-format off
     lib::locker<
         lib::map::flat_hash<
             std::string_view,
             std::shared_ptr<entry_t>
         >, lib::rwspinlock
     > modules;
+    // clang-format on
 
     std::atomic<std::uint64_t> generation { 0 };
 

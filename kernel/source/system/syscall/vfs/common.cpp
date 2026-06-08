@@ -38,8 +38,7 @@ namespace syscall::vfs
         }
 
         lib::expect<resolve_res> resolve_from(
-            sched::process_t *proc, int dirfd,
-            lib::path_view path, bool automount
+            sched::process_t *proc, int dirfd, lib::path_view path, bool automount
         )
         {
             auto parent = get_parent(proc, dirfd, path);
@@ -53,9 +52,7 @@ namespace syscall::vfs
             return std::move(*res);
         }
 
-        lib::expect<path> resolve_parent_dir(
-            sched::process_t *proc, int dirfd, lib::path_view path
-        )
+        lib::expect<path> resolve_parent_dir(sched::process_t *proc, int dirfd, lib::path_view path)
         {
             auto res = resolve_from(proc, dirfd, path);
             if (!res.has_value())
@@ -94,15 +91,9 @@ namespace syscall::vfs
             return path;
         }
 
-        std::uint64_t mount_flags(const path &path)
-        {
-            return path.mnt ? path.mnt->flags : 0ul;
-        }
+        std::uint64_t mount_flags(const path &path) { return path.mnt ? path.mnt->flags : 0ul; }
 
-        bool readonly_mount(const path &path)
-        {
-            return (mount_flags(path) & ms_rdonly) != 0;
-        }
+        bool readonly_mount(const path &path) { return (mount_flags(path) & ms_rdonly) != 0; }
 
         bool should_update_atime(const path &path, const kstat &stat, int file_flags)
         {
@@ -140,8 +131,8 @@ namespace syscall::vfs
     } // namespace detail
 
     lib::expect<path> get_target(
-        sched::process_t *proc, int dirfd, const char __user *pathname,
-        bool follow_links, bool empty_path, bool automount
+        sched::process_t *proc, int dirfd, const char __user *pathname, bool follow_links,
+        bool empty_path, bool automount
     )
     {
         if (empty_path)

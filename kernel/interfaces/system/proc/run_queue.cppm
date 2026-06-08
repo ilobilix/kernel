@@ -30,6 +30,7 @@ export namespace sched
     {
         lib::spinlock_irq lock;
 
+        // clang-format off
         lib::rbtree<
             thread_t, &thread_t::hook,
             lib::compare<
@@ -38,6 +39,7 @@ export namespace sched
                 &thread_t::vruntime
             >
         > queue;
+        // clang-format on
 
         std::uint64_t total_weight;
         std::uint64_t _min_vruntime;
@@ -76,8 +78,7 @@ export namespace sched
         std::uint64_t calc_timeslice(std::uint64_t weight);
 
         std::uint64_t calc_vruntime(
-            std::uint64_t delta_ns,
-            std::uint64_t weight, std::uint64_t inv_weight
+            std::uint64_t delta_ns, std::uint64_t weight, std::uint64_t inv_weight
         );
 
         void update_min_vruntime();

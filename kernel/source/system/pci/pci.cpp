@@ -79,7 +79,8 @@ namespace pci
                 bus->bridges.push_back(bridge);
                 brdgs[devidx(bridge)] = bridge;
             }
-            else lib::panic("pci: unknown header type: {:X}", header);
+            else
+                lib::panic("pci: unknown header type: {:X}", header);
         }
 
         void enum_dev(const auto &bus, std::uint8_t dev)
@@ -94,7 +95,8 @@ namespace pci
                 for (std::uint32_t i = 0; i < 8; i++)
                     enum_func(bus, dev, i);
             }
-            else enum_func(bus, dev, 0);
+            else
+                enum_func(bus, dev, 0);
         }
 
         void enum_bus(const auto &bus)
@@ -232,7 +234,8 @@ namespace pci
                         auto lenhigh = read<std::uint32_t>(offseth);
                         write<std::uint32_t>(offseth, barh);
 
-                        length = ~((static_cast<std::uint64_t>(lenhigh) << 32) | (lenlow & ~0b1111)) + 1;
+                        length =
+                            ~((static_cast<std::uint64_t>(lenhigh) << 32) | (lenlow & ~0b1111)) + 1;
                         addr = (static_cast<std::uint64_t>(barh) << 32) | (bar & ~0b1111);
 
                         bit64 = true;
@@ -256,8 +259,8 @@ namespace pci
             if (ret.type != bar::type::invalid)
             {
                 lib::debug(
-                    "pci: - bar: 0x{:X}, size: 0x{:X}, type: {}",
-                    ret.phys, ret.size, magic_enum::enum_name(ret.type)
+                    "pci: - bar: 0x{:X}, size: 0x{:X}, type: {}", ret.phys, ret.size,
+                    magic_enum::enum_name(ret.type)
                 );
             }
 
@@ -324,20 +327,16 @@ namespace pci
     {
         lib::initgraph::stage *ios_discovered_stage()
         {
-            static lib::initgraph::stage stage
-            {
-                "pci.arch.ios-discovered",
-                lib::initgraph::postsched_init_engine
+            static lib::initgraph::stage stage {
+                "pci.arch.ios-discovered", lib::initgraph::postsched_init_engine
             };
             return &stage;
         }
 
         lib::initgraph::stage *rbs_discovered_stage()
         {
-            static lib::initgraph::stage stage
-            {
-                "pci.arch.rbs-discovered",
-                lib::initgraph::postsched_init_engine
+            static lib::initgraph::stage stage {
+                "pci.arch.rbs-discovered", lib::initgraph::postsched_init_engine
             };
             return &stage;
         }
@@ -351,26 +350,19 @@ namespace pci
 
     lib::initgraph::stage *enumerated_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "pci.enumerated",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "pci.enumerated", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task pci_task
-    {
-        "pci.enumerate",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task pci_task {
+        "pci.enumerate", lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
-            acpi::ios_discovered_stage(),
-            arch::ios_discovered_stage(),
-            acpi::rbs_discovered_stage(),
-            arch::rbs_discovered_stage()
+            acpi::ios_discovered_stage(), arch::ios_discovered_stage(),
+            acpi::rbs_discovered_stage(), arch::rbs_discovered_stage()
         },
-        lib::initgraph::entail { enumerated_stage() },
-        [] {
+        lib::initgraph::entail { enumerated_stage() }, [] {
             lib::info("pci: enumerating devices");
 
             if (ios.empty())

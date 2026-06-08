@@ -46,18 +46,17 @@ export namespace fs::tmpfs
             gid_t opt_gid = 0;
 
             auto create(
-                std::shared_ptr<vfs::inode> &parent, std::string_view name,
-                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev,
+                std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
 
             auto symlink(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, lib::path target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
 
             auto link(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, std::shared_ptr<vfs::inode> target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name,
+                std::shared_ptr<vfs::inode> target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override;
 
             auto unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void> override;
@@ -71,7 +70,7 @@ export namespace fs::tmpfs
             auto readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
-            auto lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
+            auto lookup(std::shared_ptr<vfs::dentry> dir, std::string_view name)
                 -> lib::expect<vfs::dir_entry> override;
 
             auto write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void> override;
@@ -89,8 +88,7 @@ export namespace fs::tmpfs
 
         mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
         auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
+            std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override;
 
         fs() : vfs::filesystem { "tmpfs", 0x01021994 } { }
@@ -101,8 +99,8 @@ export namespace fs::tmpfs
         fs::instance *owner;
         vmm::object::ptr memory;
         inode(
-            fs::instance *owner, dev_t dev, dev_t rdev,
-            ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
+            fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode,
+            std::shared_ptr<vfs::ops> ops
         );
         ~inode();
     };

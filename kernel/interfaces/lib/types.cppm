@@ -11,16 +11,28 @@ export namespace lib
     struct bits2uint;
 
     template<>
-    struct bits2uint<8> { using type = std::uint8_t; };
+    struct bits2uint<8>
+    {
+        using type = std::uint8_t;
+    };
 
     template<>
-    struct bits2uint<16> { using type = std::uint16_t; };
+    struct bits2uint<16>
+    {
+        using type = std::uint16_t;
+    };
 
     template<>
-    struct bits2uint<32> { using type = std::uint32_t; };
+    struct bits2uint<32>
+    {
+        using type = std::uint32_t;
+    };
 
     template<>
-    struct bits2uint<64> { using type = std::uint64_t; };
+    struct bits2uint<64>
+    {
+        using type = std::uint64_t;
+    };
 
     template<std::size_t N>
     using bits2uint_t = bits2uint<N>::type;
@@ -35,16 +47,19 @@ export namespace lib
         }
     };
 
-    template<typename ...Funcs>
-    struct overloaded : Funcs... { using Funcs::operator()...; };
+    template<typename... Funcs>
+    struct overloaded : Funcs...
+    {
+        using Funcs::operator()...;
+    };
 
-    template<typename ...Funcs>
-    overloaded(Funcs ...) -> overloaded<Funcs...>;
+    template<typename... Funcs>
+    overloaded(Funcs...) -> overloaded<Funcs...>;
 
     template<typename>
     class signature;
 
-    template<typename Ret, typename ...Args>
+    template<typename Ret, typename... Args>
     class signature<Ret(Args...)>
     {
         public:
@@ -54,10 +69,16 @@ export namespace lib
     };
 
     template<typename Type>
-    struct remove_address_space { using type = Type; };
+    struct remove_address_space
+    {
+        using type = Type;
+    };
 
     template<typename Type, std::size_t N>
-    struct remove_address_space<Type __attribute__((address_space(N)))> { using type = Type; };
+    struct remove_address_space<Type __attribute__((address_space(N)))>
+    {
+        using type = Type;
+    };
 
     template<typename Type>
     struct remove_address_space_helper
@@ -68,13 +89,20 @@ export namespace lib
     };
 
     template<typename Type>
-    struct remove_address_space<Type *> : remove_address_space_helper<Type *> { };
+    struct remove_address_space<Type *> : remove_address_space_helper<Type *>
+    { };
 
     template<typename Type>
-    struct remove_address_space<const Type> { using type = const typename remove_address_space<Type>::type; };
+    struct remove_address_space<const Type>
+    {
+        using type = const typename remove_address_space<Type>::type;
+    };
 
     template<typename Type>
-    struct remove_address_space<const Type *> { using type = const typename remove_address_space<Type>::type *; };
+    struct remove_address_space<const Type *>
+    {
+        using type = const typename remove_address_space<Type>::type *;
+    };
 
     template<typename Type>
     using remove_address_space_t = typename remove_address_space<Type>::type;
@@ -89,8 +117,7 @@ export namespace lib
     inline constexpr bool has_address_space_v = has_address_space<Type>::value;
 } // export namespace lib
 
-export
-{
+export {
     using time_t = std::int64_t;
     using suseconds_t = std::int64_t;
 

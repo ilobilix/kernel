@@ -34,11 +34,10 @@ namespace vmm
                 in_share = (0b11 << 8),
             };
 
-            std::size_t page_sizes[]
-            {
+            std::size_t page_sizes[] {
                 0, // page_size::small
                 0, // page_size::medium
-                0  // page_size::large
+                0 // page_size::large
             };
         } // namespace
     } // namespace arch
@@ -49,12 +48,12 @@ namespace vmm
     const std::uintptr_t pagemap::new_kernel_table_flags = arch::valid | arch::table;
     const std::uintptr_t pagemap::new_user_table_flags = arch::valid | arch::table;
 
-    bool pagemap::entry::accessor::is_large() const
-    {
-        return !(value & arch::page);
-    }
+    bool pagemap::entry::accessor::is_large() const { return !(value & arch::page); }
 
-    struct arch_table { pagemap::table *ttbr1; };
+    struct arch_table
+    {
+        pagemap::table *ttbr1;
+    };
     arch_table accessor;
 
     // pagemap::table *ttbr1;
@@ -65,10 +64,7 @@ namespace vmm
         return reinterpret_cast<table *>(pmm::alloc(1, true));
     }
 
-    void pagemap::free_table(table *ptr)
-    {
-        pmm::free(reinterpret_cast<std::uintptr_t>(ptr), 1);
-    }
+    void pagemap::free_table(table *ptr) { pmm::free(reinterpret_cast<std::uintptr_t>(ptr), 1); }
 
     page_size pagemap::fixpsize(page_size psize) { return psize; }
 
@@ -175,15 +171,14 @@ namespace vmm
         return page_size::small;
     }
 
-    static std::size_t n = 0;
-    static std::uint64_t tg0 = 0;
-
     namespace
     {
+        std::size_t n = 0;
+        std::uint64_t tg0 = 0;
+
         void arch_cpu_init()
         {
-            constexpr auto bits = [](std::size_t top, std::size_t bottom, std::uint64_t value)
-            {
+            constexpr auto bits = [](std::size_t top, std::size_t bottom, std::uint64_t value) {
                 std::uint64_t vbit = (1ul << ((top + 1) - bottom));
                 return (value & (vbit - 1)) << bottom;
             };
@@ -217,7 +212,7 @@ namespace vmm
             cpu::msr<"mair_el1">(mair_el1);
 
             const auto ttbr = reinterpret_cast<std::uintptr_t>(accessor.ttbr1);
-            asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" :: "r"(ttbr) : "memory");
+            asm volatile ("msr ttbr1_el1, %0; isb; dsb sy; isb" : : "r"(ttbr) : "memory");
         }
     } // namespace
 
@@ -229,9 +224,9 @@ namespace vmm
             n++;
         }
 
-        const auto ttbr = reinterpret_cast<std::uintptr_t>(_table) |
-            (static_cast<std::uint64_t>(asid) << 48);
-        asm volatile ("msr ttbr0_el1, %0; isb" :: "r"(ttbr) : "memory");
+        const auto ttbr =
+            reinterpret_cast<std::uintptr_t>(_table) | (static_cast<std::uint64_t>(asid) << 48);
+        asm volatile ("msr ttbr0_el1, %0; isb" : : "r"(ttbr) : "memory");
 
         if (flush)
         {
@@ -270,7 +265,8 @@ namespace vmm
                 pa_mask = 0x0000FFFFFFFF0000;
                 tg0 = 0b01;
             }
-            else lib::panic("unknown page size");
+            else
+                lib::panic("unknown page size");
 
             lib::debug("vmm: page size is 0x{:X} kib", psize);
 

@@ -40,8 +40,7 @@ export namespace dev
         std::string name;
         mode_t mode;
 
-        attribute_t(std::string_view name, mode_t mode)
-            : name { name }, mode { mode } { }
+        attribute_t(std::string_view name, mode_t mode) : name { name }, mode { mode } { }
 
         virtual lib::expect<std::string> show(kobject_t &kobj)
         {
@@ -63,8 +62,7 @@ export namespace dev
         std::string name;
         mode_t mode;
 
-        bin_attribute_t(std::string_view name, mode_t mode)
-            : name { name }, mode { mode } { }
+        bin_attribute_t(std::string_view name, mode_t mode) : name { name }, mode { mode } { }
 
         virtual std::size_t size(kobject_t &kobj)
         {
@@ -99,20 +97,11 @@ export namespace dev
 
     struct ktype_t
     {
-        virtual std::span<attribute_t *const> attributes()
-        {
-            return { };
-        }
+        virtual std::span<attribute_t *const> attributes() { return { }; }
 
-        virtual std::span<bin_attribute_t *const> bin_attributes()
-        {
-            return { };
-        }
+        virtual std::span<bin_attribute_t *const> bin_attributes() { return { }; }
 
-        virtual void fill_uevent(kobject_t &kobj, uevent_t &uev)
-        {
-            lib::unused(kobj, uev);
-        }
+        virtual void fill_uevent(kobject_t &kobj, uevent_t &uev) { lib::unused(kobj, uev); }
 
         virtual ~ktype_t() = default;
     };
@@ -127,7 +116,8 @@ export namespace dev
         std::vector<std::weak_ptr<kobject_t>> children;
 
         kobject_t(std::string_view name, ktype_t *type, std::weak_ptr<kobject_t> parent = { })
-            : name { name }, parent { parent }, type { type } { }
+            : name { name }, parent { parent }, type { type }
+        { }
 
         kobject_t(const kobject_t &) = delete;
         kobject_t &operator=(const kobject_t &) = delete;
@@ -153,8 +143,7 @@ export namespace dev
         bus_t *bus;
         ktype_t *type = nullptr;
 
-        driver_t(std::string_view name, bus_t *bus)
-            : name { name }, bus { bus } { }
+        driver_t(std::string_view name, bus_t *bus) : name { name }, bus { bus } { }
 
         virtual lib::expect<void> probe(device_t &dev) = 0;
         virtual bool remove(device_t &dev)
@@ -171,9 +160,10 @@ export namespace dev
         driver_t &drv;
 
         driver_kobject_t(
-            std::string_view name, ktype_t *type,
-            std::weak_ptr<kobject_t> parent, driver_t &drv
-        ) : kobject_t { name, type, parent }, drv { drv } { }
+            std::string_view name, ktype_t *type, std::weak_ptr<kobject_t> parent, driver_t &drv
+        )
+            : kobject_t { name, type, parent }, drv { drv }
+        { }
     };
 
     struct bus_t
@@ -188,20 +178,11 @@ export namespace dev
 
         virtual bool match(device_t &dev, driver_t &drv) = 0;
 
-        virtual lib::expect<void> probe(device_t &dev, driver_t &drv)
-        {
-            return drv.probe(dev);
-        }
+        virtual lib::expect<void> probe(device_t &dev, driver_t &drv) { return drv.probe(dev); }
 
-        virtual bool remove(device_t &dev, driver_t &drv)
-        {
-            return drv.remove(dev);
-        }
+        virtual bool remove(device_t &dev, driver_t &drv) { return drv.remove(dev); }
 
-        virtual void fill_uevent(device_t &dev, uevent_t &uev)
-        {
-            lib::unused(dev, uev);
-        }
+        virtual void fill_uevent(device_t &dev, uevent_t &uev) { lib::unused(dev, uev); }
 
         virtual ~bus_t() = default;
     };
@@ -211,9 +192,10 @@ export namespace dev
         bus_t &bus;
 
         bus_kobject_t(
-            std::string_view name, ktype_t *type,
-            std::weak_ptr<kobject_t> parent, bus_t &bus
-        ) : kobject_t { name, type, parent }, bus { bus } { }
+            std::string_view name, ktype_t *type, std::weak_ptr<kobject_t> parent, bus_t &bus
+        )
+            : kobject_t { name, type, parent }, bus { bus }
+        { }
     };
 
     struct class_t
@@ -222,8 +204,7 @@ export namespace dev
         bool is_block;
         ktype_t *type = nullptr;
 
-        class_t(std::string_view name, bool is_block = false)
-            : name { name }, is_block { is_block } { }
+        class_t(std::string_view name, bool is_block = false) : name { name }, is_block { is_block } { }
 
         std::vector<std::shared_ptr<device_t>> get_devices();
 
@@ -233,10 +214,7 @@ export namespace dev
             return { };
         }
 
-        virtual void fill_uevent(device_t &dev, uevent_t &uev)
-        {
-            lib::unused(dev, uev);
-        }
+        virtual void fill_uevent(device_t &dev, uevent_t &uev) { lib::unused(dev, uev); }
 
         virtual ~class_t() = default;
     };
@@ -255,8 +233,7 @@ export namespace dev
 
         std::vector<std::pair<std::string, std::string>> props;
 
-        device_t(std::string_view name, ktype_t *type)
-            : kobject_t { name, type } { }
+        device_t(std::string_view name, ktype_t *type) : kobject_t { name, type } { }
 
         device_t *as_device() override { return this; }
 
@@ -271,8 +248,7 @@ export namespace dev
         virtual void add_object(const std::shared_ptr<kobject_t> &kobj) = 0;
         virtual void remove_object(const std::shared_ptr<kobject_t> &kobj) = 0;
         virtual void add_link(
-            const std::shared_ptr<kobject_t> &dir,
-            std::string_view name, const lib::path &target
+            const std::shared_ptr<kobject_t> &dir, std::string_view name, const lib::path &target
         ) = 0;
         virtual void remove_link(const std::shared_ptr<kobject_t> &dir, std::string_view name) = 0;
 

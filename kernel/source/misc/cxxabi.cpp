@@ -10,11 +10,12 @@ extern "C"
 
     __extension__ typedef int __guard __attribute__((mode(__DI__)));
 
-    struct {
+    struct
+    {
         void (*destructor_func)(void *);
         void *obj_ptr;
         void *dso_handle;
-    }  __atexit_funcs[atexit_max_funcs];
+    } __atexit_funcs[atexit_max_funcs];
 
     unsigned __atexit_func_count = 0;
     void *__dso_handle = nullptr;
@@ -72,10 +73,7 @@ extern "C"
         return 1;
     }
 
-    void __cxa_guard_release(__guard *guard)
-    {
-        *guard |= 0x0001;
-    }
+    void __cxa_guard_release(__guard *guard) { *guard |= 0x0001; }
 
     void __cxa_guard_abort(__guard *guard)
     {
@@ -130,37 +128,65 @@ namespace std
 } // namespace std
 
 [[nodiscard]] void *operator new(std::size_t size) { return lib::alloc(size); }
-[[nodiscard]] void *operator new(std::size_t size, const std::nothrow_t &) noexcept { return lib::alloc(size); }
+[[nodiscard]] void *operator new(std::size_t size, const std::nothrow_t &) noexcept
+{
+    return lib::alloc(size);
+}
 
 [[nodiscard]] void *operator new(std::size_t size, std::align_val_t) { return lib::alloc(size); }
-[[nodiscard]] void *operator new(std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return lib::alloc(size); }
+[[nodiscard]] void *operator new(
+    std::size_t size, std::align_val_t, const std::nothrow_t &
+) noexcept
+{
+    return lib::alloc(size);
+}
 
 [[nodiscard]] void *operator new[](std::size_t size) { return lib::alloc(size); }
-[[nodiscard]] void *operator new[](std::size_t size, const std::nothrow_t &) noexcept { return lib::alloc(size); }
+[[nodiscard]] void *operator new[](std::size_t size, const std::nothrow_t &) noexcept
+{
+    return lib::alloc(size);
+}
 
 [[nodiscard]] void *operator new[](std::size_t size, std::align_val_t) { return lib::alloc(size); }
-[[nodiscard]] void *operator new[](std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return lib::alloc(size); }
+[[nodiscard]] void *operator new[](
+    std::size_t size, std::align_val_t, const std::nothrow_t &
+) noexcept
+{
+    return lib::alloc(size);
+}
 
 void operator delete(void *ptr) noexcept { lib::free(ptr); }
 void operator delete(void *ptr, const std::nothrow_t &) noexcept { lib::free(ptr); }
 
 void operator delete(void *ptr, std::align_val_t) noexcept { lib::free(ptr); }
-void operator delete(void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
+void operator delete(void *ptr, std::align_val_t, const std::nothrow_t &) noexcept
+{
+    lib::free(ptr);
+}
 
 void operator delete(void *ptr, std::size_t) noexcept { lib::free(ptr); }
 void operator delete(void *ptr, std::size_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
 
 void operator delete(void *ptr, std::size_t, std::align_val_t) noexcept { lib::free(ptr); }
-void operator delete(void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
+void operator delete(void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept
+{
+    lib::free(ptr);
+}
 
 void operator delete[](void *ptr) noexcept { lib::free(ptr); }
 void operator delete[](void *ptr, const std::nothrow_t &) noexcept { lib::free(ptr); }
 
 void operator delete[](void *ptr, std::align_val_t) noexcept { lib::free(ptr); }
-void operator delete[](void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
+void operator delete[](void *ptr, std::align_val_t, const std::nothrow_t &) noexcept
+{
+    lib::free(ptr);
+}
 
 void operator delete[](void *ptr, std::size_t) noexcept { lib::free(ptr); }
 void operator delete[](void *ptr, std::size_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
 
 void operator delete[](void *ptr, std::size_t, std::align_val_t) noexcept { lib::free(ptr); }
-void operator delete[](void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { lib::free(ptr); }
+void operator delete[](void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept
+{
+    lib::free(ptr);
+}

@@ -25,17 +25,10 @@ namespace slab
             for (std::uintptr_t i = vaddr; i < vaddr + aligned; i += npsize)
             {
                 const auto paddr = pmm::alloc(npsize / pmm::page_size, true);
-                const auto ret = vmm::kernel_pagemap->map(
-                    i, paddr, npsize, flags, psize,
-                    vmm::caching::normal
-                );
+                const auto ret =
+                    vmm::kernel_pagemap->map(i, paddr, npsize, flags, psize, vmm::caching::normal);
                 if (!ret)
-                {
-                    lib::panic(
-                        "slab: could not map page: {}",
-                        lib::error_name(ret.error())
-                    );
-                }
+                    lib::panic("slab: could not map page: {}", lib::error_name(ret.error()));
             }
 
             return vaddr;
@@ -53,21 +46,11 @@ namespace slab
             {
                 const auto ret = vmm::kernel_pagemap->translate(i, psize);
                 if (!ret)
-                {
-                    lib::panic(
-                        "slab: could not translate page: {}",
-                        lib::error_name(ret.error())
-                    );
-                }
+                    lib::panic("slab: could not translate page: {}", lib::error_name(ret.error()));
 
                 const auto paddr = *ret;
                 if (const auto uret = vmm::kernel_pagemap->unmap(i, npsize, psize); !uret)
-                {
-                    lib::panic(
-                        "slab: could not unmap page: {}",
-                        lib::error_name(uret.error())
-                    );
-                }
+                    lib::panic("slab: could not unmap page: {}", lib::error_name(uret.error()));
 
                 pmm::free(paddr, npsize / pmm::page_size);
             }
@@ -80,20 +63,11 @@ namespace slab
     constinit frg::manual_box<frg::slab_pool<policy, lib::spinlock_irq>> pool;
     constinit frg::manual_box<frg::slab_allocator<policy, lib::spinlock_irq>> kalloc;
 
-    void *alloc(std::size_t size)
-    {
-        return kalloc->allocate(size);
-    }
+    void *alloc(std::size_t size) { return kalloc->allocate(size); }
 
-    void *realloc(void *oldptr, std::size_t size)
-    {
-        return kalloc->reallocate(oldptr, size);
-    }
+    void *realloc(void *oldptr, std::size_t size) { return kalloc->reallocate(oldptr, size); }
 
-    void free(void *ptr)
-    {
-        return kalloc->free(ptr);
-    }
+    void free(void *ptr) { return kalloc->free(ptr); }
 
     void init()
     {

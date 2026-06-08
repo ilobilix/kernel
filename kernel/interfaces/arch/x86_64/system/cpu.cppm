@@ -22,17 +22,14 @@ export namespace cpu
     void write_reg(std::uint64_t val)
     {
         using namespace fmt::literals;
-        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) :: (Cns)(val));
+        asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) : : (Cns)(val));
     }
 
     struct extra_regs
     {
         std::uint64_t cr2, cr3;
 
-        static extra_regs read()
-        {
-            return { read_reg<"cr2">(), read_reg<"cr3">() };
-        }
+        static extra_regs read() { return { read_reg<"cr2">(), read_reg<"cr3">() }; }
     };
 
     struct id_res
@@ -41,10 +38,12 @@ export namespace cpu
         constexpr id_res() : a { 0 }, b { 0 }, c { 0 }, d { 0 } { }
     };
 
-    bool id(std::uint32_t leaf, std::uint32_t subleaf, std::uint32_t &eax, std::uint32_t &ebx, std::uint32_t &ecx, std::uint32_t &edx, bool check_max = true)
+    bool id(
+        std::uint32_t leaf, std::uint32_t subleaf, std::uint32_t &eax, std::uint32_t &ebx,
+        std::uint32_t &ecx, std::uint32_t &edx, bool check_max = true
+    )
     {
-        static const auto cached = []
-        {
+        static const auto cached = [] {
             std::uint32_t cpuid_max = 0;
             asm volatile ("cpuid" : "=a"(cpuid_max) : "a"(0x80000000) : "ebx", "ecx", "edx");
             return cpuid_max;
@@ -53,7 +52,9 @@ export namespace cpu
         if (check_max && (cached && leaf > cached))
             return false;
 
-        asm volatile ("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(leaf), "c"(subleaf));
+        asm volatile ("cpuid"
+                     : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                     : "a"(leaf), "c"(subleaf));
         return true;
     }
 
@@ -81,8 +82,7 @@ export namespace cpu
 
     std::pair<hypervisor, std::uint32_t> in_hypervisor()
     {
-        static const auto cached = [] -> std::pair<hypervisor, std::uint32_t>
-        {
+        static const auto cached = [] -> std::pair<hypervisor, std::uint32_t> {
             id_res res;
             const bool is_hypervisor = cpu::id(1, 0, res) && (res.c & (1 << 31));
             if (!is_hypervisor)
@@ -136,18 +136,18 @@ export namespace cpu
         {
             std::uintptr_t cr3;
             asm volatile ("mov %0, cr3" : "=r"(cr3));
-            asm volatile ("mov cr3, %0" :: "r"(cr3) : "memory");
+            asm volatile ("mov cr3, %0" : : "r"(cr3) : "memory");
         }
 
         inline void _invpcid(invpcid_type type, const invpcid_desc &desc)
         {
             const std::uint64_t t = type;
-            asm volatile ("invpcid %1, %0" :: "m"(desc), "r"(t) : "memory");
+            asm volatile ("invpcid %1, %0" : : "m"(desc), "r"(t) : "memory");
         }
 
         inline void flush_page(std::uintptr_t addr)
         {
-            asm volatile ("invlpg [%0]" :: "r"(addr) : "memory");
+            asm volatile ("invlpg [%0]" : : "r"(addr) : "memory");
         }
 
         inline void flush_page(std::uintptr_t addr, std::size_t asid)
@@ -185,14 +185,14 @@ export namespace cpu
         {
             std::uint32_t edx = value >> 32;
             auto eax = static_cast<std::uint32_t>(value);
-            asm volatile ("wrmsr" :: "a"(eax), "d"(edx), "c"(msr) : "memory");
+            asm volatile ("wrmsr" : : "a"(eax), "d"(edx), "c"(msr) : "memory");
         }
     } // namespace msr
 
     namespace smap
     {
-        inline void disable() { asm volatile ("stac" ::: "cc", "memory"); }
-        inline void enable() { asm volatile ("clac" ::: "cc", "memory"); }
+        inline void disable() { asm volatile ("stac" : : : "cc", "memory"); }
+        inline void enable() { asm volatile ("clac" : : : "cc", "memory"); }
 
         // if one core supports smap, others do too
         bool supported = false;
@@ -202,8 +202,7 @@ export namespace cpu
     {
         bool supported()
         {
-            static const auto cached = [] -> bool
-            {
+            static const auto cached = [] -> bool {
                 id_res res;
                 return cpu::id(1, 0, res) && (res.d & (1 << 12));
             } ();
@@ -226,28 +225,19 @@ export namespace cpu
             uncacheable = 0x07
         };
 
-        constexpr std::uint64_t boot_state =
-            (write_combining << 40) |
-            (write_protected << 32) |
-            (uncacheable_strong << 24) |
-            (uncacheable << 16) |
-            (write_through << 8) |
-            (write_back);
+        constexpr std::uint64_t boot_state = (write_combining << 40) | (write_protected << 32) |
+            (uncacheable_strong << 24) | (uncacheable << 16) | (write_through << 8) | (write_back);
 
         bool supported()
         {
-            static const auto cached = [] -> bool
-            {
+            static const auto cached = [] -> bool {
                 id_res res;
                 return cpu::id(1, 0, res) && (res.d & (1 << 8));
             } ();
             return cached;
         }
 
-        void write(std::uint64_t value)
-        {
-            msr::write(0x277, value);
-        }
+        void write(std::uint64_t value) { msr::write(0x277, value); }
     } // namespace pat
 
     namespace features
@@ -269,42 +259,24 @@ export namespace cpu
         std::uintptr_t read_self()
         {
             std::uintptr_t addr;
-            asm volatile ("mov %0, gs:[0]" : "=r"(addr) :: "memory");
+            asm volatile ("mov %0, gs:[0]" : "=r"(addr) : : "memory");
             return addr;
         }
 
-        void write_kernel(std::uintptr_t addr)
-        {
-            msr::write(0xC0000102, addr);
-        }
+        void write_kernel(std::uintptr_t addr) { msr::write(0xC0000102, addr); }
 
-        std::uintptr_t read_kernel()
-        {
-            return msr::read(0xC0000102);
-        }
+        std::uintptr_t read_kernel() { return msr::read(0xC0000102); }
 
-        void write(std::uintptr_t addr)
-        {
-            msr::write(0xC0000101, addr);
-        }
+        void write(std::uintptr_t addr) { msr::write(0xC0000101, addr); }
 
-        std::uintptr_t read()
-        {
-            return msr::read(0xC0000101);
-        }
+        std::uintptr_t read() { return msr::read(0xC0000101); }
     } // namespace gs
 
     namespace fs
     {
-        void write(std::uintptr_t addr)
-        {
-            msr::write(0xC0000100, addr);
-        }
+        void write(std::uintptr_t addr) { msr::write(0xC0000100, addr); }
 
-        std::uintptr_t read()
-        {
-            return msr::read(0xC0000100);
-        }
+        std::uintptr_t read() { return msr::read(0xC0000100); }
     } // namespace gs
 
     std::uintptr_t self_addr() { return gs::read_self(); }

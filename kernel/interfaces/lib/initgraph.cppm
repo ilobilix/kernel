@@ -18,7 +18,12 @@ export namespace lib::initgraph
     constexpr bool debug = false;
 #endif
 
-    enum class node_type { none, stage, task };
+    enum class node_type
+    {
+        none,
+        stage,
+        task
+    };
 
     struct node;
     struct engine;
@@ -41,8 +46,10 @@ export namespace lib::initgraph
         lib::intrusive_list_hook<edge> _inhook;
 
         public:
-        edge(node *source, node *target)
-            : _source { source }, _target { target } { realise_edge(this); }
+        edge(node *source, node *target) : _source { source }, _target { target }
+        {
+            realise_edge(this);
+        }
 
         edge(const edge &) = delete;
         edge &operator=(const edge &) = delete;
@@ -82,7 +89,9 @@ export namespace lib::initgraph
         public:
         node(node_type type, engine *engine, std::string_view name = "")
             : _type { type }, _engine { engine }, _mvisited { false }, _name { name }
-        { realise_node(this); }
+        {
+            realise_node(this);
+        }
 
         node(const node &) = delete;
         node &operator=(const node &) = delete;
@@ -210,15 +219,11 @@ export namespace lib::initgraph
 
     void print_mermaid()
     {
-        static std::array engines {
-            std::ref(presched_init_engine),
-            std::ref(postsched_init_engine)
-        };
+        static std::array engines { std::ref(presched_init_engine), std::ref(postsched_init_engine) };
 
         lib::println("flowchart TD");
 
-        auto print_engine_nodes = [&](engine &eng, std::string_view label)
-        {
+        auto print_engine_nodes = [&](engine &eng, std::string_view label) {
             lib::println("  subgraph {}", label);
             for (const auto &node : eng._nodes)
             {
@@ -228,8 +233,7 @@ export namespace lib::initgraph
             lib::println("  end");
         };
 
-        auto print_engine_edges = [&](engine &eng)
-        {
+        auto print_engine_edges = [&](engine &eng) {
             for (auto &start_node : eng._nodes)
             {
                 if (start_node.type() != initgraph::node_type::task)
@@ -243,8 +247,7 @@ export namespace lib::initgraph
 
                 start_node._mvisited = true;
 
-                auto traverse = [&](this auto &self, initgraph::node *curr) -> void
-                {
+                auto traverse = [&](this auto &self, initgraph::node *curr) -> void {
                     for (auto &edge : curr->_outlist)
                     {
                         auto next = edge._target;
@@ -289,8 +292,7 @@ export namespace lib::initgraph
 
     struct stage final : public node
     {
-        stage(std::string_view name, struct engine &eng)
-            : node { node_type::stage, &eng, name } { }
+        stage(std::string_view name, struct engine &eng) : node { node_type::stage, &eng, name } { }
     };
 
     template<std::size_t N>
@@ -298,13 +300,14 @@ export namespace lib::initgraph
     {
         std::array<node *, N> array;
 
-        template<std::convertible_to<node *> ...Args>
-        require(Args &&...args) : array { args... } { }
+        template<std::convertible_to<node *>... Args>
+        require(Args &&...args) : array { args... }
+        { }
 
         require(const require &) = default;
     };
 
-    template<typename ...Args>
+    template<typename... Args>
     require(Args &&...) -> require<sizeof...(Args)>;
 
     template<std::size_t N>
@@ -312,23 +315,24 @@ export namespace lib::initgraph
     {
         std::array<node *, N> array;
 
-        template<std::convertible_to<node *> ...Args>
-        entail(Args &&...args) : array { args... } { }
+        template<std::convertible_to<node *>... Args>
+        entail(Args &&...args) : array { args... }
+        { }
 
         entail(const entail &) = default;
     };
 
-    template<typename ...Args>
+    template<typename... Args>
     entail(Args &&...) -> entail<sizeof...(Args)>;
 
     struct into_edges_to
     {
         node *target;
 
-        template<typename ...Args>
+        template<typename... Args>
         std::array<edge, sizeof...(Args)> operator()(Args &&...args) const
         {
-            return { { { args, target } ... } };
+            return { { { args, target }... } };
         }
     };
 
@@ -336,14 +340,14 @@ export namespace lib::initgraph
     {
         node *source;
 
-        template<typename ...Args>
+        template<typename... Args>
         std::array<edge, sizeof...(Args)> operator()(Args &&...args) const
         {
-            return { { { source, args } ... } };
+            return { { { source, args }... } };
         }
     };
 
-    template<std::size_t ...S, typename Type, std::size_t N, typename Inv>
+    template<std::size_t... S, typename Type, std::size_t N, typename Inv>
     auto apply(std::index_sequence<S...>, std::array<Type, N> array, Inv invocable)
     {
         return invocable(array[S]...);
@@ -364,25 +368,25 @@ export namespace lib::initgraph
         task(std::string_view name, struct engine &eng, require<NR> r, entail<NE> e, Func invocable)
             : node { node_type::task, &eng, name }, _invocable { std::move(invocable) },
               _redges { apply(std::make_index_sequence<NR> { }, r.array, into_edges_to { this }) },
-              _eedges { apply(std::make_index_sequence<NE> { }, e.array, into_edges_from { this }) } { }
+              _eedges { apply(std::make_index_sequence<NE> { }, e.array, into_edges_from { this }) }
+        { }
 
         task(std::string_view name, struct engine &eng, Func invocable)
-            : task { name, eng, { }, { }, std::move(invocable) } { }
+            : task { name, eng, { }, { }, std::move(invocable) }
+        { }
 
         task(std::string_view name, struct engine &eng, require<NR> r, Func invocable)
-            : task { name, eng, r, { }, std::move(invocable) } { }
+            : task { name, eng, r, { }, std::move(invocable) }
+        { }
 
         task(std::string_view name, struct engine &eng, entail<NE> e, Func invocable)
-            : task { name, eng, { }, e, std::move(invocable) } { }
+            : task { name, eng, { }, e, std::move(invocable) }
+        { }
     };
 
     stage *base_stage()
     {
-        static stage stage
-        {
-            "base-stage",
-            presched_init_engine
-        };
+        static stage stage { "base-stage", presched_init_engine };
         return &stage;
     }
 } // export namespace lib::initgraph

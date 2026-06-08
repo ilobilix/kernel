@@ -11,9 +11,7 @@ namespace sched::futex
         struct bucket_t
         {
             lib::spinlock_irq lock;
-            lib::intrusive_list<
-                waiter_t, &waiter_t::hook
-            > waiters;
+            lib::intrusive_list<waiter_t, &waiter_t::hook> waiters;
         };
 
         constexpr std::size_t nbuckets = 1024;
@@ -31,16 +29,12 @@ namespace sched::futex
             __builtin_unreachable();
         }
 
-        bucket_t &bucket_for(const key_t &key)
-        {
-            return buckets[hash_key(key) & (nbuckets - 1)];
-        }
+        bucket_t &bucket_for(const key_t &key) { return buckets[hash_key(key) & (nbuckets - 1)]; }
 
         bool valid_uaddr(std::uint32_t __user *uaddr)
         {
-            const auto raw = reinterpret_cast<std::uintptr_t>(
-                lib::remove_user_cast<std::uint32_t>(uaddr)
-            );
+            const auto raw =
+                reinterpret_cast<std::uintptr_t>(lib::remove_user_cast<std::uint32_t>(uaddr));
             return uaddr != nullptr && (raw & 0x3) == 0;
         }
 
@@ -99,11 +93,11 @@ namespace sched::futex
                 case wake_op_cmp_ne:
                     return old != arg;
                 case wake_op_cmp_lt:
-                    return old <  arg;
+                    return old < arg;
                 case wake_op_cmp_le:
                     return old <= arg;
                 case wake_op_cmp_gt:
-                    return old >  arg;
+                    return old > arg;
                 case wake_op_cmp_ge:
                     return old >= arg;
                 default:
@@ -197,8 +191,7 @@ namespace sched::futex
     }
 
     lib::expect<void> wait(
-        std::uint32_t __user *uaddr, const key_t &key,
-        std::uint32_t val, std::uint32_t bitset,
+        std::uint32_t __user *uaddr, const key_t &key, std::uint32_t val, std::uint32_t bitset,
         std::optional<std::uint64_t> wait_ns
     )
     {
@@ -217,9 +210,8 @@ namespace sched::futex
             .bitset = bitset,
             .hook = { },
             .timeout = { },
-            .obj_ref = (key.type == key_t::type::shared)
-                ? vmm::object::ptr { key.shr.obj }
-                : vmm::object::ptr { },
+            .obj_ref = (key.type == key_t::type::shared) ? vmm::object::ptr { key.shr.obj }
+                                                         : vmm::object::ptr { },
             .lock_ptr = nullptr
         };
         waiter.timeout.thread = thread;
@@ -245,14 +237,13 @@ namespace sched::futex
         thread->state.store(thread_state::sleeping, std::memory_order_seq_cst);
 
         if (thread->has_flag(thread_flags::kill_pending) ||
-            thread->has_flag(thread_flags::interrupted) ||
-            signal_pending_for(thread))
+            thread->has_flag(thread_flags::interrupted) || signal_pending_for(thread))
         {
             auto expected = thread_state::sleeping;
             if (thread->state.compare_exchange_strong(
-                expected, thread_state::running,
-                std::memory_order_acq_rel,
-                std::memory_order_acquire))
+                    expected, thread_state::running, std::memory_order_acq_rel,
+                    std::memory_order_acquire
+                ))
             {
                 bucket.waiters.remove(&waiter);
                 waiter.lock_ptr.store(nullptr, std::memory_order_release);
@@ -313,7 +304,7 @@ namespace sched::futex
         std::int32_t collected = 0;
         {
             const std::unique_lock _ { bucket.lock };
-            for (auto it = bucket.waiters.begin(); it != bucket.waiters.end() && collected < num; )
+            for (auto it = bucket.waiters.begin(); it != bucket.waiters.end() && collected < num;)
             {
                 auto waiter = (it++).value();
 
@@ -338,9 +329,8 @@ namespace sched::futex
     }
 
     lib::expect<std::int32_t> wake_op(
-        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr2,
-        std::int32_t nr_wake, std::int32_t nr_wake2,
-        std::uint32_t op_encoding
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr2, std::int32_t nr_wake,
+        std::int32_t nr_wake2, std::uint32_t op_encoding
     )
     {
         if (!valid_uaddr(uaddr2))
@@ -391,9 +381,8 @@ namespace sched::futex
     }
 
     lib::expect<std::pair<std::uint32_t, std::uint32_t>> requeue(
-        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp,
-        std::int32_t nr_wake, std::int32_t nr_requeue,
-        std::optional<std::uint32_t> cmpval
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp, std::int32_t nr_wake,
+        std::int32_t nr_requeue, std::optional<std::uint32_t> cmpval
     )
     {
         if (nr_wake < 0 || nr_requeue < 0)
@@ -433,7 +422,7 @@ namespace sched::futex
 
         lib::intrusive_list<waiter_t, &waiter_t::hook> to_wake;
         std::int32_t collected_wake = 0;
-        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && collected_wake < nr_wake; )
+        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && collected_wake < nr_wake;)
         {
             auto waiter = (it++).value();
             if (waiter->key != key1)
@@ -446,7 +435,7 @@ namespace sched::futex
         }
 
         std::int32_t requeued = 0;
-        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && requeued < nr_requeue; )
+        for (auto it = b1.waiters.begin(); it != b1.waiters.end() && requeued < nr_requeue;)
         {
             auto waiter = (it++).value();
             if (waiter->key != key1)
@@ -454,9 +443,8 @@ namespace sched::futex
 
             b1.waiters.remove(waiter);
             waiter->key = key2;
-            waiter->obj_ref = (key2.type == key_t::type::shared)
-                ? vmm::object::ptr { key2.shr.obj }
-                : vmm::object::ptr { };
+            waiter->obj_ref = (key2.type == key_t::type::shared) ? vmm::object::ptr { key2.shr.obj }
+                                                                 : vmm::object::ptr { };
             waiter->lock_ptr.store(&b2.lock, std::memory_order_release);
             b2.waiters.push_back(waiter);
             requeued++;

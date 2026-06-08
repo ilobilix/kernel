@@ -44,80 +44,72 @@ export namespace sched
         exec_restrict_file_locked = issecure_mask(secure_t::exec_restrict_file_locked),
         exec_deny_interactive = issecure_mask(secure_t::exec_deny_interactive),
         exec_deny_interactive_locked = issecure_mask(secure_t::exec_deny_interactive_locked),
-        all = (noroot | no_setuid_fixup | keep_caps | no_cap_ambient_raise |
-               exec_restrict_file | exec_deny_interactive),
+        all =
+            (noroot | no_setuid_fixup | keep_caps | no_cap_ambient_raise | exec_restrict_file |
+             exec_deny_interactive),
         all_locked = (all << 1),
         all_unprivileged = (exec_restrict_file | exec_deny_interactive)
     };
 
     enum class cap_t : std::uint64_t
     {
-        none               = 0,
-        chown              = (1ul << 0),
-        dac_override       = (1ul << 1),
-        dac_read_search    = (1ul << 2),
-        fowner             = (1ul << 3),
-        fsetid             = (1ul << 4),
-        kill               = (1ul << 5),
-        setgid             = (1ul << 6),
-        setuid             = (1ul << 7),
-        setpcap            = (1ul << 8),
-        linux_immutable    = (1ul << 9),
-        net_bind_service   = (1ul << 10),
-        net_broadcast      = (1ul << 11),
-        net_admin          = (1ul << 12),
-        net_raw            = (1ul << 13),
-        ipc_lock           = (1ul << 14),
-        ipc_owner          = (1ul << 15),
-        sys_module         = (1ul << 16),
-        sys_rawio          = (1ul << 17),
-        sys_chroot         = (1ul << 18),
-        sys_ptrace         = (1ul << 19),
-        sys_pacct          = (1ul << 20),
-        sys_admin          = (1ul << 21),
-        sys_boot           = (1ul << 22),
-        sys_nice           = (1ul << 23),
-        sys_resource       = (1ul << 24),
-        sys_time           = (1ul << 25),
-        sys_tty_config     = (1ul << 26),
-        mknod              = (1ul << 27),
-        lease              = (1ul << 28),
-        audit_write        = (1ul << 29),
-        audit_control      = (1ul << 30),
-        setfcap            = (1ul << 31),
-        mac_override       = (1ul << 32),
-        mac_admin          = (1ul << 33),
-        syslog             = (1ul << 34),
-        wake_alarm         = (1ul << 35),
-        block_suspend      = (1ul << 36),
-        audit_read         = (1ul << 37),
-        perfmon            = (1ul << 38),
-        bpf                = (1ul << 39),
+        none = 0,
+        chown = (1ul << 0),
+        dac_override = (1ul << 1),
+        dac_read_search = (1ul << 2),
+        fowner = (1ul << 3),
+        fsetid = (1ul << 4),
+        kill = (1ul << 5),
+        setgid = (1ul << 6),
+        setuid = (1ul << 7),
+        setpcap = (1ul << 8),
+        linux_immutable = (1ul << 9),
+        net_bind_service = (1ul << 10),
+        net_broadcast = (1ul << 11),
+        net_admin = (1ul << 12),
+        net_raw = (1ul << 13),
+        ipc_lock = (1ul << 14),
+        ipc_owner = (1ul << 15),
+        sys_module = (1ul << 16),
+        sys_rawio = (1ul << 17),
+        sys_chroot = (1ul << 18),
+        sys_ptrace = (1ul << 19),
+        sys_pacct = (1ul << 20),
+        sys_admin = (1ul << 21),
+        sys_boot = (1ul << 22),
+        sys_nice = (1ul << 23),
+        sys_resource = (1ul << 24),
+        sys_time = (1ul << 25),
+        sys_tty_config = (1ul << 26),
+        mknod = (1ul << 27),
+        lease = (1ul << 28),
+        audit_write = (1ul << 29),
+        audit_control = (1ul << 30),
+        setfcap = (1ul << 31),
+        mac_override = (1ul << 32),
+        mac_admin = (1ul << 33),
+        syslog = (1ul << 34),
+        wake_alarm = (1ul << 35),
+        block_suspend = (1ul << 36),
+        audit_read = (1ul << 37),
+        perfmon = (1ul << 38),
+        bpf = (1ul << 39),
         checkpoint_restore = (1ul << 40),
-        all                = ~0ul
+        all = ~0ul
     };
 
     using namespace magic_enum::bitwise_operators;
 
-    inline constexpr bool cap_valid(cap_t cap)
-    {
-        return magic_enum::enum_flags_contains(cap);
-    }
+    inline constexpr bool cap_valid(cap_t cap) { return magic_enum::enum_flags_contains(cap); }
 
     inline constexpr bool secbit_valid(secbit_t bits)
     {
         return magic_enum::enum_flags_contains(bits);
     }
 
-    inline constexpr bool has_cap(cap_t set, cap_t cap)
-    {
-        return (set & cap) == cap;
-    }
+    inline constexpr bool has_cap(cap_t set, cap_t cap) { return (set & cap) == cap; }
 
-    inline constexpr bool has_secbit(secbit_t bits, secbit_t flag)
-    {
-        return (bits & flag) == flag;
-    }
+    inline constexpr bool has_secbit(secbit_t bits, secbit_t flag) { return (bits & flag) == flag; }
 
     static_assert(!cap_valid(static_cast<cap_t>(1ul << 41)));
     static_assert(!secbit_valid(static_cast<secbit_t>(1ul << 33)));
@@ -127,17 +119,14 @@ export namespace sched
     {
         std::vector<gid_t> gids;
 
-        bool contains(gid_t gid) const
-        {
-            return std::ranges::contains(gids, gid);
-        }
+        bool contains(gid_t gid) const { return std::ranges::contains(gids, gid); }
     };
 
     struct cred_t
     {
-        uid_t ruid = 0;  // real
-        uid_t euid = 0;  // effective
-        uid_t suid = 0;  // saved
+        uid_t ruid = 0; // real
+        uid_t euid = 0; // effective
+        uid_t suid = 0; // saved
         uid_t fsuid = 0; // filesystem
 
         gid_t rgid = 0;
@@ -179,9 +168,6 @@ export namespace sched
             return cred;
         }
 
-        std::shared_ptr<cred_t> clone() const
-        {
-            return std::make_shared<cred_t>(*this);
-        }
+        std::shared_ptr<cred_t> clone() const { return std::make_shared<cred_t>(*this); }
     };
 } // export namespace sched

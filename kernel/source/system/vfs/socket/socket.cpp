@@ -9,12 +9,7 @@ namespace vfs::socket
 {
     namespace
     {
-        lib::locker<
-            std::array<
-                family_t *,
-                af_max
-            >, lib::spinlock
-        > registry { };
+        lib::locker<std::array<family_t *, af_max>, lib::spinlock> registry { };
 
         struct ops : vfs::ops
         {
@@ -32,10 +27,7 @@ namespace vfs::socket
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
-            lib::expect<void> close(vfs::file &file) override
-            {
-                return from_file(file)->release();
-            }
+            lib::expect<void> close(vfs::file &file) override { return from_file(file)->release(); }
 
             lib::expect<std::size_t> read(
                 std::shared_ptr<vfs::file> file, std::uint64_t offset,
@@ -93,8 +85,7 @@ namespace vfs::socket
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<file> file, std::uint64_t request,
-                lib::uptr_or_addr argp
+                std::shared_ptr<file> file, std::uint64_t request, lib::uptr_or_addr argp
             ) override
             {
                 return from_file(*file)->ioctl(request, argp);
@@ -116,8 +107,7 @@ namespace vfs::socket
         return { };
     }
 
-    auto create(addr_fam af, sock_type type, int protocol)
-        -> lib::expect<std::shared_ptr<socket_t>>
+    auto create(addr_fam af, sock_type type, int protocol) -> lib::expect<std::shared_ptr<socket_t>>
     {
         if (af >= af_max)
             return std::unexpected { lib::err::address_family_unsupported };
@@ -152,16 +142,18 @@ namespace vfs::socket
 
     auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>
     {
-        auto ret = create_anon_fd({
-            .name = "<[SOCKET]>",
-            .ops = ops::singleton(),
-            .file_private_data = std::move(sock),
-            .inode_private_data = nullptr,
-            .st_mode = std::to_underlying(stat::s_ifsock) | s_irwxu | s_irwxg | s_irwxo,
-            .flags = flags | o_rdwr,
-            .skip_open = true,
-            .inode = nullptr
-        });
+        auto ret = create_anon_fd(
+            anon_fd_args {
+                .name = "<[SOCKET]>",
+                .ops = ops::singleton(),
+                .file_private_data = std::move(sock),
+                .inode_private_data = nullptr,
+                .st_mode = std::to_underlying(stat::s_ifsock) | s_irwxu | s_irwxg | s_irwxo,
+                .flags = flags | o_rdwr,
+                .skip_open = true,
+                .inode = nullptr
+            }
+        );
         if (!ret)
             return std::unexpected { ret.error() };
 
@@ -170,31 +162,22 @@ namespace vfs::socket
 
     lib::initgraph::stage *registered_procfs_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "socket.procfs.registered-net",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "socket.procfs.registered-net", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task net_task
-    {
-        "socket.procfs.register-net",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task net_task {
+        "socket.procfs.register-net", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { fs::procfs::registered_stage() },
-        lib::initgraph::entail { registered_procfs_stage() },
-        [] {
+        lib::initgraph::entail { registered_procfs_stage() }, [] {
             using namespace fs::procfs;
-            lib::bug_on(!register_per_pid("net",
-                make_dir_ops(),
-                node_type::dir, 0555
-            ));
+            lib::bug_on(!register_per_pid("net", make_dir_ops(), node_type::dir, 0555));
 
-            lib::bug_on(!register_global("net",
-                make_symlink_ops([](auto) {
-                    return std::string { "self/net" };
-                }), node_type::symlink, 0777
+            lib::bug_on(!register_global(
+                "net", make_symlink_ops([](auto) { return std::string { "self/net" }; }),
+                node_type::symlink, 0777
             ));
         }
     };

@@ -41,15 +41,8 @@ namespace lib::lock
         sched::preempt_enable();
     }
 
-    void acquire_preempt()
-    {
-        sched::preempt_disable();
-    }
-
-    void release_preempt()
-    {
-        sched::preempt_enable();
-    }
+    void acquire_preempt() { sched::preempt_disable(); }
+    void release_preempt() { sched::preempt_enable(); }
 
     void pause() { arch::pause(); }
 } // namespace lib::lock

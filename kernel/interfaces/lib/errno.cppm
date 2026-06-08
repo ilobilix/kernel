@@ -7,8 +7,7 @@ module;
 export module lib:errno;
 import std;
 
-export
-{
+export {
     using enum errnos;
     using errnos = errnos;
 } // export

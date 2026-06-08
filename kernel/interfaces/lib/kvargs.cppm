@@ -27,15 +27,9 @@ export namespace lib
             return false;
         }
 
-        constexpr bool has_value() const
-        {
-            return _value.has_value();
-        }
+        constexpr bool has_value() const { return _value.has_value(); }
 
-        constexpr const Type &value() const
-        {
-            return *_value;
-        }
+        constexpr const Type &value() const { return *_value; }
     };
 
     template<typename Type, comptime_string Key>
@@ -49,8 +43,7 @@ export namespace lib
 
         public:
         constexpr kvarg(int base = 0) : _base { base } { }
-        constexpr kvarg(int base, Type def)
-            : kvarg_base<Type, Key> { def }, _base { base } { }
+        constexpr kvarg(int base, Type def) : kvarg_base<Type, Key> { def }, _base { base } { }
 
         constexpr bool parse(std::string_view input)
         {
@@ -104,15 +97,23 @@ export namespace lib
         std::conditional_t<Percent, Type, std::monostate> _pmax { };
 
         public:
-        constexpr kvarg_size(int base = 0) requires (!Percent)
-            : _base { base } { }
-        constexpr kvarg_size(int base, Type def) requires (!Percent)
-            : kvarg_base<Type, Key> { def }, _base { base } { }
+        constexpr kvarg_size(int base = 0)
+            requires(!Percent)
+            : _base { base }
+        { }
+        constexpr kvarg_size(int base, Type def)
+            requires(!Percent)
+            : kvarg_base<Type, Key> { def }, _base { base }
+        { }
 
-        constexpr kvarg_size(Type pmax, int base = 0) requires Percent
-            : _base { base }, _pmax { pmax } { }
-        constexpr kvarg_size(Type pmax, int base, Type def) requires Percent
-            : kvarg_base<Type, Key> { def }, _base { base }, _pmax { pmax } { }
+        constexpr kvarg_size(Type pmax, int base = 0)
+            requires Percent
+            : _base { base }, _pmax { pmax }
+        { }
+        constexpr kvarg_size(Type pmax, int base, Type def)
+            requires Percent
+            : kvarg_base<Type, Key> { def }, _base { base }, _pmax { pmax }
+        { }
 
         constexpr bool parse(std::string_view input)
         {
@@ -174,15 +175,16 @@ export namespace lib
         }
     };
 
-    template <typename Type>
+    template<typename Type>
     concept is_kvarg = requires(Type kv, std::string_view sv) {
         { Type::key } -> std::convertible_to<std::string_view>;
         { kv.parse(sv) } -> std::convertible_to<bool>;
     };
 
     constexpr bool kvparse_next(
-        std::string_view input, char separator,
-        std::size_t &pos, std::pair<std::string_view, std::string_view> &out)
+        std::string_view input, char separator, std::size_t &pos,
+        std::pair<std::string_view, std::string_view> &out
+    )
     {
         while (true)
         {
@@ -224,7 +226,7 @@ export namespace lib
 
             if (value.size() >= 2 &&
                 ((value.front() == '"' && value.back() == '"') ||
-                (value.front() == '\'' && value.back() == '\'')))
+                 (value.front() == '\'' && value.back() == '\'')))
                 value = value.substr(1, value.size() - 2);
 
             out = { key, value };
@@ -269,7 +271,9 @@ export namespace lib
             constexpr iterator() = default;
             constexpr iterator(std::string_view input, char separator)
                 : _input { input }, _separator { separator }, _pos { 0 }
-            { advance(); }
+            {
+                advance();
+            }
 
             constexpr const value_type &operator*() const { return _current; }
 
@@ -289,14 +293,15 @@ export namespace lib
 
         constexpr kvparse_view() = default;
         constexpr kvparse_view(std::string_view input, char separator)
-            : _input { input }, _separator { separator } { }
+            : _input { input }, _separator { separator }
+        { }
 
         constexpr iterator begin() const { return iterator { _input, _separator }; }
         constexpr std::default_sentinel_t end() const { return { }; }
     };
     static_assert(std::ranges::input_range<kvparse_view>);
 
-    template<is_kvarg ...Args>
+    template<is_kvarg... Args>
     class kvargs
     {
         private:
@@ -314,15 +319,14 @@ export namespace lib
         }
 
         public:
-        constexpr kvargs(Args ...args)
-            : _args { std::move(args)... } { }
+        constexpr kvargs(Args... args) : _args { std::move(args)... } { }
 
         constexpr void parse(std::string_view input, char separator)
         {
             kvparse(input, separator, [this](std::string_view key, std::string_view value) {
-                std::apply([&](auto &...arg) {
-                    ((arg.key == key && arg.parse(value)) || ...);
-                }, _args);
+                std::apply(
+                    [&](auto &...arg) { ((arg.key == key && arg.parse(value)) || ...); }, _args
+                );
             });
         }
 

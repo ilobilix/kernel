@@ -46,7 +46,7 @@ namespace tlb
                 record_t records;
                 std::size_t target_idx;
             };
-            std::unique_ptr<data_t []> data;
+            std::unique_ptr<data_t[]> data;
             lib::bitmap mask;
         };
 
@@ -124,10 +124,12 @@ namespace tlb
             auto &ib = inbox.unsafe_get(cpu::local::nth_base(target_idx));
             auto head = ib.head.load(std::memory_order_relaxed);
 
-            do {
+            do
+            {
                 rec->next = head;
-            } while (!ib.head.compare_exchange_weak(head, rec,
-                std::memory_order_release, std::memory_order_relaxed));
+            } while (!ib.head.compare_exchange_weak(
+                head, rec, std::memory_order_release, std::memory_order_relaxed
+            ));
         }
     } // namespace
 
@@ -170,9 +172,9 @@ namespace tlb
         auto &state = cpu_state.unsafe_get();
         lib::bug_on(!state.data);
 
-        const bool kernel_broadcast =
-            req.sc == scope::kernel_range || req.sc == scope::kernel_full ||
-            req.pmap == nullptr || !req.pmap->has_asid_ctx() || !cpu::tlb::has_asids();
+        const bool kernel_broadcast = req.sc == scope::kernel_range ||
+            req.sc == scope::kernel_full || req.pmap == nullptr || !req.pmap->has_asid_ctx() ||
+            !cpu::tlb::has_asids();
 
         auto &self = cpu::self().unsafe_get();
         const auto self_idx = self.idx;
@@ -267,7 +269,7 @@ namespace tlb
         if (state.data)
             return;
 
-        state.data = std::make_unique<cpu_state_t::data_t []>(ncpus);
+        state.data = std::make_unique<cpu_state_t::data_t[]>(ncpus);
         state.mask.initialise(ncpus);
 
         arch::install_handler(cpu_idx);

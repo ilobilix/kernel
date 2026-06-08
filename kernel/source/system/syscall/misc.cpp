@@ -33,12 +33,10 @@ namespace syscall::misc
         lib::spinlock hostname_lock;
         char hostname_buf[hostname_max + 1] = "ilobilix";
 
-        lib::initgraph::task sysctl_hostname_task
-        {
-            "sysctl.register-hostname",
-            lib::initgraph::postsched_init_engine,
-            [] {
-                sysctl::register_entry("kernel/hostname",
+        lib::initgraph::task sysctl_hostname_task {
+            "sysctl.register-hostname", lib::initgraph::postsched_init_engine, [] {
+                sysctl::register_entry(
+                    "kernel/hostname",
                     [] {
                         const std::unique_lock _ { hostname_lock };
                         return std::string { hostname_buf } + '\n';
@@ -52,7 +50,8 @@ namespace syscall::misc
                         std::memset(hostname_buf, 0, sizeof(hostname_buf));
                         std::memcpy(hostname_buf, data.data(), data.size());
                         return { };
-                    }, 0644
+                    },
+                    0644
                 );
             }
         };
@@ -60,8 +59,7 @@ namespace syscall::misc
 
     int uname(struct utsname __user *buf)
     {
-        utsname kbuf
-        {
+        utsname kbuf {
             .sysname = "Ilobilix",
             .nodename = { },
             .release = ILOBILIX_RELEASE,
@@ -102,8 +100,9 @@ namespace syscall::misc
 
         const auto umagic = static_cast<std::uint32_t>(magic);
         const auto umagic2 = static_cast<std::uint32_t>(magic2);
-        if (umagic != 0xFEE1DEAD || (umagic2 != 0x28121969 && umagic2 != 0x05121996 &&
-            umagic2 != 0x16041998 && umagic2 != 0x20112000))
+        if (umagic != 0xFEE1DEAD ||
+            (umagic2 != 0x28121969 && umagic2 != 0x05121996 && umagic2 != 0x16041998 &&
+             umagic2 != 0x20112000))
             return -EINVAL;
 
         // TODO: only root can call reboot
@@ -221,8 +220,7 @@ namespace syscall::misc
     }
 
     int prctl(
-        int option, unsigned long arg2, unsigned long arg3,
-        unsigned long arg4, unsigned long arg5
+        int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5
     )
     {
         lib::unused(arg4, arg5);
@@ -245,7 +243,8 @@ namespace syscall::misc
             {
                 char tmp[sched::comm_max + 1] { };
                 if (!lib::copy_from_user(
-                    tmp, reinterpret_cast<const char __user *>(arg2), sched::comm_max))
+                        tmp, reinterpret_cast<const char __user *>(arg2), sched::comm_max
+                    ))
                     return -EFAULT;
                 tmp[sched::comm_max] = '\0';
 
@@ -265,7 +264,8 @@ namespace syscall::misc
                 }
 
                 if (!lib::copy_to_user(
-                    reinterpret_cast<char __user *>(arg2), tmp, sched::comm_max + 1))
+                        reinterpret_cast<char __user *>(arg2), tmp, sched::comm_max + 1
+                    ))
                     return -EFAULT;
                 return 0;
             }
@@ -376,8 +376,8 @@ namespace syscall::misc
     }
 
     int landlock_create_ruleset(
-        const struct landlock_ruleset_attr __user *const attr,
-        const std::size_t size, const std::uint32_t flags
+        const struct landlock_ruleset_attr __user *const attr, const std::size_t size,
+        const std::uint32_t flags
     )
     {
         // TODO

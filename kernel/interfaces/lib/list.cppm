@@ -15,21 +15,15 @@ export namespace lib
         {
             alignas(alignof(Type)) std::byte data[sizeof(Type)];
 
-            template<typename ...Args>
+            template<typename... Args>
             node(Args &&...args)
             {
                 std::construct_at(reinterpret_cast<Type *>(data), std::forward<Args>(args)...);
             }
 
-            ~node()
-            {
-                std::destroy_at(std::launder(reinterpret_cast<Type *>(data)));
-            }
+            ~node() { std::destroy_at(std::launder(reinterpret_cast<Type *>(data))); }
 
-            Type *get_data()
-            {
-                return std::launder(reinterpret_cast<Type *>(data));
-            }
+            Type *get_data() { return std::launder(reinterpret_cast<Type *>(data)); }
 
             node *next = nullptr;
             node *prev = nullptr;
@@ -52,8 +46,7 @@ export namespace lib
             const list *_lst;
             node *_current;
 
-            iterator_base(const list *lst, node *data)
-                : _lst { lst }, _current { data } { }
+            iterator_base(const list *lst, node *data) : _lst { lst }, _current { data } { }
 
             public:
             using iterator_category = std::bidirectional_iterator_tag;
@@ -64,9 +57,11 @@ export namespace lib
 
             iterator_base() : _lst { nullptr }, _current { nullptr } { }
 
-            template<typename OVType> requires std::same_as<VType, const OVType>
+            template<typename OVType>
+                requires std::same_as<VType, const OVType>
             iterator_base(const iterator_base<OVType> &other)
-                : _lst { other._lst }, _current { other._current } { }
+                : _lst { other._lst }, _current { other._current }
+            { }
 
             reference operator*() const { return *_current->get_data(); }
             pointer operator->() const { return _current->get_data(); }
@@ -127,7 +122,7 @@ export namespace lib
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
         private:
-        template<typename ...Args>
+        template<typename... Args>
         node *allocate(Args &&...args)
         {
             return new node { std::forward<Args>(args)... };
@@ -135,7 +130,7 @@ export namespace lib
 
         void deallocate(node *node) { delete node; }
 
-        template<typename ...Args>
+        template<typename... Args>
         node *insert_before(node *before, Args &&...args)
         {
             auto new_node = allocate(std::forward<Args>(args)...);
@@ -150,7 +145,7 @@ export namespace lib
                 else
                 {
                     bug_on(_head == nullptr);
-                   _tail->next = new_node;
+                    _tail->next = new_node;
                     new_node->prev = _tail;
                     _tail = new_node;
                 }
@@ -179,36 +174,33 @@ export namespace lib
                 bug_on(_head != to_erase);
                 _head = to_erase->next;
             }
-            else to_erase->prev->next = to_erase->next;
+            else
+                to_erase->prev->next = to_erase->next;
 
             if (to_erase->next == nullptr)
             {
                 bug_on(_tail != to_erase);
                 _tail = to_erase->prev;
             }
-            else to_erase->next->prev = to_erase->prev;
+            else
+                to_erase->next->prev = to_erase->prev;
 
             deallocate(to_erase);
             _size--;
         }
 
         public:
-        list()
-            : _head { nullptr }, _tail { nullptr }, _size { 0 } { }
+        list() : _head { nullptr }, _tail { nullptr }, _size { 0 } { }
 
         list(const list &) = delete;
-        list(list &&rhs)
-            : _head { rhs._head }, _tail { rhs._tail }, _size { rhs._size }
+        list(list &&rhs) : _head { rhs._head }, _tail { rhs._tail }, _size { rhs._size }
         {
             rhs._head = nullptr;
             rhs._tail = nullptr;
             rhs._size = 0;
         }
 
-        ~list()
-        {
-            clear();
-        }
+        ~list() { clear(); }
 
         list &operator=(const list &) = delete;
         list &operator=(list &&rhs)
@@ -248,47 +240,29 @@ export namespace lib
             return iterator { this, insert_before(pos._current, std::move(value)) };
         }
 
-        iterator push_back(const Type &value)
-        {
-            return insert(end(), value);
-        }
+        iterator push_back(const Type &value) { return insert(end(), value); }
 
-        iterator push_back(Type &&value)
-        {
-            return insert(end(), std::move(value));
-        }
+        iterator push_back(Type &&value) { return insert(end(), std::move(value)); }
 
-        iterator push_front(const Type &value)
-        {
-            return insert(begin(), value);
-        }
+        iterator push_front(const Type &value) { return insert(begin(), value); }
 
-        iterator push_front(Type &&value)
-        {
-            return insert(begin(), std::move(value));
-        }
+        iterator push_front(Type &&value) { return insert(begin(), std::move(value)); }
 
-        template<typename ...Args>
+        template<typename... Args>
         reference emplace_back(Args &&...args)
         {
             return *insert_before(nullptr, std::forward<Args>(args)...)->get_data();
         }
 
-        template<typename ...Args>
+        template<typename... Args>
         reference emplace_front(Args &&...args)
         {
             return *insert_before(_head, std::forward<Args>(args)...)->get_data();
         }
 
-        void erase(iterator pos)
-        {
-            erase_one(pos._current);
-        }
+        void erase(iterator pos) { erase_one(pos._current); }
 
-        void erase(const_iterator pos)
-        {
-            erase_one(pos._current);
-        }
+        void erase(const_iterator pos) { erase_one(pos._current); }
 
         void pop_front()
         {

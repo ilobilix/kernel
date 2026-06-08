@@ -5,25 +5,13 @@ import std;
 
 extern "C"
 {
-    void *malloc(std::size_t size)
-    {
-        return lib::alloc(size);
-    }
+    void *malloc(std::size_t size) { return lib::alloc(size); }
 
-    void *calloc(std::size_t num, std::size_t size)
-    {
-        return lib::allocz(num * size);
-    }
+    void *calloc(std::size_t num, std::size_t size) { return lib::allocz(num * size); }
 
-    void *realloc(void *oldptr, std::size_t size)
-    {
-        return lib::realloc(oldptr, size);
-    }
+    void *realloc(void *oldptr, std::size_t size) { return lib::realloc(oldptr, size); }
 
-    void free(void *ptr)
-    {
-        lib::free(ptr);
-    }
+    void free(void *ptr) { lib::free(ptr); }
 
     int atoi(const char *str)
     {

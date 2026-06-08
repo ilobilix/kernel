@@ -22,10 +22,7 @@ namespace sched::arch
 
         extern "C" [[noreturn]] void sched_return_to_user(std::uintptr_t ip, std::uintptr_t stack);
 
-        extern "C" [[noreturn]] void sched_kthread_exit()
-        {
-            thread_exit(0);
-        }
+        extern "C" [[noreturn]] void sched_kthread_exit() { thread_exit(0); }
 
         extern "C" void sched_trampoline_entry()
         {
@@ -69,10 +66,7 @@ namespace sched::arch
         }
     } // namespace
 
-    thread_t *current_thread()
-    {
-        return reinterpret_cast<thread_t *>(cpu::read_reg<"gs:24">());
-    }
+    thread_t *current_thread() { return reinterpret_cast<thread_t *>(cpu::read_reg<"gs:24">()); }
 
     void init_core(thread_t *initial)
     {
@@ -80,14 +74,11 @@ namespace sched::arch
 
         auto slot = idt::handler_at(cpu::self().unsafe_get().idx, idt::vec_sched);
         lib::bug_on(!slot.has_value() || slot->used());
-        slot->set([](cpu::registers *regs) {
-            tick(arch::in_user_mode(regs));
-        });
+        slot->set([](cpu::registers *regs) { tick(arch::in_user_mode(regs)); });
     }
 
     void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline, bool is_clone
     )
     {
         lib::bug_on(!thread || (thread->is_kernel() && (is_trampoline || is_clone)));
@@ -109,8 +100,8 @@ namespace sched::arch
                 constexpr std::uint16_t default_fcw = 0b1100111111;
                 constexpr std::uint32_t default_mxcsr = 0b1111110000000;
 
-                asm volatile ("fldcw %0" :: "m"(default_fcw) : "memory");
-                asm volatile ("ldmxcsr %0" :: "m"(default_mxcsr) : "memory");
+                asm volatile ("fldcw %0" : : "m"(default_fcw) : "memory");
+                asm volatile ("ldmxcsr %0" : : "m"(default_mxcsr) : "memory");
             }
             fpu.save(adata.fpu);
         }
@@ -165,9 +156,7 @@ namespace sched::arch
     void wake_up_other(std::size_t cpu_idx)
     {
         apic::ipi(
-            cpu::local::nth(cpu_idx)->arch_id,
-            apic::destination::physical,
-            apic::delivery::fixed,
+            cpu::local::nth(cpu_idx)->arch_id, apic::destination::physical, apic::delivery::fixed,
             idt::vec_sched
         );
     }
@@ -202,14 +191,11 @@ namespace sched::arch
         sched_return_to_user(ip, stack);
     }
 
-    bool in_user_mode(const cpu::registers *regs)
-    {
-        return (regs->cs & 3) == 3;
-    }
+    bool in_user_mode(const cpu::registers *regs) { return (regs->cs & 3) == 3; }
 
     bool setup_sigframe(
-        thread_t *thread, cpu::registers *regs,
-        int sig, const siginfo_t &info, const sigaction_t &action
+        thread_t *thread, cpu::registers *regs, int sig, const siginfo_t &info,
+        const sigaction_t &action
     )
     {
         auto sp = regs->rsp;
@@ -224,9 +210,8 @@ namespace sched::arch
         kf.pretcode = action.restorer;
         kf.info = info;
 
-        const auto mask = thread->saved_sigmask.has_value()
-            ? *thread->saved_sigmask
-            : thread->sigmask;
+        const auto mask =
+            thread->saved_sigmask.has_value() ? *thread->saved_sigmask : thread->sigmask;
 
         kf.uc.uc_flags = 0;
         kf.uc.uc_link = nullptr;
@@ -250,10 +235,10 @@ namespace sched::arch
         mc.rbx = regs->rbx;
         mc.rax = regs->rax;
         mc.rip = regs->rip;
-        mc.cs  = regs->cs;
+        mc.cs = regs->cs;
         mc.rflags = regs->rflags;
         mc.rsp = regs->rsp;
-        mc.ss  = regs->ss;
+        mc.ss = regs->ss;
 
         if (!lib::copy_to_user(reinterpret_cast<void __user *>(frame_addr), &kf, sizeof(kf)))
             return false;
@@ -281,7 +266,9 @@ namespace sched::arch
     {
         const auto uc_addr = regs->rsp;
         ucontext_t uc;
-        if (!lib::copy_from_user(&uc, reinterpret_cast<const ucontext_t __user *>(uc_addr), sizeof(uc)))
+        if (!lib::copy_from_user(
+                &uc, reinterpret_cast<const ucontext_t __user *>(uc_addr), sizeof(uc)
+            ))
             return false;
 
         const auto &mc = uc.uc_mcontext;

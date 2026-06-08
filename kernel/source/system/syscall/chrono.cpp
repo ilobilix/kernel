@@ -36,8 +36,7 @@ namespace syscall::chrono
     }
 
     int clock_nanosleep(
-        const clockid_t clockid, int flags,
-        const timespec __user *time, timespec __user *remain
+        const clockid_t clockid, int flags, const timespec __user *time, timespec __user *remain
     )
     {
         constexpr int abstime = 1;
@@ -59,7 +58,8 @@ namespace syscall::chrono
                 return -EINVAL;
             ns = (now - ktime).to_ns();
         }
-        else ns = ktime.to_ns();
+        else
+            ns = ktime.to_ns();
 
         if (ns == 0)
         {
@@ -115,11 +115,7 @@ namespace syscall::chrono
 
         if (tz != nullptr)
         {
-            timezone ktz
-            {
-                .tz_minuteswest = 0,
-                .tz_dsttime = 0
-            };
+            timezone ktz { .tz_minuteswest = 0, .tz_dsttime = 0 };
             if (!lib::copy_to_user(tz, &ktz, sizeof(timezone)))
                 return -EFAULT;
         }

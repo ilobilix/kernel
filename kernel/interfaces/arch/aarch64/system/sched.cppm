@@ -15,16 +15,13 @@ export namespace sched
 export namespace sched::arch
 {
     struct context
-    {
-    };
+    { };
 
     struct data
-    {
-    };
+    { };
 
     struct mcontext_t
-    {
-    };
+    { };
 
     struct ucontext_t
     {
@@ -46,8 +43,7 @@ export namespace sched::arch
 
     void init_core(thread_t *initial);
     void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline, bool is_clone
     );
     void deinit_thread(thread_t *thread);
 
@@ -59,8 +55,8 @@ export namespace sched::arch
 
     bool in_user_mode(const cpu::registers *regs);
     bool setup_sigframe(
-        thread_t *thread, cpu::registers *regs,
-        int sig, const siginfo_t &info, const sigaction_t &action
+        thread_t *thread, cpu::registers *regs, int sig, const siginfo_t &info,
+        const sigaction_t &action
     );
     bool restore_sigframe(thread_t *thread, cpu::registers *regs);
 } // export namespace sched::arch

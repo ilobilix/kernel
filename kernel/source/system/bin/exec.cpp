@@ -6,12 +6,14 @@ namespace bin::exec
 {
     namespace
     {
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 std::string_view,
                 std::shared_ptr<format>
             >, lib::rwspinlock
         > formats;
+        // clang-format on
     } // namespace
 
     bool register_format(std::shared_ptr<format> fmt)
@@ -47,7 +49,8 @@ namespace bin::exec
                 if (*ret != nullptr)
                     return std::move(ret);
             }
-            else return std::unexpected { ret.error() };
+            else
+                return std::unexpected { ret.error() };
         }
         return std::unexpected { lib::err::invalid_binfmt };
     }

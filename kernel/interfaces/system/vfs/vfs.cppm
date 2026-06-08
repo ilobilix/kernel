@@ -49,7 +49,8 @@ export namespace vfs
         o_cloexec = 02000000,
         o_tmpfile = 020000000 | o_directory,
 
-        creation_flags = o_creat | o_excl | o_noctty | o_trunc | o_directory | o_nofollow | o_cloexec | o_tmpfile,
+        creation_flags = o_creat | o_excl | o_noctty | o_trunc | o_directory | o_nofollow |
+            o_cloexec | o_tmpfile,
 
         // status flags
         o_append = 02000,
@@ -106,37 +107,35 @@ export namespace vfs
 
     enum mountflags : std::uint64_t
     {
-        ms_rdonly      = 1ul << 0,
-        ms_nosuid      = 1ul << 1,
-        ms_nodev       = 1ul << 2,
-        ms_noexec      = 1ul << 3,
+        ms_rdonly = 1ul << 0,
+        ms_nosuid = 1ul << 1,
+        ms_nodev = 1ul << 2,
+        ms_noexec = 1ul << 3,
         ms_synchronous = 1ul << 4,
-        ms_remount     = 1ul << 5,
-        ms_mandlock    = 1ul << 6,
-        ms_dirsync     = 1ul << 7,
+        ms_remount = 1ul << 5,
+        ms_mandlock = 1ul << 6,
+        ms_dirsync = 1ul << 7,
         ms_nosymfollow = 1ul << 8,
-        ms_noatime     = 1ul << 10,
-        ms_nodiratime  = 1ul << 11,
-        ms_bind        = 1ul << 12,
-        ms_move        = 1ul << 13,
-        ms_rec         = 1ul << 14,
-        ms_silent      = 1ul << 15,
-        ms_posixacl    = 1ul << 16,
-        ms_unbindable  = 1ul << 17,
-        ms_private     = 1ul << 18,
-        ms_slave       = 1ul << 19,
-        ms_shared      = 1ul << 20,
-        ms_relatime    = 1ul << 21,
-        ms_kernmount   = 1ul << 22,
-        ms_i_version   = 1ul << 23,
+        ms_noatime = 1ul << 10,
+        ms_nodiratime = 1ul << 11,
+        ms_bind = 1ul << 12,
+        ms_move = 1ul << 13,
+        ms_rec = 1ul << 14,
+        ms_silent = 1ul << 15,
+        ms_posixacl = 1ul << 16,
+        ms_unbindable = 1ul << 17,
+        ms_private = 1ul << 18,
+        ms_slave = 1ul << 19,
+        ms_shared = 1ul << 20,
+        ms_relatime = 1ul << 21,
+        ms_kernmount = 1ul << 22,
+        ms_i_version = 1ul << 23,
         ms_strictatime = 1ul << 24,
-        ms_lazytime    = 1ul << 25,
+        ms_lazytime = 1ul << 25,
 
-        ms_supported = ms_rdonly | ms_nosuid | ms_nodev | ms_noexec |
-                       ms_synchronous | ms_remount | ms_dirsync |
-                       ms_nosymfollow | ms_noatime | ms_nodiratime |
-                       ms_silent | ms_relatime | ms_strictatime |
-                       ms_lazytime
+        ms_supported = ms_rdonly | ms_nosuid | ms_nodev | ms_noexec | ms_synchronous | ms_remount |
+            ms_dirsync | ms_nosymfollow | ms_noatime | ms_nodiratime | ms_silent | ms_relatime |
+            ms_strictatime | ms_lazytime
     };
 
     // stat and s_* bits are defined in lib/types.cppm
@@ -188,19 +187,19 @@ export namespace vfs
 
     enum pollevents : std::uint16_t
     {
-        pollin     = 0x001,  // there is data to read
-        pollpri    = 0x002,  // there is urgent data to read
-        pollout    = 0x004,  // writing now will not block
-        pollerr    = 0x008,  // error condition
-        pollhup    = 0x010,  // hung up
-        pollnval   = 0x020,  // invalid request
-        pollrdnorm = 0x040,  // normal data may be read
-        pollrdband = 0x080,  // priority data may be read
-        pollwrnorm = 0x100,  // writing now will not block
-        pollwrband = 0x200,  // priority data may be written
-        pollmsg    = 0x400,  // linux extensions
+        pollin = 0x001, // there is data to read
+        pollpri = 0x002, // there is urgent data to read
+        pollout = 0x004, // writing now will not block
+        pollerr = 0x008, // error condition
+        pollhup = 0x010, // hung up
+        pollnval = 0x020, // invalid request
+        pollrdnorm = 0x040, // normal data may be read
+        pollrdband = 0x080, // priority data may be read
+        pollwrnorm = 0x100, // writing now will not block
+        pollwrband = 0x200, // priority data may be written
+        pollmsg = 0x400, // linux extensions
         pollremove = 0x1000,
-        pollrdhup  = 0x2000
+        pollrdhup = 0x2000
     };
 
     struct poll_table
@@ -226,12 +225,10 @@ export namespace vfs
         }
 
         virtual lib::expect<std::size_t> read(
-            std::shared_ptr<file> file, std::uint64_t offset,
-            lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) = 0;
         virtual lib::expect<std::size_t> write(
-            std::shared_ptr<file> file, std::uint64_t offset,
-            lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) = 0;
         virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
 
@@ -250,8 +247,7 @@ export namespace vfs
         }
 
         virtual lib::expect<int> ioctl(
-            std::shared_ptr<file> file, std::uint64_t request,
-            lib::uptr_or_addr argp
+            std::shared_ptr<file> file, std::uint64_t request, lib::uptr_or_addr argp
         )
         {
             lib::unused(file, request, argp);
@@ -299,18 +295,16 @@ export namespace vfs
             dev_t dev_id;
 
             virtual auto create(
-                std::shared_ptr<inode> &parent, std::string_view name,
-                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<ops>> ops
+                std::shared_ptr<inode> &parent, std::string_view name, mode_t mode, dev_t rdev,
+                std::optional<std::shared_ptr<ops>> ops
             ) -> lib::expect<std::shared_ptr<inode>> = 0;
 
             virtual auto symlink(
-                std::shared_ptr<inode> &parent,
-                std::string_view name, lib::path target
+                std::shared_ptr<inode> &parent, std::string_view name, lib::path target
             ) -> lib::expect<std::shared_ptr<inode>> = 0;
 
             virtual auto link(
-                std::shared_ptr<inode> &parent,
-                std::string_view name, std::shared_ptr<inode> target
+                std::shared_ptr<inode> &parent, std::string_view name, std::shared_ptr<inode> target
             ) -> lib::expect<std::shared_ptr<inode>> = 0;
 
             virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
@@ -324,7 +318,7 @@ export namespace vfs
             virtual auto readdir(std::shared_ptr<dentry> dir, std::size_t cookie)
                 -> lib::expect<lib::list<dir_entry>> = 0;
 
-            virtual auto lookup(std::shared_ptr<dentry> dir,std::string_view name)
+            virtual auto lookup(std::shared_ptr<dentry> dir, std::string_view name)
                 -> lib::expect<dir_entry>;
 
             virtual auto readlink(std::shared_ptr<dentry> dentry) -> lib::expect<lib::path>;
@@ -336,8 +330,7 @@ export namespace vfs
             }
 
             virtual bool permission(
-                std::shared_ptr<dentry> dentry,
-                const std::shared_ptr<sched::cred_t> &cred,
+                std::shared_ptr<dentry> dentry, const std::shared_ptr<sched::cred_t> &cred,
                 std::uint32_t mode
             );
 
@@ -387,12 +380,12 @@ export namespace vfs
         };
 
         virtual auto mount(
-            std::shared_ptr<dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
+            std::shared_ptr<dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<mount>> = 0;
 
         filesystem(std::string_view name, std::uint32_t magic = 0, bool requires_dev = false)
-            : name { name }, magic { magic }, requires_dev { requires_dev } { }
+            : name { name }, magic { magic }, requires_dev { requires_dev }
+        { }
         virtual ~filesystem() = default;
     };
 
@@ -410,7 +403,8 @@ export namespace vfs
         std::string source;
 
         mount(lib::locked_ptr<filesystem::instance, sched::mutex> fs, std::shared_ptr<dentry> root)
-            : fs { std::move(fs) }, root { std::move(root) } { }
+            : fs { std::move(fs) }, root { std::move(root) }
+        { }
     };
 
     struct inode
@@ -420,10 +414,7 @@ export namespace vfs
         kstat stat;
         bool dirty = false;
 
-        lib::map::flat_hash<
-            std::string,
-            lib::membuffer
-        > xattrs;
+        lib::map::flat_hash<std::string, lib::membuffer> xattrs;
 
         std::shared_ptr<void> private_data;
 
@@ -449,15 +440,9 @@ export namespace vfs
             private:
             lib::list<node> _child_list { };
 
-            lib::map::flat_hash<
-                std::string_view,
-                lib::list<node>::iterator
-            > _child_map { };
+            lib::map::flat_hash<std::string_view, lib::list<node>::iterator> _child_map { };
 
-            lib::btree::map<
-                std::size_t,
-                lib::list<node>::iterator
-            > _offset_map;
+            lib::btree::map<std::size_t, lib::list<node>::iterator> _offset_map;
 
             std::size_t _next_cookie = 3;
 
@@ -557,8 +542,7 @@ export namespace vfs
             if (!ops)
             {
                 lib::error(
-                    "failed to close file: {}",
-                    lib::error_name(lib::err::invalid_device_or_address)
+                    "failed to close file: {}", lib::error_name(lib::err::invalid_device_or_address)
                 );
                 return;
             }
@@ -694,19 +678,18 @@ export namespace vfs
 
     struct fdtable
     {
-        lib::locker<
-            lib::map::flat_hash<
-                int,
-                std::shared_ptr<vfs::filedesc>
-            >, lib::rwspinlock
-        > fds;
+        lib::locker<lib::map::flat_hash<int, std::shared_ptr<vfs::filedesc>>, lib::rwspinlock> fds;
         int next_fd = 0;
 
         std::shared_ptr<vfs::filedesc> get(int fd);
         bool close(int fd);
 
-        lib::expect<int> alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
-        lib::expect<int> dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
+        lib::expect<int> alloc(
+            std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf
+        );
+        lib::expect<int> dup(
+            int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf
+        );
 
         void close_on_exec();
 
@@ -734,40 +717,35 @@ export namespace vfs
     auto resolve(std::optional<path> parent, lib::path path, bool automount = true)
         -> lib::expect<resolve_res>;
     auto reduce(
-        path parent, path src, bool automount = true,
-        std::size_t symlink_depth = symloop_max
+        path parent, path src, bool automount = true, std::size_t symlink_depth = symloop_max
     ) -> lib::expect<path>;
 
     auto mount(
-        lib::path source_path, lib::path target_path,
-        std::string_view fstype, std::uint64_t flags,
+        lib::path source_path, lib::path target_path, std::string_view fstype, std::uint64_t flags,
         std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
 
     bool check_access(
-        const path &target,
-        const std::shared_ptr<sched::cred_t> &cred,
-        std::uint32_t mode
+        const path &target, const std::shared_ptr<sched::cred_t> &cred, std::uint32_t mode
     );
 
     bool check_access(const path &target, std::uint32_t mode);
 
     auto create(
-        std::optional<path> parent, lib::path _path,
-        mode_t mode, dev_t rdev = 0, std::shared_ptr<ops> ops = nullptr
+        std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev = 0,
+        std::shared_ptr<ops> ops = nullptr
     ) -> lib::expect<path>;
     auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
     auto link(
-        std::optional<path> parent, lib::path src,
-        std::optional<path> tgtparent, lib::path target,
+        std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target,
         bool follow_links = false
     ) -> lib::expect<path>;
     auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
 
     auto rename(
-        std::optional<path> old_parent, lib::path old_path,
-        std::optional<path> new_parent, lib::path new_path
+        std::optional<path> old_parent, lib::path old_path, std::optional<path> new_parent,
+        lib::path new_path
     ) -> lib::expect<void>;
 
     // called with path.dentry->inode->lock acquired
@@ -775,8 +753,7 @@ export namespace vfs
 
     auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>;
     auto setxattr(
-        const path &target, std::string_view name,
-        lib::maybe_uspan<std::byte> data, int flags
+        const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags
     ) -> lib::expect<void>;
     auto remxattr(const path &target, std::string_view name) -> lib::expect<void>;
 

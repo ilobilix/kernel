@@ -57,7 +57,8 @@ namespace syscall::vfs
             if (cred->ruid != 0)
                 cred->effective &= ~(sched::cap_t::dac_override | sched::cap_t::dac_read_search);
         }
-        else cred = proc->cred;
+        else
+            cred = proc->cred;
 
         if (!vfs::check_access(*target, cred, static_cast<std::uint32_t>(desired)))
             return -EACCES;
@@ -99,7 +100,8 @@ namespace syscall::vfs
                 const std::unique_lock _ { inode->lock };
 
                 const auto &cred = proc->cred;
-                if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
+                if (cred->fsuid != inode->stat.st_uid &&
+                    !sched::capable(cred, sched::cap_t::fowner))
                     return -EPERM;
 
                 if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
@@ -134,10 +136,7 @@ namespace syscall::vfs
         return do_fchmodat(at_fdcwd, pathname, mode, 0);
     }
 
-    int fchmod(int fd, mode_t mode)
-    {
-        return do_fchmodat(fd, nullptr, mode, at_empty_path);
-    }
+    int fchmod(int fd, mode_t mode) { return do_fchmodat(fd, nullptr, mode, at_empty_path); }
 
     int fchownat(int dirfd, const char __user *pathname, uid_t owner, gid_t group, int flags)
     {
@@ -170,8 +169,8 @@ namespace syscall::vfs
                 const bool uid_noop = !change_uid || (owner == inode->stat.st_uid);
                 const bool gid_noop = !change_gid || (group == inode->stat.st_gid);
 
-                const bool gid_allowed = gid_noop ||
-                    (cred->fsgid == group || cred->supp_gids.contains(group));
+                const bool gid_allowed =
+                    gid_noop || (cred->fsgid == group || cred->supp_gids.contains(group));
 
                 const bool is_owner = (cred->fsuid == inode->stat.st_uid);
                 const bool allow_unpriv = is_owner && uid_noop && gid_allowed;

@@ -23,25 +23,26 @@ namespace vfs
             return root;
         } ();
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 std::string_view,
                 std::shared_ptr<filesystem>
             >, sched::mutex
         > filesystems;
+        // clang-format on
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 std::size_t,
                 std::shared_ptr<struct mount>
             >, sched::mutex
         > mounts;
+        // clang-format on
 
         std::atomic<dev_t> next_dev = 1;
-        dev_t allocate_dev()
-        {
-            return next_dev.fetch_add(1, std::memory_order_relaxed);
-        }
+        dev_t allocate_dev() { return next_dev.fetch_add(1, std::memory_order_relaxed); }
 
         std::atomic<ino_t> next_mount_id { 1 };
         std::size_t allocate_mount_id()
@@ -50,10 +51,7 @@ namespace vfs
         }
 
         std::atomic<ino_t> next_anon_ino { 1 };
-        ino_t allocate_anon_ino()
-        {
-            return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
-        }
+        ino_t allocate_anon_ino() { return next_anon_ino.fetch_add(1, std::memory_order_relaxed); }
 
         path resolve_mounts(path path)
         {
@@ -80,10 +78,7 @@ namespace vfs
             return std::move(*reduced);
         }
 
-        bool is_unsupported_xattr(std::string_view name)
-        {
-            return name.starts_with("system.");
-        }
+        bool is_unsupported_xattr(std::string_view name) { return name.starts_with("system."); }
 
         bool can_read_xattr(const std::shared_ptr<sched::cred_t> &cred, std::string_view name)
         {
@@ -93,8 +88,7 @@ namespace vfs
         }
 
         bool can_write_xattr(
-            const std::shared_ptr<sched::cred_t> &cred,
-            const stat &stat, std::string_view name
+            const std::shared_ptr<sched::cred_t> &cred, const stat &stat, std::string_view name
         )
         {
             if (name == xattr_caps_name)
@@ -152,8 +146,7 @@ namespace vfs
     }
 
     bool filesystem::instance::permission(
-        std::shared_ptr<dentry> dentry,
-        const std::shared_ptr<sched::cred_t> &cred,
+        std::shared_ptr<dentry> dentry, const std::shared_ptr<sched::cred_t> &cred,
         std::uint32_t mode
     )
     {
@@ -171,9 +164,7 @@ namespace vfs
     }
 
     bool check_access(
-        const path &target,
-        const std::shared_ptr<sched::cred_t> &cred,
-        std::uint32_t mode
+        const path &target, const std::shared_ptr<sched::cred_t> &cred, std::uint32_t mode
     )
     {
         if (!target.dentry || !target.dentry->inode)
@@ -184,7 +175,9 @@ namespace vfs
             auto fs = target.mnt->fs.lock();
             return fs->permission(target.dentry, cred, mode);
         }
-        return sched::check_perms(cred, target.dentry->inode->stat, static_cast<sched::access_mode>(mode));
+        return sched::check_perms(
+            cred, target.dentry->inode->stat, static_cast<sched::access_mode>(mode)
+        );
     }
 
     bool check_access(const path &target, std::uint32_t mode)
@@ -217,8 +210,7 @@ namespace vfs
                     return std::unexpected { lib::err::buffer_too_small };
 
                 const auto ino = path.dentry->inode->stat.st_ino;
-                vfs::dirent64 dot
-                {
+                vfs::dirent64 dot {
                     .d_ino = ino,
                     .d_off = 2,
                     .d_reclen = static_cast<std::uint16_t>(reclen),
@@ -227,8 +219,7 @@ namespace vfs
 
                 buffer.subspan(progress, sizeof(vfs::dirent64))
                     .copy_from(reinterpret_cast<std::byte *>(&dot));
-                buffer.subspan(progress + sizeof(vfs::dirent64), 2)
-                    .copy_from(dotstr);
+                buffer.subspan(progress + sizeof(vfs::dirent64), 2).copy_from(dotstr);
 
                 progress += reclen;
                 offset = 2;
@@ -237,7 +228,8 @@ namespace vfs
             if (offset == 2)
             {
                 static const auto dotdotstr = std::as_bytes(std::span { ".." });
-                static const std::size_t reclen = (sizeof(vfs::dirent64) + dotdotstr.size() + 7) & ~7;
+                static const std::size_t reclen =
+                    (sizeof(vfs::dirent64) + dotdotstr.size() + 7) & ~7;
 
                 if (progress + reclen > buffer.size())
                 {
@@ -246,10 +238,10 @@ namespace vfs
                     return progress;
                 }
 
-                const auto parent_ino = resolve_mounts(path).dentry->parent.lock()->inode->stat.st_ino;
+                const auto parent_ino =
+                    resolve_mounts(path).dentry->parent.lock()->inode->stat.st_ino;
 
-                vfs::dirent64 dotdot
-                {
+                vfs::dirent64 dotdot {
                     .d_ino = parent_ino,
                     .d_off = 3,
                     .d_reclen = static_cast<std::uint16_t>(reclen),
@@ -258,8 +250,7 @@ namespace vfs
 
                 buffer.subspan(progress, sizeof(vfs::dirent64))
                     .copy_from(reinterpret_cast<std::byte *>(&dotdot));
-                buffer.subspan(progress + sizeof(vfs::dirent64), 3)
-                    .copy_from(dotdotstr);
+                buffer.subspan(progress + sizeof(vfs::dirent64), 3).copy_from(dotdotstr);
 
                 progress += reclen;
                 offset++;
@@ -287,8 +278,7 @@ namespace vfs
                     return progress;
                 }
 
-                vfs::dirent64 dirent
-                {
+                vfs::dirent64 dirent {
                     .d_ino = entry.inode->stat.st_ino,
                     .d_off = static_cast<std::int64_t>(entry.cookie + 1),
                     .d_reclen = static_cast<std::uint16_t>(reclen),
@@ -412,10 +402,7 @@ namespace vfs
         return vfs::root;
     }
 
-    std::shared_ptr<dentry> dentry::create()
-    {
-        return std::make_shared<dentry>();
-    }
+    std::shared_ptr<dentry> dentry::create() { return std::make_shared<dentry>(); }
 
     std::string pathname_from(path path)
     {
@@ -614,8 +601,7 @@ namespace vfs
     auto reduce(path parent, path src, bool automount, std::size_t symlink_depth)
         -> lib::expect<path>
     {
-        const auto is_symlink = [&src]
-        {
+        const auto is_symlink = [&src] {
             const auto &dentry = src.dentry;
             return dentry->inode->stat.type() == stat::type::s_iflnk;
         };
@@ -663,8 +649,7 @@ namespace vfs
     }
 
     auto mount(
-        lib::path source_path, lib::path target_path,
-        std::string_view fstype, std::uint64_t flags,
+        lib::path source_path, lib::path target_path, std::string_view fstype, std::uint64_t flags,
         std::optional<lib::maybe_uspan<const std::byte>> data
     ) -> lib::expect<void>
     {
@@ -732,8 +717,7 @@ namespace vfs
         if (!(flags & ms_silent))
         {
             lib::info(
-                "vfs: mount('{}', '{}', '{}', 0x{:X})",
-                source_path, target_path, fstype, flags
+                "vfs: mount('{}', '{}', '{}', 0x{:X})", source_path, target_path, fstype, flags
             );
         }
 
@@ -747,8 +731,8 @@ namespace vfs
     }
 
     auto create(
-        std::optional<path> parent, lib::path _path,
-        mode_t mode, dev_t rdev, std::shared_ptr<ops> ops
+        std::optional<path> parent, lib::path _path, mode_t mode, dev_t rdev,
+        std::shared_ptr<ops> ops
     ) -> lib::expect<path>
     {
         if (resolve(parent, _path))
@@ -767,7 +751,8 @@ namespace vfs
             if (rdev != 0)
                 _ops = nullptr;
         }
-        else _ops = std::move(ops);
+        else
+            _ops = std::move(ops);
 
         auto ret = real_parent.mnt->fs.lock()->create(
             real_parent.dentry->inode, name, mode, rdev, std::move(_ops)
@@ -811,8 +796,8 @@ namespace vfs
     }
 
     auto link(
-        std::optional<path> parent, lib::path src,
-        std::optional<path> tgtparent, lib::path target, bool follow_links
+        std::optional<path> parent, lib::path src, std::optional<path> tgtparent, lib::path target,
+        bool follow_links
     ) -> lib::expect<path>
     {
         if (resolve(parent, src))
@@ -844,11 +829,8 @@ namespace vfs
         if (real_parent.mnt != tgt.mnt)
             return std::unexpected { lib::err::different_filesystem };
 
-        auto ret = real_parent.mnt->fs.lock()->link(
-            real_parent.dentry->inode,
-            name,
-            tgt.dentry->inode
-        );
+        auto ret =
+            real_parent.mnt->fs.lock()->link(real_parent.dentry->inode, name, tgt.dentry->inode);
         if (!ret)
             return std::unexpected { ret.error() };
 
@@ -910,14 +892,14 @@ namespace vfs
     }
 
     auto rename(
-        std::optional<path> old_parent, lib::path old_path,
-        std::optional<path> new_parent, lib::path new_path
+        std::optional<path> old_parent, lib::path old_path, std::optional<path> new_parent,
+        lib::path new_path
     ) -> lib::expect<void>
     {
         const auto old_base = old_path.basename();
         const auto new_base = new_path.basename();
-        if (old_base.str() == "."sv || old_base.str() == ".."sv ||
-            new_base.str() == "."sv || new_base.str() == ".."sv)
+        if (old_base.str() == "."sv || old_base.str() == ".."sv || new_base.str() == "."sv ||
+            new_base.str() == ".."sv)
             return std::unexpected { lib::err::invalid_path };
 
         const auto old_res = resolve(old_parent, old_path);
@@ -941,7 +923,7 @@ namespace vfs
         const bool old_is_dir = old_dentry->inode->stat.type() == stat::type::s_ifdir;
         if (old_is_dir)
         {
-            for (auto den = new_parent_dentry; den; )
+            for (auto den = new_parent_dentry; den;)
             {
                 if (den == old_dentry)
                     return std::unexpected { lib::err::invalid_path };
@@ -986,8 +968,7 @@ namespace vfs
         auto fs = old_res->parent.mnt->fs.lock();
         const auto do_rename = [&](auto &locked_old, auto &locked_new) -> lib::expect<void> {
             const auto ret = fs->rename(
-                old_parent_dentry->inode, old_base.str(),
-                new_parent_dentry->inode, new_base.str(),
+                old_parent_dentry->inode, old_base.str(), new_parent_dentry->inode, new_base.str(),
                 new_dentry ? new_dentry->inode : std::shared_ptr<inode> { }
             );
             if (!ret.has_value())
@@ -1068,8 +1049,7 @@ namespace vfs
     }
 
     auto setxattr(
-        const path &target, std::string_view name,
-        lib::maybe_uspan<std::byte> data, int flags
+        const path &target, std::string_view name, lib::maybe_uspan<std::byte> data, int flags
     ) -> lib::expect<void>
     {
         lib::bug_on(!target.mnt);
@@ -1175,8 +1155,7 @@ namespace vfs
             }
         }
 
-        return std::views::keys(inode->xattrs) |
-            std::ranges::to<std::vector<std::string>>();
+        return std::views::keys(inode->xattrs) | std::ranges::to<std::vector<std::string>>();
     }
 
     auto lenxattrs(const path &target) -> lib::expect<std::size_t>
@@ -1205,9 +1184,8 @@ namespace vfs
 
         return std::ranges::fold_left(
             std::views::keys(inode->xattrs) |
-            std::views::transform([](const auto &name) {
-                return name.size() + 1;
-            }), 0, std::plus { }
+                std::views::transform([](const auto &name) { return name.size() + 1; }),
+            0, std::plus { }
         );
     }
 
@@ -1230,7 +1208,9 @@ namespace vfs
         return it->second;
     }
 
-    lib::expect<int> fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
+    lib::expect<int> fdtable::alloc(
+        std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd
+    )
     {
         auto wlocked = fds.write_lock();
         if (wlocked->contains(fd))
@@ -1242,7 +1222,8 @@ namespace vfs
                     fd++;
                 next_fd = fd + 1;
             }
-            else lib::bug_on(!wlocked->erase(fd));
+            else
+                lib::bug_on(!wlocked->erase(fd));
         }
 
         if (static_cast<rlim_t>(fd) >= max_fd)
@@ -1267,7 +1248,7 @@ namespace vfs
     void fdtable::close_on_exec()
     {
         auto wlocked = fds.write_lock();
-        for (auto it = wlocked->begin(); it != wlocked->end(); )
+        for (auto it = wlocked->begin(); it != wlocked->end();)
         {
             if (it->second && it->second->closexec.load(std::memory_order_relaxed))
             {
@@ -1276,14 +1257,12 @@ namespace vfs
                 if (closed_fd < next_fd)
                     next_fd = closed_fd;
             }
-            else it++;
+            else
+                it++;
         }
     }
 
-    std::shared_ptr<fdtable> fdtable::clone()
-    {
-        return std::make_shared<fdtable>(*this);
-    }
+    std::shared_ptr<fdtable> fdtable::clone() { return std::make_shared<fdtable>(*this); }
 
     fdtable::fdtable(fdtable &other)
     {
@@ -1297,8 +1276,7 @@ namespace vfs
                 continue;
 
             wlocked.value()[fd] = std::make_shared<vfs::filedesc>(
-                old_desc->file,
-                old_desc->closexec.load(std::memory_order_relaxed)
+                old_desc->file, old_desc->closexec.load(std::memory_order_relaxed)
             );
         }
     }
@@ -1319,21 +1297,18 @@ namespace vfs
             inode->stat.st_uid = proc->cred->euid;
             inode->stat.st_gid = proc->cred->egid;
             inode->stat.update_time(
-                kstat::time::access | kstat::time::modify |
-                kstat::time::status | kstat::time::birth
+                kstat::time::access | kstat::time::modify | kstat::time::status | kstat::time::birth
             );
             inode->private_data = args.inode_private_data;
         }
-        else inode = args.inode;
+        else
+            inode = args.inode;
 
         auto dentry = vfs::dentry::create();
         dentry->name = args.name;
         dentry->inode = std::move(inode);
 
-        auto fdesc = filedesc::create({
-            .mnt = nullptr,
-            .dentry = std::move(dentry)
-        }, args.flags);
+        auto fdesc = filedesc::create({ .mnt = nullptr, .dentry = std::move(dentry) }, args.flags);
         fdesc->file->private_data = args.file_private_data;
         if (args.skip_open)
             fdesc->file->opened = true;
@@ -1358,25 +1333,19 @@ namespace vfs
 
     lib::initgraph::stage *root_mounted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.root-mounted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.root-mounted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     namespace
     {
-        lib::initgraph::task root_task
-        {
-            "vfs.mount-root",
-            lib::initgraph::postsched_init_engine,
+        lib::initgraph::task root_task {
+            "vfs.mount-root", lib::initgraph::postsched_init_engine,
             lib::initgraph::require { fs::registered_stage() },
             lib::initgraph::entail { root_mounted_stage() },
-            [] {
-                lib::bug_on(!mount("", "/", "tmpfs", 0));
-            }
+            [] { lib::bug_on(!mount("", "/", "tmpfs", 0)); }
         };
 
         std::shared_ptr<fs::procfs::node_ops> make_fdsym_ops(int fd)
@@ -1397,10 +1366,8 @@ namespace vfs
                         return std::unexpected { lib::err::not_found };
 
                     const auto &target_inode = fdesc->file->path.dentry->inode;
-                    const auto target_ino = target_inode
-                        ? target_inode->stat.st_ino : 0;
-                    const auto type = target_inode
-                        ? target_inode->stat.type() : stat::s_ifreg;
+                    const auto target_ino = target_inode ? target_inode->stat.st_ino : 0;
+                    const auto type = target_inode ? target_inode->stat.type() : stat::s_ifreg;
 
                     switch (type)
                     {
@@ -1418,22 +1385,17 @@ namespace vfs
 
                     return fmt::format("anon_inode:[{}]", target_ino);
                 },
-                [fd](sched::process_t *proc) {
-                    return proc->fdt->get(fd) != nullptr;
-                }
+                [fd](sched::process_t *proc) { return proc->fdt->get(fd) != nullptr; }
             );
         };
 
-        lib::initgraph::task procfs_register_task
-        {
-            "vfs.procfs.register-mounts",
-            lib::initgraph::postsched_init_engine,
-            lib::initgraph::require { fs::procfs::registered_stage() },
-            [] {
+        lib::initgraph::task procfs_register_task {
+            "vfs.procfs.register-mounts", lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { fs::procfs::registered_stage() }, [] {
                 using namespace fs::procfs;
 
-                lib::bug_on(!register_global("mounts",
-                    make_file_ops([](auto) {
+                lib::bug_on(!register_global(
+                    "mounts", make_file_ops([](auto) {
                         const auto snapshot = *mounts.lock();
                         std::string out;
                         out.reserve(snapshot.size() * 96);
@@ -1449,21 +1411,21 @@ namespace vfs
                             if (mountpoint.empty())
                                 continue;
 
-                            const std::string_view source = mnt->source.empty()
-                                ? std::string_view { mnt->fstype }
-                                : mnt->source;
+                            const std::string_view source =
+                                mnt->source.empty() ? std::string_view { mnt->fstype } : mnt->source;
 
-                            fmt::format_to(it, "{} {} {} {} 0 0\n",
-                                source, mountpoint, mnt->fstype,
+                            fmt::format_to(
+                                it, "{} {} {} {} 0 0\n", source, mountpoint, mnt->fstype,
                                 get_mnt_opts(mnt->flags, mnt->fs)
                             );
                         }
                         return out;
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_per_pid("mountinfo",
-                    make_file_ops([](auto) {
+                lib::bug_on(!register_per_pid(
+                    "mountinfo", make_file_ops([](auto) {
                         const auto snapshot = *mounts.lock();
                         std::string out;
                         out.reserve(snapshot.size() * 128);
@@ -1479,40 +1441,38 @@ namespace vfs
                             if (mountpoint.empty())
                                 continue;
 
-                            const std::string_view source = mnt->source.empty()
-                                ? std::string_view { mnt->fstype }
-                                : mnt->source;
+                            const std::string_view source =
+                                mnt->source.empty() ? std::string_view { mnt->fstype } : mnt->source;
 
                             const auto dev_id = mnt->fs.lock()->dev_id;
 
                             // TODO: root within the fs, optional_fields, super_options
                             const auto mnt_opts = get_mnt_opts(mnt->flags, mnt->fs);
-                            fmt::format_to(it, "{} {} 0:{} {} {} {} - {} {} {}\n",
-                                mnt->id, mnt->parent_id, dev_id, "/", mountpoint,
-                                mnt_opts, mnt->fstype, source, mnt_opts
+                            fmt::format_to(
+                                it, "{} {} 0:{} {} {} {} - {} {} {}\n", mnt->id, mnt->parent_id,
+                                dev_id, "/", mountpoint, mnt_opts, mnt->fstype, source, mnt_opts
                             );
                         }
                         return out;
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_global("filesystems",
-                    make_file_ops([](auto) {
+                lib::bug_on(!register_global(
+                    "filesystems", make_file_ops([](auto) {
                         const auto locked = filesystems.lock();
                         std::string out;
                         out.reserve(locked->size() * 32);
                         auto it = std::back_inserter(out);
                         for (const auto &[name, fs] : *locked)
-                        {
-                            fmt::format_to(it, "{}\t{}\n",
-                                !fs->requires_dev ? "nodev" : "", name
-                            );
-                        }
+                            fmt::format_to(it, "{}\t{}\n", !fs->requires_dev ? "nodev" : "", name);
                         return out;
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_per_pid("fd",
+                lib::bug_on(!register_per_pid(
+                    "fd",
                     make_dir_ops(
                         [](sched::process_t *proc, std::string_view name) -> lib::expect<node_t> {
                             if (!proc)
@@ -1542,16 +1502,19 @@ namespace vfs
                             lib::list<node_t> result;
                             for (const auto &[fd, _] : *proc->fdt->fds.read_lock())
                             {
-                                result.push_back(node_t {
-                                    .name = std::to_string(fd),
-                                    .mode = 0777,
-                                    .type = node_type::symlink,
-                                    .ops = make_fdsym_ops(fd)
-                                });
+                                result.push_back(
+                                    node_t {
+                                        .name = std::to_string(fd),
+                                        .mode = 0777,
+                                        .type = node_type::symlink,
+                                        .ops = make_fdsym_ops(fd)
+                                    }
+                                );
                             };
                             return result;
                         }
-                    ), node_type::dir, 0555
+                    ),
+                    node_type::dir, 0555
                 ));
             }
         };

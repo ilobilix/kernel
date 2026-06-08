@@ -25,8 +25,7 @@ namespace x86_64::timers::tsc
 
     bool supported()
     {
-        static const auto cached = []
-        {
+        static const auto cached = [] {
             cpu::id_res res;
             const auto invariant = cpu::id(0x80000007, 0, res) && (res.d & (1 << 8));
             lib::info("tsc: is invariant: {}", invariant);
@@ -54,13 +53,9 @@ namespace x86_64::timers::tsc
             std::uint64_t val = 0;
 
             if (const auto res = cpu::id(0x15, 0); res && res->a != 0 && res->b != 0 && res->c != 0)
-            {
                 val = res->c * res->b / res->a;
-            }
             else if (kvm::supported())
-            {
                 val = kvm::tsc_freq();
-            }
             else if (const auto calibrator = ::timers::calibrator())
             {
                 static constexpr std::size_t millis = 50;
@@ -83,32 +78,23 @@ namespace x86_64::timers::tsc
                 freq = val;
                 is_calibrated = true;
             }
-            else lib::debug("tsc: not calibrated");
+            else
+                lib::debug("tsc: not calibrated");
         }
     }
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.tsc.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.arch.tsc.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task tsc_task
-    {
-        "timers.arch.tsc",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            arch::bsp_initialised_stage(),
-            kvm::initialised_stage()
-        },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
-            init_cpu();
-        }
+    lib::initgraph::task tsc_task {
+        "timers.arch.tsc", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { arch::bsp_initialised_stage(), kvm::initialised_stage() },
+        lib::initgraph::entail { initialised_stage() }, [] { init_cpu(); }
     };
 
     void finalise()

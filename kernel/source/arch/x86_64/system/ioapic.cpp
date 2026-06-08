@@ -27,10 +27,7 @@ namespace x86_64::apic::io
             std::uint32_t _gsi_base;
             std::size_t _redirs;
 
-            static constexpr std::uint32_t entry(std::uint32_t idx)
-            {
-                return 0x10 + (idx * 2);
-            }
+            static constexpr std::uint32_t entry(std::uint32_t idx) { return 0x10 + (idx * 2); }
 
             std::uint32_t read(std::uint32_t reg) const
             {
@@ -69,7 +66,9 @@ namespace x86_64::apic::io
                 const auto flags = vmm::pflag::rwg;
                 const auto cache = vmm::caching::mmio;
 
-                if (const auto ret = vmm::kernel_pagemap->map(_mmio, mmio, npsize, flags, psize, cache); !ret)
+                if (const auto ret =
+                        vmm::kernel_pagemap->map(_mmio, mmio, npsize, flags, psize, cache);
+                    !ret)
                     lib::panic("could not map ioapic mmio: {}", lib::error_name(ret.error()));
 
                 _redirs = ((read(0x01) >> 16) & 0xFF) + 1;
@@ -77,7 +76,9 @@ namespace x86_64::apic::io
                     mask(i);
             }
 
-            void set_idx(std::size_t idx, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv) const
+            void set_idx(
+                std::size_t idx, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv
+            ) const
             {
                 std::uint64_t entry = 0;
                 entry |= vector;
@@ -121,8 +122,7 @@ namespace x86_64::apic::io
         }
 
         void set_gsi(
-            std::size_t gsi, std::uint8_t vector,
-            std::size_t dest,flag flags, delivery deliv
+            std::size_t gsi, std::uint8_t vector, std::size_t dest, flag flags, delivery deliv
         )
         {
             lib::debug("ioapic: redirecting gsi {} to vector 0x{:X}", gsi, vector);
@@ -184,12 +184,9 @@ namespace x86_64::apic::io
 
     bool is_initialised() { return initialised; }
 
-    ioapic_domain::ioapic_domain()
-        : domain { "x86_64-ioapic", idt::get_vector_domain() } { }
+    ioapic_domain::ioapic_domain() : domain { "x86_64-ioapic", idt::get_vector_domain() } { }
 
-    lib::expect<void> ioapic_domain::alloc(
-        std::span<irq::irq_data *> data, const irq::fwspec &spec
-    )
+    lib::expect<void> ioapic_domain::alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec)
     {
         if (data.size() != 1)
             return std::unexpected { lib::err::not_supported };
@@ -211,20 +208,14 @@ namespace x86_64::apic::io
         parent_data->virq = data[0]->virq;
         parent_data->dom = parent;
 
-        const irq::fwspec pspec {
-            .param_count = 2,
-            .params = { cpu_idx, gsi + idt::irq(0) }
-        };
+        const irq::fwspec pspec { .param_count = 2, .params = { cpu_idx, gsi + idt::irq(0) } };
 
         auto pd_ptr = parent_data.get();
         if (auto ret = parent->alloc({ &pd_ptr, 1 }, pspec); !ret)
             return std::unexpected { ret.error() };
 
         const auto aid = cpu::local::nth(parent_data->aux)->arch_id;
-        set_gsi(
-            gsi, parent_data->hwirq, aid,
-            flags_for(trig), delivery::fixed
-        );
+        set_gsi(gsi, parent_data->hwirq, aid, flags_for(trig), delivery::fixed);
 
         data[0]->hwirq = gsi;
         data[0]->trig = trig;
@@ -277,15 +268,9 @@ namespace x86_64::apic::io
         parent->detach(*data.parent);
     }
 
-    void ioapic_domain::mask(irq::irq_data &data)
-    {
-        mask_gsi(data.hwirq);
-    }
+    void ioapic_domain::mask(irq::irq_data &data) { mask_gsi(data.hwirq); }
 
-    void ioapic_domain::unmask(irq::irq_data &data)
-    {
-        unmask_gsi(data.hwirq);
-    }
+    void ioapic_domain::unmask(irq::irq_data &data) { unmask_gsi(data.hwirq); }
 
     lib::expect<void> ioapic_domain::set_affinity(
         irq::irq_data &data, const lib::bitmap &cpus, bool force
@@ -318,8 +303,8 @@ namespace x86_64::apic::io
     }
 
     lib::expect<irq::handle_t> request_gsi(
-        std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx, irq::handler_fn fn,
+        std::string_view name
     )
     {
         const irq::fwspec spec {
@@ -338,8 +323,7 @@ namespace x86_64::apic::io
         lib::info("ioapic: setting up");
 
         lib::panic_if(
-            acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty(),
-            "ioapic: no ioapics found"
+            acpi::madt::hdr == nullptr || acpi::madt::ioapics.empty(), "ioapic: no ioapics found"
         );
 
         // masks it
@@ -376,12 +360,7 @@ namespace x86_64::apic::io
                 }
 
                 if (!overridden)
-                {
-                    set_gsi(
-                        i, i + 0x20, cpu::bsp_aid(),
-                        flag::masked, delivery::fixed
-                    );
-                }
+                    set_gsi(i, i + 0x20, cpu::bsp_aid(), flag::masked, delivery::fixed);
             }
         }
 

@@ -52,15 +52,15 @@ namespace syscall::vfs
             return ret;
         }
 
-        std::optional<frg::small_vector<
-            lib::maybe_uspan<std::byte>, 8,
-            frg::allocator<lib::maybe_uspan<std::byte>>
-        >> read_iov(const msghdr &kmsg)
+        auto read_iov(const msghdr &kmsg) -> std::optional<frg::small_vector<
+            lib::maybe_uspan<std::byte>, 8, frg::allocator<lib::maybe_uspan<std::byte>>>>
         {
+            // clang-format off
             frg::small_vector<
                 lib::maybe_uspan<std::byte>, 8,
                 frg::allocator<lib::maybe_uspan<std::byte>>
             > vec;
+            // clang-format on
             vec.resize(kmsg.msg_iovlen);
 
             for (std::size_t i = 0; i < kmsg.msg_iovlen; i++)
@@ -69,7 +69,8 @@ namespace syscall::vfs
                 if (!lib::copy_from_user(&local_iov, kmsg.msg_iov + i, sizeof(iovec)))
                     return std::nullopt;
 
-                auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
+                auto uspan =
+                    lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
                 if (!uspan.has_value())
                     return std::nullopt;
 
@@ -92,10 +93,7 @@ namespace syscall::vfs
         if (!magic_enum::enum_contains(typ))
             return -ESOCKTNOSUPPORT;
 
-        auto sres = socket::create(
-            static_cast<addr_fam>(domain),
-            typ, protocol
-        );
+        auto sres = socket::create(static_cast<addr_fam>(domain), typ, protocol);
         if (!sres)
             return -lib::map_error(sres.error());
 
@@ -134,8 +132,8 @@ namespace syscall::vfs
     }
 
     std::ssize_t sendto(
-        int sockfd, const void __user *buf, std::size_t len,
-        std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
+        int sockfd, const void __user *buf, std::size_t len, std::uint32_t flags,
+        const sockaddr __user *addr, socklen_t addrlen
     )
     {
         const auto proc = sched::current_process();
@@ -179,8 +177,8 @@ namespace syscall::vfs
     }
 
     std::ssize_t recvfrom(
-        int sockfd, void __user *buf, std::size_t len,
-        std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
+        int sockfd, void __user *buf, std::size_t len, std::uint32_t flags, sockaddr __user *addr,
+        socklen_t __user *addrlen
     )
     {
         const auto proc = sched::current_process();
@@ -477,10 +475,7 @@ namespace syscall::vfs
 
         const auto proc = sched::current_process();
 
-        auto pres = socket::create_pair(
-            static_cast<addr_fam>(family),
-            typ, protocol
-        );
+        auto pres = socket::create_pair(static_cast<addr_fam>(family), typ, protocol);
         if (!pres)
             return -lib::map_error(pres.error());
 
@@ -520,7 +515,9 @@ namespace syscall::vfs
         return 0;
     }
 
-    int getsockopt(int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen)
+    int getsockopt(
+        int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen
+    )
     {
         const auto proc = sched::current_process();
 

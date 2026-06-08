@@ -6,10 +6,7 @@ import system.cpu.arch;
 
 namespace sched::arch
 {
-    thread_t *current_thread()
-    {
-        return reinterpret_cast<thread_t *>(cpu::read_el1_base());
-    }
+    thread_t *current_thread() { return reinterpret_cast<thread_t *>(cpu::read_el1_base()); }
 
     void init_core(thread_t *initial)
     {
@@ -18,8 +15,7 @@ namespace sched::arch
     }
 
     void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline, bool is_clone
     )
     {
         // TODO
@@ -65,8 +61,8 @@ namespace sched::arch
     }
 
     bool setup_sigframe(
-        thread_t *thread, cpu::registers *regs,
-        int sig, const siginfo_t &info, const sigaction_t &action
+        thread_t *thread, cpu::registers *regs, int sig, const siginfo_t &info,
+        const sigaction_t &action
     )
     {
         // TODO

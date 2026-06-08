@@ -30,8 +30,5 @@ namespace lib::detail
         return ptr;
     }
 
-    void free(void *ptr)
-    {
-        slab::free(ptr);
-    }
+    void free(void *ptr) { slab::free(ptr); }
 } // namespace lib::detail

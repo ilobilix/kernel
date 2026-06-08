@@ -21,15 +21,15 @@ namespace bin::script
         image(
             const std::shared_ptr<vfs::file> &file, std::unique_ptr<exec::image> interp,
             const std::string_view &interp_path, std::optional<std::string> interp_arg
-        ) : exec::image { std::move(file) }, _interp { std::move(interp) },
-            _interp_path { interp_path }, _interp_arg { std::move(interp_arg) } { }
+        )
+            : exec::image { std::move(file) }, _interp { std::move(interp) },
+              _interp_path { interp_path }, _interp_arg { std::move(interp_arg) }
+        { }
 
         std::shared_ptr<sched::thread_t> load(const exec::request &req) const override
         {
             exec::request new_req {
-                .pathname = req.pathname.empty()
-                    ? vfs::pathname_from(file->path)
-                    : req.pathname,
+                .pathname = req.pathname.empty() ? vfs::pathname_from(file->path) : req.pathname,
                 .argv = { },
                 .envp = req.envp,
                 .proc = req.proc,
@@ -127,12 +127,8 @@ namespace bin::script
         }
     };
 
-    lib::initgraph::task script_exec_task
-    {
-        "bin.exec.script.register",
-        lib::initgraph::postsched_init_engine,
-        [] {
-            exec::register_format(std::make_shared<format>());
-        }
+    lib::initgraph::task script_exec_task {
+        "bin.exec.script.register", lib::initgraph::postsched_init_engine,
+        [] { exec::register_format(std::make_shared<format>()); }
     };
 } // namespace bin::script

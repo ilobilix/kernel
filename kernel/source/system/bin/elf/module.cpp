@@ -75,7 +75,8 @@ namespace bin::elf::mod
                 pat = sp + 1;
                 str = ++ss;
             }
-            else return false;
+            else
+                return false;
         }
 
         while (*pat == '*')
@@ -94,8 +95,7 @@ namespace bin::elf::mod
                 if (auto ret = pmap->unmap(vaddr, pmm::page_size); !ret)
                 {
                     lib::panic(
-                        "could not unmap memory for a module: {}",
-                        lib::error_name(ret.error())
+                        "could not unmap memory for a module: {}", lib::error_name(ret.error())
                     );
                 }
                 pmm::free(paddr);
@@ -122,14 +122,13 @@ namespace bin::elf::mod
         }
 
         std::size_t load(
-            bool internal, std::uintptr_t start, std::uintptr_t end,
-            std::shared_ptr<image_t> image
+            bool internal, std::uintptr_t start, std::uintptr_t end, std::shared_ptr<image_t> image
         )
         {
             using base_type = ::mod::declare<0, 0>;
 
             std::size_t count = 0;
-            for (auto current = start; current < end; )
+            for (auto current = start; current < end;)
             {
                 const auto ptr = reinterpret_cast<base_type *>(current);
                 if (ptr->magic != base_type::header_magic)
@@ -142,8 +141,8 @@ namespace bin::elf::mod
                 if (version != base_type::build_version)
                 {
                     lib::error(
-                        "elf: incompatible module build version: '{}' (expected '{}')",
-                        version, base_type::build_version
+                        "elf: incompatible module build version: '{}' (expected '{}')", version,
+                        base_type::build_version
                     );
                     lib::bug_on(count != 0);
                     return 0;
@@ -178,12 +177,12 @@ namespace bin::elf::mod
                     case ::mod::type::pci:
                     {
                         const auto match = ptr->matches();
-                        for (std::size_t off = 0; ptr->match_stride != 0 &&
-                            off + ptr->match_stride <= match.size(); off += ptr->match_stride)
+                        for (std::size_t off = 0;
+                             ptr->match_stride != 0 && off + ptr->match_stride <= match.size();
+                             off += ptr->match_stride)
                         {
-                            const auto &id = *reinterpret_cast<const pci::id_t *>(
-                                match.data() + off
-                            );
+                            const auto &id =
+                                *reinterpret_cast<const pci::id_t *>(match.data() + off);
                             entry->aliases.emplace_back(id.get_modalias());
                         }
                         break;
@@ -281,11 +280,11 @@ namespace bin::elf::mod
             for (std::size_t i = 0; i < max_size; i += npsize)
             {
                 const auto paddr = pmm::alloc(npages, true);
-                if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize); !ret)
+                if (auto ret = vmm::kernel_pagemap->map(loaded_at + i, paddr, npsize, flags, psize);
+                    !ret)
                 {
                     lib::panic(
-                        "could not map memory for a module: {}",
-                        lib::error_name(ret.error())
+                        "could not map memory for a module: {}", lib::error_name(ret.error())
                     );
                 }
 
@@ -323,13 +322,12 @@ namespace bin::elf::mod
                     case PT_LOAD:
                     {
                         std::memset(
-                            reinterpret_cast<void *>(loaded_at + phdr->p_vaddr + phdr->p_filesz),
-                            0, phdr->p_memsz - phdr->p_filesz
+                            reinterpret_cast<void *>(loaded_at + phdr->p_vaddr + phdr->p_filesz), 0,
+                            phdr->p_memsz - phdr->p_filesz
                         );
                         std::memcpy(
                             reinterpret_cast<void *>(loaded_at + phdr->p_vaddr),
-                            buffer.data() + phdr->p_offset,
-                            phdr->p_filesz
+                            buffer.data() + phdr->p_offset, phdr->p_filesz
                         );
                         break;
                     }
@@ -387,7 +385,8 @@ namespace bin::elf::mod
                                 case DT_FINI_ARRAYSZ:
                                     dt_fini_arraysz = dyn.d_un.d_val;
                                     break;
-                                default: break;
+                                default:
+                                    break;
                             }
                         }
                         lib::panic_if(
@@ -407,8 +406,7 @@ namespace bin::elf::mod
             const auto strtab = reinterpret_cast<const char *>(dt_strtab);
             const auto symtab = reinterpret_cast<std::uint8_t *>(dt_symtab);
 
-            auto reloc = [&](Elf64_Rela &rel) -> bool
-            {
+            auto reloc = [&](Elf64_Rela &rel) -> bool {
                 const std::uintptr_t loc = loaded_at + rel.r_offset;
                 switch (auto type = ELF64_R_TYPE(rel.r_info))
                 {
@@ -438,7 +436,8 @@ namespace bin::elf::mod
                             }
                             resolved = symaddr;
                         }
-                        else resolved = loaded_at + sym->st_value;
+                        else
+                            resolved = loaded_at + sym->st_value;
 
                         *reinterpret_cast<std::uint64_t *>(loc) = resolved;
                         break;
@@ -481,11 +480,9 @@ namespace bin::elf::mod
 
             const std::size_t symsz = dt_strtab - dt_symtab;
             auto image = std::make_shared<image_t>(
-                std::move(memory),
-                sym::get_symbols(strtab, symtab, dt_syment, symsz, loaded_at),
+                std::move(memory), sym::get_symbols(strtab, symtab, dt_syment, symsz, loaded_at),
                 initfini_t {
-                    dt_init_array, dt_fini_array,
-                    static_cast<std::size_t>(dt_init_arraysz),
+                    dt_init_array, dt_fini_array, static_cast<std::size_t>(dt_init_arraysz),
                     static_cast<std::size_t>(dt_fini_arraysz)
                 }
             );
@@ -506,8 +503,7 @@ namespace bin::elf::mod
 
                 const auto aligned = lib::align_down(loaded_at + phdr->p_vaddr, pmm::page_size);
                 const auto size = lib::align_up(
-                    phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned),
-                    pmm::page_size
+                    phdr->p_memsz + (loaded_at + phdr->p_vaddr - aligned), pmm::page_size
                 );
                 const auto psize = vmm::page_size::small;
 
@@ -520,9 +516,8 @@ namespace bin::elf::mod
                 }
             }
 
-            const auto count = load(
-                false, modules_start, modules_start + modules_size, std::move(image)
-            );
+            const auto count =
+                load(false, modules_start, modules_start + modules_size, std::move(image));
             if (count == 0)
                 lib::error("elf: no modules found in file");
             return count;
@@ -574,8 +569,7 @@ namespace bin::elf::mod
                         return false;
                     case status::activating:
                         lib::error(
-                            "elf: module '{}' is already being activated",
-                            entry.header->name()
+                            "elf: module '{}' is already being activated", entry.header->name()
                         );
                         return false;
                     case status::loaded:
@@ -599,8 +593,8 @@ namespace bin::elf::mod
                 if (dep == nullptr)
                 {
                     lib::error(
-                        "elf: could not find dependency '{}' of module '{}'",
-                        name, entry.header->name()
+                        "elf: could not find dependency '{}' of module '{}'", name,
+                        entry.header->name()
                     );
                     success = false;
                     break;
@@ -609,8 +603,8 @@ namespace bin::elf::mod
                 if (!activate(*dep))
                 {
                     lib::error(
-                        "elf: failed to activate dependency '{}' of module '{}'",
-                        name, entry.header->name()
+                        "elf: failed to activate dependency '{}' of module '{}'", name,
+                        entry.header->name()
                     );
                     success = false;
                     break;
@@ -693,8 +687,8 @@ namespace bin::elf::mod
             if (entry->dependents != 0)
             {
                 lib::error(
-                    "elf: cannot unload module '{}': {} module(s) still depend on it",
-                    name, entry->dependents
+                    "elf: cannot unload module '{}': {} module(s) still depend on it", name,
+                    entry->dependents
                 );
                 return false;
             }
@@ -734,52 +728,34 @@ namespace bin::elf::mod
 
     lib::initgraph::stage *modules_loaded_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "bin.elf.modules-loaded",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "bin.elf.modules-loaded", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task load_task
-    {
-        "bin.elf.load-modules",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task load_task {
+        "bin.elf.load-modules", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { initramfs::extracted_stage() },
-        lib::initgraph::entail { modules_loaded_stage() },
-        [] {
+        lib::initgraph::entail { modules_loaded_stage() }, [] {
             const auto start = reinterpret_cast<std::uintptr_t>(__start_modules);
             const auto end = reinterpret_cast<std::uintptr_t>(__end_modules);
 
             const auto icount = load(true, start, end, nullptr);
-            lib::info(
-                "elf: loaded {} internal module{}",
-                icount, icount == 1 ? "" : "s"
-            );
+            lib::info("elf: loaded {} internal module{}", icount, icount == 1 ? "" : "s");
 
             const auto ecount = load_external_from("/usr/lib/modules/" ILOBILIX_RELEASE);
-            lib::info(
-                "elf: loaded {} external module{}",
-                ecount, ecount == 1 ? "" : "s"
-            );
+            lib::info("elf: loaded {} external module{}", ecount, ecount == 1 ? "" : "s");
         }
     };
 
-    lib::initgraph::task activate_task
-    {
-        "bin.elf.activate-modules",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            modules_loaded_stage(),
-            pci::enumerated_stage()
-        },
-        [] {
+    lib::initgraph::task activate_task {
+        "bin.elf.activate-modules", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { modules_loaded_stage(), pci::enumerated_stage() }, [] {
             std::vector<std::shared_ptr<entry_t>> entries;
             for (const auto rlocked = modules.read_lock(); const auto &[name, entry] : *rlocked)
             {
-                if (entry->header->type == ::mod::type::generic &&
-                    entry->status == status::loaded)
+                if (entry->header->type == ::mod::type::generic && entry->status == status::loaded)
                     entries.push_back(entry);
             }
 

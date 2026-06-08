@@ -11,11 +11,8 @@ namespace uacpi
 {
     namespace
     {
-        using queue_type = lib::locker<
-            std::deque<
-                std::pair<uacpi_work_handler, uacpi_handle>
-            >, lib::rwspinlock
-        >;
+        using queue_type =
+            lib::locker<std::deque<std::pair<uacpi_work_handler, uacpi_handle>>, lib::rwspinlock>;
         queue_type notify { };
         queue_type gpe { };
 
@@ -54,17 +51,10 @@ namespace uacpi
         }
     } // namespace
 
-    lib::initgraph::task uacpi_task
-    {
-        "uacpi.create-workers",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage()
-        },
-        lib::initgraph::entail {
-            acpi::workers_stage()
-        },
-        [] {
+    lib::initgraph::task uacpi_task {
+        "uacpi.create-workers", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { sched::pid0_created_stage() },
+        lib::initgraph::entail { acpi::workers_stage() }, [] {
             sched::spawn(+[] {
                 worker_caller(notify, notify_added);
                 std::unreachable();
@@ -97,10 +87,7 @@ extern "C"
         return UACPI_STATUS_OK;
     }
 
-    void uacpi_kernel_deinitialize()
-    {
-        lib::debug("uacpi_kernel_deinitialize()");
-    }
+    void uacpi_kernel_deinitialize() { lib::debug("uacpi_kernel_deinitialize()"); }
 #endif
 
     uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rdsp_address)
@@ -134,7 +121,9 @@ extern "C"
     uacpi_status uacpi_kernel_pci_read(uacpi_handle device, uacpi_size offset, Type *value)
     {
         auto dev = reinterpret_cast<pci_dev *>(device);
-        *value = dev->io->read<Type>(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset);
+        *value = dev->io->read<Type>(
+            dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset
+        );
         return UACPI_STATUS_OK;
     }
 
@@ -157,7 +146,9 @@ extern "C"
     uacpi_status uacpi_kernel_pci_write(uacpi_handle device, uacpi_size offset, Type value)
     {
         auto dev = reinterpret_cast<pci_dev *>(device);
-        dev->io->write<Type>(dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, value);
+        dev->io->write<Type>(
+            dev->addr.segment, dev->addr.bus, dev->addr.device, dev->addr.function, offset, value
+        );
         return UACPI_STATUS_OK;
     }
 
@@ -313,18 +304,12 @@ extern "C"
         return chrono::now(chrono::monotonic).to_ns();
     }
 
-    void uacpi_kernel_stall(uacpi_u8 usec)
-    {
-        chrono::stall_ns(usec * 1'000);
-    }
+    void uacpi_kernel_stall(uacpi_u8 usec) { chrono::stall_ns(usec * 1'000); }
 
-    void uacpi_kernel_sleep(uacpi_u64 msec)
-    {
-        sched::sleep_for_ns(msec * 1'000'000);
-    }
+    void uacpi_kernel_sleep(uacpi_u64 msec) { sched::sleep_for_ns(msec * 1'000'000); }
 
     uacpi_handle uacpi_kernel_create_mutex()
-    {\
+    {
         return reinterpret_cast<uacpi_handle>(new sched::mutex);
     }
 
@@ -345,8 +330,9 @@ extern "C"
                 if (value == 0)
                     return false;
 
-                if (counter.compare_exchange_strong(value, value - 1,
-                    std::memory_order_acq_rel, std::memory_order_acquire))
+                if (counter.compare_exchange_strong(
+                        value, value - 1, std::memory_order_acq_rel, std::memory_order_acquire
+                    ))
                     return true;
             }
         }
@@ -448,7 +434,8 @@ extern "C"
                 lib::info("uACPI: ignoring breakpoint");
                 break;
             case UACPI_FIRMWARE_REQUEST_TYPE_FATAL:
-                lib::error("fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
+                lib::error(
+                    "fatal firmware error: type: 0x{:X} code: 0x{:X} arg: 0x{:X}",
                     static_cast<int>(req->fatal.type), req->fatal.code, req->fatal.arg
                 );
                 break;
@@ -459,21 +446,17 @@ extern "C"
     }
 
     uacpi_status uacpi_kernel_install_interrupt_handler(
-        uacpi_u32 gsi, uacpi_interrupt_handler func,
-        uacpi_handle ctx, uacpi_handle *out_irq_handle
+        uacpi_u32 gsi, uacpi_interrupt_handler func, uacpi_handle ctx, uacpi_handle *out_irq_handle
     )
     {
         auto handle = irq::request_gsi(
             gsi, irq::trigger::level_low, cpu::bsp_idx(),
-            [func, ctx](cpu::registers *) { func(ctx); },
-            "acpi-sci"
+            [func, ctx](cpu::registers *) { func(ctx); }, "acpi-sci"
         );
         if (!handle)
             return UACPI_STATUS_INTERNAL_ERROR;
 
-        *out_irq_handle = reinterpret_cast<uacpi_handle>(
-            static_cast<std::uintptr_t>(*handle)
-        );
+        *out_irq_handle = reinterpret_cast<uacpi_handle>(static_cast<std::uintptr_t>(*handle));
 
         lib::debug("uacpi: installed interrupt handler for gsi {}", gsi);
         return UACPI_STATUS_OK;
@@ -508,7 +491,9 @@ extern "C"
         reinterpret_cast<lib::spinlock_irq *>(handle)->unlock();
     }
 
-    uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx)
+    uacpi_status uacpi_kernel_schedule_work(
+        uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx
+    )
     {
         lib::debug("uacpi: scheduling work of type {}", magic_enum::enum_name(type));
         switch (type)

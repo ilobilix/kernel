@@ -120,7 +120,9 @@ namespace syscall::vfs
                 };
 
                 flock fl;
-                if (!lib::copy_from_user(&fl, reinterpret_cast<const flock __user *>(arg), sizeof(fl)))
+                if (!lib::copy_from_user(
+                        &fl, reinterpret_cast<const flock __user *>(arg), sizeof(fl)
+                    ))
                     return -EFAULT;
 
                 // F_RDLCK, F_WRLCK, F_UNLCK
@@ -148,8 +150,7 @@ namespace syscall::vfs
         constexpr int lock_un = 8;
         constexpr int lock_nb = 4;
 
-        if ((operation & ~lock_nb) != lock_sh &&
-            (operation & ~lock_nb) != lock_ex &&
+        if ((operation & ~lock_nb) != lock_sh && (operation & ~lock_nb) != lock_ex &&
             (operation & ~lock_nb) != lock_un)
             return -EINVAL;
 
@@ -163,10 +164,8 @@ namespace syscall::vfs
     int dup(int oldfd)
     {
         const auto proc = sched::current_process();
-        const auto fdres = proc->fdt->dup(
-            oldfd, 0, false, false,
-            proc->rlimits->get(sched::rlimit_nofile).cur
-        );
+        const auto fdres =
+            proc->fdt->dup(oldfd, 0, false, false, proc->rlimits->get(sched::rlimit_nofile).cur);
         if (!fdres.has_value())
             return -lib::map_error(fdres.error());
         return *fdres;
@@ -175,10 +174,8 @@ namespace syscall::vfs
     int dup2(int oldfd, int newfd)
     {
         const auto proc = sched::current_process();
-        const auto fdres = proc->fdt->dup(
-            oldfd, newfd, false, true,
-            proc->rlimits->get(sched::rlimit_nofile).cur
-        );
+        const auto fdres =
+            proc->fdt->dup(oldfd, newfd, false, true, proc->rlimits->get(sched::rlimit_nofile).cur);
         if (!fdres.has_value())
             return -lib::map_error(fdres.error());
         return *fdres;
@@ -226,8 +223,9 @@ namespace syscall::vfs
         if (stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (!vfs::check_access(*target, proc->cred,
-            static_cast<std::uint32_t>(sched::access_mode::exec)))
+        if (!vfs::check_access(
+                *target, proc->cred, static_cast<std::uint32_t>(sched::access_mode::exec)
+            ))
             return -EACCES;
 
         proc->vfs->cwd = *target;
@@ -246,8 +244,9 @@ namespace syscall::vfs
         if (stat.type() != stat::type::s_ifdir)
             return -ENOTDIR;
 
-        if (!vfs::check_access(*target, proc->cred,
-            static_cast<std::uint32_t>(sched::access_mode::exec)))
+        if (!vfs::check_access(
+                *target, proc->cred, static_cast<std::uint32_t>(sched::access_mode::exec)
+            ))
             return -EACCES;
 
         proc->vfs->cwd = *target;

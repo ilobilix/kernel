@@ -11,7 +11,6 @@ import :core;
 export namespace pci::intx
 {
     lib::expect<irq::handle_t> request(
-        pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        pci::device &dev, std::size_t cpu_idx, irq::handler_fn fn, std::string_view name = { }
     );
 } // export namespace pci::intx

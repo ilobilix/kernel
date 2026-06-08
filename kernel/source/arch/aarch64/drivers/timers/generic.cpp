@@ -21,21 +21,16 @@ namespace aarch64::timers::generic
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.generic.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.arch.generic.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task generic_task
-    {
-        "timers.arch.generic",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task generic_task {
+        "timers.arch.generic", lib::initgraph::presched_init_engine,
         // lib::initgraph::require { },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
+        lib::initgraph::entail { initialised_stage() }, [] {
             // initialised = true;
             // static chrono::timer timer { "generic", 0, time_ns };
             // chrono::register_timer(timer);

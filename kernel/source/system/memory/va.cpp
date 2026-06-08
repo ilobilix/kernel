@@ -18,10 +18,7 @@ namespace vmm::va
         constinit slot_t *head = nullptr;
         constinit lib::spinlock lock;
 
-        slot_t *&next_of(slot_t *slot)
-        {
-            return *reinterpret_cast<slot_t **>(&slot->storage);
-        }
+        slot_t *&next_of(slot_t *slot) { return *reinterpret_cast<slot_t **>(&slot->storage); }
 
         range_t *pool_alloc()
         {

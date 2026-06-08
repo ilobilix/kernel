@@ -30,7 +30,8 @@ namespace fs::sysfs
         inode(
             type typ, std::shared_ptr<dev::kobject_t> kobj, dev::attribute_t *attr,
             dev::bin_attribute_t *battr, dev_t dev, ino_t ino, std::shared_ptr<vfs::ops> iops
-        ) : vfs::inode { iops }, typ { typ }, kobj { kobj }, attr { attr }, battr { battr }
+        )
+            : vfs::inode { iops }, typ { typ }, kobj { kobj }, attr { attr }, battr { battr }
         {
             stat.st_dev = dev;
             stat.st_rdev = 0;
@@ -66,10 +67,7 @@ namespace fs::sysfs
             stat.st_blocks = 0;
 
             stat.update_time(
-                kstat::time::access |
-                kstat::time::modify |
-                kstat::time::status |
-                kstat::time::birth
+                kstat::time::access | kstat::time::modify | kstat::time::status | kstat::time::birth
             );
         }
     };
@@ -118,17 +116,16 @@ namespace fs::sysfs
                     if (!content)
                         return std::unexpected { content.error() };
 
-                    file->private_data = std::shared_ptr<std::string> {
-                        new std::string { std::move(*content) }
-                    };
+                    file->private_data =
+                        std::shared_ptr<std::string> { new std::string { std::move(*content) } };
                 }
                 else if (inod->typ == inode::type::uevent)
                 {
-                    file->private_data = std::shared_ptr<std::string> {
-                        new std::string { inod->kobj->uevent_text() }
-                    };
+                    file->private_data =
+                        std::shared_ptr<std::string> { new std::string { inod->kobj->uevent_text() } };
                 }
-                else return std::unexpected { lib::err::io_error };
+                else
+                    return std::unexpected { lib::err::io_error };
             }
 
             auto content = std::static_pointer_cast<std::string>(file->private_data);
@@ -221,19 +218,22 @@ namespace fs::sysfs
 
     struct fs : vfs::filesystem
     {
-        struct instance : vfs::filesystem::instance, dev::reflector_t,
-            std::enable_shared_from_this<instance>
+        struct instance : vfs::filesystem::instance,
+                          dev::reflector_t,
+                          std::enable_shared_from_this<instance>
         {
+            // clang-format off
             lib::locker<
                 lib::map::flat_hash<
                     dev::kobject_t *,
                     std::shared_ptr<vfs::dentry>
                 >, sched::mutex
             > nodes;
+            // clang-format on
 
             auto create(
-                std::shared_ptr<vfs::inode> &parent, std::string_view name,
-                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev,
+                std::optional<std::shared_ptr<vfs::ops>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, rdev, ops);
@@ -243,8 +243,7 @@ namespace fs::sysfs
             }
 
             auto symlink(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, lib::path target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
@@ -252,8 +251,8 @@ namespace fs::sysfs
             }
 
             auto link(
-                std::shared_ptr<vfs::inode> &parent,
-                std::string_view name, std::shared_ptr<vfs::inode> target
+                std::shared_ptr<vfs::inode> &parent, std::string_view name,
+                std::shared_ptr<vfs::inode> target
             ) -> lib::expect<std::shared_ptr<vfs::inode>> override
             {
                 lib::unused(parent, name, target);
@@ -289,11 +288,7 @@ namespace fs::sysfs
                     if (progress >= max_batch)
                         break;
 
-                    result.push_back({
-                        it->dentry->name,
-                        it->dentry->inode,
-                        it->cookie
-                    });
+                    result.push_back({ it->dentry->name, it->dentry->inode, it->cookie });
                 }
                 return result;
             }
@@ -330,24 +325,23 @@ namespace fs::sysfs
             std::shared_ptr<inode> mkdir(const std::shared_ptr<dev::kobject_t> &kobj)
             {
                 return std::make_shared<inode>(
-                    inode::type::dir, kobj, nullptr, nullptr,
-                    dev_id, next_inode++, ops::singleton()
+                    inode::type::dir, kobj, nullptr, nullptr, dev_id, next_inode++, ops::singleton()
                 );
             }
 
             std::shared_ptr<inode> mksym()
             {
                 return std::make_shared<inode>(
-                    inode::type::symlink, nullptr, nullptr, nullptr,
-                    dev_id, next_inode++, ops::singleton()
+                    inode::type::symlink, nullptr, nullptr, nullptr, dev_id, next_inode++,
+                    ops::singleton()
                 );
             }
 
             std::shared_ptr<inode> mkuevent(const std::shared_ptr<dev::kobject_t> &kobj)
             {
                 return std::make_shared<inode>(
-                    inode::type::uevent, kobj, nullptr, nullptr,
-                    dev_id, next_inode++, ops::singleton()
+                    inode::type::uevent, kobj, nullptr, nullptr, dev_id, next_inode++,
+                    ops::singleton()
                 );
             }
 
@@ -356,8 +350,7 @@ namespace fs::sysfs
             )
             {
                 return std::make_shared<inode>(
-                    inode::type::attr, kobj, attr, nullptr,
-                    dev_id, next_inode++, ops::singleton()
+                    inode::type::attr, kobj, attr, nullptr, dev_id, next_inode++, ops::singleton()
                 );
             }
 
@@ -366,8 +359,7 @@ namespace fs::sysfs
             )
             {
                 return std::make_shared<inode>(
-                    inode::type::bin, kobj, nullptr, battr,
-                    dev_id, next_inode++, ops::singleton()
+                    inode::type::bin, kobj, nullptr, battr, dev_id, next_inode++, ops::singleton()
                 );
             }
 
@@ -449,8 +441,8 @@ namespace fs::sysfs
             }
 
             void add_link(
-                const std::shared_ptr<dev::kobject_t> &dir,
-                std::string_view name, const lib::path &target
+                const std::shared_ptr<dev::kobject_t> &dir, std::string_view name,
+                const lib::path &target
             ) override
             {
                 auto dentry = get_or_create(dir);
@@ -491,15 +483,10 @@ namespace fs::sysfs
         std::shared_ptr<vfs::dentry> root;
 
         std::shared_ptr<struct vfs::mount> internal_mnt;
-        mutable lib::locker<
-            lib::list<
-                std::shared_ptr<struct vfs::mount>
-            >, sched::mutex
-        > mounts;
+        mutable lib::locker<lib::list<std::shared_ptr<struct vfs::mount>>, sched::mutex> mounts;
 
         auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
+            std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src, data);
@@ -526,62 +513,49 @@ namespace fs::sysfs
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.sysfs.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.sysfs.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *mounted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.sysfs.mounted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.sysfs.mounted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.sysfs.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task register_task {
+        "vfs.sysfs.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { dev::core_registered_stage() },
-        lib::initgraph::entail { registered_stage() },
-        [] {
+        lib::initgraph::entail { registered_stage() }, [] {
             auto sysfs = std::make_shared<fs>();
             lib::bug_on(!vfs::register_fs(sysfs));
             dev::attach_reflector(sysfs->inst.lock().get());
         }
     };
 
-    lib::initgraph::task mount_task
-    {
-        "vfs.sysfs.mount",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            vfs::root_mounted_stage(),
-            registered_stage()
-        },
-        lib::initgraph::entail { mounted_stage() },
-        [] {
+    lib::initgraph::task mount_task {
+        "vfs.sysfs.mount", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { vfs::root_mounted_stage(), registered_stage() },
+        lib::initgraph::entail { mounted_stage() }, [] {
             const auto cerr = vfs::create(std::nullopt, "/sys", stat::s_ifdir | 0555);
             if (!cerr && cerr.error() != lib::err::already_exists)
             {
                 lib::panic(
-                    "sysfs: failed to create directory '/sys': {}",
-                    lib::error_name(cerr.error())
+                    "sysfs: failed to create directory '/sys': {}", lib::error_name(cerr.error())
                 );
             }
 
-            if (const auto merr = vfs::mount("", "/sys", "sysfs",
-                vfs::ms_nosuid | vfs::ms_nodev | vfs::ms_noexec); !merr)
+            if (const auto merr = vfs::mount(
+                    "", "/sys", "sysfs", vfs::ms_nosuid | vfs::ms_nodev | vfs::ms_noexec
+                );
+                !merr)
             {
                 lib::panic(
-                    "sysfs: failed to mount sysfs at '/sys': {}",
-                    lib::error_name(merr.error())
+                    "sysfs: failed to mount sysfs at '/sys': {}", lib::error_name(merr.error())
                 );
             }
         }

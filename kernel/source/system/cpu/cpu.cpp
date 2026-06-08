@@ -42,9 +42,7 @@ namespace cpu
     std::size_t count()
     {
 #if ILOBILIX_LIMINE_MP
-        static const auto cached = [] {
-            return boot::requests::mp.response->cpu_count;
-        } ();
+        static const auto cached = [] { return boot::requests::mp.response->cpu_count; } ();
         return cached;
 #else
         return mp::num_cores();
@@ -97,27 +95,23 @@ namespace cpu
                 chrono::stall_ns(300'000);
             }
             lib::panic("could not boot up a core");
-            next:
+        next:
         }
 #else
         mp::boot_cores(local::request);
 #endif
     }
 
-    lib::initgraph::task procfs_register_task
-    {
-        "cpu.procfs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { ::fs::procfs::registered_stage() },
-        [] {
+    lib::initgraph::task procfs_register_task {
+        "cpu.procfs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { ::fs::procfs::registered_stage() }, [] {
             using namespace ::fs::procfs;
-            lib::bug_on(!register_global("cpuinfo",
-                make_file_ops([](auto) {
+            lib::bug_on(!register_global(
+                "cpuinfo", make_file_ops([](auto) {
                     // TODO: real vendor_id/model name/flags/cache info/cpu mhz
-                    constexpr std::string_view tail =
-                        "vendor_id\t: ilobilix\n"
-                        "model name\t: " ILOBILIX_ARCH "\n"
-                        "\n";
+                    constexpr std::string_view tail = "vendor_id\t: ilobilix\n"
+                                                      "model name\t: " ILOBILIX_ARCH "\n"
+                                                      "\n";
 
                     const auto num = count();
                     std::string out;
@@ -128,7 +122,8 @@ namespace cpu
                         fmt::format_to(it, "processor\t: {}\n{}", idx, tail);
 
                     return out;
-                }), node_type::file, 0444
+                }),
+                node_type::file, 0444
             ));
         }
     };

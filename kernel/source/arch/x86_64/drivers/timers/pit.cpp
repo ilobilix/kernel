@@ -45,10 +45,7 @@ namespace x86_64::timers::pit
         volatile std::size_t tick = 0;
         bool initialised = false;
 
-        std::uint64_t time_ns()
-        {
-            return ((tick * 1'000) / frequency) * 1'000'000;
-        }
+        std::uint64_t time_ns() { return ((tick * 1'000) / frequency) * 1'000'000; }
     } // namespace
 
     bool is_initialised() { return initialised; }
@@ -69,21 +66,16 @@ namespace x86_64::timers::pit
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.pit.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.arch.pit.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task pit_task
-    {
-        "timers.arch.pit",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task pit_task {
+        "timers.arch.pit", lib::initgraph::presched_init_engine,
         lib::initgraph::require { arch::bsp_initialised_stage() },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
+        lib::initgraph::entail { initialised_stage() }, [] {
             if (chrono::main_timer())
             {
                 lib::info("pit: not initialising, a better timer is already available");
@@ -100,10 +92,13 @@ namespace x86_64::timers::pit
             lib::io::out<8>(port::channel0, low);
             lib::io::out<8>(port::channel0, high);
 
-            lib::panic_if(!irq::request_gsi(
-                0, irq::trigger::edge_rising, cpu::bsp_idx(),
-                [](cpu::registers *) { tick += 1; }, "pit"
-            ), "pit: failed to request gsi 0");
+            lib::panic_if(
+                !irq::request_gsi(
+                    0, irq::trigger::edge_rising, cpu::bsp_idx(),
+                    [](cpu::registers *) { tick += 1; }, "pit"
+                ),
+                "pit: failed to request gsi 0"
+            );
 
             initialised = true;
 

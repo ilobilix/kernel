@@ -29,10 +29,7 @@ namespace syscall::vfs
         return 0;
     }
 
-    int pipe(int __user *pipefd)
-    {
-        return pipe2(pipefd, 0);
-    }
+    int pipe(int __user *pipefd) { return pipe2(pipefd, 0); }
 
     int inotify_init1(int flags)
     {

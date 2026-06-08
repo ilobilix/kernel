@@ -20,8 +20,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset, buffer);
@@ -29,8 +29,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset);
@@ -53,8 +53,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset);
@@ -63,8 +63,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset, buffer);
@@ -87,8 +87,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset);
@@ -97,8 +97,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset, buffer);
@@ -121,8 +121,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset);
@@ -131,8 +131,8 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
-            std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
         ) override
         {
             lib::unused(file, offset);
@@ -147,9 +147,7 @@ namespace fs::dev::mem
             std::size_t progress = 0;
             while (progress < buffer.size_bytes())
             {
-                const auto chunk_size = std::min(
-                    buffer.size_bytes() - progress, buf.size_bytes()
-                );
+                const auto chunk_size = std::min(buffer.size_bytes() - progress, buf.size_bytes());
                 if (!buffer.subspan(progress, chunk_size).copy_to(buf.data()))
                     return std::unexpected { lib::err::invalid_address };
 
@@ -166,12 +164,9 @@ namespace fs::dev::mem
         }
     };
 
-    lib::initgraph::task memfiles_task
-    {
-        "vfs.dev.memfiles.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { devtmpfs::registered_stage() },
-        [] {
+    lib::initgraph::task memfiles_task {
+        "vfs.dev.memfiles.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { devtmpfs::registered_stage() }, [] {
             using namespace vfs::dev;
             register_ops(makedev(1, 3), null_ops::singleton());
             register_ops(makedev(1, 5), zero_ops::singleton());
@@ -181,14 +176,12 @@ namespace fs::dev::mem
             register_ops(makedev(1, 8), rand);
             register_ops(makedev(1, 9), rand);
 
-            auto create = [](std::string_view name, mode_t mode, dev_t dev)
-            {
+            auto create = [](std::string_view name, mode_t mode, dev_t dev) {
                 const auto ret = fs::devtmpfs::create(name, mode, dev);
                 if (!ret && ret.error() != lib::err::already_exists)
                 {
                     lib::panic(
-                        "mem: failed to create '/dev/{}': {}",
-                        name, lib::error_name(ret.error())
+                        "mem: failed to create '/dev/{}': {}", name, lib::error_name(ret.error())
                     );
                 }
             };

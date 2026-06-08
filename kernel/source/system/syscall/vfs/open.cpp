@@ -82,9 +82,7 @@ namespace syscall::vfs
             did_create = true;
         }
         else if ((flags & o_excl) && (flags & o_creat))
-        {
             return -EEXIST;
-        }
         else
         {
             target = std::move(res->target);
@@ -116,12 +114,10 @@ namespace syscall::vfs
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
             return -ENOTDIR;
 
-        if ((mflags & ms_nodev) &&
-            (stat.type() == stat::s_ifchr || stat.type() == stat::s_ifblk))
+        if ((mflags & ms_nodev) && (stat.type() == stat::s_ifchr || stat.type() == stat::s_ifblk))
             return -EACCES;
 
-        if ((flags & o_noatime) &&
-            proc->cred->fsuid != stat.st_uid &&
+        if ((flags & o_noatime) && proc->cred->fsuid != stat.st_uid &&
             !sched::capable(proc->cred, sched::cap_t::fowner))
             return -EPERM;
 
@@ -138,7 +134,8 @@ namespace syscall::vfs
 
         const auto fdesc = filedesc::create(target, flags);
 
-        const auto fdres = fdt->alloc(fdesc, 0, false, proc->rlimits->get(sched::rlimit_nofile).cur);
+        const auto fdres =
+            fdt->alloc(fdesc, 0, false, proc->rlimits->get(sched::rlimit_nofile).cur);
         if (!fdres.has_value())
             return -lib::map_error(fdres.error());
 
@@ -181,10 +178,7 @@ namespace syscall::vfs
         return openat(at_fdcwd, pathname, o_creat | o_wronly | o_trunc, mode);
     }
 
-    int close(int fd)
-    {
-        return sched::current_process()->fdt->close(fd) ? 0 : -EBADF;
-    }
+    int close(int fd) { return sched::current_process()->fdt->close(fd) ? 0 : -EBADF; }
 
     int close_range(std::uint32_t first, std::uint32_t last, std::uint32_t flags)
     {
@@ -214,7 +208,7 @@ namespace syscall::vfs
         }
 
         auto wlocked = fdt->fds.write_lock();
-        for (auto it = wlocked->begin(); it != wlocked->end(); )
+        for (auto it = wlocked->begin(); it != wlocked->end();)
         {
             if (it->first >= static_cast<int>(first) && it->first <= static_cast<int>(last))
             {
@@ -223,7 +217,8 @@ namespace syscall::vfs
                 if (closed_fd < fdt->next_fd)
                     fdt->next_fd = closed_fd;
             }
-            else it++;
+            else
+                it++;
         }
         return 0;
     }

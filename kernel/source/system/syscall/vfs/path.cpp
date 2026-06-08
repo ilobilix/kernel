@@ -8,7 +8,9 @@ namespace syscall::vfs
 {
     using namespace ::vfs;
 
-    std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz)
+    std::ssize_t readlinkat(
+        int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz
+    )
     {
         const auto proc = sched::current_process();
 
@@ -140,8 +142,7 @@ namespace syscall::vfs
         if ((parent_stat.st_mode & s_isvtx) != 0)
         {
             const auto &cred = proc->cred;
-            if (cred->fsuid != tstat.st_uid &&
-                cred->fsuid != parent_stat.st_uid &&
+            if (cred->fsuid != tstat.st_uid && cred->fsuid != parent_stat.st_uid &&
                 !sched::capable(cred, sched::cap_t::fowner))
                 return -EACCES;
         }
@@ -152,15 +153,9 @@ namespace syscall::vfs
         return 0;
     }
 
-    int unlink(const char __user *pathname)
-    {
-        return unlinkat(at_fdcwd, pathname, 0);
-    }
+    int unlink(const char __user *pathname) { return unlinkat(at_fdcwd, pathname, 0); }
 
-    int rmdir(const char __user *pathname)
-    {
-        return unlinkat(at_fdcwd, pathname, at_removedir);
-    }
+    int rmdir(const char __user *pathname) { return unlinkat(at_fdcwd, pathname, at_removedir); }
 
     int mknodat(int dirfd, const char __user *pathname, mode_t mode, dev_t dev)
     {
@@ -238,8 +233,8 @@ namespace syscall::vfs
     }
 
     int linkat(
-        int olddirfd, const char __user *oldpath,
-        int newdirfd, const char __user *newpath, int flags
+        int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath,
+        int flags
     )
     {
         if (flags & ~(at_symlink_follow | at_empty_path))
@@ -351,8 +346,8 @@ namespace syscall::vfs
     }
 
     int renameat2(
-        int olddfd, const char __user *oldname, int newdfd,
-        const char __user *newname, unsigned int flags
+        int olddfd, const char __user *oldname, int newdfd, const char __user *newname,
+        unsigned int flags
     )
     {
         // TODO: glibc seems to fall back to renameat
@@ -407,7 +402,7 @@ namespace syscall::vfs
             const auto &cred = proc->cred;
             const auto &tstat = target_path.dentry->inode->stat;
             return cred->fsuid == tstat.st_uid || cred->fsuid == pstat.st_uid ||
-                   sched::capable(cred, sched::cap_t::fowner);
+                sched::capable(cred, sched::cap_t::fowner);
         };
 
         if (const auto tgt = detail::resolve_from(proc, olddirfd, old_path); tgt.has_value())
@@ -454,7 +449,8 @@ namespace syscall::vfs
             if (ktimes[0].tv_nsec == utime_omit && ktimes[1].tv_nsec == utime_omit)
                 return 0;
         }
-        else ktimes[0] = ktimes[1] = now;
+        else
+            ktimes[0] = ktimes[1] = now;
 
         const auto proc = sched::current_process();
 
@@ -475,18 +471,19 @@ namespace syscall::vfs
         const bool is_owner = (cred->fsuid == stat.st_uid);
         const bool has_fowner = sched::capable(cred, sched::cap_t::fowner);
 
-        const auto is_special = [](const auto ns) {
-            return ns == utime_now || ns == utime_omit;
-        };
+        const auto is_special = [](const auto ns) { return ns == utime_now || ns == utime_omit; };
 
         if (times && (!is_special(ktimes[0].tv_nsec) || !is_special(ktimes[1].tv_nsec)))
         {
             if (!is_owner && !has_fowner)
                 return -EPERM;
         }
-        else if (!is_owner && !has_fowner &&
-            !vfs::check_access(*target, proc->cred,
-                static_cast<std::uint32_t>(sched::access_mode::write)))
+        else if (
+            !is_owner && !has_fowner &&
+            !vfs::check_access(
+                *target, proc->cred, static_cast<std::uint32_t>(sched::access_mode::write)
+            )
+        )
             return -EACCES;
 
         for (auto &ktime : ktimes)

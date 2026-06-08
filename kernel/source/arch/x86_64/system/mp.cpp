@@ -20,8 +20,7 @@ namespace cpu::mp
 
     std::size_t num_cores()
     {
-        static const auto cached = []
-        {
+        static const auto cached = [] {
             const bool x2apic = x86_64::apic::supported().second;
 
             std::size_t max_cpus = 0;
@@ -48,8 +47,7 @@ namespace cpu::mp
     std::size_t bsp_aid()
     {
         // called from bsp
-        static const auto cached = []
-        {
+        static const auto cached = [] {
             const bool x2apic = x86_64::apic::supported().second;
             const auto val = apic::read(apic::reg::id);
             return x2apic ? val : val >> 24;
@@ -73,23 +71,21 @@ namespace cpu::mp
         const auto temp_stack_page = pmm::alloc(1, false, pmm::type::sub1mib);
 
         pagemap_use_lowmem = true;
-            vmm::pagemap temp_map { };
+        vmm::pagemap temp_map { };
         pagemap_use_lowmem = false;
 
-        const auto map = [&temp_map]<typename ...Args>(std::string_view str, Args &&...args)
-        {
+        const auto map = [&temp_map]<typename... Args>(std::string_view str, Args &&...args) {
             auto inner = [&](auto &obj) {
                 if (const auto ret = obj.map(std::forward<Args>(args)...); !ret)
                     lib::panic("could not map {}: {}", str, lib::error_name(ret.error()));
             };
             pagemap_use_lowmem = true;
-                inner(temp_map);
+            inner(temp_map);
             pagemap_use_lowmem = false;
             inner(*vmm::kernel_pagemap);
         };
 
-        const auto unmap = [&temp_map]<typename ...Args>(std::string_view str, Args &&...args)
-        {
+        const auto unmap = [&temp_map]<typename... Args>(std::string_view str, Args &&...args) {
             auto inner = [&](auto &obj) {
                 if (const auto ret = obj.unmap(std::forward<Args>(args)...); !ret)
                     lib::panic("could not unmap {}: {}", str, lib::error_name(ret.error()));
@@ -99,8 +95,11 @@ namespace cpu::mp
         };
 
         lib::debug("cpu: trampoline address 0x{:X}", trampoline_page);
-        map("trampoline address", trampoline_page, trampoline_page, smp_trampoline_size, vmm::pflag::rwx);
-        std::memcpy(reinterpret_cast<void *>(trampoline_page), smp_trampoline_start, smp_trampoline_size);
+        map("trampoline address", trampoline_page, trampoline_page, smp_trampoline_size,
+            vmm::pflag::rwx);
+        std::memcpy(
+            reinterpret_cast<void *>(trampoline_page), smp_trampoline_start, smp_trampoline_size
+        );
 
         lib::debug("cpu: temporary stack address 0x{:X}", temp_stack_page);
         map("temporary stack", temp_stack_page, temp_stack_page, pmm::page_size, vmm::pflag::rwx);
@@ -108,8 +107,7 @@ namespace cpu::mp
         const bool x2apic = x86_64::apic::supported().second;
         mtrr::save();
 
-        auto start_ap = [&](std::size_t lapic_id)
-        {
+        auto start_ap = [&](std::size_t lapic_id) {
             if (lapic_id == bsp_aid())
                 return;
 
@@ -127,7 +125,9 @@ namespace cpu::mp
 
             const auto cpu = request(lapic_id);
 
-            volatile auto info = reinterpret_cast<trampoline_info *>(trampoline_page + smp_trampoline_size - sizeof(trampoline_info));
+            volatile auto info = reinterpret_cast<trampoline_info *>(
+                trampoline_page + smp_trampoline_size - sizeof(trampoline_info)
+            );
             *info = trampoline_info {
                 .booted_flag = 0,
                 .early_pagemap = reinterpret_cast<std::uint64_t>(temp_map.get_arch_table()),
@@ -142,9 +142,15 @@ namespace cpu::mp
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::init, 0);
             chrono::stall_ns(10'000'000);
 
-            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
+            apic::ipi(
+                lapic_id, apic::destination::physical, apic::delivery::startup,
+                (trampoline_page >> 12)
+            );
             chrono::stall_ns(200'000);
-            apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
+            apic::ipi(
+                lapic_id, apic::destination::physical, apic::delivery::startup,
+                (trampoline_page >> 12)
+            );
             chrono::stall_ns(200'000);
 
             for (std::size_t i = 0; i < 1000; i++)

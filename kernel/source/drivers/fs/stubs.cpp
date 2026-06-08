@@ -17,12 +17,12 @@ namespace fs::stubs
             std::uint32_t magic;
         };
 
-        constexpr std::array<entry, 5> stubs {{
+        constexpr entry stubs[] {
             { "bpf"sv, 0xCAFE4A11 },
             { "cgroup2"sv, 0x63677270 },
             { "pstore"sv, 0x6165676C },
             { "securityfs"sv, 0x73636673 }
-        }};
+        };
 
         struct stub_fs : vfs::filesystem
         {
@@ -33,8 +33,7 @@ namespace fs::stubs
             auto mount(
                 std::shared_ptr<vfs::dentry> src,
                 std::optional<lib::maybe_uspan<const std::byte>> data
-            ) const
-                -> lib::expect<std::shared_ptr<struct vfs::mount>> override
+            ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
             {
                 lib::unused(src, data);
 
@@ -53,7 +52,8 @@ namespace fs::stubs
                 locked->opt_mode = 0755;
 
                 root = std::make_shared<vfs::dentry>();
-                root->name = fmt::format("{} stub root. this shouldn't be visible anywhere", this->name);
+                root->name =
+                    fmt::format("{} stub root. this shouldn't be visible anywhere", this->name);
                 root->inode = std::make_shared<tmpfs::inode>(
                     locked.get(), locked->dev_id, 0, locked->next_inode++,
                     static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
@@ -66,24 +66,19 @@ namespace fs::stubs
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.stubs.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.stubs.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.stubs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::entail { registered_stage() },
-        [] {
+    lib::initgraph::task register_task {
+        "vfs.stubs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::entail { registered_stage() }, [] {
             for (const auto &[name, magic] : stubs)
             {
-                lib::bug_on(!vfs::register_fs(
-                    std::make_shared<stub_fs>(std::string { name }, magic))
+                lib::bug_on(
+                    !vfs::register_fs(std::make_shared<stub_fs>(std::string { name }, magic))
                 );
             }
         }

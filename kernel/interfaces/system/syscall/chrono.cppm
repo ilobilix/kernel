@@ -8,8 +8,7 @@ export namespace syscall::chrono
     int clock_gettime(clockid_t clockid, timespec __user *tp);
     int clock_getres(clockid_t clockid, timespec __user *res);
     int clock_nanosleep(
-        const clockid_t clockid, int flags,
-        const timespec __user *time, timespec __user *remain
+        const clockid_t clockid, int flags, const timespec __user *time, timespec __user *remain
     );
     int nanosleep(const timespec __user *time, timespec __user *remain);
 

@@ -42,9 +42,7 @@ export namespace x86_64::apic::io
 
         ioapic_domain();
 
-        lib::expect<void> alloc(
-            std::span<irq::irq_data *> data, const irq::fwspec &spec
-        ) override;
+        lib::expect<void> alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec) override;
 
         void free(std::span<irq::irq_data *> data) override;
 
@@ -62,8 +60,8 @@ export namespace x86_64::apic::io
     ioapic_domain *get_ioapic_domain();
 
     lib::expect<irq::handle_t> request_gsi(
-        std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx, irq::handler_fn fn,
+        std::string_view name = { }
     );
 
     bool is_initialised();

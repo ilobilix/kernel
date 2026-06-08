@@ -59,12 +59,10 @@ namespace bin::elf::exec
         bool is_valid_elf(const Elf64_Ehdr &ehdr)
         {
             return std::memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0 &&
-                ehdr.e_ident[EI_CLASS] == ELFCLASS64 &&
-                ehdr.e_ident[EI_DATA] == ELFDATA2LSB &&
+                ehdr.e_ident[EI_CLASS] == ELFCLASS64 && ehdr.e_ident[EI_DATA] == ELFDATA2LSB &&
                 (ehdr.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
-                    ehdr.e_ident[EI_OSABI] == ELFOSABI_LINUX) &&
-                ehdr.e_ident[EI_VERSION] == EV_CURRENT &&
-                ehdr.e_machine == EM_CURRENT;
+                 ehdr.e_ident[EI_OSABI] == ELFOSABI_LINUX) &&
+                ehdr.e_ident[EI_VERSION] == EV_CURRENT && ehdr.e_machine == EM_CURRENT;
         }
 
         auto load_file(
@@ -97,17 +95,12 @@ namespace bin::elf::exec
                 );
                 lib::bug_on(!phdruspan.has_value());
 
-                const auto ret = file->pread(
-                    ehdr.e_phoff + i * ehdr.e_phentsize,
-                    std::move(*phdruspan)
-                );
+                const auto ret =
+                    file->pread(ehdr.e_phoff + i * ehdr.e_phentsize, std::move(*phdruspan));
 
                 if (!ret.has_value())
                 {
-                    lib::error(
-                        "elf: could not read phdr: {}",
-                        lib::error_name(ret.error())
-                    );
+                    lib::error("elf: could not read phdr: {}", lib::error_name(ret.error()));
                     return std::nullopt;
                 }
                 if (*ret != sizeof(phdr))
@@ -144,8 +137,7 @@ namespace bin::elf::exec
                         if (!ret.has_value())
                         {
                             lib::error(
-                                "elf: could not read phdr data: {}",
-                                lib::error_name(ret.error())
+                                "elf: could not read phdr data: {}", lib::error_name(ret.error())
                             );
                             return std::nullopt;
                         }
@@ -153,8 +145,8 @@ namespace bin::elf::exec
                         if (*ret != file_uspan->size_bytes())
                         {
                             lib::error(
-                                "elf: phdr data size mismatch: {} != {}",
-                                *ret, file_uspan->size_bytes()
+                                "elf: phdr data size mismatch: {} != {}", *ret,
+                                file_uspan->size_bytes()
                             );
                             return std::nullopt;
                         }
@@ -180,7 +172,7 @@ namespace bin::elf::exec
                             }
                         }
 
-                        auto flags = vmm::flag::private_;// | vmm::flag::untouchable;
+                        auto flags = vmm::flag::private_; // | vmm::flag::untouchable;
                         std::uintptr_t address = 0;
 
                         if (ehdr.e_type != ET_DYN)
@@ -197,15 +189,13 @@ namespace bin::elf::exec
                         }
 
                         const auto mret = vmspace->map(
-                            address, phdr.p_memsz + misalign,
-                            prot, prot, flags, obj, 0
+                            address, phdr.p_memsz + misalign, prot, prot, flags, obj, 0
                         );
 
                         if (!mret.has_value())
                         {
                             lib::error(
-                                "elf: could not map segment: {}",
-                                lib::error_name(mret.error())
+                                "elf: could not map segment: {}", lib::error_name(mret.error())
                             );
                             return std::nullopt;
                         };
@@ -255,15 +245,14 @@ namespace bin::elf::exec
                         if (*ret != phdr.p_filesz - 1)
                         {
                             lib::error(
-                                "elf: interpreter path size mismatch: {} != {}",
-                                *ret, phdr.p_filesz - 1
+                                "elf: interpreter path size mismatch: {} != {}", *ret,
+                                phdr.p_filesz - 1
                             );
                             return std::nullopt;
                         }
 
                         std::string_view path {
-                            reinterpret_cast<const char *>(buffer.data()),
-                            phdr.p_filesz - 1
+                            reinterpret_cast<const char *>(buffer.data()), phdr.p_filesz - 1
                         };
 
                         if (lib::path_view { path } .is_absolute() == false)
@@ -305,8 +294,7 @@ namespace bin::elf::exec
                     .at_phent = ehdr.e_phentsize,
                     .at_phnum = ehdr.e_phnum
                 },
-                std::move(interp),
-                lib::align_up(max_end, npsize)
+                std::move(interp), lib::align_up(max_end, npsize)
             );
         }
 
@@ -329,11 +317,10 @@ namespace bin::elf::exec
                 const std::string_view plaform_name { ILOBILIX_SYSNAME };
 
                 auto offset = stack_size;
-                const auto curr = [&] {
-                    return addr_bottom + offset;
-                };
+                const auto curr = [&] { return addr_bottom + offset; };
 
-                const auto copy_to_user = [](std::uintptr_t dest, const void *src, std::size_t len) {
+                const auto copy_to_user = [](std::uintptr_t dest, const void *src,
+                                             std::size_t len) {
                     auto ptr = reinterpret_cast<__user void *>(dest);
                     // TODO
                     lib::panic_if(!lib::copy_to_user(ptr, src, len));
@@ -389,8 +376,7 @@ namespace bin::elf::exec
                     write(0);
                 }
 
-                const auto write_auxv = [&](int type, std::uint64_t value)
-                {
+                const auto write_auxv = [&](int type, std::uint64_t value) {
                     offset -= 8;
                     write(value);
                     offset -= 8;
@@ -465,7 +451,8 @@ namespace bin::elf::exec
 
         public:
         image(std::shared_ptr<vfs::file> file, const Elf64_Ehdr &ehdr)
-            : bin::exec::image { std::move(file) }, _ehdr { ehdr } { }
+            : bin::exec::image { std::move(file) }, _ehdr { ehdr }
+        { }
 
         std::shared_ptr<sched::thread_t> load(const bin::exec::request &req) const override
         {
@@ -510,17 +497,11 @@ namespace bin::elf::exec
             req.proc->vmspace->brk_start = brk_base;
             req.proc->vmspace->current_brk = brk_base;
 
-            auto execfn = req.pathname.empty()
-                ? vfs::pathname_from(file->path)
-                : req.pathname;
-            const auto arg = new ctx {
-                req, std::move(execfn), entry, interp_base, auxv
-            };
+            auto execfn = req.pathname.empty() ? vfs::pathname_from(file->path) : req.pathname;
+            const auto arg = new ctx { req, std::move(execfn), entry, interp_base, auxv };
             return sched::create_uthread(
-                req.proc->shared_from_this(),
-                reinterpret_cast<std::uintptr_t>(trampoline),
-                reinterpret_cast<std::uintptr_t>(arg),
-                true, false, 0
+                req.proc->shared_from_this(), reinterpret_cast<std::uintptr_t>(trampoline),
+                reinterpret_cast<std::uintptr_t>(arg), true, false, 0
             );
         }
 
@@ -544,12 +525,8 @@ namespace bin::elf::exec
         }
     };
 
-    lib::initgraph::task elf_exec_task
-    {
-        "bin.exec.elf.register",
-        lib::initgraph::postsched_init_engine,
-        [] {
-            bin::exec::register_format(std::make_shared<format>());
-        }
+    lib::initgraph::task elf_exec_task {
+        "bin.exec.elf.register", lib::initgraph::postsched_init_engine,
+        [] { bin::exec::register_format(std::make_shared<format>()); }
     };
 } // namespace bin::elf::exec

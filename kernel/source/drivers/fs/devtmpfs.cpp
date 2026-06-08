@@ -17,10 +17,8 @@ namespace fs::devtmpfs
         mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
 
         auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
-        ) const
-            -> lib::expect<std::shared_ptr<struct vfs::mount>> override
+            std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
+        ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src, data);
 
@@ -41,8 +39,7 @@ namespace fs::devtmpfs
             root->name = "devtmpfs root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked.get(), locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-                tmpfs::ops::singleton()
+                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode, tmpfs::ops::singleton()
             );
             root->parent = root;
 
@@ -63,10 +60,7 @@ namespace fs::devtmpfs
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
             return std::unexpected { lib::err::invalid_path };
 
-        const vfs::path devroot {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
-        };
+        const vfs::path devroot { .mnt = main->internal_mnt, .dentry = main->root };
 
         std::string partial;
         for (const auto segment_view : path.dirname() | std::views::split('/'))
@@ -100,10 +94,7 @@ namespace fs::devtmpfs
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
             return std::unexpected { lib::err::invalid_path };
 
-        const vfs::path devroot {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
-        };
+        const vfs::path devroot { .mnt = main->internal_mnt, .dentry = main->root };
 
         if (const auto ret = vfs::unlink(devroot, path); !ret)
             return std::unexpected { ret.error() };
@@ -113,50 +104,35 @@ namespace fs::devtmpfs
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.devtmpfs.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.devtmpfs.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *mounted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.devtmpfs.mounted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.devtmpfs.mounted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.devtmpfs.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task register_task {
+        "vfs.devtmpfs.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
-        [] {
-            lib::bug_on(!vfs::register_fs(main = std::make_shared<fs>()));
-        }
+        [] { lib::bug_on(!vfs::register_fs(main = std::make_shared<fs>())); }
     };
 
-    lib::initgraph::task mount_task
-    {
-        "vfs.devtmpfs.mount",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            vfs::root_mounted_stage(),
-            registered_stage()
-        },
-        lib::initgraph::entail { mounted_stage() },
-        [] {
+    lib::initgraph::task mount_task {
+        "vfs.devtmpfs.mount", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { vfs::root_mounted_stage(), registered_stage() },
+        lib::initgraph::entail { mounted_stage() }, [] {
             const auto cerr = vfs::create(std::nullopt, "/dev", stat::type::s_ifdir | 0755);
             if (!cerr && cerr.error() != lib::err::already_exists)
             {
                 lib::panic(
-                    "devtmpfs: failed to create directory '/dev': {}",
-                    lib::error_name(cerr.error())
+                    "devtmpfs: failed to create directory '/dev': {}", lib::error_name(cerr.error())
                 );
             }
             if (const auto merr = vfs::mount("", "/dev", "devtmpfs", 0); !merr)

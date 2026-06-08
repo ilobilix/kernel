@@ -21,17 +21,12 @@ export namespace lib
     };
 
     void blake2s_init(blake2s_state &state, std::size_t outlen);
-    void blake2s_init_key(
-        blake2s_state &state,
-        std::size_t outlen,
-        std::span<const std::byte> key
-    );
+    void blake2s_init_key(blake2s_state &state, std::size_t outlen, std::span<const std::byte> key);
     void blake2s_update(blake2s_state &state, std::span<const std::byte> input);
     void blake2s_final(blake2s_state &state, std::span<std::byte> out);
 
     void blake2s(
-        std::span<std::byte> out,
-        std::span<const std::byte> input,
+        std::span<std::byte> out, std::span<const std::byte> input,
         std::span<const std::byte> key = { }
     );
 } // export namespace lib

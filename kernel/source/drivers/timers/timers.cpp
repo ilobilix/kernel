@@ -8,34 +8,24 @@ namespace timers
 {
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task timers_task
-    {
-        "timers",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            timers::arch::initialised_stage(),
-            acpipm::initialised_stage()
-        },
-        lib::initgraph::entail { initialised_stage() },
-        [] { }
+    lib::initgraph::task timers_task {
+        "timers", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { timers::arch::initialised_stage(), acpipm::initialised_stage() },
+        lib::initgraph::entail { initialised_stage() }, [] { }
     };
 
     namespace arch
     {
         lib::initgraph::stage *initialised_stage()
         {
-            static lib::initgraph::stage stage
-            {
-                "timers.arch.initialised",
-                lib::initgraph::presched_init_engine
+            static lib::initgraph::stage stage {
+                "timers.arch.initialised", lib::initgraph::presched_init_engine
             };
             return &stage;
         }

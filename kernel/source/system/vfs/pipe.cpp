@@ -37,9 +37,9 @@ namespace vfs::pipe
             sched::wait_queue_t open_wait;
 
             explicit data(bool anon)
-                : storage { default_capacity }, capacity { default_capacity },
-                  head { 0 }, tail { 0 }, buffered { 0 }, readers { 0 }, writers { 0 },
-                  anon { anon } { }
+                : storage { default_capacity }, capacity { default_capacity }, head { 0 }, tail { 0 },
+                  buffered { 0 }, readers { 0 }, writers { 0 }, anon { anon }
+            { }
         };
 
         std::shared_ptr<data> get_or_create(const std::shared_ptr<vfs::inode> &inode)
@@ -51,8 +51,8 @@ namespace vfs::pipe
         }
 
         std::size_t copy_in(
-            data &pdata, lib::maybe_uspan<std::byte> src,
-            std::size_t off, std::size_t len, bool &fault
+            data &pdata, lib::maybe_uspan<std::byte> src, std::size_t off, std::size_t len,
+            bool &fault
         )
         {
             fault = false;
@@ -83,8 +83,8 @@ namespace vfs::pipe
         }
 
         std::size_t copy_out(
-            data &pdata, lib::maybe_uspan<std::byte> dst,
-            std::size_t off, std::size_t len, bool &fault
+            data &pdata, lib::maybe_uspan<std::byte> dst, std::size_t off, std::size_t len,
+            bool &fault
         )
         {
             fault = false;
@@ -236,7 +236,8 @@ namespace vfs::pipe
 
             lib::expect<std::size_t> read(
                 std::shared_ptr<vfs::file> file, std::uint64_t offset,
-                lib::maybe_uspan<std::byte> buffer) override
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -290,7 +291,8 @@ namespace vfs::pipe
 
             lib::expect<std::size_t> write(
                 std::shared_ptr<vfs::file> file, std::uint64_t offset,
-                lib::maybe_uspan<std::byte> buffer) override
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -394,7 +396,9 @@ namespace vfs::pipe
                 return std::unexpected { lib::err::invalid_argument };
             }
 
-            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+            lib::expect<std::uint16_t> poll(
+                std::shared_ptr<vfs::file> file, vfs::poll_table *pt
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto pdata = std::static_pointer_cast<data>(file->private_data);
@@ -448,29 +452,33 @@ namespace vfs::pipe
 
     lib::expect<std::pair<int, int>> create_pair(int flags)
     {
-        auto rfd = create_anon_fd({
-            .name = "<[PIPE READ]>",
-            .ops = ops::singleton(),
-            .file_private_data = nullptr,
-            .inode_private_data = std::make_shared<data>(true),
-            .st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo,
-            .flags = flags | o_rdonly,
-            .skip_open = false,
-            .inode = nullptr
-        });
+        auto rfd = create_anon_fd(
+            anon_fd_args {
+                .name = "<[PIPE READ]>",
+                .ops = ops::singleton(),
+                .file_private_data = nullptr,
+                .inode_private_data = std::make_shared<data>(true),
+                .st_mode = std::to_underlying(stat::s_ififo) | s_irwxu | s_irwxg | s_irwxo,
+                .flags = flags | o_rdonly,
+                .skip_open = false,
+                .inode = nullptr
+            }
+        );
         if (!rfd)
             return std::unexpected { rfd.error() };
 
-        auto wfd = create_anon_fd({
-            .name = "<[PIPE WRITE]>",
-            .ops = ops::singleton(),
-            .file_private_data = nullptr,
-            .inode_private_data = nullptr,
-            .st_mode = 0,
-            .flags = flags | o_wronly,
-            .skip_open = false,
-            .inode = rfd->second->file->path.dentry->inode,
-        });
+        auto wfd = create_anon_fd(
+            anon_fd_args {
+                .name = "<[PIPE WRITE]>",
+                .ops = ops::singleton(),
+                .file_private_data = nullptr,
+                .inode_private_data = nullptr,
+                .st_mode = 0,
+                .flags = flags | o_wronly,
+                .skip_open = false,
+                .inode = rfd->second->file->path.dentry->inode,
+            }
+        );
         if (!wfd)
         {
             sched::current_process()->fdt->close(rfd->first);

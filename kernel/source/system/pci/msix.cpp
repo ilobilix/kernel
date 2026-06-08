@@ -39,12 +39,14 @@ namespace pci::msix
             vec_control = 12
         };
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 pci::device *,
                 std::unique_ptr<msix_domain>
             >, lib::spinlock
         > domains;
+        // clang-format on
 
         std::uint16_t find_msix_cap(const pci::device &dev)
         {
@@ -72,8 +74,7 @@ namespace pci::msix
     }
 
     msix_domain::msix_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent)
-        : domain { "pci-msix", parent },
-          _dev { &dev }, _cap_offset { cap_offset }, _live_count { 0 }
+        : domain { "pci-msix", parent }, _dev { &dev }, _cap_offset { cap_offset }, _live_count { 0 }
     {
         const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
         _nvec = (mc_val & mc_table_size_mask) + 1;
@@ -88,9 +89,7 @@ namespace pci::msix
         _table = dev.bars[bir].map() + offset;
     }
 
-    lib::expect<void> msix_domain::alloc(
-        std::span<irq::irq_data *> data, const irq::fwspec &spec
-    )
+    lib::expect<void> msix_domain::alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec)
     {
         if (data.empty())
             return { };
@@ -142,10 +141,7 @@ namespace pci::msix
             pd->virq = data[i]->virq;
             pd->dom = parent;
 
-            const irq::fwspec pspec {
-                .param_count = 2,
-                .params = { cpu_idx, 0 }
-            };
+            const irq::fwspec pspec { .param_count = 2, .params = { cpu_idx, 0 } };
 
             auto pd_ptr = pd.get();
             if (auto ret = parent->alloc({ &pd_ptr, 1 }, pspec); !ret)
@@ -315,8 +311,7 @@ namespace pci::msix
     }
 
     lib::expect<irq::handle_t> request(
-        pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        pci::device &dev, std::size_t cpu_idx, irq::handler_fn fn, std::string_view name
     )
     {
         auto dom = for_device(dev);
@@ -325,9 +320,7 @@ namespace pci::msix
 
         const irq::fwspec spec {
             .param_count = msix_domain::param_count,
-            .params = {
-                [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
-            }
+            .params = { [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx) }
         };
         return irq::alloc_and_request(*dom, spec, std::move(fn), name);
     }
@@ -342,9 +335,7 @@ namespace pci::msix
 
         const irq::fwspec spec {
             .param_count = msix_domain::param_count,
-            .params = {
-                [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
-            }
+            .params = { [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx) }
         };
         return irq::alloc_num(*dom, spec, count);
     }

@@ -36,18 +36,14 @@ namespace syscall::vfs
 
         struct data_t
         {
-            lib::locker<
-                sched::sigset_t,
-                lib::spinlock
-            > mask;
+            lib::locker<sched::sigset_t, lib::spinlock> mask;
             sched::wait_queue_t bell;
 
             sched::signal_waiter_t waiter;
             std::weak_ptr<sched::process_t> wproc;
             bool registered = false;
 
-            explicit data_t(const sched::sigset_t &mask)
-                : mask { mask }, bell { } { }
+            explicit data_t(const sched::sigset_t &mask) : mask { mask }, bell { } { }
 
             ~data_t()
             {
@@ -58,8 +54,7 @@ namespace syscall::vfs
             }
 
             void register_with(
-                const std::shared_ptr<sched::process_t> &proc,
-                const sched::sigset_t &interest
+                const std::shared_ptr<sched::process_t> &proc, const sched::sigset_t &interest
             )
             {
                 waiter.interest = interest;
@@ -118,8 +113,7 @@ namespace syscall::vfs
                 auto proc = sched::current_process();
 
                 const auto mask = *data->mask.lock();
-                const auto drain = [&](std::size_t &count) -> lib::expect<void>
-                {
+                const auto drain = [&](std::size_t &count) -> lib::expect<void> {
                     while (count < max)
                     {
                         const auto info = sched::dequeue_signal(proc, mask);
@@ -128,7 +122,7 @@ namespace syscall::vfs
 
                         const auto ss = to_siginfo(*info);
                         if (!buffer.subspan(count * sizeof(ss), sizeof(ss))
-                                .copy_from(std::as_bytes(std::span { &ss, 1 })))
+                                 .copy_from(std::as_bytes(std::span { &ss, 1 })))
                             return std::unexpected { lib::err::invalid_address };
 
                         count++;
@@ -230,16 +224,18 @@ namespace syscall::vfs
         }
 
         auto data = std::make_shared<data_t>(kmask);
-        auto ret = create_anon_fd({
-            .name = "<[SIGNALFD]>",
-            .ops = ops::singleton(),
-            .file_private_data = data,
-            .inode_private_data = nullptr,
-            .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
-            .flags = flags | o_rdwr,
-            .skip_open = true,
-            .inode = nullptr
-        });
+        auto ret = create_anon_fd(
+            anon_fd_args {
+                .name = "<[SIGNALFD]>",
+                .ops = ops::singleton(),
+                .file_private_data = data,
+                .inode_private_data = nullptr,
+                .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
+                .flags = flags | o_rdwr,
+                .skip_open = true,
+                .inode = nullptr
+            }
+        );
         if (!ret)
             return -lib::map_error(ret.error());
 

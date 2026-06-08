@@ -33,8 +33,7 @@ namespace cpu
             static std::size_t offset = 0;
 
             const auto base = reinterpret_cast<std::uintptr_t>(__end_percpu) + offset;
-            const std::size_t size =
-                reinterpret_cast<std::uintptr_t>(__end_percpu) -
+            const std::size_t size = reinterpret_cast<std::uintptr_t>(__end_percpu) -
                 reinterpret_cast<std::uintptr_t>(__start_percpu);
 
             const auto psize = vmm::page_size::small;
@@ -45,17 +44,10 @@ namespace cpu
             {
                 const auto paddr = pmm::alloc(npsize / pmm::page_size, true);
                 const auto ret = vmm::kernel_pagemap->map(
-                    base + offset, paddr,
-                    npsize, flags, psize,
-                    vmm::caching::normal
+                    base + offset, paddr, npsize, flags, psize, vmm::caching::normal
                 );
                 if (!ret)
-                {
-                    lib::panic(
-                        "cpu: could not map percpu area: {}",
-                        lib::error_name(ret.error())
-                    );
-                }
+                    lib::panic("cpu: could not map percpu area: {}", lib::error_name(ret.error()));
             }
 
             for (auto func = __start_percpu_init; func < __end_percpu_init; func++)
@@ -77,7 +69,8 @@ namespace cpu
                 if (!bases) [[likely]]
                     bases = new std::uintptr_t[count()] { };
             }
-            else lib::info("cpu: bringing up ap {}", idx);
+            else
+                lib::info("cpu: bringing up ap {}", idx);
 
             const auto base = map();
             me.initialise(bases[idx] = base);
@@ -134,19 +127,10 @@ namespace cpu
             std::unreachable();
         }
 
-        void begin_access()
-        {
-            sched::preempt_disable();
-        }
+        void begin_access() { sched::preempt_disable(); }
 
-        void end_access()
-        {
-            sched::preempt_enable();
-        }
+        void end_access() { sched::preempt_enable(); }
     } // namespace local
 
-    local::storage<processor> &self()
-    {
-        return local::me;
-    }
+    local::storage<processor> &self() { return local::me; }
 } // namespace cpu

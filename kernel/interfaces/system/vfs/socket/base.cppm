@@ -6,8 +6,7 @@ import system.vfs;
 import lib;
 import std;
 
-export
-{
+export {
     constexpr int somaxconn = 4096;
     constexpr std::size_t uio_maxiov = 1024;
 
@@ -322,16 +321,15 @@ export namespace vfs::socket
         sock_type type;
 
         socket_t(int protocol, addr_fam family, sock_type type)
-            : protocol { protocol }, family { family }, type { type } { }
+            : protocol { protocol }, family { family }, type { type }
+        { }
 
         virtual auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
-        virtual auto connect(
-            lib::maybe_uspan<const std::byte> addr, bool nonblock
-        ) -> lib::expect<void> = 0;
+        virtual auto connect(lib::maybe_uspan<const std::byte> addr, bool nonblock)
+            -> lib::expect<void> = 0;
         virtual auto listen(int backlog) -> lib::expect<void> = 0;
         virtual auto accept(
-            lib::maybe_uspan<std::byte> peer_addr_out,
-            socklen_t *addr_len_inout, bool nonblock
+            lib::maybe_uspan<std::byte> peer_addr_out, socklen_t *addr_len_inout, bool nonblock
         ) -> lib::expect<std::shared_ptr<socket_t>> = 0;
 
         virtual auto sendmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> = 0;
@@ -345,14 +343,10 @@ export namespace vfs::socket
         virtual auto getsockname(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> = 0;
         virtual auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> = 0;
 
-        virtual auto setsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<const std::byte> buf
-        ) -> lib::expect<void> = 0;
-        virtual auto getsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<std::byte> buf
-        ) -> lib::expect<std::size_t> = 0;
+        virtual auto setsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf)
+            -> lib::expect<void> = 0;
+        virtual auto getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+            -> lib::expect<std::size_t> = 0;
 
         virtual auto release() -> lib::expect<void> = 0;
 

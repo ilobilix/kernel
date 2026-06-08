@@ -132,9 +132,7 @@ namespace random
             for (std::size_t i = 0; i < iters; i++)
             {
                 const auto cycles = arch::cycle_count();
-                const auto now = static_cast<std::uint64_t>(
-                    chrono::now(chrono::realtime).to_ns()
-                );
+                const auto now = static_cast<std::uint64_t>(chrono::now(chrono::realtime).to_ns());
                 lib::blake2s_update(_base.pool, std::as_bytes(std::span { &cycles, 1 }));
                 lib::blake2s_update(_base.pool, std::as_bytes(std::span { &now, 1 }));
                 arch::pause();
@@ -258,9 +256,7 @@ namespace random
                 bool any = false;
                 for (std::size_t j = 0; j < snapshot.size(); j++)
                 {
-                    snapshot[j] = __atomic_exchange_n(
-                        &pool.entries[j], 0, __ATOMIC_RELAXED
-                    );
+                    snapshot[j] = __atomic_exchange_n(&pool.entries[j], 0, __ATOMIC_RELAXED);
                     any |= (snapshot[j] != 0);
                 }
 
@@ -296,9 +292,7 @@ namespace random
             lib::chacha20_block(_base.key, zero_nonce, 0, block);
             std::copy_n(block.begin(), lib::chacha20_key_size, _base.key.begin());
             std::copy_n(
-                block.begin() + lib::chacha20_key_size,
-                lib::chacha20_key_size,
-                local.key.begin()
+                block.begin() + lib::chacha20_key_size, lib::chacha20_key_size, local.key.begin()
             );
             memzero(block.data(), block.size());
 
@@ -315,7 +309,8 @@ namespace random
                 local.bytes_since_derive >= reseed_interval)
                 derive_local(local);
 
-            constexpr std::size_t output_per_block = lib::chacha20_block_size - lib::chacha20_key_size;
+            constexpr std::size_t output_per_block =
+                lib::chacha20_block_size - lib::chacha20_key_size;
             while (!out.empty())
             {
                 std::array<std::byte, lib::chacha20_block_size> block;
@@ -371,8 +366,8 @@ namespace random
 
         auto &p = _irq_pool.unsafe_get();
         const auto cycles = arch::cycle_count();
-        const auto data = (static_cast<std::uint64_t>(vector) << 32) ^
-                           static_cast<std::uint64_t>(ip);
+        const auto data =
+            (static_cast<std::uint64_t>(vector) << 32) ^ static_cast<std::uint64_t>(ip);
         siphash_mix(p.entries, cycles, data);
     }
 
@@ -400,9 +395,7 @@ namespace random
             std::size_t progress = 0;
             while (progress < buffer.size_bytes())
             {
-                const auto chunk_size = std::min(
-                    buffer.size_bytes() - progress, buf.size_bytes()
-                );
+                const auto chunk_size = std::min(buffer.size_bytes() - progress, buf.size_bytes());
 
                 lib::lock::acquire_irq();
                 fill_local(_local.unsafe_get(), std::span { buf.data(), chunk_size });
@@ -421,14 +414,9 @@ namespace random
         return buffer.size_bytes();
     }
 
-    lib::initgraph::task random_init_task
-    {
-        "random.initialise",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            arch::cpus_stage()
-        },
-        [] {
+    lib::initgraph::task random_init_task {
+        "random.initialise", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { arch::cpus_stage() }, [] {
             {
                 const std::unique_lock _ { _base_lock };
                 if (!_base.initialised)

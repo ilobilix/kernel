@@ -14,15 +14,9 @@ import arch;
 
 namespace syscall::proc
 {
-    pid_t gettid()
-    {
-        return sched::current_thread()->tid;
-    }
+    pid_t gettid() { return sched::current_thread()->tid; }
 
-    pid_t getpid()
-    {
-        return sched::current_process()->pid;
-    }
+    pid_t getpid() { return sched::current_process()->pid; }
 
     pid_t getppid()
     {
@@ -30,15 +24,9 @@ namespace syscall::proc
         return parent ? parent->pid : 0;
     }
 
-    pid_t getpgrp()
-    {
-        return sched::current_process()->group->pgid;
-    }
+    pid_t getpgrp() { return sched::current_process()->group->pgid; }
 
-    uid_t getuid()
-    {
-        return sched::current_process()->cred->ruid;
-    }
+    uid_t getuid() { return sched::current_process()->cred->ruid; }
 
     int setuid(uid_t uid)
     {
@@ -47,10 +35,7 @@ namespace syscall::proc
         return 0;
     }
 
-    gid_t getgid()
-    {
-        return sched::current_process()->cred->rgid;
-    }
+    gid_t getgid() { return sched::current_process()->cred->rgid; }
 
     int setgid(gid_t gid)
     {
@@ -59,15 +44,9 @@ namespace syscall::proc
         return 0;
     }
 
-    uid_t geteuid()
-    {
-        return sched::current_process()->cred->euid;
-    }
+    uid_t geteuid() { return sched::current_process()->cred->euid; }
 
-    gid_t getegid()
-    {
-        return sched::current_process()->cred->egid;
-    }
+    gid_t getegid() { return sched::current_process()->cred->egid; }
 
     int setreuid(uid_t ruid, uid_t euid)
     {
@@ -156,10 +135,7 @@ namespace syscall::proc
         return target->group->pgid;
     }
 
-    int setpgid(pid_t pid, pid_t pgid)
-    {
-        return sched::setpgid(pid, pgid);
-    }
+    int setpgid(pid_t pid, pid_t pgid) { return sched::setpgid(pid, pgid); }
 
     pid_t getsid(pid_t pid)
     {
@@ -176,30 +152,15 @@ namespace syscall::proc
         return target->session->sid;
     }
 
-    pid_t setsid()
-    {
-        return sched::setsid();
-    }
+    pid_t setsid() { return sched::setsid(); }
 
-    int getpriority(int which, int who)
-    {
-        return sched::get_priority(which, who);
-    }
+    int getpriority(int which, int who) { return sched::get_priority(which, who); }
 
-    int setpriority(int which, int who, int prio)
-    {
-        return sched::set_priority(which, who, prio);
-    }
+    int setpriority(int which, int who, int prio) { return sched::set_priority(which, who, prio); }
 
-    int setfsuid(uid_t fsuid)
-    {
-        return sched::setfsuid(fsuid);
-    }
+    int setfsuid(uid_t fsuid) { return sched::setfsuid(fsuid); }
 
-    int setfsgid(gid_t fsgid)
-    {
-        return sched::setfsgid(fsgid);
-    }
+    int setfsgid(gid_t fsgid) { return sched::setfsgid(fsgid); }
 
     int getgroups(int size, gid_t __user *list)
     {
@@ -216,7 +177,7 @@ namespace syscall::proc
         return *ret;
     }
 
-    #define NGROUPS_MAX 65536
+#define NGROUPS_MAX 65536
     int setgroups(std::size_t size, const gid_t __user *list)
     {
         if (size > NGROUPS_MAX)
@@ -412,8 +373,7 @@ namespace syscall::proc
         }
 
         itimerval write_cpu_itimer(
-            sched::cpu_itimer_t &it,
-            std::uint64_t value_ns, std::uint64_t interval_ns
+            sched::cpu_itimer_t &it, std::uint64_t value_ns, std::uint64_t interval_ns
         )
         {
             const std::unique_lock _ { it.lock };
@@ -509,10 +469,7 @@ namespace syscall::proc
         return 0;
     }
 
-    int kill(pid_t pid, int sig)
-    {
-        return sched::kill(pid, sig);
-    }
+    int kill(pid_t pid, int sig) { return sched::kill(pid, sig); }
 
     int tgkill(pid_t tgid, pid_t tid, int sig)
     {
@@ -559,8 +516,8 @@ namespace syscall::proc
     }
 
     int rt_sigaction(
-        int signum, const sched::sigaction_t __user *act,
-        sched::sigaction_t __user *oldact, std::size_t sigsetsize
+        int signum, const sched::sigaction_t __user *act, sched::sigaction_t __user *oldact,
+        std::size_t sigsetsize
     )
     {
         using namespace sched;
@@ -592,9 +549,10 @@ namespace syscall::proc
                 sigacts->actions[signum - 1] = newact;
         }
 
-        if (act && (newact.handler == sched::sig_ign || (
-            newact.handler == sched::sig_dfl &&
-            sched::default_for(signum) == sched::default_action::ignore)))
+        if (act &&
+            (newact.handler == sched::sig_ign ||
+             (newact.handler == sched::sig_dfl &&
+              sched::default_for(signum) == sched::default_action::ignore)))
             sched::flush_signal(proc, signum);
 
         if (oldact && !lib::copy_to_user(oldact, &old, sizeof(sigaction_t)))
@@ -604,8 +562,8 @@ namespace syscall::proc
     }
 
     int rt_sigprocmask(
-        int how, const sched::sigset_t __user *set,
-        sched::sigset_t __user *oldset, std::size_t sigsetsize
+        int how, const sched::sigset_t __user *set, sched::sigset_t __user *oldset,
+        std::size_t sigsetsize
     )
     {
         using namespace sched;
@@ -713,11 +671,7 @@ namespace syscall::proc
         };
 
         wait_queue_t queue;
-        signal_waiter_t waiter {
-            .interest = set,
-            .wake = [&] { queue.wake_all(); },
-            .hook = { }
-        };
+        signal_waiter_t waiter { .interest = set, .wake = [&] { queue.wake_all(); }, .hook = { } };
         add_signal_waiter(proc, waiter);
 
         const auto result = [&] {
@@ -789,10 +743,7 @@ namespace syscall::proc
         return -ENOSYS;
     }
 
-    std::uintptr_t rt_sigreturn()
-    {
-        return sched::sigreturn();
-    }
+    std::uintptr_t rt_sigreturn() { return sched::sigreturn(); }
 
     int pause()
     {
@@ -851,9 +802,8 @@ namespace syscall::proc
                     if (cmd == futex_wait_bitset)
                     {
                         const auto deadline_ns = kts.to_ns();
-                        const auto now_ns = chrono::now(
-                            realtime ? chrono::realtime : chrono::monotonic
-                        ).to_ns();
+                        const auto now_ns =
+                            chrono::now(realtime ? chrono::realtime : chrono::monotonic).to_ns();
                         if (deadline_ns <= now_ns)
                             return -ETIMEDOUT;
                         wait_ns = deadline_ns - now_ns;
@@ -895,9 +845,8 @@ namespace syscall::proc
             case futex_wake_op:
             {
                 const auto nr_wake = static_cast<std::int32_t>(val);
-                const auto nr_wake2 = static_cast<std::int32_t>(
-                    reinterpret_cast<std::uintptr_t>(timeout)
-                );
+                const auto nr_wake2 =
+                    static_cast<std::int32_t>(reinterpret_cast<std::uintptr_t>(timeout));
 
                 const auto key1 = resolve(uaddr, private_);
                 if (!key1)
@@ -915,9 +864,8 @@ namespace syscall::proc
             case futex_cmp_requeue:
             {
                 const auto nr_wake = static_cast<std::int32_t>(val);
-                const auto nr_requeue = static_cast<std::int32_t>(
-                    reinterpret_cast<std::uintptr_t>(timeout)
-                );
+                const auto nr_requeue =
+                    static_cast<std::int32_t>(reinterpret_cast<std::uintptr_t>(timeout));
 
                 const auto key1 = resolve(uaddr, private_);
                 if (!key1)
@@ -930,9 +878,7 @@ namespace syscall::proc
                 if (cmd == futex_cmp_requeue)
                     cmpval = val3;
 
-                const auto ret = requeue(
-                    *key1, *key2, uaddr, nr_wake, nr_requeue, cmpval
-                );
+                const auto ret = requeue(*key1, *key2, uaddr, nr_wake, nr_requeue, cmpval);
                 if (!ret)
                     return -lib::map_error(ret.error());
                 return ret->first + ret->second;
@@ -943,8 +889,7 @@ namespace syscall::proc
     }
 
     long get_robust_list(
-        int pid, struct robust_list_head __user *__user *head_ptr,
-        std::size_t __user *sizep
+        int pid, struct robust_list_head __user * __user * head_ptr, std::size_t __user *sizep
     )
     {
         if (head_ptr == nullptr || sizep == nullptr)
@@ -964,7 +909,8 @@ namespace syscall::proc
                 return -EPERM;
             target = hold.get();
         }
-        else target = sched::current_thread();
+        else
+            target = sched::current_thread();
 
         using namespace sched::futex;
         const auto stored_head = reinterpret_cast<robust_list_head_t __user *>(target->robust_list);
@@ -1011,13 +957,9 @@ namespace syscall::proc
             if (!tcred)
                 return -ESRCH;
 
-            const bool id_match =
-                caller->ruid == tcred->ruid &&
-                caller->ruid == tcred->euid &&
-                caller->ruid == tcred->suid &&
-                caller->rgid == tcred->rgid &&
-                caller->rgid == tcred->egid &&
-                caller->rgid == tcred->sgid;
+            const bool id_match = caller->ruid == tcred->ruid && caller->ruid == tcred->euid &&
+                caller->ruid == tcred->suid && caller->rgid == tcred->rgid &&
+                caller->rgid == tcred->egid && caller->rgid == tcred->sgid;
 
             if (!id_match && !capable(caller, cap_t::sys_resource))
                 return -EPERM;
@@ -1122,8 +1064,8 @@ namespace syscall::proc
     using enum sched::clone_flags;
 
     long clone(
-        unsigned long flags, void __user *stack, int __user *parent_tid,
-        int __user *child_tid, unsigned long tls
+        unsigned long flags, void __user *stack, int __user *parent_tid, int __user *child_tid,
+        unsigned long tls
     )
     {
         const auto kflags = (flags & 0xFFFFFFFF) & ~csignal;
@@ -1197,8 +1139,7 @@ namespace syscall::proc
         if ((uargs.flags & (clone_thread | clone_parent)) && uargs.exit_signal)
             return -EINVAL;
 
-        sched::kclone_args_t kargs
-        {
+        sched::kclone_args_t kargs {
             .flags = uargs.flags,
             .pidfd = reinterpret_cast<int __user *>(uargs.pidfd),
             .child_tid = reinterpret_cast<int __user *>(uargs.child_tid),
@@ -1298,9 +1239,7 @@ namespace syscall::proc
         }
 
         return sched::exec(
-            std::move(*target),
-            std::move(kargv), std::move(kenvp),
-            std::move(kpathname)
+            std::move(*target), std::move(kargv), std::move(kenvp), std::move(kpathname)
         );
     }
 
@@ -1362,9 +1301,8 @@ namespace syscall::proc
             return -EINVAL;
 
         std::shared_ptr<sched::thread_t> keep_alive;
-        auto thread = (pid == 0)
-            ? sched::current_thread()
-            : (keep_alive = sched::get_thread(pid)).get();
+        auto thread =
+            (pid == 0) ? sched::current_thread() : (keep_alive = sched::get_thread(pid)).get();
         if (!thread)
             return -ESRCH;
 
@@ -1403,9 +1341,8 @@ namespace syscall::proc
             return -EINVAL;
 
         std::shared_ptr<sched::thread_t> keep_alive;
-        auto thread = (pid == 0)
-            ? sched::current_thread()
-            : (keep_alive = sched::get_thread(pid)).get();
+        auto thread =
+            (pid == 0) ? sched::current_thread() : (keep_alive = sched::get_thread(pid)).get();
         if (!thread)
             return -ESRCH;
 

@@ -33,9 +33,7 @@ void kthread()
 
         auto proc = sched::create_process(nullptr);
 
-        proc->vmspace = std::make_shared<vmm::vmspace>(
-            std::make_shared<vmm::pagemap>()
-        );
+        proc->vmspace = std::make_shared<vmm::vmspace>(std::make_shared<vmm::pagemap>());
 
         proc->vfs = std::make_shared<sched::process_t::vfs_state>();
         proc->vfs->root = vfs::get_root(true);
@@ -62,15 +60,15 @@ void kthread()
         lib::bug_on(!proc->fdt->dup(0, 1, false, false));
         lib::bug_on(!proc->fdt->dup(0, 2, false, false));
 
-        thread = image.value()->load({
-            .pathname = path.data(),
-            .argv = { path.basename().data() },
-            .envp = {
-                "TERM=xterm-256color",
-                "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
-            },
-            .proc = proc.get()
-        });
+        thread = image.value()->load(
+            bin::exec::request {
+                .pathname = path.data(),
+                .argv = { path.basename().data() },
+                .envp =
+                    { "TERM=xterm-256color", "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin" },
+                .proc = proc.get()
+            }
+        );
 
         if (!thread)
             lib::panic("could not create a thread for {}", path);
@@ -80,7 +78,7 @@ void kthread()
     sched::enqueue_new(thread.get());
 }
 
-extern "C"  [[noreturn]] void kmain()
+extern "C" [[noreturn]] void kmain()
 {
     lib::syscall::log_enabled = cmdline::has("syscall-log");
 

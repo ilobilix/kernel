@@ -35,17 +35,17 @@ namespace x86_64::pic
         arch::int_switch(false);
 
         lib::io::out<8>(port::master_command, cmd::icw1_init | cmd::icw1_icw4);
-        lib::io::out<8>(port::slave_command,  cmd::icw1_init | cmd::icw1_icw4);
+        lib::io::out<8>(port::slave_command, cmd::icw1_init | cmd::icw1_icw4);
         lib::io::out<8>(port::master_data, 0x20);
-        lib::io::out<8>(port::slave_data,  0x28);
+        lib::io::out<8>(port::slave_data, 0x28);
         lib::io::out<8>(port::master_data, 0x04);
-        lib::io::out<8>(port::slave_data,  0x02);
+        lib::io::out<8>(port::slave_data, 0x02);
         lib::io::out<8>(port::master_data, cmd::icw4_8086);
-        lib::io::out<8>(port::slave_data,  cmd::icw4_8086);
+        lib::io::out<8>(port::slave_data, cmd::icw4_8086);
 
         lib::debug("pic: masking all irqs");
         lib::io::out<8>(port::master_data, 0xFF);
-        lib::io::out<8>(port::slave_data,  0xFF);
+        lib::io::out<8>(port::slave_data, 0xFF);
 
         arch::int_switch(true);
     }

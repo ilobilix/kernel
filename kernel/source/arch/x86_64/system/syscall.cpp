@@ -24,8 +24,7 @@ namespace x86_64::syscall
     };
 
     using namespace ::syscall;
-    lib::syscall::entry<6, getter> table[]
-    {
+    lib::syscall::entry<6, getter> table[] {
         [0] = { "read", vfs::read, true },
         [1] = { "write", vfs::write, true },
         [2] = { "open", vfs::open, true },
@@ -248,9 +247,10 @@ namespace x86_64::syscall
         // IA32_EFER syscall
         cpu::msr::write(0xC0000080, cpu::msr::read(0xC0000080) | (1 << 0));
         // IA32_STAR set segments
-        cpu::msr::write(0xC0000081,
+        cpu::msr::write(
+            0xC0000081,
             ((static_cast<std::uint64_t>(gdt::segment::ucode32) | 0x03) << 48) |
-            (static_cast<std::uint64_t>(gdt::segment::code) << 32)
+                (static_cast<std::uint64_t>(gdt::segment::code) << 32)
         );
         // IA32_LSTAR handler
         cpu::msr::write(0xC0000082, reinterpret_cast<std::uintptr_t>(syscall_entry));

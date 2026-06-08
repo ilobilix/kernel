@@ -65,14 +65,17 @@ export namespace lib
             VType *_current;
 
             constexpr iterator_base(const intrusive_list_base *lst, VType *data)
-                : _lst { lst }, _current { data } { }
+                : _lst { lst }, _current { data }
+            { }
 
             public:
             iterator_base() : _lst { nullptr }, _current { nullptr } { }
 
-            template<typename OVType> requires std::same_as<VType, const OVType>
+            template<typename OVType>
+                requires std::same_as<VType, const OVType>
             iterator_base(const iterator_base<OVType> &other)
-                : _lst { other._lst }, _current { other._current } { }
+                : _lst { other._lst }, _current { other._current }
+            { }
 
             constexpr VType &operator*() const { return *_current; }
             constexpr VType *operator->() const { return _current; }
@@ -121,8 +124,7 @@ export namespace lib
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-        constexpr intrusive_list_base()
-            : _head { nullptr }, _tail { nullptr }, _size { 0 } { }
+        constexpr intrusive_list_base() : _head { nullptr }, _tail { nullptr }, _size { 0 } { }
 
         constexpr intrusive_list_base(const intrusive_list_base &) = delete;
         constexpr intrusive_list_base(intrusive_list_base &&rhs)
@@ -206,10 +208,7 @@ export namespace lib
             return { this, x };
         }
 
-        constexpr iterator push_back(Type *x)
-        {
-            return insert(x);
-        }
+        constexpr iterator push_back(Type *x) { return insert(x); }
 
         constexpr iterator push_front(Type *x)
         {
@@ -308,7 +307,8 @@ export namespace lib
     };
 
     template<typename Type, intrusive_list_hook<Type> Type::*Member>
-    using intrusive_list = intrusive_list_base<Type, locate_member<Type, intrusive_list_hook<Type>, Member>>;
+    using intrusive_list =
+        intrusive_list_base<Type, locate_member<Type, intrusive_list_hook<Type>, Member>>;
 
     template<typename Type, typename Locate>
     using intrusive_list_locate = intrusive_list_base<Type, Locate>;

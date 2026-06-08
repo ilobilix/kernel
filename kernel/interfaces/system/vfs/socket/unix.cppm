@@ -5,8 +5,7 @@ export module system.vfs.socket:unix;
 import :base;
 import lib;
 
-export
-{
+export {
     struct sockaddr_un
     {
         addr_fam sun_family;
@@ -22,5 +21,4 @@ export
 } // export
 
 export namespace vfs::socket
-{
-} // export namespace vfs::socket
+{ } // export namespace vfs::socket

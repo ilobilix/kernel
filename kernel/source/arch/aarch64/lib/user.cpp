@@ -27,8 +27,7 @@ namespace lib::impl
     {
         auto ptr = remove_user_cast<std::uint32_t>(uaddr);
         return std::atomic_ref<std::uint32_t> { *ptr } .compare_exchange_strong(
-            expected, desired,
-            std::memory_order_acq_rel, std::memory_order_acquire
+            expected, desired, std::memory_order_acq_rel, std::memory_order_acquire
         );
     }
 

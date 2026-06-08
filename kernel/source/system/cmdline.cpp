@@ -19,9 +19,7 @@ namespace cmdline
 
             for (std::size_t i = 0; i < a.size(); i++)
             {
-                const auto norm = [](char chr) {
-                    return chr == '-' ? '_' : chr;
-                };
+                const auto norm = [](char chr) { return chr == '-' ? '_' : chr; };
                 if (norm(a[i]) != norm(b[i]))
                     return false;
             }
@@ -60,33 +58,22 @@ namespace cmdline
         return std::nullopt;
     }
 
-    bool has(std::string_view req)
-    {
-        return get(req).has_value();
-    }
+    bool has(std::string_view req) { return get(req).has_value(); }
 
-    lib::initgraph::task cmdline_task
-    {
-        "cmdline.copy",
-        lib::initgraph::postsched_init_engine,
-        [] {
-            data.emplace(raw());
-            for (const auto &[key, val] : lib::kvparse_view{ *data, ' ' })
-                cache.emplace_back(key, val);
-        }
-    };
+    lib::initgraph::task cmdline_task { "cmdline.copy", lib::initgraph::postsched_init_engine, [] {
+                                           data.emplace(raw());
+                                           for (const auto &[key, val] :
+                                                lib::kvparse_view { *data, ' ' })
+                                               cache.emplace_back(key, val);
+                                       } };
 
-    lib::initgraph::task procfs_register_task
-    {
-        "cmdline.procfs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::procfs::registered_stage() },
-        [] {
+    lib::initgraph::task procfs_register_task {
+        "cmdline.procfs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() }, [] {
             using namespace fs::procfs;
-            lib::bug_on(!register_global("cmdline",
-                make_file_ops([](auto) {
-                    return std::string { raw() } + '\n';
-                }), node_type::file, 0444
+            lib::bug_on(!register_global(
+                "cmdline", make_file_ops([](auto) { return std::string { raw() } + '\n'; }),
+                node_type::file, 0444
             ));
         }
     };

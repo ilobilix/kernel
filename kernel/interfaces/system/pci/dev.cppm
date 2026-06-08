@@ -28,17 +28,18 @@ export namespace pci
         std::uint32_t class_mask, class_val;
 
         constexpr id_t(
-            std::uint16_t vendor, std::uint16_t device,
-            std::uint32_t class_mask, std::uint32_t class_val
-        ) : vendor { vendor }, device { device },
-            class_mask { class_mask }, class_val { class_val } { }
+            std::uint16_t vendor, std::uint16_t device, std::uint32_t class_mask,
+            std::uint32_t class_val
+        )
+            : vendor { vendor }, device { device }, class_mask { class_mask }, class_val { class_val }
+        { }
 
         static constexpr std::uint32_t make_class(
             std::uint8_t class_, std::uint8_t subclass, std::uint8_t progif
         )
         {
             return (static_cast<std::uint32_t>(class_) << 16) |
-                   (static_cast<std::uint32_t>(subclass) << 8) | progif;
+                (static_cast<std::uint32_t>(subclass) << 8) | progif;
         }
 
         static std::uint32_t make_class(const std::shared_ptr<pci::device> &dev)
@@ -48,9 +49,8 @@ export namespace pci
 
         bool constexpr match(std::uint16_t ven, std::uint16_t dev, std::uint32_t cls) const
         {
-            return (vendor == 0xFFFF || vendor == ven) &&
-                   (device == 0xFFFF || device == dev) &&
-                   (class_mask == 0 || (cls & class_mask) == class_val);
+            return (vendor == 0xFFFF || vendor == ven) && (device == 0xFFFF || device == dev) &&
+                (class_mask == 0 || (cls & class_mask) == class_val);
         }
 
         bool match(const std::shared_ptr<pci::device> &dev) const
@@ -64,10 +64,7 @@ export namespace pci
     struct driver_t : dev::driver_t
     {
         private:
-        lib::locker<
-            std::vector<id_t>,
-            lib::rwspinlock
-        > _dynamic_ids;
+        lib::locker<std::vector<id_t>, lib::rwspinlock> _dynamic_ids;
 
         std::span<const id_t> _ids;
 
@@ -92,8 +89,8 @@ export namespace pci
         std::size_t enable_count;
 
         device_t(const std::shared_ptr<pci::device> &device)
-            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device },
-              config_size { 0 }, enable_count { 0 }
+            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device }, config_size { 0 },
+              enable_count { 0 }
         {
             bus = get_bus();
             modalias = get_modalias(device);

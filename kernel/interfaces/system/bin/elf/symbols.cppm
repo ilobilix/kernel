@@ -19,19 +19,23 @@ export namespace bin::elf::sym
 
         constexpr bool operator==(const symbol &rhs) const
         {
-            return
-                name == rhs.name &&
-                address == rhs.address &&
-                size == rhs.size;
+            return name == rhs.name && address == rhs.address && size == rhs.size;
         }
     };
     constexpr symbol empty { { }, -1ul, 0 };
 
     using symbol_table = lib::btree::set<symbol>;
 
-    struct lookup_result { std::uintptr_t offset; std::string_view from; };
+    struct lookup_result
+    {
+        std::uintptr_t offset;
+        std::string_view from;
+    };
     auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<lookup_result>;
     std::uintptr_t klookup(std::string_view name);
 
-    auto get_symbols(const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz, std::uintptr_t offset = 0) -> symbol_table;
+    auto get_symbols(
+        const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz,
+        std::uintptr_t offset = 0
+    ) -> symbol_table;
 } // export namespace bin::elf::sym

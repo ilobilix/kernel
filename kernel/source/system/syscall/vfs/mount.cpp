@@ -7,8 +7,8 @@ namespace syscall::vfs
     using namespace ::vfs;
 
     int mount(
-        const char __user *source, const char __user *target,
-        const char __user *fstype, std::uint64_t flags, const void __user *data
+        const char __user *source, const char __user *target, const char __user *fstype,
+        std::uint64_t flags, const void __user *data
     )
     {
         const auto proc = sched::current_process();
@@ -66,7 +66,8 @@ namespace syscall::vfs
         }
 
         const std::string_view fstype_sv = fstype_str ? *fstype_str : std::string_view { };
-        if (const auto ret = ::vfs::mount(source_path, *target_val, fstype_sv, flags, data_uspan); !ret)
+        if (const auto ret = ::vfs::mount(source_path, *target_val, fstype_sv, flags, data_uspan);
+            !ret)
             return -lib::map_error(ret.error());
         return 0;
     }

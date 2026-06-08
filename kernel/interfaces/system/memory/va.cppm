@@ -18,10 +18,9 @@ export namespace vmm::va
     };
 
     std::optional<std::uintptr_t> find_free_region(
-        const auto &tree, std::uintptr_t minp, std::uintptr_t maxp,
-        std::uintptr_t pages
+        const auto &tree, std::uintptr_t minp, std::uintptr_t maxp, std::uintptr_t pages
     )
-     {
+    {
         if (pages == 0 || pages > maxp - minp)
             return std::nullopt;
 
@@ -33,8 +32,8 @@ export namespace vmm::va
 
         const auto high_gap = maxp - root->interval.subtree_max;
         const auto max_gap = root->interval.subtree_max_gap;
-        const auto low_gap = root->interval.subtree_min > minp
-            ? root->interval.subtree_min - minp : 0;
+        const auto low_gap =
+            root->interval.subtree_min > minp ? root->interval.subtree_min - minp : 0;
 
         if (max_gap < pages && high_gap < pages && low_gap < pages)
             return std::nullopt;
@@ -89,6 +88,7 @@ export namespace vmm::va
     class allocator
     {
         private:
+        // clang-format off
         lib::interval_tree<
             range_t,
             std::uintptr_t,
@@ -97,13 +97,13 @@ export namespace vmm::va
             &range_t::hook,
             &range_t::interval
         > _tree;
+        // clang-format on
         std::uintptr_t _minp;
         std::uintptr_t _maxp;
         lib::spinlock _lock;
 
         public:
-        allocator(std::uintptr_t minp, std::uintptr_t maxp)
-            : _minp { minp }, _maxp { maxp }
+        allocator(std::uintptr_t minp, std::uintptr_t maxp) : _minp { minp }, _maxp { maxp }
         {
             lib::bug_on(minp >= maxp);
         }

@@ -2,6 +2,8 @@
 
 #pragma once
 
+// clang-format off
+
 #define __mod_concat_(x, y) x ## y
 #define __mod_concat(x, y) __mod_concat_(x, y)
 #define __mod_unique __mod_concat(__mod_concat(__MODULE_NAME__, __COUNTER__), __LINE__)
@@ -31,3 +33,5 @@
         +[] { return bool(::acpi::unregister_driver(drv)); }, \
         ::mod::inline_match(hids) __VA_OPT__(,) __VA_ARGS__   \
     }
+
+// clang-format on

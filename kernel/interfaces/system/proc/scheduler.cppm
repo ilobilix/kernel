@@ -32,8 +32,7 @@ namespace sched::arch
 
     void init_core(thread_t *initial);
     void init_thread(
-        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone
+        thread_t *thread, std::uintptr_t ip, std::uintptr_t arg, bool is_trampoline, bool is_clone
     );
     void deinit_thread(thread_t *thread);
 
@@ -67,15 +66,9 @@ export namespace sched
         arch::return_to_user(ip, stack);
     }
 
-    inline thread_t *current_thread()
-    {
-        return arch::current_thread();
-    }
+    inline thread_t *current_thread() { return arch::current_thread(); }
 
-    inline process_t *current_process()
-    {
-        return current_thread()->proc;
-    }
+    inline process_t *current_process() { return current_thread()->proc; }
 
     inline void preempt_disable()
     {
@@ -96,10 +89,7 @@ export namespace sched
         return _running && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
     }
 
-    inline bool is_running()
-    {
-        return _running;
-    }
+    inline bool is_running() { return _running; }
 
     // pick next thread and switch to it
     // called on yield, block, timer or wake up
@@ -108,34 +98,38 @@ export namespace sched
     std::shared_ptr<process_t> create_process(const std::shared_ptr<process_t> &parent);
 
     // create a new kernel thread under pid 0
-    std::shared_ptr<thread_t> create_kthread(std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice);
+    std::shared_ptr<thread_t> create_kthread(
+        std::uintptr_t ip, std::uintptr_t arg, nice_t nice = default_nice
+    );
 
     // create a user thread
     std::shared_ptr<thread_t> create_uthread(
         const std::shared_ptr<process_t> &proc, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone,
-        std::uintptr_t stack, nice_t nice = default_nice
+        bool is_trampoline, bool is_clone, std::uintptr_t stack, nice_t nice = default_nice
     );
 
     // enqueue a new thread on current cpu
     void enqueue_new(thread_t *thread);
 
     // create a new kernel thread and enqueue it
-    std::shared_ptr<thread_t> spawn(std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice);
+    std::shared_ptr<thread_t> spawn(
+        std::uintptr_t ip, std::uintptr_t arg = 0, nice_t nice = default_nice
+    );
 
     template<typename Func>
-    inline std::shared_ptr<thread_t> spawn(Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice)
+    inline std::shared_ptr<thread_t> spawn(
+        Func &&func, std::uintptr_t arg = 0, nice_t nice = default_nice
+    )
     {
         return spawn(reinterpret_cast<std::uintptr_t>(func), arg, nice);
     }
 
     template<typename Func, typename Arg>
-        requires (!std::convertible_to<Arg, std::uintptr_t>)
+        requires(!std::convertible_to<Arg, std::uintptr_t>)
     inline std::shared_ptr<thread_t> spawn(Func &&func, Arg arg, nice_t nice = default_nice)
     {
         return spawn(
-            reinterpret_cast<std::uintptr_t>(func),
-            reinterpret_cast<std::uintptr_t>(arg), nice
+            reinterpret_cast<std::uintptr_t>(func), reinterpret_cast<std::uintptr_t>(arg), nice
         );
     }
 
@@ -162,7 +156,7 @@ export namespace sched
 
     std::size_t process_count();
 
-    void for_each_process(std::function_ref<bool (const std::shared_ptr<process_t> &)> func);
+    void for_each_process(std::function_ref<bool(const std::shared_ptr<process_t> &)> func);
 
     // called from a timer interrupt
     void tick(bool from_user);
@@ -184,34 +178,36 @@ export namespace sched
 
     enum clone_flags : std::uint64_t
     {
-        csignal              = 0x000000FF,    // signal mask to be sent at exit
-        clone_vm             = 0x00000100,    // set if VM shared between processes
-        clone_fs             = 0x00000200,    // set if fs info shared between processes
-        clone_files          = 0x00000400,    // set if open files shared between processes
-        clone_sighand        = 0x00000800,    // set if signal handlers and blocked signals shared
-        clone_pidfd          = 0x00001000,    // set if a pidfd should be placed in parent
-        clone_ptrace         = 0x00002000,    // set if we want to let tracing continue on the child too
-        clone_vfork          = 0x00004000,    // set if the parent wants the child to wake it up on mm_release
-        clone_parent         = 0x00008000,    // set if we want to have the same parent as the cloner
-        clone_thread         = 0x00010000,    // same process
-        clone_newns          = 0x00020000,    // new mount namespace group
-        clone_sysvsem        = 0x00040000,    // share system V SEM_UNDO semantics
-        clone_settls         = 0x00080000,    // create a new TLS for the child
-        clone_parent_settid  = 0x00100000,    // set the TID in the parent
-        clone_child_cleartid = 0x00200000,    // clear the TID in the child
-        clone_detached       = 0x00400000,    // unused, ignored
-        clone_untraced       = 0x00800000,    // set if the tracing process can't force CLONE_PTRACE on this clone
-        clone_child_settid   = 0x01000000,    // set the TID in the child
-        clone_newcgroup      = 0x02000000,    // new cgroup namespace
-        clone_newuts         = 0x04000000,    // new utsname namespace
-        clone_newipc         = 0x08000000,    // new ipc namespace
-        clone_newuser        = 0x10000000,    // new user namespace
-        clone_newpid         = 0x20000000,    // new pid namespace
-        clone_newnet         = 0x40000000,    // new network namespace
-        clone_io             = 0x80000000,    // clone io context
-        clone_clear_sighand  = 0x100000000ul, // clear any signal handler and reset to SIG_DFL.
-        clone_into_cgroup    = 0x200000000ul, // clone into a specific cgroup given the right permissions.
-        clone_newtime        = 0x00000080,    // new time namespace
+        csignal = 0x000000FF, // signal mask to be sent at exit
+        clone_vm = 0x00000100, // set if VM shared between processes
+        clone_fs = 0x00000200, // set if fs info shared between processes
+        clone_files = 0x00000400, // set if open files shared between processes
+        clone_sighand = 0x00000800, // set if signal handlers and blocked signals shared
+        clone_pidfd = 0x00001000, // set if a pidfd should be placed in parent
+        clone_ptrace = 0x00002000, // set if we want to let tracing continue on the child too
+        clone_vfork = 0x00004000, // set if the parent wants the child to wake it up on mm_release
+        clone_parent = 0x00008000, // set if we want to have the same parent as the cloner
+        clone_thread = 0x00010000, // same process
+        clone_newns = 0x00020000, // new mount namespace group
+        clone_sysvsem = 0x00040000, // share system V SEM_UNDO semantics
+        clone_settls = 0x00080000, // create a new TLS for the child
+        clone_parent_settid = 0x00100000, // set the TID in the parent
+        clone_child_cleartid = 0x00200000, // clear the TID in the child
+        clone_detached = 0x00400000, // unused, ignored
+        clone_untraced =
+            0x00800000, // set if the tracing process can't force CLONE_PTRACE on this clone
+        clone_child_settid = 0x01000000, // set the TID in the child
+        clone_newcgroup = 0x02000000, // new cgroup namespace
+        clone_newuts = 0x04000000, // new utsname namespace
+        clone_newipc = 0x08000000, // new ipc namespace
+        clone_newuser = 0x10000000, // new user namespace
+        clone_newpid = 0x20000000, // new pid namespace
+        clone_newnet = 0x40000000, // new network namespace
+        clone_io = 0x80000000, // clone io context
+        clone_clear_sighand = 0x100000000ul, // clear any signal handler and reset to SIG_DFL.
+        clone_into_cgroup =
+            0x200000000ul, // clone into a specific cgroup given the right permissions.
+        clone_newtime = 0x00000080, // new time namespace
     };
 
     struct kclone_args_t
@@ -231,8 +227,8 @@ export namespace sched
 
     pid_t clone(const kclone_args_t &args);
     int exec(
-        const vfs::path &path, std::vector<std::string> argv,
-        std::vector<std::string> envp, std::string pathname
+        const vfs::path &path, std::vector<std::string> argv, std::vector<std::string> envp,
+        std::string pathname
     );
 
     enum wait_flags

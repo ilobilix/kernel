@@ -19,6 +19,7 @@ namespace chrono
             }
         };
 
+        // clang-format off
         frg::pairing_heap<
             timer,
             frg::locate_member<
@@ -28,6 +29,7 @@ namespace chrono
             >,
             higher_priority
         > timers;
+        // clang-format on
         timer *main = nullptr;
         rtc *main_rtc = nullptr;
 
@@ -35,12 +37,10 @@ namespace chrono
     } // namespace
 
     timer::timer(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
-            : _name { name }, _priority { priority }, _offset { 0 }, _ns { time_ns } { }
+        : _name { name }, _priority { priority }, _offset { 0 }, _ns { time_ns }
+    { }
 
-    std::uint64_t timer::ns() const
-    {
-        return _ns() - _offset;
-    }
+    std::uint64_t timer::ns() const { return _ns() - _offset; }
 
     void register_timer(timer &timer)
     {
@@ -54,10 +54,7 @@ namespace chrono
         lib::debug("chrono: main timer is set to '{}'", (main = timers.top())->name());
     }
 
-    timer *main_timer()
-    {
-        return main;
-    }
+    timer *main_timer() { return main; }
 
     bool stall_ns(std::uint64_t ns)
     {
@@ -84,7 +81,8 @@ namespace chrono
         const auto prev = main_rtc->unix();
         std::uint64_t unix_secs;
         std::uint64_t ns_before;
-        do {
+        do
+        {
             ns_before = main->ns();
             unix_secs = main_rtc->unix();
         } while (unix_secs == prev);
@@ -110,23 +108,18 @@ namespace chrono
         return boot::time() * 1'000'000'000ul + main->ns();
     }
 
-    lib::initgraph::task procfs_register_task
-    {
-        "chrono.procfs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::procfs::registered_stage() },
-        [] {
+    lib::initgraph::task procfs_register_task {
+        "chrono.procfs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() }, [] {
             using namespace fs::procfs;
-            lib::bug_on(!register_global("uptime",
-                make_file_ops([](auto) {
+            lib::bug_on(!register_global(
+                "uptime", make_file_ops([](auto) {
                     // TODO: second field should be sum of idle time across all cpus
                     const auto t = now(monotonic);
                     const auto centi = (t.to_ms() / 10) % 100;
-                    return fmt::format(
-                        "{}.{:02} {}.{:02}\n",
-                        t.tv_sec, centi, t.tv_sec, centi
-                    );
-                }), node_type::file, 0444
+                    return fmt::format("{}.{:02} {}.{:02}\n", t.tv_sec, centi, t.tv_sec, centi);
+                }),
+                node_type::file, 0444
             ));
         }
     };

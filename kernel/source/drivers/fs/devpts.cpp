@@ -19,10 +19,8 @@ namespace fs::devpts
         mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
 
         auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
-        ) const
-            -> lib::expect<std::shared_ptr<struct vfs::mount>> override
+            std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
+        ) const -> lib::expect<std::shared_ptr<struct vfs::mount>> override
         {
             lib::unused(src, data);
 
@@ -43,8 +41,7 @@ namespace fs::devpts
             root->name = "devpts root. this shouldn't be visible anywhere";
             root->inode = std::make_shared<tmpfs::inode>(
                 locked.get(), locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-                tmpfs::ops::singleton()
+                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode, tmpfs::ops::singleton()
             );
             root->parent = root;
 
@@ -62,10 +59,10 @@ namespace fs::devpts
         if (main == nullptr)
             return std::unexpected { lib::err::invalid_filesystem };
 
-        return vfs::create(vfs::path {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
-        }, fmt::format("{}", minor), mode, rdev);
+        return vfs::create(
+            vfs::path { .mnt = main->internal_mnt, .dentry = main->root }, fmt::format("{}", minor),
+            mode, rdev
+        );
     }
 
     lib::expect<void> detach_slave(std::uint32_t minor)
@@ -73,10 +70,9 @@ namespace fs::devpts
         if (main == nullptr)
             return std::unexpected { lib::err::invalid_filesystem };
 
-        return vfs::unlink(vfs::path {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
-        }, fmt::format("{}", minor));
+        return vfs::unlink(
+            vfs::path { .mnt = main->internal_mnt, .dentry = main->root }, fmt::format("{}", minor)
+        );
     }
 
     std::shared_ptr<vfs::filesystem> init()
@@ -89,45 +85,32 @@ namespace fs::devpts
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.devpts.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.devpts.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *mounted_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.devpts.mounted",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.devpts.mounted", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.devpts.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task register_task {
+        "vfs.devpts.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
-        [] {
-            lib::bug_on(!vfs::register_fs(devpts::init()));
-        }
+        [] { lib::bug_on(!vfs::register_fs(devpts::init())); }
     };
 
-    lib::initgraph::task mount_task
-    {
-        "vfs.devpts.mount",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task mount_task {
+        "vfs.devpts.mount", lib::initgraph::postsched_init_engine,
         lib::initgraph::require {
-            vfs::root_mounted_stage(),
-            devtmpfs::mounted_stage(),
-            registered_stage()
+            vfs::root_mounted_stage(), devtmpfs::mounted_stage(), registered_stage()
         },
-        lib::initgraph::entail { mounted_stage() },
-        [] {
+        lib::initgraph::entail { mounted_stage() }, [] {
             const auto cerr = vfs::create(std::nullopt, "/dev/pts", stat::type::s_ifdir | 0755);
             if (!cerr && cerr.error() != lib::err::already_exists)
             {

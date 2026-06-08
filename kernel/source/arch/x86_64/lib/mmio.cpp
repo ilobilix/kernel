@@ -12,25 +12,37 @@ namespace lib::mmio
             case sizeof(std::uint8_t):
             {
                 std::uint8_t value;
-                asm volatile ("mov %0, %1" : "=q"(value) : "m"(*reinterpret_cast<volatile std::uint8_t *>(addr)) : "memory");
+                asm volatile ("mov %0, %1"
+                             : "=q"(value)
+                             : "m"(*reinterpret_cast<volatile std::uint8_t *>(addr))
+                             : "memory");
                 return value;
             }
             case sizeof(std::uint16_t):
             {
                 std::uint16_t value;
-                asm volatile ("mov %0, %1" : "=r"(value) : "m"(*reinterpret_cast<volatile std::uint16_t *>(addr)) : "memory");
+                asm volatile ("mov %0, %1"
+                             : "=r"(value)
+                             : "m"(*reinterpret_cast<volatile std::uint16_t *>(addr))
+                             : "memory");
                 return value;
             }
             case sizeof(std::uint32_t):
             {
                 std::uint32_t value;
-                asm volatile ("mov %0, %1" : "=r"(value) : "m"(*reinterpret_cast<volatile std::uint32_t *>(addr)) : "memory");
+                asm volatile ("mov %0, %1"
+                             : "=r"(value)
+                             : "m"(*reinterpret_cast<volatile std::uint32_t *>(addr))
+                             : "memory");
                 return value;
             }
             case sizeof(std::uint64_t):
             {
                 std::uint64_t value;
-                asm volatile ("mov %0, %1" : "=r"(value) : "m"(*reinterpret_cast<volatile std::uint64_t *>(addr)) : "memory");
+                asm volatile ("mov %0, %1"
+                             : "=r"(value)
+                             : "m"(*reinterpret_cast<volatile std::uint64_t *>(addr))
+                             : "memory");
                 return value;
             }
             default:
@@ -47,27 +59,27 @@ namespace lib::mmio
             {
                 const auto v = static_cast<std::uint8_t>(val);
                 auto ptr = reinterpret_cast<volatile std::uint8_t *>(addr);
-                asm volatile ("mov %1, %0" :: "q"(v), "m"(*ptr) : "memory");
+                asm volatile ("mov %1, %0" : : "q"(v), "m"(*ptr) : "memory");
                 break;
             }
             case sizeof(std::uint16_t):
             {
                 const auto v = static_cast<std::uint16_t>(val);
                 auto ptr = reinterpret_cast<volatile std::uint16_t *>(addr);
-                asm volatile ("mov %1, %0" :: "r"(v), "m"(*ptr) : "memory");
+                asm volatile ("mov %1, %0" : : "r"(v), "m"(*ptr) : "memory");
                 break;
             }
             case sizeof(std::uint32_t):
             {
                 const auto v = static_cast<std::uint32_t>(val);
                 auto ptr = reinterpret_cast<volatile std::uint32_t *>(addr);
-                asm volatile ("mov %1, %0" :: "r"(v), "m"(*ptr) : "memory");
+                asm volatile ("mov %1, %0" : : "r"(v), "m"(*ptr) : "memory");
                 break;
             }
             case sizeof(std::uint64_t):
             {
                 auto ptr = reinterpret_cast<volatile std::uint64_t *>(addr);
-                asm volatile ("mov %1, %0" :: "r"(val), "m"(*ptr) : "memory");
+                asm volatile ("mov %1, %0" : : "r"(val), "m"(*ptr) : "memory");
                 break;
             }
             default:

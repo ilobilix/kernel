@@ -23,16 +23,15 @@ namespace output::serial
             drv.destroy_instance(this, inst);
         }
 
-        serial_driver(serial::driver &drv) : tty::driver {
-            drv.driver_name, drv.name, drv.name_base,
-            drv.major, drv.minor_start, drv.num_devices,
-            drv.flags, tty::type::serial, tty::subtype::none,
-            tty::ktermios::standard()
-        }, drv { drv } { }
+        serial_driver(serial::driver &drv)
+            : tty::driver { drv.driver_name,    drv.name,
+                           drv.name_base,      drv.major,
+                           drv.minor_start,    drv.num_devices,
+                           drv.flags,          tty::type::serial,
+                           tty::subtype::none, tty::ktermios::standard() },
+              drv { drv }
+        { }
     };
 
-    void register_driver(serial::driver &drv)
-    {
-        tty::register_driver(new serial_driver { drv });
-    }
+    void register_driver(serial::driver &drv) { tty::register_driver(new serial_driver { drv }); }
 } // namespace output::serial

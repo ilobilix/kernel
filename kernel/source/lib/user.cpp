@@ -45,9 +45,8 @@ namespace lib
 
     bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired)
     {
-        const auto space = classify_address(
-            reinterpret_cast<std::uintptr_t>(uaddr), sizeof(std::uint32_t)
-        );
+        const auto space =
+            classify_address(reinterpret_cast<std::uintptr_t>(uaddr), sizeof(std::uint32_t));
         if (space != address_space::user)
             return false;
         return impl::cmpxchg_user(uaddr, expected, desired);

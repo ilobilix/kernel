@@ -8,7 +8,9 @@ import std;
 
 extern "C" int user_copy_safe(void *fault_frame, void *dst, const void *src, std::size_t len);
 extern "C" int user_fill_safe(void *fault_frame, void *dst, int val, std::size_t len);
-extern "C" int user_cmpxchg_safe(void *fault_frame, void *uaddr, std::uint32_t *expected, std::uint32_t desired);
+extern "C" int user_cmpxchg_safe(
+    void *fault_frame, void *uaddr, std::uint32_t *expected, std::uint32_t desired
+);
 extern "C" std::ssize_t user_strnlen_safe(void *fault_frame, const char *str, std::size_t max);
 
 namespace lib::impl
@@ -44,9 +46,8 @@ namespace lib::impl
     {
         cpu::smap::disable();
         auto frame = &sched::current_thread()->fault_frame;
-        const auto ret = user_cmpxchg_safe(
-            frame, remove_user_cast<void>(uaddr), &expected, desired
-        );
+        const auto ret =
+            user_cmpxchg_safe(frame, remove_user_cast<void>(uaddr), &expected, desired);
         cpu::smap::enable();
         return ret == 0;
     }

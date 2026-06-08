@@ -8,7 +8,7 @@ import std;
 
 export namespace irq
 {
-    using handler_fn = std::function<void (cpu::registers *)>;
+    using handler_fn = std::function<void(cpu::registers *)>;
 
     using handle_t = std::uint32_t;
     constexpr handle_t invalid_handle = 0;
@@ -52,12 +52,9 @@ export namespace irq
         std::string_view name;
         domain *parent = nullptr;
 
-        domain(std::string_view name, domain *parent = nullptr)
-            : name { name }, parent { parent } { }
+        domain(std::string_view name, domain *parent = nullptr) : name { name }, parent { parent } { }
 
-        virtual lib::expect<void> alloc(
-            std::span<irq_data *> data, const fwspec &spec
-        ) = 0;
+        virtual lib::expect<void> alloc(std::span<irq_data *> data, const fwspec &spec) = 0;
 
         virtual void free(std::span<irq_data *> data) = 0;
 
@@ -77,9 +74,7 @@ export namespace irq
         virtual void unmask(irq_data &data) { lib::unused(data); }
 
         virtual void eoi(irq_data &data) { lib::unused(data); }
-        virtual lib::expect<void> set_affinity(
-            irq_data &data, const lib::bitmap &cpus, bool force
-        )
+        virtual lib::expect<void> set_affinity(irq_data &data, const lib::bitmap &cpus, bool force)
         {
             if (parent && data.parent)
                 return parent->set_affinity(*data.parent, cpus, force);
@@ -105,8 +100,7 @@ export namespace irq
     lib::expect<void> request(handle_t handle, handler_fn fn, std::string_view name = { });
 
     lib::expect<handle_t> alloc_and_request(
-        domain &leaf, const fwspec &spec,
-        handler_fn fn, std::string_view name = { }
+        domain &leaf, const fwspec &spec, handler_fn fn, std::string_view name = { }
     );
 
     void mask(handle_t handle);
@@ -120,13 +114,12 @@ export namespace irq
     void set_msi_parent(domain *parent);
 
     using gsi_requester_fn = lib::expect<handle_t> (*)(
-        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx, handler_fn fn, std::string_view name
     );
     void set_gsi_requester(gsi_requester_fn fn);
 
     lib::expect<handle_t> request_gsi(
-        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name = { }
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx, handler_fn fn,
+        std::string_view name = { }
     );
 } // export namespace irq

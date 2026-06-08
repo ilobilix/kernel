@@ -34,10 +34,7 @@ namespace x86_64::timers::hpet
 
         lib::freqfrac freq;
 
-        std::uint64_t read(std::size_t offset)
-        {
-            return lib::mmio::in<64>(vaddr + offset);
-        }
+        std::uint64_t read(std::size_t offset) { return lib::mmio::in<64>(vaddr + offset); }
 
         void write(std::size_t offset, std::uint64_t value)
         {
@@ -64,9 +61,7 @@ namespace x86_64::timers::hpet
             if (last_val - value > (mask >> 1))
             {
                 last.compare_exchange_strong(
-                    last_val, value,
-                    std::memory_order_relaxed,
-                    std::memory_order_relaxed
+                    last_val, value, std::memory_order_relaxed, std::memory_order_relaxed
                 );
             }
 
@@ -91,8 +86,7 @@ namespace x86_64::timers::hpet
 
     bool supported()
     {
-        static const auto cached = [] -> bool
-        {
+        static const auto cached = [] -> bool {
             uacpi_table table;
             if (uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &table) != UACPI_STATUS_OK)
                 return false;
@@ -128,21 +122,16 @@ namespace x86_64::timers::hpet
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.hpet.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.arch.hpet.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task hpet_task
-    {
-        "timers.arch.hpet",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task hpet_task {
+        "timers.arch.hpet", lib::initgraph::presched_init_engine,
         lib::initgraph::require { acpi::tables_stage() },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
+        lib::initgraph::entail { initialised_stage() }, [] {
             lib::info("hpet: supported: {}", supported());
 
             const auto psize = vmm::page_size::small;
@@ -154,7 +143,9 @@ namespace x86_64::timers::hpet
             const auto flags = vmm::pflag::rwg;
             const auto caching = vmm::caching::mmio;
 
-            if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching); !ret)
+            if (const auto ret =
+                    vmm::kernel_pagemap->map(vaddr, paddr, npsize, flags, psize, caching);
+                !ret)
                 lib::panic("could not map hpet: {}", lib::error_name(ret.error()));
 
             const auto cap = read(regs::cap);
@@ -162,7 +153,9 @@ namespace x86_64::timers::hpet
 
             freq = 1'000'000'000'000'000ull / (cap >> 32);
 
-            lib::debug("hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency());
+            lib::debug(
+                "hpet: timer is {} bit, frequency: {} hz", is_64bit ? "64" : "32", freq.frequency()
+            );
 
             // enable main counter
             write(regs::cfg, 1);
@@ -174,15 +167,9 @@ namespace x86_64::timers::hpet
         }
     };
 
-    lib::initgraph::task hpet_thread_task
-    {
-        "timers.arch.hpet.create-thread",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage(),
-            initialised_stage()
-        },
-        [] {
+    lib::initgraph::task hpet_thread_task {
+        "timers.arch.hpet.create-thread", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { sched::pid0_created_stage(), initialised_stage() }, [] {
             if (!is_64bit)
                 sched::spawn(handle_overflow);
         }

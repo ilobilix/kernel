@@ -17,32 +17,18 @@ export namespace lib
     };
 
     template<
-        typename Type, typename IType,
-        IType Type::*Lower, IType Type::*Upper,
-        rbtree_hook<Type> Type::*Hook, interval_hook<IType> Type::*IHook
-    >
+        typename Type, typename IType, IType Type::*Lower, IType Type::*Upper,
+        rbtree_hook<Type> Type::*Hook, interval_hook<IType> Type::*IHook>
     class interval_tree
     {
         private:
-        static constexpr IType lower(const Type *node)
-        {
-            return node->*Lower;
-        }
+        static constexpr IType lower(const Type *node) { return node->*Lower; }
 
-        static constexpr IType upper(const Type *node)
-        {
-            return node->*Upper;
-        }
+        static constexpr IType upper(const Type *node) { return node->*Upper; }
 
-        static constexpr rbtree_hook<Type> *rhook(Type *node)
-        {
-            return &(node->*Hook);
-        }
+        static constexpr rbtree_hook<Type> *rhook(Type *node) { return &(node->*Hook); }
 
-        static constexpr interval_hook<IType> *ihook(Type *node)
-        {
-            return &(node->*IHook);
-        }
+        static constexpr interval_hook<IType> *ihook(Type *node) { return &(node->*IHook); }
 
         struct less
         {
@@ -82,11 +68,7 @@ export namespace lib
                     if (lower(node) > left_max)
                         gap_before = lower(node) - left_max;
 
-                    new_max_gap = std::max({
-                        new_max_gap,
-                        ihook(left)->subtree_max_gap,
-                        gap_before
-                    });
+                    new_max_gap = std::max({ new_max_gap, ihook(left)->subtree_max_gap, gap_before });
                 }
 
                 if (right != nil())
@@ -107,15 +89,10 @@ export namespace lib
                     if (right_min > coverage_bound)
                         gap_after = right_min - coverage_bound;
 
-                    new_max_gap = std::max({
-                        new_max_gap,
-                        ihook(right)->subtree_max_gap,
-                        gap_after
-                    });
+                    new_max_gap = std::max({ new_max_gap, ihook(right)->subtree_max_gap, gap_after });
                 }
 
-                if (new_max == ihook(node)->subtree_max &&
-                    new_min == ihook(node)->subtree_min &&
+                if (new_max == ihook(node)->subtree_max && new_min == ihook(node)->subtree_min &&
                     new_max_gap == ihook(node)->subtree_max_gap)
                     return false;
 
@@ -133,10 +110,8 @@ export namespace lib
         class overlapping_iterator_base
         {
             template<
-                typename Type1, typename IType1,
-                IType1 Type1::*, IType1 Type1::*,
-                rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*
-            >
+                typename Type1, typename IType1, IType1 Type1::*, IType1 Type1::*,
+                rbtree_hook<Type1> Type1::*, interval_hook<IType1> Type1::*>
             friend class interval_tree;
 
             private:
@@ -145,7 +120,12 @@ export namespace lib
             IType _lb;
             IType _ub;
 
-            enum class state { left, visit_right, up };
+            enum class state
+            {
+                left,
+                visit_right,
+                up
+            };
 
             constexpr bool overlaps(Type *node) const
             {
@@ -232,8 +212,11 @@ export namespace lib
                     search(root, state::left);
             }
 
-            constexpr overlapping_iterator_base(const interval_tree *tree, Type *root, IType lb, IType ub)
-                : overlapping_iterator_base { const_cast<interval_tree *>(tree), root, lb, ub } { }
+            constexpr overlapping_iterator_base(
+                const interval_tree *tree, Type *root, IType lb, IType ub
+            )
+                : overlapping_iterator_base { const_cast<interval_tree *>(tree), root, lb, ub }
+            { }
 
             public:
             using iterator_category = std::forward_iterator_tag;
@@ -243,7 +226,8 @@ export namespace lib
             using reference = VType &;
 
             constexpr overlapping_iterator_base()
-                : _tree { nullptr }, _current { nullptr }, _lb { 0 }, _ub { 0 } { }
+                : _tree { nullptr }, _current { nullptr }, _lb { 0 }, _ub { 0 }
+            { }
 
             constexpr reference operator*() const { return *_current; }
             constexpr pointer operator->() const { return _current; }
@@ -262,12 +246,16 @@ export namespace lib
                 return ret;
             }
 
-            friend constexpr bool operator==(const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs)
+            friend constexpr bool operator==(
+                const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs
+            )
             {
                 return lhs._tree == rhs._tree && lhs._current == rhs._current;
             }
 
-            friend constexpr bool operator!=(const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs)
+            friend constexpr bool operator!=(
+                const overlapping_iterator_base &lhs, const overlapping_iterator_base &rhs
+            )
             {
                 return !(lhs == rhs);
             }
@@ -289,7 +277,9 @@ export namespace lib
 
         constexpr interval_tree(const interval_tree &) = delete;
         constexpr interval_tree(interval_tree &&rhs) : _rbtree { std::move(rhs._rbtree) }
-        { rhs._rbtree = { }; }
+        {
+            rhs._rbtree = { };
+        }
 
         constexpr interval_tree &operator=(const interval_tree &) = delete;
         constexpr interval_tree &operator=(interval_tree &&rhs)
@@ -311,10 +301,7 @@ export namespace lib
             _rbtree.insert(node);
         }
 
-        constexpr void remove(Type *node)
-        {
-            _rbtree.remove(node);
-        }
+        constexpr void remove(Type *node) { _rbtree.remove(node); }
 
         constexpr iterator remove(iterator x)
         {

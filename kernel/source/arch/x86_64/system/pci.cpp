@@ -16,10 +16,8 @@ namespace pci
             lib::bug_on(seg != 0);
 
             const std::uint32_t uoff = offset;
-            const auto addr =
-                (static_cast<std::uint32_t>(bus) << 16) |
-                (static_cast<std::uint32_t>(dev) << 11) |
-                (static_cast<std::uint32_t>(func) << 8) |
+            const auto addr = (static_cast<std::uint32_t>(bus) << 16) |
+                (static_cast<std::uint32_t>(dev) << 11) | (static_cast<std::uint32_t>(func) << 8) |
                 (static_cast<std::uint32_t>(uoff) & ~(3u)) | 0x80000000u;
 
             lib::io::out<std::uint32_t>(0xCF8, addr);
@@ -45,10 +43,8 @@ namespace pci
             lib::bug_on(seg != 0);
 
             const std::uint32_t uoff = offset;
-            const auto addr =
-                (static_cast<std::uint32_t>(bus) << 16) |
-                (static_cast<std::uint32_t>(dev) << 11) |
-                (static_cast<std::uint32_t>(func) << 8) |
+            const auto addr = (static_cast<std::uint32_t>(bus) << 16) |
+                (static_cast<std::uint32_t>(dev) << 11) | (static_cast<std::uint32_t>(func) << 8) |
                 (static_cast<std::uint32_t>(uoff) & ~(3u)) | 0x80000000u;
 
             lib::io::out<std::uint32_t>(0xCF8, addr);
@@ -78,31 +74,25 @@ namespace pci
                 case sizeof(std::uint8_t):
                 {
                     std::uint8_t val;
-                    asm volatile (
-                        "mov al, [%1]"
-                        : "=a"(val)
-                        : "r"(reinterpret_cast<volatile std::uint8_t *>(addr))
-                    );
+                    asm volatile ("mov al, [%1]"
+                                 : "=a"(val)
+                                 : "r"(reinterpret_cast<volatile std::uint8_t *>(addr)));
                     return val;
                 }
                 case sizeof(std::uint16_t):
                 {
                     std::uint16_t val;
-                    asm volatile (
-                        "mov ax, [%1]"
-                        : "=a"(val)
-                        : "r"(reinterpret_cast<volatile std::uint16_t *>(addr))
-                    );
+                    asm volatile ("mov ax, [%1]"
+                                 : "=a"(val)
+                                 : "r"(reinterpret_cast<volatile std::uint16_t *>(addr)));
                     return val;
                 }
                 case sizeof(std::uint32_t):
                 {
                     std::uint32_t val;
-                    asm volatile (
-                        "mov eax, [%1]"
-                        : "=a"(val)
-                        : "r"(reinterpret_cast<volatile std::uint32_t *>(addr))
-                    );
+                    asm volatile ("mov eax, [%1]"
+                                 : "=a"(val)
+                                 : "r"(reinterpret_cast<volatile std::uint32_t *>(addr)));
                     return val;
                 }
             }
@@ -116,34 +106,28 @@ namespace pci
                 case sizeof(std::uint8_t):
                 {
                     std::uint8_t val = value;
-                    asm volatile (
-                        "mov [%1], al"
-                        :
-                        : "a"(val), "r"(reinterpret_cast<volatile std::uint8_t *>(addr))
-                        : "memory"
-                    );
+                    asm volatile ("mov [%1], al"
+                                 :
+                                 : "a"(val), "r"(reinterpret_cast<volatile std::uint8_t *>(addr))
+                                 : "memory");
                     break;
                 }
                 case sizeof(std::uint16_t):
                 {
                     std::uint16_t val = value;
-                    asm volatile (
-                        "mov [%1], ax"
-                        :
-                        : "a"(val), "r"(reinterpret_cast<volatile std::uint16_t *>(addr))
-                        : "memory"
-                    );
+                    asm volatile ("mov [%1], ax"
+                                 :
+                                 : "a"(val), "r"(reinterpret_cast<volatile std::uint16_t *>(addr))
+                                 : "memory");
                     break;
                 }
                 case sizeof(std::uint32_t):
                 {
                     std::uint32_t val = value;
-                    asm volatile (
-                        "mov [%1], eax"
-                        :
-                        : "a"(val), "r"(reinterpret_cast<volatile std::uint32_t *>(addr))
-                        : "memory"
-                    );
+                    asm volatile ("mov [%1], eax"
+                                 :
+                                 : "a"(val), "r"(reinterpret_cast<volatile std::uint32_t *>(addr))
+                                 : "memory");
                     break;
                 }
                 default:
@@ -163,13 +147,10 @@ namespace pci
         lib::initgraph::stage *ios_discovered_stage();
         lib::initgraph::stage *rbs_discovered_stage();
 
-        lib::initgraph::task ios_task
-        {
-            "pci.arch.discover-ios",
-            lib::initgraph::postsched_init_engine,
+        lib::initgraph::task ios_task {
+            "pci.arch.discover-ios", lib::initgraph::postsched_init_engine,
             lib::initgraph::require { acpi::ios_discovered_stage() },
-            lib::initgraph::entail { ios_discovered_stage() },
-            [] {
+            lib::initgraph::entail { ios_discovered_stage() }, [] {
                 if (!acpi::need_arch_ios)
                     return;
 
@@ -179,13 +160,10 @@ namespace pci
             }
         };
 
-        lib::initgraph::task rbs_task
-        {
-            "pci.arch.discover-rbs",
-            lib::initgraph::postsched_init_engine,
+        lib::initgraph::task rbs_task {
+            "pci.arch.discover-rbs", lib::initgraph::postsched_init_engine,
             lib::initgraph::require { acpi::rbs_discovered_stage() },
-            lib::initgraph::entail { rbs_discovered_stage() },
-            [] {
+            lib::initgraph::entail { rbs_discovered_stage() }, [] {
                 if (!acpi::need_arch_rbs)
                     return;
 

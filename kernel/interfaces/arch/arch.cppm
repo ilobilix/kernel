@@ -36,20 +36,16 @@ export namespace arch
 
     lib::initgraph::stage *bsp_initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "arch.bsp.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "arch.bsp.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *cpus_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "arch.cpus.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "arch.cpus.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }

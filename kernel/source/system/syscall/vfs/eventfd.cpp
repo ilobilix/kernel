@@ -15,15 +15,13 @@ namespace syscall::vfs
 
         struct data_t
         {
-            lib::locker<
-                std::uint64_t,
-                lib::spinlock
-            > counter;
+            lib::locker<std::uint64_t, lib::spinlock> counter;
             sched::wait_queue_t bell;
             bool semaphore;
 
             data_t(std::uint64_t initial, bool semaphore)
-                : counter { initial }, bell { }, semaphore { semaphore } { }
+                : counter { initial }, bell { }, semaphore { semaphore }
+            { }
         };
 
         struct ops : ::vfs::ops
@@ -57,7 +55,7 @@ namespace syscall::vfs
                 std::uint64_t ret;
                 {
                     auto locked = data->counter.lock();
-                    again:
+                again:
                     if (*locked != 0)
                     {
                         if (!data->semaphore)
@@ -130,7 +128,8 @@ namespace syscall::vfs
                             gen = data->bell.snapshot_gen();
                             blocked = true;
                         }
-                        else *locked += val;
+                        else
+                            *locked += val;
                     }
 
                     if (!blocked)
@@ -180,24 +179,23 @@ namespace syscall::vfs
         if (flags & ~(efd_semaphore | efd_cloexec | efd_nonblock))
             return -EINVAL;
 
-        auto ret = create_anon_fd({
-            .name = "<[EVENTFD]>",
-            .ops = ops::singleton(),
-            .file_private_data = std::make_shared<data_t>(count, flags & efd_semaphore),
-            .inode_private_data = nullptr,
-            .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
-            .flags = (flags & ~efd_semaphore) | o_rdwr,
-            .skip_open = true,
-            .inode = nullptr
-        });
+        auto ret = create_anon_fd(
+            anon_fd_args {
+                .name = "<[EVENTFD]>",
+                .ops = ops::singleton(),
+                .file_private_data = std::make_shared<data_t>(count, flags & efd_semaphore),
+                .inode_private_data = nullptr,
+                .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
+                .flags = (flags & ~efd_semaphore) | o_rdwr,
+                .skip_open = true,
+                .inode = nullptr
+            }
+        );
         if (!ret)
             return -lib::map_error(ret.error());
 
         return ret->first;
     }
 
-    int eventfd(unsigned int count)
-    {
-        return eventfd2(count, 0);
-    }
+    int eventfd(unsigned int count) { return eventfd2(count, 0); }
 } // namespace syscall::vfs

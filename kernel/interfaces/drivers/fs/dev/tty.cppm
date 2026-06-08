@@ -19,102 +19,102 @@ export namespace fs::dev::tty
     {
         enum iflag : tcflag_t
         {
-            ignbrk  = 0000001, // ignore break condition
-            brkint  = 0000002, // signal interrupt on break
-            ignpar  = 0000004, // ignore characters with parity errors
-            parmrk  = 0000010, // mark parity and framing errors
-            inpck   = 0000020, // enable input parity check
-            istrip  = 0000040, // strip 8th bit off characters
-            inlcr   = 0000100, // map NL to CR on input
-            igncr   = 0000200, // ignore CR
-            icrnl   = 0000400, // map CR to NL on input
-            iuclc   = 0001000, // map uppercase to lowercase on input (not in POSIX)
-            ixon    = 0002000, // enable start/stop output control
-            ixany   = 0004000, // enable any character to restart output
-            ixoff   = 0010000, // enable start/stop input control
+            ignbrk = 0000001, // ignore break condition
+            brkint = 0000002, // signal interrupt on break
+            ignpar = 0000004, // ignore characters with parity errors
+            parmrk = 0000010, // mark parity and framing errors
+            inpck = 0000020, // enable input parity check
+            istrip = 0000040, // strip 8th bit off characters
+            inlcr = 0000100, // map NL to CR on input
+            igncr = 0000200, // ignore CR
+            icrnl = 0000400, // map CR to NL on input
+            iuclc = 0001000, // map uppercase to lowercase on input (not in POSIX)
+            ixon = 0002000, // enable start/stop output control
+            ixany = 0004000, // enable any character to restart output
+            ixoff = 0010000, // enable start/stop input control
             imaxbel = 0020000, // ring bell when input queue is full (not in POSIX)
-            iutf8   = 0040000, // input is UTF8 (not in POSIX)
+            iutf8 = 0040000, // input is UTF8 (not in POSIX)
         };
 
         enum oflag : tcflag_t
         {
-            opost  = 0x00001, // post-process output
-            ocrnl  = 0x00008, // map CR to NL on output
-            onocr  = 0x00010, // don't output CR at column 0
+            opost = 0x00001, // post-process output
+            ocrnl = 0x00008, // map CR to NL on output
+            onocr = 0x00010, // don't output CR at column 0
             onlret = 0x00020, // don't output CR
-            ofill  = 0x00040, // send fill characters for a delay
-            ofdel  = 0x00080, // fill character is ASCII DEL
-            olcuc  = 0x00002, // map lowercase to uppercase on output (not in POSIX)
-            onlcr  = 0x00004, // map NL to CR-NL on output
-            nldly  = 0x00100, // newline delay mask
-            nl0    = 0x00000, // newline delay 0
-            nl1    = 0x00100, // newline delay 1
-            crdly  = 0x00600, // carriage return delay mask
-            cr0    = 0x00000, // carriage return delay 0
-            cr1    = 0x00200, // carriage return delay 1
-            cr2    = 0x00400, // carriage return delay 2
-            cr3    = 0x00600, // carriage return delay 3
+            ofill = 0x00040, // send fill characters for a delay
+            ofdel = 0x00080, // fill character is ASCII DEL
+            olcuc = 0x00002, // map lowercase to uppercase on output (not in POSIX)
+            onlcr = 0x00004, // map NL to CR-NL on output
+            nldly = 0x00100, // newline delay mask
+            nl0 = 0x00000, // newline delay 0
+            nl1 = 0x00100, // newline delay 1
+            crdly = 0x00600, // carriage return delay mask
+            cr0 = 0x00000, // carriage return delay 0
+            cr1 = 0x00200, // carriage return delay 1
+            cr2 = 0x00400, // carriage return delay 2
+            cr3 = 0x00600, // carriage return delay 3
             tabdly = 0x01800, // horizontal tab delay mask
-            tab0   = 0x00000, // horizontal tab delay 0
-            tab1   = 0x00800, // horizontal tab delay 1
-            tab2   = 0x01000, // horizontal tab delay 2
-            tab3   = 0x01800, // expand tabs to spaces
-            xtabs  = 0x01800, // expand tabs to spaces (synonym for tab3)
-            bsdly  = 0x02000, // backspace delay mask
-            bs0    = 0x00000, // backspace delay 0
-            bs1    = 0x02000, // backspace delay 1
-            vtdly  = 0x04000, // vertical tab delay mask
-            vt0    = 0x00000, // vertical tab delay 0
-            vt1    = 0x04000, // vertical tab delay 1
-            ffdly  = 0x08000, // form feed delay mask
-            ff0    = 0x00000, // form feed delay 0
-            ff1    = 0x08000  // form feed delay 1
+            tab0 = 0x00000, // horizontal tab delay 0
+            tab1 = 0x00800, // horizontal tab delay 1
+            tab2 = 0x01000, // horizontal tab delay 2
+            tab3 = 0x01800, // expand tabs to spaces
+            xtabs = 0x01800, // expand tabs to spaces (synonym for tab3)
+            bsdly = 0x02000, // backspace delay mask
+            bs0 = 0x00000, // backspace delay 0
+            bs1 = 0x02000, // backspace delay 1
+            vtdly = 0x04000, // vertical tab delay mask
+            vt0 = 0x00000, // vertical tab delay 0
+            vt1 = 0x04000, // vertical tab delay 1
+            ffdly = 0x08000, // form feed delay mask
+            ff0 = 0x00000, // form feed delay 0
+            ff1 = 0x08000 // form feed delay 1
         };
 
         enum cflag : tcflag_t
         {
-            cbaud   = 0x0000100F, // baud speed mask
-            csize   = 0x00000030, // character size mask
-            cs5     = 0x00000000, // 5 bits per byte
-            cs6     = 0x00000010, // 6 bits per byte
-            cs7     = 0x00000020, // 7 bits per byte
-            cs8     = 0x00000030, // 8 bits per byte
-            cstopb  = 0x00000040, // set two stop bits, rather than one
-            cread   = 0x00000080, // enable receiver
-            parenb  = 0x00000100, // enable parity generation and checking
-            parodd  = 0x00000200, // parity for input and output is odd
-            hupcl   = 0x00000400, // lower modem control lines after last process closes
-            clocal  = 0x00000800, // ignore modem control lines
+            cbaud = 0x0000100F, // baud speed mask
+            csize = 0x00000030, // character size mask
+            cs5 = 0x00000000, // 5 bits per byte
+            cs6 = 0x00000010, // 6 bits per byte
+            cs7 = 0x00000020, // 7 bits per byte
+            cs8 = 0x00000030, // 8 bits per byte
+            cstopb = 0x00000040, // set two stop bits, rather than one
+            cread = 0x00000080, // enable receiver
+            parenb = 0x00000100, // enable parity generation and checking
+            parodd = 0x00000200, // parity for input and output is odd
+            hupcl = 0x00000400, // lower modem control lines after last process closes
+            clocal = 0x00000800, // ignore modem control lines
             cbaudex = 0x00001000, // extended baud rate mask
-            bother  = 0x00001000, // non-standard integer baud rates
-            cibaud  = 0x100f0000  // input baud rate mask
+            bother = 0x00001000, // non-standard integer baud rates
+            cibaud = 0x100f0000 // input baud rate mask
         };
 
         enum baud : speed_t
         {
-            b0       = 0x00000000,
-            b50      = 0x00000001,
-            b75      = 0x00000002,
-            b110     = 0x00000003,
-            b134     = 0x00000004,
-            b150     = 0x00000005,
-            b200     = 0x00000006,
-            b300     = 0x00000007,
-            b600     = 0x00000008,
-            b1200    = 0x00000009,
-            b1800    = 0x0000000A,
-            b2400    = 0x0000000B,
-            b4800    = 0x0000000C,
-            b9600    = 0x0000000D,
-            b19200   = 0x0000000E,
-            b38400   = 0x0000000F,
-            b57600   = 0x00001001,
-            b115200  = 0x00001002,
-            b230400  = 0x00001003,
-            b460800  = 0x00001004,
-            b500000  = 0x00001005,
-            b576000  = 0x00001006,
-            b921600  = 0x00001007,
+            b0 = 0x00000000,
+            b50 = 0x00000001,
+            b75 = 0x00000002,
+            b110 = 0x00000003,
+            b134 = 0x00000004,
+            b150 = 0x00000005,
+            b200 = 0x00000006,
+            b300 = 0x00000007,
+            b600 = 0x00000008,
+            b1200 = 0x00000009,
+            b1800 = 0x0000000A,
+            b2400 = 0x0000000B,
+            b4800 = 0x0000000C,
+            b9600 = 0x0000000D,
+            b19200 = 0x0000000E,
+            b38400 = 0x0000000F,
+            b57600 = 0x00001001,
+            b115200 = 0x00001002,
+            b230400 = 0x00001003,
+            b460800 = 0x00001004,
+            b500000 = 0x00001005,
+            b576000 = 0x00001006,
+            b921600 = 0x00001007,
             b1000000 = 0x00001008,
             b1152000 = 0x00001009,
             b1500000 = 0x0000100A,
@@ -127,45 +127,45 @@ export namespace fs::dev::tty
 
         enum lflag : tcflag_t
         {
-            isig    = 0000001, // enable signals
-            icanon  = 0000002, // canonical input (erase and kill processing)
-            echo    = 0000010, // enable echo
-            echoe   = 0000020, // echo erase character as error-correcting backspace
-            echok   = 0000040, // echo KILL
-            echonl  = 0000100, // echo NL
-            noflsh  = 0000200, // disable flush after interrupt or quit
-            tostop  = 0000400, // send SIGTTOU for background output
+            isig = 0000001, // enable signals
+            icanon = 0000002, // canonical input (erase and kill processing)
+            echo = 0000010, // enable echo
+            echoe = 0000020, // echo erase character as error-correcting backspace
+            echok = 0000040, // echo KILL
+            echonl = 0000100, // echo NL
+            noflsh = 0000200, // disable flush after interrupt or quit
+            tostop = 0000400, // send SIGTTOU for background output
             echoctl = 0001000, // if ECHO is also set, terminal special characters
-                               // other than TAB, NL, START, and STOP are echoed as
-                               // ^X, where X is the character with ASCII code 0x40 greater than
-                               // the special character (not in POSIX)
+            // other than TAB, NL, START, and STOP are echoed as
+            // ^X, where X is the character with ASCII code 0x40 greater than
+            // the special character (not in POSIX)
             echoprt = 0002000, // if ICANON and ECHO are also set, characters are
-                               // printed as they are being erased (not in POSIX)
-            echoke  = 0004000, // if ICANON is also set, KILL is echoed by erasing
-                               // each character on the line, as specified by ECHOE
-                               // and ECHOPRT (not in POSIX)
-            iexten  = 0100000  // enable implementation-defined input processing
+            // printed as they are being erased (not in POSIX)
+            echoke = 0004000, // if ICANON is also set, KILL is echoed by erasing
+            // each character on the line, as specified by ECHOE
+            // and ECHOPRT (not in POSIX)
+            iexten = 0100000 // enable implementation-defined input processing
         };
 
         enum cc : cc_t
         {
-            vintr    = 0,  // interrupt character
-            vquit    = 1,  // quit character
-            verase   = 2,  // erase character
-            vkill    = 3,  // kill-line character
-            veof     = 4,  // end-of-file character
-            vtime    = 5,  // time-out value (non-canonical)
-            vmin     = 6,  // minimum number of characters (non-canonical)
-            vswtc    = 7,  // switch character
-            vstart   = 8,  // start character (XON)
-            vstop    = 9,  // stop character (XOFF)
-            vsusp    = 10, // suspend character
-            veol     = 11, // end-of-line character
+            vintr = 0, // interrupt character
+            vquit = 1, // quit character
+            verase = 2, // erase character
+            vkill = 3, // kill-line character
+            veof = 4, // end-of-file character
+            vtime = 5, // time-out value (non-canonical)
+            vmin = 6, // minimum number of characters (non-canonical)
+            vswtc = 7, // switch character
+            vstart = 8, // start character (XON)
+            vstop = 9, // stop character (XOFF)
+            vsusp = 10, // suspend character
+            veol = 11, // end-of-line character
             vreprint = 12, // reprint-line character
             vdiscard = 13, // discard character
-            vwerase  = 14, // word-erase character
-            vlnext   = 15, // literal-next character
-            veol2    = 16  // alternative end-of-line character
+            vwerase = 14, // word-erase character
+            vlnext = 15, // literal-next character
+            veol2 = 16 // alternative end-of-line character
         };
 
         tcflag_t c_iflag;
@@ -177,10 +177,7 @@ export namespace fs::dev::tty
         speed_t c_ispeed;
         speed_t c_ospeed;
 
-        static inline constexpr auto ctrl(cc_t c)
-        {
-            return c & 0x1F;
-        }
+        static inline constexpr auto ctrl(cc_t c) { return c & 0x1F; }
 
         speed_t get_ispeed() const
         {
@@ -269,12 +266,7 @@ export namespace fs::dev::tty
 
         static constexpr winsize standard()
         {
-            return {
-                .ws_row = 24,
-                .ws_col = 80,
-                .ws_xpixel = 0,
-                .ws_ypixel = 0
-            };
+            return { .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
         }
     };
 
@@ -336,8 +328,12 @@ export namespace fs::dev::tty
 
         virtual void shutdown() = 0;
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        ) = 0;
+        virtual lib::expect<std::size_t> write(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        ) = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
@@ -362,20 +358,11 @@ export namespace fs::dev::tty
             std::size_t read_head = 0;
             std::size_t cooked_head = 0;
 
-            std::size_t space() const
-            {
-                return cap - (read_head - read_tail);
-            }
+            std::size_t space() const { return cap - (read_head - read_tail); }
 
-            bool full() const
-            {
-                return space() == 0;
-            }
+            bool full() const { return space() == 0; }
 
-            bool empty() const
-            {
-                return space() == cap;
-            }
+            bool empty() const { return space() == cap; }
 
             bool push(char chr)
             {
@@ -406,10 +393,7 @@ export namespace fs::dev::tty
                 return false;
             }
 
-            void commit()
-            {
-                cooked_head = read_head;
-            }
+            void commit() { cooked_head = read_head; }
 
             char peek() const
             {
@@ -450,8 +434,12 @@ export namespace fs::dev::tty
 
         void receive(std::span<std::byte> buffer) override;
 
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        ) override;
+        lib::expect<std::size_t> write(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        ) override;
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
 
@@ -496,7 +484,9 @@ export namespace fs::dev::tty
         [[noreturn]]
         static void raw_worker(instance *self);
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        )
         {
             auto ld = ldisc.lock().value();
             if (!ld)
@@ -504,7 +494,9 @@ export namespace fs::dev::tty
             return ld->read(std::move(file), buffer);
         }
 
-        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> write(
+            std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+        )
         {
             auto ld = ldisc.lock().value();
             if (!ld)
@@ -535,10 +527,7 @@ export namespace fs::dev::tty
             lib::unused(current, old);
         };
 
-        virtual void break_ctl(bool on)
-        {
-            lib::unused(on);
-        }
+        virtual void break_ctl(bool on) { lib::unused(on); }
 
         // called by hardware
         bool receive(std::span<std::byte> buffer)
@@ -595,22 +584,26 @@ export namespace fs::dev::tty
         const ktermios init_termios;
 
         driver *other;
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 std::uint32_t,
                 std::shared_ptr<instance>
             >, sched::mutex
         > instances;
+        // clang-format on
 
         lib::intrusive_list_hook<driver> hook;
 
-        driver(std::string_view driver_name, std::string_view name, std::size_t name_base,
+        driver(
+            std::string_view driver_name, std::string_view name, std::size_t name_base,
             std::uint32_t major, std::uint32_t minor_start, std::uint32_t num_devices, flag flags,
-            type typ, subtype subtyp, const ktermios &init_termios)
-            : driver_name { driver_name }, name { name }, name_base { name_base },
-              major { major }, minor_start { minor_start }, num_devices { num_devices }, flags { flags },
-              typ { typ }, subtyp { subtyp },
-              init_termios { init_termios } { }
+            type typ, subtype subtyp, const ktermios &init_termios
+        )
+            : driver_name { driver_name }, name { name }, name_base { name_base }, major { major },
+              minor_start { minor_start }, num_devices { num_devices }, flags { flags }, typ { typ },
+              subtyp { subtyp }, init_termios { init_termios }
+        { }
 
         virtual ~driver() = default;
 
@@ -618,7 +611,9 @@ export namespace fs::dev::tty
         virtual void destroy_instance(std::shared_ptr<instance> inst) = 0;
 
         // called from instance
-        virtual lib::expect<int> ioctl(instance *inst, std::uint64_t request, lib::uptr_or_addr argp)
+        virtual lib::expect<int> ioctl(
+            instance *inst, std::uint64_t request, lib::uptr_or_addr argp
+        )
         {
             lib::bug_on(!inst);
             lib::unused(request, argp);

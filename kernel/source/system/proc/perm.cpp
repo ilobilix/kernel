@@ -43,19 +43,14 @@ namespace sched
         return has_cap(cred->effective, cap);
     }
 
-    bool capable(cap_t cap)
-    {
-        return capable(current_process()->cred, cap);
-    }
+    bool capable(cap_t cap) { return capable(current_process()->cred, cap); }
 
     bool check_perms(const std::shared_ptr<cred_t> &cred, const stat &stat, access_mode desired)
     {
         mode_t mode = stat.st_mode;
         mode_t granted = 0;
 
-        const auto has_supgid = [&] {
-            return cred->supp_gids.contains(stat.st_gid);
-        };
+        const auto has_supgid = [&] { return cred->supp_gids.contains(stat.st_gid); };
 
         if (cred->fsuid == stat.st_uid)
             granted = (mode >> 6) & 7;
@@ -108,8 +103,8 @@ namespace sched
             return true;
 
         const auto &tcred = target->cred;
-        if (cred->euid == tcred->euid || cred->euid == tcred->suid ||
-            cred->ruid == tcred->euid || cred->ruid == tcred->suid)
+        if (cred->euid == tcred->euid || cred->euid == tcred->suid || cred->ruid == tcred->euid ||
+            cred->ruid == tcred->suid)
             return true;
 
         if (sig == sigcont && proc->session == target->session)
@@ -153,8 +148,8 @@ namespace sched
             if (ruid != empty && ruid != old_cred->ruid && ruid != old_cred->euid)
                 return std::unexpected { lib::err::not_permitted };
 
-            if (euid != empty && euid != old_cred->ruid &&
-                euid != old_cred->euid && euid != old_cred->suid)
+            if (euid != empty && euid != old_cred->ruid && euid != old_cred->euid &&
+                euid != old_cred->suid)
                 return std::unexpected { lib::err::not_permitted };
         }
 
@@ -188,10 +183,8 @@ namespace sched
         if (!capable(old_cred, cap_t::setuid))
         {
             const auto can_set = [&](uid_t val) {
-                return val == empty ||
-                       val == old_cred->ruid ||
-                       val == old_cred->euid ||
-                       val == old_cred->suid;
+                return val == empty || val == old_cred->ruid || val == old_cred->euid ||
+                    val == old_cred->suid;
             };
 
             if (!can_set(ruid) || !can_set(euid) || !can_set(suid))
@@ -247,8 +240,8 @@ namespace sched
             if (rgid != empty && rgid != old_cred->rgid && rgid != old_cred->egid)
                 return std::unexpected { lib::err::not_permitted };
 
-            if (egid != empty && egid != old_cred->rgid &&
-                egid != old_cred->egid && egid != old_cred->sgid)
+            if (egid != empty && egid != old_cred->rgid && egid != old_cred->egid &&
+                egid != old_cred->sgid)
                 return std::unexpected { lib::err::not_permitted };
         }
 
@@ -281,10 +274,8 @@ namespace sched
         if (!capable(old_cred, cap_t::setgid))
         {
             const auto can_set = [&](gid_t val) {
-                return val == empty ||
-                       val == old_cred->rgid ||
-                       val == old_cred->egid ||
-                       val == old_cred->sgid;
+                return val == empty || val == old_cred->rgid || val == old_cred->egid ||
+                    val == old_cred->sgid;
             };
 
             if (!can_set(rgid) || !can_set(egid) || !can_set(sgid))
@@ -310,9 +301,8 @@ namespace sched
         const auto &old_cred = process->cred;
         const uid_t old_fsuid = old_cred->fsuid;
 
-        if (fsuid == old_cred->ruid || fsuid == old_cred->euid ||
-            fsuid == old_cred->suid || fsuid == old_cred->fsuid ||
-            capable(old_cred, cap_t::setuid))
+        if (fsuid == old_cred->ruid || fsuid == old_cred->euid || fsuid == old_cred->suid ||
+            fsuid == old_cred->fsuid || capable(old_cred, cap_t::setuid))
         {
             if (fsuid != old_cred->fsuid)
             {
@@ -331,9 +321,8 @@ namespace sched
         const auto &old_cred = process->cred;
         const gid_t old_fsgid = old_cred->fsgid;
 
-        if (fsgid == old_cred->rgid || fsgid == old_cred->egid ||
-            fsgid == old_cred->sgid || fsgid == old_cred->fsgid ||
-            capable(old_cred, cap_t::setgid))
+        if (fsgid == old_cred->rgid || fsgid == old_cred->egid || fsgid == old_cred->sgid ||
+            fsgid == old_cred->fsgid || capable(old_cred, cap_t::setgid))
         {
             if (fsgid != old_cred->fsgid)
             {
@@ -394,7 +383,8 @@ namespace sched
                 return std::unexpected { lib::err::not_found };
             cred = proc->cred;
         }
-        else cred = current_process()->cred;
+        else
+            cred = current_process()->cred;
 
         data->effective = cred->effective;
         data->permitted = cred->permitted;
@@ -454,8 +444,7 @@ namespace sched
         if (has_secbit(old_cred->securebits, secbit_t::no_cap_ambient_raise))
             return std::unexpected { lib::err::not_permitted };
 
-        if (!has_cap(old_cred->permitted, cap) ||
-            !has_cap(old_cred->inheritable, cap))
+        if (!has_cap(old_cred->permitted, cap) || !has_cap(old_cred->inheritable, cap))
             return std::unexpected { lib::err::not_permitted };
 
         auto new_cred = old_cred->clone();
@@ -489,8 +478,9 @@ namespace sched
             return std::unexpected { lib::err::not_permitted };
 
         const auto check_locked = [&](secbit_t bit, secbit_t lock) {
-            return !((old_bits & lock) != secbit_t::none &&
-                    ((old_bits & bit) != (securebits & bit)));
+            return !(
+                (old_bits & lock) != secbit_t::none && ((old_bits & bit) != (securebits & bit))
+            );
         };
 
         if (!check_locked(secbit_t::noroot, secbit_t::noroot_locked) ||
@@ -515,9 +505,7 @@ namespace sched
         return { };
     }
 
-    void apply_exec_caps(
-        process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps
-    )
+    void apply_exec_caps(process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps)
     {
         const auto &old_cred = process->cred;
         auto new_cred = old_cred->clone();

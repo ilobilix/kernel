@@ -40,7 +40,8 @@ export namespace lib
         constexpr endian_storage(endian_storage &&) = default;
 
         constexpr endian_storage(Type value)
-            : value { convert_endian<E, std::endian::native>(static_cast<Type>(value)) } { }
+            : value { convert_endian<E, std::endian::native>(static_cast<Type>(value)) }
+        { }
 
         constexpr endian_storage &operator=(const endian_storage &) = default;
         constexpr endian_storage &operator=(endian_storage &&) = default;
@@ -51,45 +52,21 @@ export namespace lib
             return *this;
         }
 
-        constexpr Type data()
-        {
-            return value;
-        }
+        constexpr Type data() { return value; }
 
-        constexpr Type load()
-        {
-            return convert_endian<std::endian::native, E>(value);
-        }
+        constexpr Type load() { return convert_endian<std::endian::native, E>(value); }
 
-        constexpr void store(Type value)
-        {
-            value = convert_endian<E, std::endian::native>(value);
-        }
+        constexpr void store(Type value) { value = convert_endian<E, std::endian::native>(value); }
 
-        constexpr operator Type()
-        {
-            return load();
-        }
+        constexpr operator Type() { return load(); }
 
-        constexpr bool operator==(endian_storage rhs)
-        {
-            return value == rhs.value;
-        }
+        constexpr bool operator==(endian_storage rhs) { return value == rhs.value; }
 
-        constexpr bool operator==(Type rhs)
-        {
-            return load() == rhs;
-        }
+        constexpr bool operator==(Type rhs) { return load() == rhs; }
 
-        constexpr auto operator<=>(endian_storage rhs)
-        {
-            return value <=> rhs.value;
-        }
+        constexpr auto operator<=>(endian_storage rhs) { return value <=> rhs.value; }
 
-        constexpr auto operator<=>(Type rhs)
-        {
-            return load() <=> rhs;
-        }
+        constexpr auto operator<=>(Type rhs) { return load() <=> rhs; }
     };
 
     using big_u16_t = endian_storage<std::uint16_t, std::endian::big>;

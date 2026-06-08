@@ -60,12 +60,12 @@ export namespace syscall::proc
     int tgkill(pid_t tgid, pid_t tid, int sig);
 
     int rt_sigaction(
-        int signum, const sched::sigaction_t __user *act,
-        sched::sigaction_t __user *oldact, std::size_t sigsetsize
+        int signum, const sched::sigaction_t __user *act, sched::sigaction_t __user *oldact,
+        std::size_t sigsetsize
     );
     int rt_sigprocmask(
-        int how, const sched::sigset_t __user *set,
-        sched::sigset_t __user *oldset, std::size_t sigsetsize
+        int how, const sched::sigset_t __user *set, sched::sigset_t __user *oldset,
+        std::size_t sigsetsize
     );
     int rt_sigpending(sched::sigset_t __user *set, std::size_t sigsetsize);
     int rt_sigtimedwait(
@@ -87,8 +87,7 @@ export namespace syscall::proc
     );
 
     long get_robust_list(
-        int pid, struct robust_list_head __user *__user *head_ptr,
-        std::size_t __user *sizep
+        int pid, struct robust_list_head __user * __user * head_ptr, std::size_t __user *sizep
     );
     long set_robust_list(struct robust_list_head __user *head, std::size_t size);
 
@@ -102,8 +101,8 @@ export namespace syscall::proc
     int getrusage(int who, struct rusage __user *usage);
 
     long clone(
-        unsigned long flags, void __user *stack, int __user *parent_tid,
-        int __user *child_tid, unsigned long tls
+        unsigned long flags, void __user *stack, int __user *parent_tid, int __user *child_tid,
+        unsigned long tls
     );
     long clone3(struct clone_args __user *cl_args, std::size_t size);
 

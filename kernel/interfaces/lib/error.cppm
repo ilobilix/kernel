@@ -102,8 +102,5 @@ export namespace lib
         return static_cast<errnos>(err);
     }
 
-    std::string_view error_name(err e)
-    {
-        return magic_enum::enum_name(e);
-    }
+    std::string_view error_name(err e) { return magic_enum::enum_name(e); }
 } // export namespace lib

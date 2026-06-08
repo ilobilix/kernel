@@ -6,13 +6,7 @@ import system.sched;
 
 namespace sched
 {
-    thread_base_t *mutex::current_thread()
-    {
-        return sched::current_thread();
-    }
+    thread_base_t *mutex::current_thread() { return sched::current_thread(); }
 
-    thread_base_t *recursive_mutex::current_thread()
-    {
-        return sched::current_thread();
-    }
+    thread_base_t *recursive_mutex::current_thread() { return sched::current_thread(); }
 } // namespace sched

@@ -31,25 +31,13 @@ export namespace lib
     {
         char value[N];
 
-        consteval comptime_string(const char (&str)[N])
-        {
-            std::copy_n(str, N, value);
-        }
+        consteval comptime_string(const char (&str)[N]) { std::copy_n(str, N, value); }
 
-        consteval bool is_empty() const
-        {
-            return N <= 1;
-        }
+        consteval bool is_empty() const { return N <= 1; }
 
-        consteval auto data() const
-        {
-            return value;
-        }
+        consteval auto data() const { return value; }
 
-        consteval std::size_t size() const
-        {
-            return N - 1;
-        }
+        consteval std::size_t size() const { return N - 1; }
     };
 
     constexpr std::string_view trim(std::string_view str)
@@ -195,6 +183,8 @@ struct fmt::formatter<lib::user_string> : fmt::formatter<std::string>
     template<typename FormatContext>
     auto format(lib::user_string str, FormatContext &ctx) const
     {
-        return formatter<std::string>::format(str.str.empty() ? std::string { "(null)" } : str.str, ctx);
+        return formatter<std::string>::format(
+            str.str.empty() ? std::string { "(null)" } : str.str, ctx
+        );
     }
 };

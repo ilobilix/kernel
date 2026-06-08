@@ -8,14 +8,9 @@ extern "C++" std::uintptr_t (*get_hhdm_offset)();
 namespace lib::detail
 {
     template<typename Type>
-    using get_ret_type =
-        std::conditional_t<
-            std::integral<Type>,
-            std::conditional_t<
-                std::unsigned_integral<Type>,
-                std::uintptr_t, std::intptr_t
-            >, Type
-        >;
+    using get_ret_type = std::conditional_t<
+        std::integral<Type>,
+        std::conditional_t<std::unsigned_integral<Type>, std::uintptr_t, std::intptr_t>, Type>;
 } // namespace lib::detail
 export using uint128_t = unsigned _BitInt(128);
 export using int128_t = _BitInt(128);
@@ -26,17 +21,17 @@ export namespace lib
     inline constexpr std::size_t mib(std::size_t num) { return kib(num) * 1024; }
     inline constexpr std::size_t gib(std::size_t num) { return mib(num) * 1024; }
 
-    inline constexpr bool has_bits(std::unsigned_integral auto val, auto ...bits)
+    inline constexpr bool has_bits(std::unsigned_integral auto val, auto... bits)
     {
-        return ([](auto val, std::size_t bit) {
-            return (val & (1ul << bit)) == (1ul << bit);
-        } (val, bits) && ...);
+        return (
+            [](auto val, std::size_t bit) {
+                return (val & (1ul << bit)) == (1ul << bit);
+            } (val, bits) &&
+            ...
+        );
     }
 
-    inline bool ishh(auto val)
-    {
-        return std::uintptr_t(val) >= get_hhdm_offset();
-    }
+    inline bool ishh(auto val) { return std::uintptr_t(val) >= get_hhdm_offset(); }
 
     template<typename Type, typename Ret = detail::get_ret_type<Type>>
     inline Ret tohh(Type val)
@@ -73,11 +68,10 @@ export namespace lib
 
     inline constexpr auto unique_from(std::unsigned_integral auto a) { return a; }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline constexpr auto unique_from(auto a, Args &&...args)
     {
-        constexpr auto szudzik = [](std::size_t x, std::size_t y)
-        {
+        constexpr auto szudzik = [](std::size_t x, std::size_t y) {
             return (x >= y) ? ((x * x) + x + y) : ((y * y) + x);
         };
 
@@ -88,16 +82,14 @@ export namespace lib
     }
 
     inline constexpr bool range_overlaps(
-        std::uintptr_t start1, std::uintptr_t end1,
-        std::uintptr_t start2, std::uintptr_t end2
+        std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2
     )
     {
         return start1 < end2 && start2 < end1;
     }
 
     inline constexpr auto range_intersection(
-        std::uintptr_t start1, std::uintptr_t end1,
-        std::uintptr_t start2, std::uintptr_t end2
+        std::uintptr_t start1, std::uintptr_t end1, std::uintptr_t start2, std::uintptr_t end2
     ) -> std::pair<std::uintptr_t, std::uintptr_t>
     {
         if (!range_overlaps(start1, end1, start2, end2))
@@ -111,15 +103,9 @@ export namespace lib
         return std::bit_width<Type>(val) - 1;
     }
 
-    inline constexpr auto pow2(std::size_t val)
-    {
-        return 1ull << val;
-    }
+    inline constexpr auto pow2(std::size_t val) { return 1ull << val; }
 
-    inline constexpr bool is_pow2(std::unsigned_integral auto num)
-    {
-        return !(num & (num - 1));
-    }
+    inline constexpr bool is_pow2(std::unsigned_integral auto num) { return !(num & (num - 1)); }
 
     inline constexpr std::size_t next_pow2(std::size_t val)
     {
@@ -145,8 +131,8 @@ export namespace lib
         int p;
         std::uint64_t n, freq;
 
-        constexpr freqfrac(int p, std::uint64_t n, std::uint64_t freq)
-            : p { p }, n { n }, freq { freq } { }
+        constexpr freqfrac(int p, std::uint64_t n, std::uint64_t freq) : p { p }, n { n }, freq { freq }
+        { }
 
         public:
         constexpr freqfrac() : p { 0 }, n { 0 } { }
@@ -165,10 +151,7 @@ export namespace lib
         constexpr freqfrac &operator=(const freqfrac &) = default;
         constexpr freqfrac &operator=(freqfrac &&) = default;
 
-        constexpr freqfrac &operator=(std::uint64_t freq)
-        {
-            return *this = init(freq);
-        }
+        constexpr freqfrac &operator=(std::uint64_t freq) { return *this = init(freq); }
 
         constexpr std::uint64_t nanos(uint128_t ticks) const
         {
@@ -178,18 +161,18 @@ export namespace lib
             return res;
         }
 
-        constexpr std::uint64_t ticks(std::uint64_t nanos) const
-        {
-            return (nanos << p) / n;
-        }
+        constexpr std::uint64_t ticks(std::uint64_t nanos) const { return (nanos << p) / n; }
 
         constexpr std::uint64_t frequency() const { return freq; }
     };
 
-    constexpr auto timestamp(std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours, std::uint8_t minutes, std::uint8_t seconds)
+    constexpr auto timestamp(
+        std::uint16_t years, std::uint8_t months, std::uint8_t days, std::uint8_t hours,
+        std::uint8_t minutes, std::uint8_t seconds
+    )
     {
-        constexpr auto days_from_civil = [](std::int64_t years, std::uint64_t months, std::uint64_t days)
-        {
+        constexpr auto days_from_civil = [](std::int64_t years, std::uint64_t months,
+                                            std::uint64_t days) {
             years -= (months <= 2);
             const auto era = (years >= 0 ? years : years - 399) / 400;
             const auto yoe = static_cast<std::uint64_t>(years - era * 400);

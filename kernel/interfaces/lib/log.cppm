@@ -10,8 +10,7 @@ import std;
 
 namespace lib::log
 {
-    export enum class level : std::uint8_t
-    {
+    export enum class level : std::uint8_t {
         none,
 #if ILOBILIX_DEBUG
         debug,
@@ -22,8 +21,7 @@ namespace lib::log
         fatal
     };
 
-    constexpr std::string_view prefixes[]
-    {
+    constexpr std::string_view prefixes[] {
         "",
 #if ILOBILIX_DEBUG
         "[\e[90mdebug\e[0m] ",
@@ -36,9 +34,11 @@ namespace lib::log
 
     namespace detail
     {
-        void vprint(bool add_nl, level lvl, std::size_t len, std::string_view fmt, fmt::format_args args);
+        void vprint(
+            bool add_nl, level lvl, std::size_t len, std::string_view fmt, fmt::format_args args
+        );
 
-        template<typename ...Args>
+        template<typename... Args>
         inline void print(bool add_nl, fmt::format_string<Args...> fmt, Args &&...args)
         {
             const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
@@ -60,7 +60,8 @@ export namespace lib::log
         logger *next;
 
         constexpr logger(auto prints, auto lock, auto unlock)
-            : prints { prints }, lock { lock }, unlock { unlock }, next { nullptr } { }
+            : prints { prints }, lock { lock }, unlock { unlock }, next { nullptr }
+        { }
     };
 
     void register_logger(logger *lg);
@@ -80,7 +81,7 @@ export namespace lib::log
         detail::vprint(true, lvl, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void print(level lvl, fmt::format_string<Args...> fmt, Args &&...args)
     {
         const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
@@ -88,7 +89,7 @@ export namespace lib::log
         vprint(lvl, len, view, fmt::make_format_args(args...));
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void println(level lvl, fmt::format_string<Args...> fmt, Args &&...args)
     {
         const auto len = fmt::formatted_size(fmt, std::forward<Args>(args)...);
@@ -96,13 +97,13 @@ export namespace lib::log
         vprintln(lvl, len, view, fmt::make_format_args(args...));
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void print(fmt::format_string<Args...> fmt, Args &&...args)
     {
         print(level::none, fmt, std::forward<Args>(args)...);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void println(fmt::format_string<Args...> fmt = "", Args &&...args)
     {
         println(level::none, fmt, std::forward<Args>(args)...);
@@ -114,7 +115,7 @@ export namespace lib::log
         vprintln(level::debug, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void debug(fmt::format_string<Args...> fmt, Args &&...args)
     {
         println(level::debug, fmt, std::forward<Args>(args)...);
@@ -122,8 +123,9 @@ export namespace lib::log
 #else
     inline void vdebug(std::size_t, std::string_view, fmt::format_args) { }
 
-    template<typename ...Args>
-    inline void debug(fmt::format_string<Args...>, Args &&...) { }
+    template<typename... Args>
+    inline void debug(fmt::format_string<Args...>, Args &&...)
+    { }
 #endif
 
     inline void vinfo(std::size_t len, std::string_view fmt, fmt::format_args args)
@@ -131,10 +133,10 @@ export namespace lib::log
         vprintln(level::info, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void info(fmt::format_string<Args...> fmt, Args &&...args)
     {
-        println(level::info,  fmt, std::forward<Args>(args)...);
+        println(level::info, fmt, std::forward<Args>(args)...);
     }
 
     inline void vwarn(std::size_t len, std::string_view fmt, fmt::format_args args)
@@ -142,10 +144,10 @@ export namespace lib::log
         vprintln(level::warn, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void warn(fmt::format_string<Args...> fmt, Args &&...args)
     {
-        println(level::warn,  fmt, std::forward<Args>(args)...);
+        println(level::warn, fmt, std::forward<Args>(args)...);
     }
 
     inline void verror(std::size_t len, std::string_view fmt, fmt::format_args args)
@@ -153,7 +155,7 @@ export namespace lib::log
         vprintln(level::error, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void error(fmt::format_string<Args...> fmt, Args &&...args)
     {
         println(level::error, fmt, std::forward<Args>(args)...);
@@ -164,7 +166,7 @@ export namespace lib::log
         vprintln(level::fatal, len, fmt, args);
     }
 
-    template<typename ...Args>
+    template<typename... Args>
     inline void fatal(fmt::format_string<Args...> fmt, Args &&...args)
     {
         println(level::fatal, fmt, std::forward<Args>(args)...);

@@ -8,8 +8,5 @@ export namespace output::arch
 {
     void early_init() { }
 
-    void init()
-    {
-        aarch64::output::pl011::init();
-    }
+    void init() { aarch64::output::pl011::init(); }
 } // export namespace output::arch

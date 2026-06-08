@@ -12,8 +12,7 @@ export namespace lib
 
     void chacha20_block(
         std::span<const std::byte, chacha20_key_size> key,
-        std::span<const std::byte, chacha20_nonce_size> nonce,
-        std::uint32_t counter,
+        std::span<const std::byte, chacha20_nonce_size> nonce, std::uint32_t counter,
         std::span<std::byte, chacha20_block_size> out
     );
 } // export namespace lib

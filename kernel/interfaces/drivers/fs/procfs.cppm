@@ -8,7 +8,12 @@ import std;
 
 export namespace fs::procfs
 {
-    enum class node_type { file, dir, symlink };
+    enum class node_type
+    {
+        file,
+        dir,
+        symlink
+    };
 
     struct node_ops;
     struct node_t
@@ -72,15 +77,14 @@ export namespace fs::procfs
     };
 
     // I hate myself
-    using gen_fn = std::function<lib::expect<std::string> (sched::process_t *)>;
-    using stream_fn = std::function<lib::expect<std::size_t> (
-        sched::process_t *, std::uint64_t, std::span<char>
-    )>;
-    using write_fn = std::function<lib::expect<void> (sched::process_t *, std::string_view)>;
-    using readlink_fn = std::function<lib::expect<lib::path> (sched::process_t *)>;
-    using lookup_fn = std::function<lib::expect<node_t> (sched::process_t *, std::string_view)>;
-    using readdir_fn = std::function<lib::expect<lib::list<node_t>> (sched::process_t *)>;
-    using revalidate_fn = std::function<bool (sched::process_t *)>;
+    using gen_fn = std::function<lib::expect<std::string>(sched::process_t *)>;
+    using stream_fn =
+        std::function<lib::expect<std::size_t>(sched::process_t *, std::uint64_t, std::span<char>)>;
+    using write_fn = std::function<lib::expect<void>(sched::process_t *, std::string_view)>;
+    using readlink_fn = std::function<lib::expect<lib::path>(sched::process_t *)>;
+    using lookup_fn = std::function<lib::expect<node_t>(sched::process_t *, std::string_view)>;
+    using readdir_fn = std::function<lib::expect<lib::list<node_t>>(sched::process_t *)>;
+    using revalidate_fn = std::function<bool(sched::process_t *)>;
 
     std::shared_ptr<node_ops> make_file_ops(gen_fn gfn, write_fn wfn = nullptr);
     std::shared_ptr<node_ops> make_streaming_file_ops(stream_fn sfn, write_fn wfn = nullptr);
@@ -89,14 +93,12 @@ export namespace fs::procfs
 
     // /proc/<path>
     bool register_global(
-        lib::path path, std::shared_ptr<node_ops> ops,
-        node_type type, mode_t mode
+        lib::path path, std::shared_ptr<node_ops> ops, node_type type, mode_t mode
     );
 
     // /proc/[pid]/<path>
     bool register_per_pid(
-        lib::path path, std::shared_ptr<node_ops> ops,
-        node_type type, mode_t mode
+        lib::path path, std::shared_ptr<node_ops> ops, node_type type, mode_t mode
     );
 
     lib::initgraph::stage *registered_stage();

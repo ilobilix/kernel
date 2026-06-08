@@ -9,8 +9,7 @@ namespace syscall::vfs
     namespace
     {
         lib::expect<path> xattr_target_path(
-            sched::process_t *proc,
-            const char __user *pathname, bool follow_links
+            sched::process_t *proc, const char __user *pathname, bool follow_links
         )
         {
             return get_target(proc, at_fdcwd, pathname, follow_links, false, true);
@@ -35,8 +34,8 @@ namespace syscall::vfs
         }
 
         int do_setxattr(
-            const path &target, std::string_view name,
-            const void __user *value, std::size_t size, int flags
+            const path &target, std::string_view name, const void __user *value, std::size_t size,
+            int flags
         )
         {
             if (size > xattr_size_max)
@@ -44,9 +43,8 @@ namespace syscall::vfs
             if (detail::readonly_mount(target))
                 return -EROFS;
 
-            auto uspan = lib::maybe_uspan<std::byte>::create(
-                const_cast<void __user *>(value), size
-            );
+            auto uspan =
+                lib::maybe_uspan<std::byte>::create(const_cast<void __user *>(value), size);
             if (!uspan.has_value())
                 return -EFAULT;
 
@@ -56,8 +54,7 @@ namespace syscall::vfs
         }
 
         std::ssize_t do_getxattr(
-            const path &target, std::string_view name,
-            void __user *value, std::size_t size
+            const path &target, std::string_view name, void __user *value, std::size_t size
         )
         {
             auto ret = getxattr(target, name);
@@ -120,8 +117,8 @@ namespace syscall::vfs
     } // namespace
 
     int setxattr(
-        const char __user *pathname, const char __user *name,
-        const void __user *value, std::size_t size, int flags
+        const char __user *pathname, const char __user *name, const void __user *value,
+        std::size_t size, int flags
     )
     {
         const auto target = xattr_target_path(sched::current_process(), pathname, true);
@@ -136,8 +133,8 @@ namespace syscall::vfs
     }
 
     int lsetxattr(
-        const char __user *pathname, const char __user *name,
-        const void __user *value, std::size_t size, int flags
+        const char __user *pathname, const char __user *name, const void __user *value,
+        std::size_t size, int flags
     )
     {
         const auto target = xattr_target_path(sched::current_process(), pathname, false);
@@ -151,7 +148,9 @@ namespace syscall::vfs
         return do_setxattr(*target, *kname, value, size, flags);
     }
 
-    int fsetxattr(int fd, const char __user *name, const void __user *value, std::size_t size, int flags)
+    int fsetxattr(
+        int fd, const char __user *name, const void __user *value, std::size_t size, int flags
+    )
     {
         const auto target = xattr_target_fd(sched::current_process(), fd);
         if (!target.has_value())
@@ -165,8 +164,7 @@ namespace syscall::vfs
     }
 
     std::ssize_t getxattr(
-        const char __user *pathname, const char __user *name,
-        void __user *value, std::size_t size
+        const char __user *pathname, const char __user *name, void __user *value, std::size_t size
     )
     {
         const auto target = xattr_target_path(sched::current_process(), pathname, true);
@@ -181,8 +179,7 @@ namespace syscall::vfs
     }
 
     std::ssize_t lgetxattr(
-        const char __user *pathname, const char __user *name,
-        void __user *value, std::size_t size
+        const char __user *pathname, const char __user *name, void __user *value, std::size_t size
     )
     {
         const auto target = xattr_target_path(sched::current_process(), pathname, false);

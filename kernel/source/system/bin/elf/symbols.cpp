@@ -38,8 +38,7 @@ namespace bin::elf::sym
         {
             bool in_kernel(std::uintptr_t addr)
             {
-                return
-                    addr >= reinterpret_cast<std::uintptr_t>(_skernel) &&
+                return addr >= reinterpret_cast<std::uintptr_t>(_skernel) &&
                     addr < reinterpret_cast<std::uintptr_t>(_ekernel);
             }
 
@@ -88,7 +87,8 @@ namespace bin::elf::sym
 
                 off += len;
 
-                std::size_t maxlen = std::min(namebuf.size(), static_cast<std::size_t>(KSYM_NAME_LEN));
+                std::size_t maxlen =
+                    std::min(namebuf.size(), static_cast<std::size_t>(KSYM_NAME_LEN));
                 char *result = namebuf.data();
 
                 char type = '?';
@@ -119,7 +119,7 @@ namespace bin::elf::sym
                     }
                 }
 
-                exit:
+            exit:
                 if (maxlen)
                     *result = 0;
                 return type;
@@ -202,9 +202,9 @@ namespace bin::elf::sym
 
                         for (const auto &sym : image->symbols)
                         {
-                            fmt::format_to(it,
-                                "{:016x} {} {}\t[{}]\n",
-                                sym.address, sym.type, sym.name, modname
+                            fmt::format_to(
+                                it, "{:016x} {} {}\t[{}]\n", sym.address, sym.type, sym.name,
+                                modname
                             );
                         }
                     }
@@ -215,7 +215,8 @@ namespace bin::elf::sym
             return produced;
         }
 
-        auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<std::uintptr_t>
+        auto lookup(std::uintptr_t addr, std::span<char> namebuf)
+            -> const std::optional<std::uintptr_t>
         {
             if (!in_kernel(addr))
                 return std::nullopt;
@@ -223,7 +224,7 @@ namespace bin::elf::sym
             std::uintptr_t sym_start = 0, sym_end = 0;
             std::size_t low = 0;
 
-            for (std::size_t high = kallsyms_num_syms, mid; high - low > 1; )
+            for (std::size_t high = kallsyms_num_syms, mid; high - low > 1;)
             {
                 mid = low + (high - low) / 2;
                 if (sym_addr(mid) <= addr)
@@ -294,8 +295,7 @@ namespace bin::elf::sym
 
     auto lookup(std::uintptr_t addr, std::span<char> namebuf) -> const std::optional<lookup_result>
     {
-        auto search_in = [&](const symbol_table &table) -> std::pair<symbol, std::uintptr_t>
-        {
+        auto search_in = [&](const symbol_table &table) -> std::pair<symbol, std::uintptr_t> {
             if (table.empty())
                 return { empty, -1ul };
 
@@ -330,17 +330,18 @@ namespace bin::elf::sym
                 }
             }
         }
-        else return lookup_result { ret.value(), "kernel" };
+        else
+            return lookup_result { ret.value(), "kernel" };
 
         return std::nullopt;
     }
 
-    std::uintptr_t klookup(std::string_view name)
-    {
-        return kallsyms::lookup(name);
-    }
+    std::uintptr_t klookup(std::string_view name) { return kallsyms::lookup(name); }
 
-    auto get_symbols(const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz, std::uintptr_t offset) -> symbol_table
+    auto get_symbols(
+        const char *strtab, const std::uint8_t *symtab, std::size_t syment, std::size_t symsz,
+        std::uintptr_t offset
+    ) -> symbol_table
     {
         symbol_table symbols { };
 
@@ -401,17 +402,16 @@ namespace bin::elf::sym
         return symbols;
     }
 
-    lib::initgraph::task procfs_register_task
-    {
-        "kallsyms.procfs.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::procfs::registered_stage() },
-        [] {
+    lib::initgraph::task procfs_register_task {
+        "kallsyms.procfs.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() }, [] {
             using namespace ::fs::procfs;
-            lib::bug_on(!register_global("kallsyms",
+            lib::bug_on(!register_global(
+                "kallsyms",
                 make_streaming_file_ops([](auto, std::uint64_t offset, std::span<char> out) {
                     return kallsyms::stream(offset, out);
-                }), node_type::file, 0444
+                }),
+                node_type::file, 0444
             ));
         }
     };

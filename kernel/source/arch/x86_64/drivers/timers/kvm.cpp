@@ -59,8 +59,7 @@ namespace x86_64::timers::kvm
 
     bool supported()
     {
-        static const auto cached = [] -> bool
-        {
+        static const auto cached = [] -> bool {
             bool kvmclock = false;
             const auto [hv, base] = cpu::in_hypervisor();
             if (hv == cpu::hypervisor::kvm)
@@ -115,7 +114,8 @@ namespace x86_64::timers::kvm
         const auto flags = vmm::pflag::rwg;
         const auto cache = vmm::caching::mmio;
 
-        if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache); !ret)
+        if (const auto ret = vmm::kernel_pagemap->map(vaddr, paddr, length, flags, psize, cache);
+            !ret)
             lib::panic("pmm: could not map kvmclock: {}", lib::error_name(ret.error()));
 
         clockptr.write(std::construct_at<kvmclock_info>(reinterpret_cast<kvmclock_info *>(vaddr)));
@@ -132,22 +132,15 @@ namespace x86_64::timers::kvm
 
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "timers.arch.kvm.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "timers.arch.kvm.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task kvmclock_task
-    {
-        "timers.arch.kvm",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task kvmclock_task {
+        "timers.arch.kvm", lib::initgraph::presched_init_engine,
         lib::initgraph::require { arch::bsp_initialised_stage() },
-        lib::initgraph::entail { initialised_stage() },
-        [] {
-            init_cpu();
-        }
+        lib::initgraph::entail { initialised_stage() }, [] { init_cpu(); }
     };
 } // namespace x86_64::timers::kvm

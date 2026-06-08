@@ -92,7 +92,7 @@ namespace lib::log
                 constexpr std::uint64_t pack() const
                 {
                     return static_cast<std::uint64_t>(id) |
-                          (static_cast<std::uint64_t>(state) << 62);
+                        (static_cast<std::uint64_t>(state) << 62);
                 }
 
                 static constexpr desc_state unpack(std::uint64_t raw)
@@ -146,10 +146,7 @@ namespace lib::log
                 return std::launder(reinterpret_cast<data_block *>(&data[lpos & data_mask]));
             }
 
-            static constexpr id_t prev_wrap(id_t id)
-            {
-                return id - static_cast<id_t>(desc_count);
-            }
+            static constexpr id_t prev_wrap(id_t id) { return id - static_cast<id_t>(desc_count); }
 
             static constexpr id_t sentinel_id()
             {
@@ -201,11 +198,7 @@ namespace lib::log
 
                 auto ds = desc_state::unpack(state_ref(*desc).load(std::memory_order_acquire));
                 snapshot_t out {
-                    .state = classify(id, ds),
-                    .seq = 0,
-                    .ds = ds,
-                    .data_begin = 0,
-                    .data_end = 0
+                    .state = classify(id, ds), .seq = 0, .ds = ds, .data_begin = 0, .data_end = 0
                 };
 
                 if (out.state == st_miss || out.state == st_reserved)
@@ -226,11 +219,10 @@ namespace lib::log
             {
                 auto from = desc_state { .id = id, .state = st_finalised } .pack();
                 const auto to = desc_state { .id = id, .state = st_reusable } .pack();
-                state_ref(*desc_at(id)).compare_exchange_strong(
-                    from, to,
-                    std::memory_order_release,
-                    std::memory_order_relaxed
-                );
+                state_ref(*desc_at(id))
+                    .compare_exchange_strong(
+                        from, to, std::memory_order_release, std::memory_order_relaxed
+                    );
             }
 
             std::optional<std::size_t> free_data(std::size_t begin, std::size_t target)
@@ -239,7 +231,8 @@ namespace lib::log
                 while (needs_room(cur, target))
                 {
                     auto blk = block_at(cur);
-                    const auto owner = static_cast<id_t>(owner_ref(*blk).load(std::memory_order_relaxed));
+                    const auto owner =
+                        static_cast<id_t>(owner_ref(*blk).load(std::memory_order_relaxed));
 
                     const auto snap = snapshot(owner);
                     switch (snap.state)
@@ -272,9 +265,8 @@ namespace lib::log
                 {
                     if (const auto next = free_data(tail, target))
                     {
-                        if (tail_lpos.compare_exchange_weak(tail, *next,
-                                std::memory_order_release,
-                                std::memory_order_relaxed
+                        if (tail_lpos.compare_exchange_weak(
+                                tail, *next, std::memory_order_release, std::memory_order_relaxed
                             ))
                             break;
                     }
@@ -315,9 +307,8 @@ namespace lib::log
                 if (next.state == st_finalised || next.state == st_reusable)
                 {
                     auto cur = static_cast<std::size_t>(tid);
-                    tail_id.compare_exchange_strong(cur,
-                        static_cast<std::size_t>(tid + 1),
-                        std::memory_order_release,
+                    tail_id.compare_exchange_strong(
+                        cur, static_cast<std::size_t>(tid + 1), std::memory_order_release,
                         std::memory_order_relaxed
                     );
                     return { };
@@ -339,7 +330,8 @@ namespace lib::log
                     new_id = head + 1;
                     const auto prev = prev_wrap(new_id);
 
-                    const auto cur_tail = static_cast<id_t>(tail_id.load(std::memory_order_acquire));
+                    const auto cur_tail =
+                        static_cast<id_t>(tail_id.load(std::memory_order_acquire));
                     if (prev == cur_tail)
                     {
                         if (const auto res = advance_desc_tail(prev); !res)
@@ -347,8 +339,8 @@ namespace lib::log
                     }
 
                     auto raw = static_cast<std::size_t>(head);
-                    if (head_id.compare_exchange_weak(raw, static_cast<std::size_t>(new_id),
-                            std::memory_order_acq_rel,
+                    if (head_id.compare_exchange_weak(
+                            raw, static_cast<std::size_t>(new_id), std::memory_order_acq_rel,
                             std::memory_order_acquire
                         ))
                         break;
@@ -365,9 +357,8 @@ namespace lib::log
                     return std::unexpected { error::ring_full };
 
                 const auto to_raw = desc_state { .id = new_id, .state = st_reserved } .pack();
-                if (!state_ref(*desc).compare_exchange_strong(from_raw, to_raw,
-                        std::memory_order_release,
-                        std::memory_order_relaxed
+                if (!state_ref(*desc).compare_exchange_strong(
+                        from_raw, to_raw, std::memory_order_release, std::memory_order_relaxed
                     ))
                     return std::unexpected { error::ring_full };
 
@@ -375,8 +366,7 @@ namespace lib::log
             }
 
             std::expected<std::span<char>, error> alloc_data(
-                std::size_t size, id_t owner,
-                std::size_t &out_begin, std::size_t &out_end
+                std::size_t size, id_t owner, std::size_t &out_begin, std::size_t &out_end
             )
             {
                 const auto bsize = block_size(size);
@@ -391,23 +381,20 @@ namespace lib::log
                         return std::unexpected { res.error() };
                     }
 
-                    if (head_lpos.compare_exchange_weak(head, new_head,
-                            std::memory_order_acq_rel,
-                            std::memory_order_acquire
+                    if (head_lpos.compare_exchange_weak(
+                            head, new_head, std::memory_order_acq_rel, std::memory_order_acquire
                         ))
                     {
                         auto blk = block_at(head);
                         owner_ref(*blk).store(
-                            static_cast<std::uint64_t>(owner),
-                            std::memory_order_relaxed
+                            static_cast<std::uint64_t>(owner), std::memory_order_relaxed
                         );
 
                         if (wraps(head, new_head))
                         {
                             blk = block_at(0);
                             owner_ref(*blk).store(
-                                static_cast<std::uint64_t>(owner),
-                                std::memory_order_relaxed
+                                static_cast<std::uint64_t>(owner), std::memory_order_relaxed
                             );
                         }
 
@@ -421,9 +408,11 @@ namespace lib::log
 
             std::expected<info, error> read_one(std::uint64_t seq, std::span<char> buf)
             {
-                const auto id = desc_state::unpack(
-                    state_ref(*desc_at(static_cast<id_t>(seq))).load(std::memory_order_relaxed)
-                ).id;
+                const auto id =
+                    desc_state::unpack(
+                        state_ref(*desc_at(static_cast<id_t>(seq))).load(std::memory_order_relaxed)
+                    )
+                        .id;
 
                 auto snap = snapshot(id);
                 if (snap.state == st_miss || snap.state == st_reserved || snap.seq != seq)
@@ -456,10 +445,8 @@ namespace lib::log
             static constexpr std::array<desc, desc_count> make_descs()
             {
                 std::array<desc, desc_count> arr { };
-                arr[desc_count - 1].state = desc_state {
-                    .id = sentinel_id(),
-                    .state = st_reusable
-                } .pack();
+                arr[desc_count - 1].state =
+                    desc_state { .id = sentinel_id(), .state = st_reusable } .pack();
                 arr[desc_count - 1].data_begin = no_data;
                 arr[desc_count - 1].data_end = no_data;
                 return arr;
@@ -476,8 +463,9 @@ namespace lib::log
             constexpr ring()
                 : descs { make_descs() }, infos { make_infos() }, data { },
                   head_id { static_cast<std::size_t>(sentinel_id()) },
-                  tail_id { static_cast<std::size_t>(sentinel_id()) },
-                  head_lpos { 0 - data_size }, tail_lpos { 0 - data_size } { }
+                  tail_id { static_cast<std::size_t>(sentinel_id()) }, head_lpos { 0 - data_size },
+                  tail_lpos { 0 - data_size }
+            { }
 
             std::expected<reservation, error> reserve(std::size_t size)
             {
@@ -519,11 +507,10 @@ namespace lib::log
             {
                 auto from = desc_state { .id = res.id, .state = st_reserved } .pack();
                 const auto to = desc_state { .id = res.id, .state = st_finalised } .pack();
-                state_ref(*desc_at(res.id)).compare_exchange_strong(
-                    from, to,
-                    std::memory_order_release,
-                    std::memory_order_relaxed
-                );
+                state_ref(*desc_at(res.id))
+                    .compare_exchange_strong(
+                        from, to, std::memory_order_release, std::memory_order_relaxed
+                    );
 
                 arch::int_switch(res.prev_irqs);
             }
@@ -583,8 +570,7 @@ namespace lib::log
         void prints(std::string_view str)
         {
             auto current = loggers;
-            const auto internal_print = [&current](auto str)
-            {
+            const auto internal_print = [&current](auto str) {
                 std::string_view view { str };
                 current->prints(view);
             };
@@ -615,24 +601,22 @@ namespace lib::log
                 nanos /= 1'000;
 
                 std::array<char, len_time> time { };
-                lib::bug_on(fmt::format_to_n(
-                    time.data(), time.size(), "[{:02}:{:02}:{:02}.{:06}] ",
-                    h, m, s, nanos
-                ).size != len_time);
+                lib::bug_on(
+                    fmt::format_to_n(
+                        time.data(), time.size(), "[{:02}:{:02}:{:02}.{:06}] ", h, m, s, nanos
+                    )
+                        .size != len_time
+                );
                 std::memcpy(data.data(), time.data(), len_time);
 
-                const std::string_view view {
-                    data.data(), info.len + len_time
-                };
+                const std::string_view view { data.data(), info.len + len_time };
                 lock.lock();
                 prints(view);
                 lock.unlock();
             }
             else
             {
-                const std::string_view view {
-                    data.data() + len_time, info.len
-                };
+                const std::string_view view { data.data() + len_time, info.len };
                 lock.lock();
                 prints(view);
                 lock.unlock();
@@ -647,13 +631,11 @@ namespace lib::log
             lg->next = loggers;
             loggers = lg;
         }
-        else loggers = lg;
+        else
+            loggers = lg;
     }
 
-    void set_direct_print(bool _direct)
-    {
-        direct.store(_direct, std::memory_order_release);
-    }
+    void set_direct_print(bool _direct) { direct.store(_direct, std::memory_order_release); }
 
     // called from panic
     void force_unlock()
@@ -669,9 +651,8 @@ namespace lib::log
 
         while (true)
         {
-            auto res = buffer.read(next_seq, std::span {
-                data.data() + len_time, data.size() - len_time
-            });
+            auto res =
+                buffer.read(next_seq, std::span { data.data() + len_time, data.size() - len_time });
             if (!res.has_value())
                 break;
 
@@ -697,7 +678,9 @@ namespace lib::log
 
     namespace detail
     {
-        void vprint(bool add_nl, level lvl, std::size_t len, std::string_view fmt, fmt::format_args args)
+        void vprint(
+            bool add_nl, level lvl, std::size_t len, std::string_view fmt, fmt::format_args args
+        )
         {
             auto nanos = chrono::now(chrono::monotonic).to_ns();
 
@@ -716,14 +699,13 @@ namespace lib::log
                     nanos /= 1'000;
 
                     off = fmt::format_to_n(
-                        data.data(), data.size(),
-                        "[{:02}:{:02}:{:02}.{:06}] {}", h, m, s, nanos, prefix
-                    ).size;
+                              data.data(), data.size(), "[{:02}:{:02}:{:02}.{:06}] {}", h, m, s,
+                              nanos, prefix
+                    )
+                              .size;
                 }
 
-                off += fmt::vformat_to_n(
-                    data.data() + off, data.size() - off, fmt, args
-                ).size;
+                off += fmt::vformat_to_n(data.data() + off, data.size() - off, fmt, args).size;
 
                 if (add_nl)
                     data[off++] = '\n';
@@ -773,11 +755,12 @@ namespace lib::log
 
             std::array<char, 96> buf { };
             const auto prefix = prefixes[std::to_underlying(level::error)];
-            const auto sz = fmt::format_to_n(
-                buf.data(), buf.size(),
-                "[{:02}:{:02}:{:02}.{:06}] {}log: dropped {} entries\n",
-                h, m, s, nanos, prefix, count
-            ).size;
+            const auto sz =
+                fmt::format_to_n(
+                    buf.data(), buf.size(), "[{:02}:{:02}:{:02}.{:06}] {}log: dropped {} entries\n",
+                    h, m, s, nanos, prefix, count
+                )
+                    .size;
 
             lock.lock();
             prints(std::string_view { buf.data(), sz });
@@ -794,9 +777,8 @@ namespace lib::log
         while (true)
         {
             const auto gen = available.snapshot_gen();
-            auto res = buffer.read(next_seq, std::span {
-                data.data() + len_time, data.size() - len_time
-            });
+            auto res =
+                buffer.read(next_seq, std::span { data.data() + len_time, data.size() - len_time });
             if (!res.has_value())
             {
                 if (res.error() == ring_type::error::not_yet_available)
@@ -834,14 +816,9 @@ namespace lib::log
         std::unreachable();
     }
 
-    lib::initgraph::task log_task
-    {
-        "log.create-thread",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage()
-        },
-        [] {
+    lib::initgraph::task log_task {
+        "log.create-thread", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { sched::pid0_created_stage() }, [] {
             if (!lib::syscall::log_enabled)
                 sched::spawn(consumer, 0, 5);
         }

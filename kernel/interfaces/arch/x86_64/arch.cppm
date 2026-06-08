@@ -20,11 +20,9 @@ export namespace arch
     bool int_status()
     {
         std::uint64_t rflags = 0;
-        asm volatile (
-            "pushfq \n\t"
-            "pop %[rflags]"
-            : [rflags]"=r"(rflags)
-        );
+        asm volatile ("pushfq \n\t"
+                     "pop %[rflags]"
+                     : [rflags] "=r"(rflags));
         return rflags & (1 << 9);
     }
 } // export namespace arch

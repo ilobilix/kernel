@@ -21,20 +21,21 @@ namespace fs::tmpfs
         bool reserve(std::atomic<std::size_t> &counter, std::size_t max, std::size_t delta)
         {
             auto cur = counter.load(std::memory_order_relaxed);
-            do {
+            do
+            {
                 if (cur + delta > max)
                     return false;
-            } while (!counter.compare_exchange_weak(
-                cur, cur + delta, std::memory_order_relaxed));
+            } while (!counter.compare_exchange_weak(cur, cur + delta, std::memory_order_relaxed));
             return true;
         }
     }
 
     inode::inode(
-        fs::instance *owner, dev_t dev, dev_t rdev,
-        ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
-    ) : vfs::inode { std::move(ops) }, owner { owner },
-        memory { new vmm::memobject { vmm::object_type::shmem } }
+        fs::instance *owner, dev_t dev, dev_t rdev, ino_t ino, mode_t mode,
+        std::shared_ptr<vfs::ops> ops
+    )
+        : vfs::inode { std::move(ops) }, owner { owner },
+          memory { new vmm::memobject { vmm::object_type::shmem } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
@@ -52,10 +53,7 @@ namespace fs::tmpfs
         stat.st_gid = proc->cred->egid;
 
         stat.update_time(
-            kstat::time::access |
-            kstat::time::modify |
-            kstat::time::status |
-            kstat::time::birth
+            kstat::time::access | kstat::time::modify | kstat::time::status | kstat::time::birth
         );
     }
 
@@ -65,15 +63,13 @@ namespace fs::tmpfs
         {
             owner->current_inodes.fetch_sub(1, std::memory_order_relaxed);
             owner->current_size.fetch_sub(
-                page_charge(static_cast<std::size_t>(stat.st_size)),
-                std::memory_order_relaxed
+                page_charge(static_cast<std::size_t>(stat.st_size)), std::memory_order_relaxed
             );
         }
     }
 
     lib::expect<std::size_t> ops::read(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
-        lib::maybe_uspan<std::byte> buffer
+        std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
     )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
@@ -93,8 +89,7 @@ namespace fs::tmpfs
     }
 
     lib::expect<std::size_t> ops::write(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
-        lib::maybe_uspan<std::byte> buffer
+        std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
     )
     {
         auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
@@ -123,9 +118,8 @@ namespace fs::tmpfs
         if (grew)
         {
             inod->stat.st_size = new_end;
-            inod->stat.st_blocks = lib::div_roundup(
-                new_end, static_cast<std::size_t>(inod->stat.st_blksize)
-            );
+            inod->stat.st_blocks =
+                lib::div_roundup(new_end, static_cast<std::size_t>(inod->stat.st_blksize));
         }
         return ret;
     }
@@ -164,9 +158,8 @@ namespace fs::tmpfs
         }
 
         inod->stat.st_size = size;
-        inod->stat.st_blocks = lib::div_roundup(
-            size, static_cast<std::size_t>(inod->stat.st_blksize)
-        );
+        inod->stat.st_blocks =
+            lib::div_roundup(size, static_cast<std::size_t>(inod->stat.st_blksize));
         return { };
     }
 
@@ -177,8 +170,8 @@ namespace fs::tmpfs
     }
 
     auto fs::instance::create(
-        std::shared_ptr<vfs::inode> &parent, std::string_view name,
-        mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
+        std::shared_ptr<vfs::inode> &parent, std::string_view name, mode_t mode, dev_t rdev,
+        std::optional<std::shared_ptr<vfs::ops>> ops
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
@@ -186,14 +179,12 @@ namespace fs::tmpfs
             return std::unexpected { lib::err::no_space_left };
 
         return std::make_shared<inode>(
-            this, dev_id, rdev, next_inode++,
-            mode, ops ? *ops : ops::singleton()
+            this, dev_id, rdev, next_inode++, mode, ops ? *ops : ops::singleton()
         );
     }
 
     auto fs::instance::symlink(
-        std::shared_ptr<vfs::inode> &parent,
-        std::string_view name, lib::path target
+        std::shared_ptr<vfs::inode> &parent, std::string_view name, lib::path target
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(target);
@@ -201,8 +192,8 @@ namespace fs::tmpfs
     }
 
     auto fs::instance::link(
-        std::shared_ptr<vfs::inode> &parent,
-        std::string_view name, std::shared_ptr<vfs::inode> target
+        std::shared_ptr<vfs::inode> &parent, std::string_view name,
+        std::shared_ptr<vfs::inode> target
     ) -> lib::expect<std::shared_ptr<vfs::inode>>
     {
         lib::unused(parent, name);
@@ -241,16 +232,12 @@ namespace fs::tmpfs
             if (progress >= max_batch)
                 break;
 
-            result.push_back({
-                it->dentry->name,
-                it->dentry->inode,
-                it->cookie
-            });
+            result.push_back({ it->dentry->name, it->dentry->inode, it->cookie });
         }
         return result;
     }
 
-    auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
+    auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir, std::string_view name)
         -> lib::expect<vfs::dir_entry>
     {
         const auto locked = dir->children.lock();
@@ -338,8 +325,7 @@ namespace fs::tmpfs
     }
 
     auto fs::mount(
-        std::shared_ptr<vfs::dentry> src,
-        std::optional<lib::maybe_uspan<const std::byte>> data
+        std::shared_ptr<vfs::dentry> src, std::optional<lib::maybe_uspan<const std::byte>> data
     ) const -> lib::expect<std::shared_ptr<struct vfs::mount>>
     {
         lib::unused(src);
@@ -361,9 +347,8 @@ namespace fs::tmpfs
             {
                 std::string str;
                 str.resize(data_size);
-                const auto ret = data->subspan(0, data_size).copy_to(
-                    reinterpret_cast<std::byte *>(str.data())
-                );
+                const auto ret =
+                    data->subspan(0, data_size).copy_to(reinterpret_cast<std::byte *>(str.data()));
                 if (!ret)
                     return std::unexpected { lib::err::invalid_address };
                 args.parse(str, ',');
@@ -371,10 +356,9 @@ namespace fs::tmpfs
             else
             {
                 const auto bytes = data->subspan(0, data_size);
-                args.parse({
-                    reinterpret_cast<const char *>(bytes.span().data()),
-                    bytes.size()
-                }, ',');
+                args.parse(
+                    { reinterpret_cast<const char *>(bytes.span().data()), bytes.size() }, ','
+                );
             }
         }
 
@@ -391,11 +375,14 @@ namespace fs::tmpfs
                 if (nr_blocks.has_value())
                 {
                     const auto blocks = nr_blocks.value();
-                    locked->max_size = blocks > max / pmm::page_size ? max : blocks * pmm::page_size;
+                    locked->max_size =
+                        blocks > max / pmm::page_size ? max : blocks * pmm::page_size;
                 }
-                else locked->max_size = mem / 2;
+                else
+                    locked->max_size = mem / 2;
             }
-            else locked->max_size = size.value();
+            else
+                locked->max_size = size.value();
 
             if (locked->max_size == 0)
                 locked->max_size = max;
@@ -411,8 +398,7 @@ namespace fs::tmpfs
         locked->current_inodes.fetch_add(1, std::memory_order_relaxed);
         root->inode = std::make_shared<inode>(
             locked.get(), locked->dev_id, 0, locked->next_inode++,
-            static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-            ops::singleton()
+            static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode, ops::singleton()
         );
         root->inode->stat.st_uid = locked->opt_uid;
         root->inode->stat.st_gid = locked->opt_gid;
@@ -425,21 +411,15 @@ namespace fs::tmpfs
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.tmpfs.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.tmpfs.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task tmpfs_task
-    {
-        "vfs.tmpfs.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task tmpfs_task {
+        "vfs.tmpfs.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
-        [] {
-            lib::bug_on(!vfs::register_fs(std::make_shared<fs>()));
-        }
+        [] { lib::bug_on(!vfs::register_fs(std::make_shared<fs>())); }
     };
 } // namespace fs::tmpfs

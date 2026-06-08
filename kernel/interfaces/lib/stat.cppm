@@ -6,8 +6,7 @@ import :types;
 import :time;
 import std;
 
-export
-{
+export {
     enum fmode : mode_t
     {
         s_irwxu = 00700, // user rwx
@@ -66,20 +65,14 @@ export
             return static_cast<enum type>(mode & static_cast<mode_t>(type::s_ifmt));
         }
 
-        constexpr enum type type() const
-        {
-            return type(st_mode);
-        }
+        constexpr enum type type() const { return type(st_mode); }
 
         static constexpr mode_t mode(mode_t mode)
         {
             return mode & ~static_cast<mode_t>(type::s_ifmt);
         }
 
-        constexpr mode_t mode() const
-        {
-            return mode(st_mode);
-        }
+        constexpr mode_t mode() const { return mode(st_mode); }
     };
 
     struct kstat : stat
@@ -91,7 +84,7 @@ export
             access = (1 << 0),
             modify = (1 << 1),
             status = (1 << 2),
-            birth  = (1 << 3)
+            birth = (1 << 3)
         };
         void update_time(std::uint8_t flags);
     };

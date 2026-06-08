@@ -6,6 +6,7 @@ import drivers.fs.devtmpfs;
 import drivers.fs.sysfs;
 import system.vfs.dev;
 import system.bin.elf;
+import system.sched;
 import magic_enum;
 import fmt;
 import lib;
@@ -23,10 +24,7 @@ namespace dev
             std::shared_ptr<kobject_t> drivers_kobj;
 
             std::vector<driver_t *> drivers;
-            lib::map::flat_hash<
-                driver_t *,
-                std::shared_ptr<kobject_t>
-            > driver_kobjs;
+            lib::map::flat_hash<driver_t *, std::shared_ptr<kobject_t>> driver_kobjs;
 
             std::vector<std::shared_ptr<device_t>> devices;
         };
@@ -38,31 +36,20 @@ namespace dev
             std::vector<std::shared_ptr<device_t>> devices;
         };
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 std::string,
                 std::shared_ptr<kobject_t>
             >, lib::rwspinlock
         > kobjects;
+        // clang-format on
 
-        lib::locker<
-            lib::map::flat_hash<
-                std::string_view,
-                bus_state_t
-            >, lib::rwspinlock
-        > buses;
+        lib::locker<lib::map::flat_hash<std::string_view, bus_state_t>, lib::rwspinlock> buses;
 
-        lib::locker<
-            lib::map::flat_hash<
-                std::string_view,
-                class_state_t
-            >, lib::rwspinlock
-        > classes;
+        lib::locker<lib::map::flat_hash<std::string_view, class_state_t>, lib::rwspinlock> classes;
 
-        lib::locker<
-            std::vector<std::shared_ptr<device_t>>,
-            lib::rwspinlock
-        > devices;
+        lib::locker<std::vector<std::shared_ptr<device_t>>, lib::rwspinlock> devices;
 
         std::atomic<reflector_t *> current_ref { nullptr };
 
@@ -108,8 +95,8 @@ namespace dev
 
             if (dev->devt != 0)
             {
-                const auto node = (dev->cls != nullptr && dev->cls->is_block)
-                    ? dev_block_root() : dev_char_root();
+                const auto node = (dev->cls != nullptr && dev->cls->is_block) ? dev_block_root()
+                                                                              : dev_char_root();
                 const auto maj = vfs::dev::major(dev->devt);
                 const auto min = vfs::dev::minor(dev->devt);
                 ref->add_link(node, fmt::format("{}:{}", maj, min), devpath);
@@ -141,8 +128,8 @@ namespace dev
 
             if (dev->devt != 0)
             {
-                const auto node = (dev->cls != nullptr && dev->cls->is_block)
-                    ? dev_block_root() : dev_char_root();
+                const auto node = (dev->cls != nullptr && dev->cls->is_block) ? dev_block_root()
+                                                                              : dev_char_root();
                 const auto maj = vfs::dev::major(dev->devt);
                 const auto min = vfs::dev::minor(dev->devt);
                 ref->remove_link(node, fmt::format("{}:{}", maj, min));
@@ -214,8 +201,8 @@ namespace dev
             {
                 dev->drv = nullptr;
                 lib::warn(
-                    "dev: probing '{}' with driver '{}' failed: {}",
-                    dev->name, drv.name, lib::error_name(res.error())
+                    "dev: probing '{}' with driver '{}' failed: {}", dev->name, drv.name,
+                    lib::error_name(res.error())
                 );
                 return res;
             }
@@ -342,10 +329,7 @@ namespace dev
             }
         };
 
-        bus_t &bus_of(kobject_t &kobj)
-        {
-            return static_cast<bus_kobject_t &>(kobj).bus;
-        }
+        bus_t &bus_of(kobject_t &kobj) { return static_cast<bus_kobject_t &>(kobj).bus; }
 
         struct autoprobe_attribute_t : attribute_t
         {
@@ -414,16 +398,9 @@ namespace dev
 
     lib::expect<void> device_t::emit(dev::action act)
     {
-        uevent_t uev {
-            .action = act,
-            .devpath = path(),
-            .envp = { }
-        };
+        uevent_t uev { .action = act, .devpath = path(), .envp = { } };
 
-        const auto subsystem =
-            bus ? bus->name :
-            cls ? cls->name :
-            std::string_view { };
+        const auto subsystem = bus ? bus->name : cls ? cls->name : std::string_view { };
 
         uev.add("ACTION", action_name(act));
         uev.add("DEVPATH", uev.devpath);
@@ -439,11 +416,7 @@ namespace dev
 
     lib::expect<void> kobject_t::emit(action act)
     {
-        uevent_t uev {
-            .action = act,
-            .devpath = path(),
-            .envp = { }
-        };
+        uevent_t uev { .action = act, .devpath = path(), .envp = { } };
 
         uev.add("ACTION", action_name(act));
         uev.add("DEVPATH", uev.devpath);
@@ -464,11 +437,7 @@ namespace dev
 
     std::string kobject_t::uevent_text()
     {
-        uevent_t uev {
-            .action = action::add,
-            .devpath = path(),
-            .envp = { }
-        };
+        uevent_t uev { .action = action::add, .devpath = path(), .envp = { } };
         if (type != nullptr)
             type->fill_uevent(*this, uev);
         return format_uevent(uev);
@@ -476,11 +445,7 @@ namespace dev
 
     std::string device_t::uevent_text()
     {
-        uevent_t uev {
-            .action = action::add,
-            .devpath = path(),
-            .envp = { }
-        };
+        uevent_t uev { .action = action::add, .devpath = path(), .envp = { } };
         collect_env(*this, uev);
         return format_uevent(uev);
     }
@@ -504,10 +469,7 @@ namespace dev
         }
     }
 
-    void detach_reflector()
-    {
-        current_ref.store(nullptr, std::memory_order_release);
-    }
+    void detach_reflector() { current_ref.store(nullptr, std::memory_order_release); }
 
     lib::expect<void> register_kobject(std::shared_ptr<kobject_t> kobj)
     {
@@ -545,12 +507,14 @@ namespace dev
             {
                 auto &kids = prnt->children;
                 kids.erase(
-                    std::remove_if(kids.begin(), kids.end(),
+                    std::remove_if(
+                        kids.begin(), kids.end(),
                         [&](const std::weak_ptr<kobject_t> &wp) {
                             const auto sp = wp.lock();
                             return !sp || sp.get() == kobj.get();
                         }
-                    ), kids.end()
+                    ),
+                    kids.end()
                 );
             }
 
@@ -568,9 +532,8 @@ namespace dev
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        auto kobj = std::make_shared<bus_kobject_t>(
-            bus.name, bus.type ?: bus_ktype(), bus_root(), bus
-        );
+        auto kobj =
+            std::make_shared<bus_kobject_t>(bus.name, bus.type ?: bus_ktype(), bus_root(), bus);
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -608,9 +571,8 @@ namespace dev
 
     lib::expect<void> register_class(class_t &cls)
     {
-        auto kobj = std::make_shared<kobject_t>(
-            cls.name, cls.type ?: default_ktype(), class_root()
-        );
+        auto kobj =
+            std::make_shared<kobject_t>(cls.name, cls.type ?: default_ktype(), class_root());
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -619,11 +581,8 @@ namespace dev
             return std::unexpected { lib::err::already_exists };
 
         lib::info("dev: registering class '{}'", cls.name);
-        locked.value()[cls.name] = class_state_t {
-            .cls = &cls,
-            .kobj = std::move(kobj),
-            .devices = { }
-        };
+        locked.value()[cls.name] =
+            class_state_t { .cls = &cls, .kobj = std::move(kobj), .devices = { } };
         return { };
     }
 
@@ -797,8 +756,8 @@ namespace dev
         devices.write_lock()->push_back(dev);
 
         lib::info(
-            "dev: registering device '{}'{}",
-            dev->name, dev->bus ? fmt::format(" on bus '{}'", dev->bus->name) : ""
+            "dev: registering device '{}'{}", dev->name,
+            dev->bus ? fmt::format(" on bus '{}'", dev->bus->name) : ""
         );
 
         lib::unused(dev->emit(action::add));
@@ -808,13 +767,16 @@ namespace dev
         {
             probe_device(dev);
 
-            if (!dev->bound() && !dev->modalias.empty() &&
-                !bin::elf::mod::request_alias(dev->modalias))
+            if (!dev->bound() && !dev->modalias.empty())
             {
-                lib::debug(
-                    "dev: no driver for '{}', modalias '{}'",
-                    dev->name, dev->modalias
-                );
+                sched::schedule_work([dev] {
+                    if (!bin::elf::mod::request_alias(dev->modalias))
+                    {
+                        lib::debug(
+                            "dev: no driver for '{}', modalias '{}'", dev->name, dev->modalias
+                        );
+                    }
+                });
             }
         }
 
@@ -902,21 +864,15 @@ namespace dev
 
     lib::initgraph::stage *core_registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "dev.core-registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "dev.core-registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     lib::initgraph::stage *available_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "dev.available",
-            lib::initgraph::postsched_init_engine
-        };
+        static lib::initgraph::stage stage { "dev.available", lib::initgraph::postsched_init_engine };
         return &stage;
     }
 
@@ -936,16 +892,12 @@ namespace dev
         std::shared_ptr<kobject_t> dev_block_kobj;
         std::shared_ptr<kobject_t> virtual_kobj;
 
-        lib::initgraph::task init_task
-        {
-            "dev.init",
-            lib::initgraph::postsched_init_engine,
-            lib::initgraph::entail { core_registered_stage() },
-            [] {
-                const auto install_root = [&](
-                    std::shared_ptr<kobject_t> &slot, std::string_view name,
-                    std::shared_ptr<kobject_t> parent = { }
-                ) {
+        lib::initgraph::task init_task {
+            "dev.init", lib::initgraph::postsched_init_engine,
+            lib::initgraph::entail { core_registered_stage() }, [] {
+                const auto install_root = [&](std::shared_ptr<kobject_t> &slot,
+                                              std::string_view name,
+                                              std::shared_ptr<kobject_t> parent = { }) {
                     slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
                     lib::bug_on(!register_kobject(slot));
                 };
@@ -960,17 +912,13 @@ namespace dev
             }
         };
 
-        lib::initgraph::task available_task
-        {
-            "dev.available",
-            lib::initgraph::postsched_init_engine,
+        lib::initgraph::task available_task {
+            "dev.available", lib::initgraph::postsched_init_engine,
             lib::initgraph::require {
-                core_registered_stage(),
-                fs::sysfs::registered_stage(),
+                core_registered_stage(), fs::sysfs::registered_stage(),
                 fs::devtmpfs::registered_stage()
             },
-            lib::initgraph::entail { available_stage() },
-            [] { }
+            lib::initgraph::entail { available_stage() }, [] { }
         };
     } // namespace
 

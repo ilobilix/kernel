@@ -31,9 +31,7 @@ export namespace pci::msix
 
         msix_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent);
 
-        lib::expect<void> alloc(
-            std::span<irq::irq_data *> data, const irq::fwspec &spec
-        ) override;
+        lib::expect<void> alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec) override;
 
         void free(std::span<irq::irq_data *> data) override;
 
@@ -53,8 +51,7 @@ export namespace pci::msix
     bool is_enabled(const pci::device &dev);
 
     lib::expect<irq::handle_t> request(
-        pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        pci::device &dev, std::size_t cpu_idx, irq::handler_fn fn, std::string_view name = { }
     );
 
     lib::expect<std::vector<irq::handle_t>> alloc(

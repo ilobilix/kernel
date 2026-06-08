@@ -31,8 +31,5 @@ export namespace lib
         return reinterpret_cast<Type>(detail::realloc(reinterpret_cast<void *>(oldptr), size));
     }
 
-    inline void free(auto ptr)
-    {
-        detail::free(reinterpret_cast<void *>(ptr));
-    }
+    inline void free(auto ptr) { detail::free(reinterpret_cast<void *>(ptr)); }
 } // export namespace lib

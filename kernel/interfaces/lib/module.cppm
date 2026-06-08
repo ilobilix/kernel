@@ -25,14 +25,18 @@ export namespace mod
 
         consteval deps(const deps &) = default;
 
-        consteval deps() requires (NDeps == 0) : list { } { }
+        consteval deps()
+            requires(NDeps == 0)
+            : list { }
+        { }
 
-        template<typename ...Args>
-            requires (!(... && std::same_as<std::decay_t<Args>, deps>))
-        consteval deps(Args &&...deps) : list { deps... } { }
+        template<typename... Args>
+            requires(!(... && std::same_as<std::decay_t<Args>, deps>))
+        consteval deps(Args &&...deps) : list { deps... }
+        { }
     };
 
-    template<typename ...Args>
+    template<typename... Args>
     deps(Args &&...) -> deps<sizeof...(Args)>;
 
     template<std::size_t Bytes>
@@ -81,31 +85,23 @@ export namespace mod
         const deps<NDeps> _deps;
         alignas(8) std::byte match[MatchBytes ?: 1];
 
-        std::string_view name() const
-        {
-            return _name;
-        }
+        std::string_view name() const { return _name; }
 
-        std::span<const char *const> dependencies() const
-        {
-            return { _deps.list, _deps.ndeps };
-        }
+        std::span<const char *const> dependencies() const { return { _deps.list, _deps.ndeps }; }
 
         std::span<const std::byte> matches() const
         {
-            const auto bytes = reinterpret_cast<const std::byte *>(&_deps) +
-                sizeof(_deps.ndeps) + _deps.ndeps * sizeof(const char *);
+            const auto bytes = reinterpret_cast<const std::byte *>(&_deps) + sizeof(_deps.ndeps) +
+                _deps.ndeps * sizeof(const char *);
             return { bytes, static_cast<std::size_t>(match_count) * match_stride };
         }
 
         consteval declare(
-            const char *name, const char *description, enum type type,
-            bool (*init)(), bool (*fini)(),
-            const match_bytes<MatchBytes> &m, deps<NDeps> deps = { }
-        ) : _name { name }, description { description },
-            init { init }, fini { fini }, type { type },
-            match_count { m.count }, match_stride { m.stride },
-            _deps { deps }, match { }
+            const char *name, const char *description, enum type type, bool (*init)(),
+            bool (*fini)(), const match_bytes<MatchBytes> &m, deps<NDeps> deps = { }
+        )
+            : _name { name }, description { description }, init { init }, fini { fini }, type { type },
+              match_count { m.count }, match_stride { m.stride }, _deps { deps }, match { }
         {
             std::copy_n(m.data.begin(), m.data.size(), match);
         }
@@ -113,13 +109,10 @@ export namespace mod
 
     template<std::size_t Matches, std::size_t Deps>
     declare(
-        const char *, const char *, type, bool (*)(), bool (*)(),
-        match_bytes<Matches>, deps<Deps>
+        const char *, const char *, type, bool (*)(), bool (*)(), match_bytes<Matches>, deps<Deps>
     ) -> declare<Deps, Matches>;
 
     template<std::size_t Matches>
-    declare(
-        const char *, const char *, type, bool (*)(), bool (*)(),
-        match_bytes<Matches>
-    ) -> declare<0, Matches>;
+    declare(const char *, const char *, type, bool (*)(), bool (*)(), match_bytes<Matches>)
+        -> declare<0, Matches>;
 } // export namespace mod

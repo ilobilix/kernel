@@ -35,8 +35,16 @@ export namespace lib
         path_view &operator=(const path_view &) = default;
         path_view &operator=(path_view &&) = default;
 
-        path_view &operator=(const auto &rhs) { _str = rhs; return *this; }
-        path_view &operator=(auto &&rhs) { _str = std::move(rhs); return *this; }
+        path_view &operator=(const auto &rhs)
+        {
+            _str = rhs;
+            return *this;
+        }
+        path_view &operator=(auto &&rhs)
+        {
+            _str = std::move(rhs);
+            return *this;
+        }
 
         path_view basename() const
         {
@@ -63,23 +71,14 @@ export namespace lib
             return _str.substr(0, length);
         }
 
-        bool is_absolute() const
-        {
-            return cwk_path_is_absolute(_str.data());
-        }
+        bool is_absolute() const { return cwk_path_is_absolute(_str.data()); }
 
-        bool is_relative() const
-        {
-            return cwk_path_is_relative(_str.data());
-        }
+        bool is_relative() const { return cwk_path_is_relative(_str.data()); }
 
         path relative(const path_view &base) const;
         path absolute(const path_view &base) const;
 
-        bool has_extension() const
-        {
-            return cwk_path_has_extension(_str.data());
-        }
+        bool has_extension() const { return cwk_path_has_extension(_str.data()); }
 
         path_view extension() const
         {
@@ -108,10 +107,7 @@ export namespace lib
             swap(_str, rhs._str);
         }
 
-        friend void swap(path_view &lhs, path_view &rhs)
-        {
-            lhs.swap(rhs);
-        }
+        friend void swap(path_view &lhs, path_view &rhs) { lhs.swap(rhs); }
 
         friend bool operator==(const path_view &lhs, const path_view &rhs)
         {
@@ -153,11 +149,27 @@ export namespace lib
         path &operator=(const path &) = default;
         path &operator=(path &&) = default;
 
-        path &operator=(const path_view &rhs) { _str = rhs._str; return *this; }
-        path &operator=(path_view &&rhs) { _str = std::move(rhs._str); return *this; }
+        path &operator=(const path_view &rhs)
+        {
+            _str = rhs._str;
+            return *this;
+        }
+        path &operator=(path_view &&rhs)
+        {
+            _str = std::move(rhs._str);
+            return *this;
+        }
 
-        path &operator=(const auto &rhs) { _str = rhs; return *this; }
-        path &operator=(auto &&rhs) { _str = std::move(rhs); return *this; }
+        path &operator=(const auto &rhs)
+        {
+            _str = rhs;
+            return *this;
+        }
+        path &operator=(auto &&rhs)
+        {
+            _str = std::move(rhs);
+            return *this;
+        }
 
         path &operator/=(const path &rhs)
         {
@@ -207,14 +219,23 @@ export namespace lib
             return result;
         }
 
-        path &operator+=(const path &rhs) { _str += rhs._str; return *this; }
-        path &operator+=(const path_view &rhs) { _str += rhs._str; return *this; }
-        path &operator+=(const auto &rhs) { _str += rhs; return *this; }
-
-        path_view view() const
+        path &operator+=(const path &rhs)
         {
-            return path_view { _str };
+            _str += rhs._str;
+            return *this;
         }
+        path &operator+=(const path_view &rhs)
+        {
+            _str += rhs._str;
+            return *this;
+        }
+        path &operator+=(const auto &rhs)
+        {
+            _str += rhs;
+            return *this;
+        }
+
+        path_view view() const { return path_view { _str }; }
 
         path basename() const { return view().basename(); }
         path dirname() const { return view().dirname(); }
@@ -222,7 +243,8 @@ export namespace lib
 
         path &change_basename(const path &newbasename)
         {
-            std::size_t length = cwk_path_change_basename(_str.c_str(), newbasename._str.c_str(), nullptr, 0) + 1;
+            std::size_t length =
+                cwk_path_change_basename(_str.c_str(), newbasename._str.c_str(), nullptr, 0) + 1;
             auto buffer = std::make_unique<char[]>(length);
             cwk_path_change_basename(_str.c_str(), newbasename._str.c_str(), buffer.get(), length);
 
@@ -232,7 +254,8 @@ export namespace lib
 
         path &change_root(const path &newroot)
         {
-            std::size_t length = cwk_path_change_root(_str.c_str(), newroot._str.c_str(), nullptr, 0) + 1;
+            std::size_t length =
+                cwk_path_change_root(_str.c_str(), newroot._str.c_str(), nullptr, 0) + 1;
             auto buffer = std::make_unique<char[]>(length);
             cwk_path_change_root(_str.c_str(), newroot._str.c_str(), buffer.get(), length);
 
@@ -251,7 +274,8 @@ export namespace lib
 
         path &change_extension(const path &newext)
         {
-            std::size_t length = cwk_path_change_extension(_str.c_str(), newext._str.c_str(), nullptr, 0) + 1;
+            std::size_t length =
+                cwk_path_change_extension(_str.c_str(), newext._str.c_str(), nullptr, 0) + 1;
             auto buffer = std::make_unique<char[]>(length);
             cwk_path_change_extension(_str.c_str(), newext._str.c_str(), buffer.get(), length + 1);
 
@@ -288,10 +312,7 @@ export namespace lib
             swap(_str, rhs._str);
         }
 
-        friend void swap(path &lhs, path &rhs)
-        {
-            lhs.swap(rhs);
-        }
+        friend void swap(path &lhs, path &rhs) { lhs.swap(rhs); }
 
         friend bool operator==(const path &lhs, const path &rhs)
         {
@@ -303,20 +324,11 @@ export namespace lib
             return lhs._str.compare(rhs._str) <=> 0;
         }
 
-        operator std::string() const
-        {
-            return _str;
-        }
+        operator std::string() const { return _str; }
 
-        operator std::string_view() const
-        {
-            return std::string_view { _str };
-        }
+        operator std::string_view() const { return std::string_view { _str }; }
 
-        operator path_view() const
-        {
-            return path_view { _str };
-        }
+        operator path_view() const { return path_view { _str }; }
     };
 
     path path_view::relative(const path_view &base) const

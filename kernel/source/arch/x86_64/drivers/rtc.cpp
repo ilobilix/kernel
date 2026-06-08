@@ -37,10 +37,7 @@ namespace x86_64::rtc
             return lib::io::in<8>(0x71);
         }
 
-        bool is_updating()
-        {
-            return (read(reg::status_a) & 0x80) != 0;
-        }
+        bool is_updating() { return (read(reg::status_a) & 0x80) != 0; }
 
         std::uint64_t get_datetime()
         {
@@ -58,10 +55,8 @@ namespace x86_64::rtc
 
                 bool operator==(const datetime &rhs) const
                 {
-                    return
-                        second == rhs.second && minute == rhs.minute &&
-                        hour == rhs.hour && day == rhs.day &&
-                        month == rhs.month && year == rhs.year &&
+                    return second == rhs.second && minute == rhs.minute && hour == rhs.hour &&
+                        day == rhs.day && month == rhs.month && year == rhs.year &&
                         century == rhs.century;
                 }
 
@@ -86,7 +81,8 @@ namespace x86_64::rtc
 
             time.read_all();
 
-            do {
+            do
+            {
                 last = time;
                 while (is_updating())
                     asm volatile ("pause");
@@ -116,15 +112,9 @@ namespace x86_64::rtc
         }
     } // namespace
 
-    lib::initgraph::task pit_task
-    {
-        "arch.rtc",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            ::timers::initialised_stage(),
-            acpi::tables_stage()
-        },
-        [] {
+    lib::initgraph::task pit_task {
+        "arch.rtc", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { ::timers::initialised_stage(), acpi::tables_stage() }, [] {
             if (acpi::fadt)
                 century_reg = acpi::fadt->century;
 

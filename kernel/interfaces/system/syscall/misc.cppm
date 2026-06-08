@@ -18,8 +18,7 @@ export namespace syscall::misc
     std::ssize_t getrandom(void __user *buf, std::size_t buflen, unsigned int flags);
 
     int prctl(
-        int option, unsigned long arg2, unsigned long arg3,
-        unsigned long arg4, unsigned long arg5
+        int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5
     );
 
     int seccomp(unsigned int op, unsigned int flags, void __user *args);
@@ -27,7 +26,7 @@ export namespace syscall::misc
     int syslog(int type, char __user *buf, int len);
 
     int landlock_create_ruleset(
-        const struct landlock_ruleset_attr __user *const attr,
-        const std::size_t size, const std::uint32_t flags
+        const struct landlock_ruleset_attr __user *const attr, const std::size_t size,
+        const std::uint32_t flags
     );
 } // export namespace syscall::misc

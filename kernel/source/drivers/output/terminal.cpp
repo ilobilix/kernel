@@ -13,20 +13,16 @@ namespace output::term
 {
     namespace
     {
-        std::uint32_t ansi_colours[] {
-            0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500,
-            0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA
-        };
+        std::uint32_t ansi_colours[] { 0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500,
+                                      0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA };
 
-        std::uint32_t ansi_bright_colours[] {
-            0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55,
-            0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF
-        };
+        std::uint32_t ansi_bright_colours[] { 0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55,
+                                             0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF };
 
         std::uint32_t default_fg = 0x00FFFFFF;
 
         signed char font[] {
-            #embed "../../../embed/font.bin"
+#embed "../../../embed/font.bin"
         };
 
         constinit void *early_addr = nullptr;
@@ -42,8 +38,7 @@ namespace output::term
                     return;
                 write(ctx, str);
             },
-            [] { lock.lock(); },
-            [] { lock.unlock(); }
+            [] { lock.lock(); }, [] { lock.unlock(); }
         };
     } // namespace
 
@@ -52,10 +47,7 @@ namespace output::term
         flanterm_write(ctx, str.data(), str.length());
     }
 
-    void write(flanterm_context *ctx, char chr)
-    {
-        flanterm_write(ctx, &chr, 1);
-    }
+    void write(flanterm_context *ctx, char chr) { flanterm_write(ctx, &chr, 1); }
 
     flanterm_context *main()
     {
@@ -70,16 +62,11 @@ namespace output::term
     {
         const auto frm = boot::requests::framebuffer.response->framebuffers[0];
         early = flanterm_fb_init(
-            nullptr, nullptr,
-            reinterpret_cast<std::uint32_t *>(early_addr = frm->address),
-            frm->width, frm->height, frm->pitch,
-            frm->red_mask_size, frm->red_mask_shift,
-            frm->green_mask_size, frm->green_mask_shift,
-            frm->blue_mask_size, frm->blue_mask_shift,
-            nullptr, ansi_colours, ansi_bright_colours,
-            nullptr, nullptr /* &default_fg */, nullptr, &default_fg,
-            font, 8, 16, 1,
-            0, 0, 0, FLANTERM_FB_ROTATE_0
+            nullptr, nullptr, reinterpret_cast<std::uint32_t *>(early_addr = frm->address),
+            frm->width, frm->height, frm->pitch, frm->red_mask_size, frm->red_mask_shift,
+            frm->green_mask_size, frm->green_mask_shift, frm->blue_mask_size, frm->blue_mask_shift,
+            nullptr, ansi_colours, ansi_bright_colours, nullptr, nullptr /* &default_fg */, nullptr,
+            &default_fg, font, 8, 16, 1, 0, 0, 0, FLANTERM_FB_ROTATE_0
         );
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
@@ -101,15 +88,10 @@ namespace output::term
 
             auto ctx = flanterm_fb_init(
                 lib::alloc, [](void *ptr, std::size_t) { lib::free(ptr); },
-                reinterpret_cast<std::uint32_t *>(frm.address),
-                frm.width, frm.height, frm.pitch,
-                frm.red_mask_size, frm.red_mask_shift,
-                frm.green_mask_size, frm.green_mask_shift,
-                frm.blue_mask_size, frm.blue_mask_shift,
-                nullptr, ansi_colours, ansi_bright_colours,
-                nullptr, nullptr, nullptr, nullptr,
-                font, 8, 16, 1,
-                0, 0, 0, FLANTERM_FB_ROTATE_0
+                reinterpret_cast<std::uint32_t *>(frm.address), frm.width, frm.height, frm.pitch,
+                frm.red_mask_size, frm.red_mask_shift, frm.green_mask_size, frm.green_mask_shift,
+                frm.blue_mask_size, frm.blue_mask_shift, nullptr, ansi_colours, ansi_bright_colours,
+                nullptr, nullptr, nullptr, nullptr, font, 8, 16, 1, 0, 0, 0, FLANTERM_FB_ROTATE_0
             );
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");

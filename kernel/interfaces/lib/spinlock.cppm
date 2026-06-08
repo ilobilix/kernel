@@ -32,7 +32,8 @@ export namespace lib
     } // namespace lock
 
     template<lock_type Type>
-    class spinlock_base { };
+    class spinlock_base
+    { };
 
     template<>
     class spinlock_base<lock_type::preempt>
@@ -60,8 +61,7 @@ export namespace lib
         }
 
         public:
-        constexpr spinlock_base()
-            : _next_ticket { 0 }, _serving_ticket { 0 } { }
+        constexpr spinlock_base() : _next_ticket { 0 }, _serving_ticket { 0 } { }
 
         spinlock_base(const spinlock_base &) = delete;
         spinlock_base(spinlock_base &&) = delete;
@@ -105,8 +105,7 @@ export namespace lib
     class spinlock_base<lock_type::irq> : public spinlock_base<lock_type::preempt>
     {
         public:
-        constexpr spinlock_base()
-            : spinlock_base<lock_type::preempt> { } { }
+        constexpr spinlock_base() : spinlock_base<lock_type::preempt> { } { }
 
         using spinlock_base<lock_type::preempt>::spinlock_base;
 
@@ -178,8 +177,9 @@ export namespace lib
                     continue;
                 }
 
-                if (state.compare_exchange_weak(val, val + reader_unit,
-                    std::memory_order_acquire, std::memory_order_relaxed))
+                if (state.compare_exchange_weak(
+                        val, val + reader_unit, std::memory_order_acquire, std::memory_order_relaxed
+                    ))
                     return;
             }
         }
@@ -225,8 +225,9 @@ export namespace lib
 
             state.fetch_or(writer_wait, std::memory_order_relaxed);
             const auto expected = reader_unit | writer_wait;
-            if (state.compare_exchange_strong(expected, writer_held,
-                std::memory_order_acq_rel, std::memory_order_acquire))
+            if (state.compare_exchange_strong(
+                    expected, writer_held, std::memory_order_acq_rel, std::memory_order_acquire
+                ))
                 return true;
 
             state.fetch_and(~writer_wait, std::memory_order_release);

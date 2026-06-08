@@ -7,7 +7,7 @@ import system.cpu.arch;
 export namespace arch
 {
     void wfi() { asm volatile ("wfi"); }
-    void pause() { asm volatile ("isb" ::: "memory"); }
+    void pause() { asm volatile ("isb" : : : "memory"); }
 
     void int_switch(bool on)
     {
@@ -17,8 +17,5 @@ export namespace arch
             cpu::msr<"daifset", "i">(0b1111);
     }
 
-    bool int_status()
-    {
-        return cpu::mrs<"daif">() == 0;
-    }
+    bool int_status() { return cpu::mrs<"daif">() == 0; }
 } // export namespace arch

@@ -41,12 +41,7 @@ export namespace sched
 
         std::weak_ptr<process_t> parent;
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::shared_ptr<process_t>
-            >, mutex
-        > children;
+        lib::locker<lib::map::flat_hash<pid_t, std::shared_ptr<process_t>>, mutex> children;
 
         std::shared_ptr<group_t> group;
         std::shared_ptr<session_t> session;
@@ -77,19 +72,16 @@ export namespace sched
         std::shared_ptr<signal_actions_t> sigactions;
         signal_queue_t sigqueue;
 
+        // clang-format off
         lib::locker<
             lib::intrusive_list<
                 signal_waiter_t,
                 &signal_waiter_t::hook
             >, lib::spinlock
         > sig_waiters;
+        // clang-format on
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::shared_ptr<thread_t>
-            >, mutex
-        > threads;
+        lib::locker<lib::map::flat_hash<pid_t, std::shared_ptr<thread_t>>, mutex> threads;
 
         std::atomic<std::size_t> alive_threads = 0;
 
@@ -133,12 +125,7 @@ export namespace sched
         pid_t pgid;
         std::shared_ptr<session_t> session;
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::weak_ptr<process_t>
-            >, mutex
-        > members;
+        lib::locker<lib::map::flat_hash<pid_t, std::weak_ptr<process_t>>, mutex> members;
 
         int signal_all(int sig);
     };
@@ -147,17 +134,8 @@ export namespace sched
     {
         pid_t sid;
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::weak_ptr<group_t>
-            >, mutex
-        > members;
+        lib::locker<lib::map::flat_hash<pid_t, std::weak_ptr<group_t>>, mutex> members;
 
-        lib::locker<
-            std::shared_ptr<
-                ctty_base
-            >, mutex
-        > ctty;
+        lib::locker<std::shared_ptr<ctty_base>, mutex> ctty;
     };
 } // export namespace sched

@@ -86,8 +86,7 @@ namespace syscall::memory
         }
 
         const auto ret = vmspace->map(
-            reinterpret_cast<std::uintptr_t>(addr), length,
-            prot, max_prot, flags, obj, offset
+            reinterpret_cast<std::uintptr_t>(addr), length, prot, max_prot, flags, obj, offset
         );
 
         if (!ret.has_value())
@@ -101,10 +100,7 @@ namespace syscall::memory
         const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
-        const auto res = vmspace->unmap(
-            reinterpret_cast<std::uintptr_t>(addr),
-            length
-        );
+        const auto res = vmspace->unmap(reinterpret_cast<std::uintptr_t>(addr), length);
         return res ? 0 : -lib::map_error(res.error());
     }
 
@@ -114,14 +110,15 @@ namespace syscall::memory
         const auto &vmspace = proc->vmspace;
 
         const auto res = vmspace->protect(
-            reinterpret_cast<std::uintptr_t>(addr), len,
-            static_cast<std::uint8_t>(prot)
+            reinterpret_cast<std::uintptr_t>(addr), len, static_cast<std::uint8_t>(prot)
         );
 
         return res ? 0 : -lib::map_error(res.error());
     }
 
-    void *mremap(void *old_addr, std::size_t old_size, std::size_t new_size, int flags, void *new_addr)
+    void *mremap(
+        void *old_addr, std::size_t old_size, std::size_t new_size, int flags, void *new_addr
+    )
     {
         constexpr int mremap_maymove = 1;
         constexpr int mremap_fixed = 2;
@@ -169,7 +166,8 @@ namespace syscall::memory
         if (address == old || address < vmm::vmspace::mmap_min)
             return reinterpret_cast<void *>(old);
 
-        if (address > old && address - vmspace->brk_start > proc->rlimits->get(sched::rlimit_data).cur)
+        if (address > old &&
+            address - vmspace->brk_start > proc->rlimits->get(sched::rlimit_data).cur)
             return reinterpret_cast<void *>(old);
 
         const auto old_end = lib::align_up(old, npsize);
@@ -185,11 +183,7 @@ namespace syscall::memory
                 const auto prot = vmm::prot::read | vmm::prot::write;
                 const auto flags = vmm::flag::private_ | vmm::flag::anonymous | vmm::flag::fixed;
 
-                const auto ret = vmspace->map(
-                    begin, length,
-                    prot, prot, flags,
-                    nullptr, 0
-                );
+                const auto ret = vmspace->map(begin, length, prot, prot, flags, nullptr, 0);
 
                 if (!ret.has_value())
                     return reinterpret_cast<void *>(old);

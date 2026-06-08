@@ -41,10 +41,7 @@ namespace arch
         return ret;
     }
 
-    std::uint64_t cycle_count()
-    {
-        return x86_64::timers::tsc::rdtsc();
-    }
+    std::uint64_t cycle_count() { return x86_64::timers::tsc::rdtsc(); }
 
     std::size_t hardware_random(std::span<std::byte> out)
     {
@@ -85,29 +82,23 @@ namespace arch
     {
         lib::println("\ncpu {} context:", idx);
         lib::println(
-            " r15: 0x{:016X}, r14: 0x{:016X}, r13: 0x{:016X}, r12: 0x{:016X}",
-            regs->r15, regs->r14, regs->r13, regs->r12
+            " r15: 0x{:016X}, r14: 0x{:016X}, r13: 0x{:016X}, r12: 0x{:016X}", regs->r15, regs->r14,
+            regs->r13, regs->r12
         );
         lib::println(
-            " r11: 0x{:016X}, r10: 0x{:016X}, r9:  0x{:016X}, r8:  0x{:016X}",
-            regs->r11, regs->r10, regs->r9, regs->r8
+            " r11: 0x{:016X}, r10: 0x{:016X}, r9:  0x{:016X}, r8:  0x{:016X}", regs->r11, regs->r10,
+            regs->r9, regs->r8
         );
         lib::println(
-            " rdi: 0x{:016X}, rsi: 0x{:016X}, rdx: 0x{:016X}, rcx: 0x{:016X}",
-            regs->rdi, regs->rsi, regs->rdx, regs->rcx
+            " rdi: 0x{:016X}, rsi: 0x{:016X}, rdx: 0x{:016X}, rcx: 0x{:016X}", regs->rdi, regs->rsi,
+            regs->rdx, regs->rcx
         );
         lib::println(
-            " rbp: 0x{:016X}, rsp: 0x{:016X}, rax: 0x{:016X}, rbx: 0x{:016X}",
-            regs->rbp, regs->rsp, regs->rax, regs->rbx
+            " rbp: 0x{:016X}, rsp: 0x{:016X}, rax: 0x{:016X}, rbx: 0x{:016X}", regs->rbp, regs->rsp,
+            regs->rax, regs->rbx
         );
-        lib::println(
-            " rip: 0x{0:016X}, err: 0x{1:X} = 0b{1:b}",
-            regs->rip, regs->error_code
-        );
-        lib::println(
-            " rflags: 0x{:X}, cs: 0x{:X}, ss: 0x{:X}",
-            regs->rflags, regs->cs, regs->ss
-        );
+        lib::println(" rip: 0x{0:016X}, err: 0x{1:X} = 0b{1:b}", regs->rip, regs->error_code);
+        lib::println(" rflags: 0x{:X}, cs: 0x{:X}, ss: 0x{:X}", regs->rflags, regs->cs, regs->ss);
         lib::println(" cr2: 0x{:X}, cr3: 0x{:X}", eregs.cr2, eregs.cr3);
     }
 
@@ -117,29 +108,20 @@ namespace arch
         x86_64::idt::init();
     }
 
-    lib::initgraph::task bsp_task
-    {
-        "arch.bsp.initialise",
-        lib::initgraph::presched_init_engine,
+    lib::initgraph::task bsp_task {
+        "arch.bsp.initialise", lib::initgraph::presched_init_engine,
         lib::initgraph::require { acpi::tables_stage() },
-        lib::initgraph::entail { bsp_initialised_stage() },
-        [] {
+        lib::initgraph::entail { bsp_initialised_stage() }, [] {
             x86_64::apic::init_bsp();
             cpu::init_bsp();
             x86_64::apic::io::init();
         }
     };
 
-    lib::initgraph::task cpus_task
-    {
-        "arch.cpus.initialise",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            bsp_initialised_stage(),
-            timers::initialised_stage()
-        },
-        lib::initgraph::entail { cpus_stage() },
-        [] {
+    lib::initgraph::task cpus_task {
+        "arch.cpus.initialise", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { bsp_initialised_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { cpus_stage() }, [] {
             x86_64::apic::calibrate_timer();
             cpu::init();
             x86_64::timers::tsc::finalise();

@@ -61,17 +61,17 @@ namespace cpu
 
             // save old cr0 and then enable the CD flag and disable the NW flag
             std::uintptr_t old_cr0;
-            asm volatile ("mov %0, cr0" : "=r"(old_cr0) :: "memory");
+            asm volatile ("mov %0, cr0" : "=r"(old_cr0) : : "memory");
             std::uintptr_t new_cr0 = (old_cr0 | (1 << 30)) & ~(1ul << 29);
-            asm volatile ("mov cr0, %0" :: "r"(new_cr0) : "memory");
+            asm volatile ("mov cr0, %0" : : "r"(new_cr0) : "memory");
 
             // then invalidate the caches
-            asm volatile ("wbinvd" ::: "memory");
+            asm volatile ("wbinvd" : : : "memory");
 
             // do a cr3 read/write to flush the TLB
             std::uintptr_t cr3;
-            asm volatile ("mov %0, cr3" : "=r"(cr3) :: "memory");
-            asm volatile ("mov cr3, %0" :: "r"(cr3) : "memory");
+            asm volatile ("mov %0, cr3" : "=r"(cr3) : : "memory");
+            asm volatile ("mov cr3, %0" : : "r"(cr3) : "memory");
 
             // disable the MTRRs
             auto mtrr_def = msr::read(0x2FF);
@@ -109,14 +109,14 @@ namespace cpu
             msr::write(0x2FF, mtrr_def);
 
             // do a cr3 read/write to flush the TLB
-            asm volatile ("mov %0, cr3" : "=r"(cr3) :: "memory");
-            asm volatile ("mov cr3, %0" :: "r"(cr3) : "memory");
+            asm volatile ("mov %0, cr3" : "=r"(cr3) : : "memory");
+            asm volatile ("mov cr3, %0" : : "r"(cr3) : "memory");
 
             // then invalidate the caches
-            asm volatile ("wbinvd" ::: "memory");
+            asm volatile ("wbinvd" : : : "memory");
 
             // restore old value of cr0
-            asm volatile ("mov cr0, %0" :: "r"(old_cr0) : "memory");
+            asm volatile ("mov cr0, %0" : : "r"(old_cr0) : "memory");
         }
     } // namespace mtrr
 
@@ -133,34 +133,40 @@ namespace cpu
 
             void xsaveopt(std::byte *region)
             {
-                asm volatile ("xsaveopt [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+                asm volatile ("xsaveopt [%0]"
+                             :
+                             : "r"(region), "a"(rfbm_low), "d"(rfbm_high)
+                             : "memory");
             }
 
             void xsave(std::byte *region)
             {
-                asm volatile ("xsave [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+                asm volatile ("xsave [%0]"
+                             :
+                             : "r"(region), "a"(rfbm_low), "d"(rfbm_high)
+                             : "memory");
             }
 
             void xrstor(std::byte *region)
             {
-                asm volatile ("xrstor [%0]" :: "r"(region), "a"(rfbm_low), "d"(rfbm_high) : "memory");
+                asm volatile ("xrstor [%0]"
+                             :
+                             : "r"(region), "a"(rfbm_low), "d"(rfbm_high)
+                             : "memory");
             }
 
             void fxsave(std::byte *region)
             {
-                asm volatile ("fxsave [%0]" :: "r"(region) : "memory");
+                asm volatile ("fxsave [%0]" : : "r"(region) : "memory");
             }
 
             void fxrstor(std::byte *region)
             {
-                asm volatile ("fxrstor [%0]" :: "r"(region) : "memory");
+                asm volatile ("fxrstor [%0]" : : "r"(region) : "memory");
             }
         } // namespace
 
-        fpu &get_fpu()
-        {
-            return shared_fpu;
-        }
+        fpu &get_fpu() { return shared_fpu; }
 
         void enable()
         {
@@ -237,7 +243,7 @@ namespace cpu
                 if (cached7 && (res7.b & (1 << 16)))
                     xcr0 |= (0b111 << 5);
 
-                asm volatile ("xsetbv" :: "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
+                asm volatile ("xsetbv" : : "a"(xcr0), "d"(xcr0 >> 32), "c"(0) : "memory");
 
                 bool xopt = cpu::id(0x0D, 1).value_or(cpu::id_res { }).a & (1 << 0);
 

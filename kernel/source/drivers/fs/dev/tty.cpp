@@ -30,17 +30,18 @@ namespace fs::dev::tty
             const auto min = minor(rdev);
 
             if (const auto it = drivers.find_if([&](const auto &drv) {
-                const auto minor_end = drv.minor_start + drv.num_devices;
-                return drv.major == maj && drv.minor_start <= min && min < minor_end;
-            }); it != drivers.end())
+                    const auto minor_end = drv.minor_start + drv.num_devices;
+                    return drv.major == maj && drv.minor_start <= min && min < minor_end;
+                });
+                it != drivers.end())
                 return it.value();
 
             return nullptr;
         }
 
         lib::expect<void> generic_open(
-            std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst,
-            int flags, pid_t pid, bool inst_opened
+            std::shared_ptr<vfs::file> file, std::shared_ptr<instance> inst, int flags, pid_t pid,
+            bool inst_opened
         )
         {
             if (const auto ret = inst->permit_open(file); !ret)
@@ -86,8 +87,8 @@ namespace fs::dev::tty
         }
 
         lib::expect<std::shared_ptr<instance>> open_or_create(
-            std::shared_ptr<vfs::file> file, driver *drv, std::uint32_t min,
-            int flags, pid_t pid)
+            std::shared_ptr<vfs::file> file, driver *drv, std::uint32_t min, int flags, pid_t pid
+        )
         {
             auto locked = drv->instances.lock();
             if (auto it = locked->find(min); it != locked->end())
@@ -160,7 +161,10 @@ namespace fs::dev::tty
                 return { };
             }
 
-            lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            lib::expect<std::size_t> read(
+                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -168,7 +172,10 @@ namespace fs::dev::tty
                 return inst->read(std::move(file), buffer);
             }
 
-            lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            lib::expect<std::size_t> write(
+                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -176,7 +183,9 @@ namespace fs::dev::tty
                 return inst->write(std::move(file), buffer);
             }
 
-            lib::expect<int> ioctl(std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp) override
+            lib::expect<int> ioctl(
+                std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);
@@ -189,7 +198,9 @@ namespace fs::dev::tty
                 return { };
             }
 
-            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+            lib::expect<std::uint16_t> poll(
+                std::shared_ptr<vfs::file> file, vfs::poll_table *pt
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);
@@ -224,10 +235,11 @@ namespace fs::dev::tty
         }
     }
 
-    default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
-        raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { },
-        out_buffer { }, out_wq { }, stopped { false },
-        worker_thread { }, should_work { false }, shut_down { false }, hung_wq { } { }
+    default_ldisc::default_ldisc(instance *inst)
+        : line_discipline { inst }, raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { }, out_buffer { },
+          out_wq { }, stopped { false }, worker_thread { }, should_work { false }, shut_down { false },
+          hung_wq { }
+    { }
 
     void default_ldisc::open()
     {
@@ -263,10 +275,7 @@ namespace fs::dev::tty
         raw_wq.wake_all();
     }
 
-    default_ldisc::~default_ldisc()
-    {
-        shutdown();
-    }
+    default_ldisc::~default_ldisc() { shutdown(); }
 
     bool default_ldisc::output_append(const ktermios &termios, char chr)
     {
@@ -301,10 +310,7 @@ namespace fs::dev::tty
             lib::membuffer buffer { size };
 
             const auto num_chars = out_buffer.pop(
-                std::span {
-                    reinterpret_cast<char *>(buffer.data()),
-                    std::min(max_chars, size)
-                }
+                std::span { reinterpret_cast<char *>(buffer.data()), std::min(max_chars, size) }
             );
 
             if (num_chars == 0)
@@ -328,8 +334,7 @@ namespace fs::dev::tty
         if constexpr (debug)
         {
             lib::debug(
-                "tty: started worker thread in ({}, {})",
-                self->inst->drv->major, self->inst->minor
+                "tty: started worker thread in ({}, {})", self->inst->drv->major, self->inst->minor
             );
         }
 
@@ -342,19 +347,12 @@ namespace fs::dev::tty
 
         lib::bug_on(!self || !self->inst);
 
-        const auto is_control = [](char chr)
-        {
-            return chr < ' ' || chr == 0x7F;
-        };
+        const auto is_control = [](char chr) { return chr < ' ' || chr == 0x7F; };
 
         ktermios termios;
-        const auto echo_out = [&](char chr)
-        {
-            self->output_append(termios, chr);
-        };
+        const auto echo_out = [&](char chr) { self->output_append(termios, chr); };
 
-        const auto visual_erase = [&](char chr, bool do_echo)
-        {
+        const auto visual_erase = [&](char chr, bool do_echo) {
             if ((termios.c_lflag & echo) && do_echo)
             {
                 for (std::size_t i = 0; i < (is_control(chr) ? 2 : 1); i++)
@@ -395,13 +393,15 @@ namespace fs::dev::tty
                     if constexpr (debug)
                     {
                         lib::debug(
-                            "tty: hung up! worker thread in ({}, {}) is waiting for sweet release of death",
+                            "tty: hung up! worker thread in ({}, {}) is waiting for sweet release "
+                            "of death",
                             self->inst->drv->major, self->inst->minor
                         );
                     }
                     self->hung_wq.wait_prepared(hung_gen);
                 }
-                else self->raw_wq.wait_prepared(raw_gen);
+                else
+                    self->raw_wq.wait_prepared(raw_gen);
                 continue;
             }
             auto chr = static_cast<char>(ret.value());
@@ -423,7 +423,8 @@ namespace fs::dev::tty
                         echo_out('^');
                         echo_out((chr + '@') % 128);
                     }
-                    else echo_out(chr);
+                    else
+                        echo_out(chr);
                 }
                 continue;
             }
@@ -453,7 +454,8 @@ namespace fs::dev::tty
                             in_locked->read_tail = in_locked->read_head;
                             in_locked->cooked_head = in_locked->read_head;
                         }
-                        while (self->raw_buffer.pop().has_value()) { }
+                        while (self->raw_buffer.pop().has_value())
+                        { }
                     }
 
                     std::shared_ptr<sched::group_t> fg;
@@ -523,7 +525,8 @@ namespace fs::dev::tty
                             echo_out('^');
                             echo_out((chr + '@') % 128);
                         }
-                        else echo_out(chr);
+                        else
+                            echo_out(chr);
                     }
                     continue;
                 }
@@ -546,7 +549,8 @@ namespace fs::dev::tty
                             echo_out('^');
                             echo_out((chr + '@') % 128);
                         }
-                        else echo_out(chr);
+                        else
+                            echo_out(chr);
                     }
                     continue;
                 }
@@ -562,7 +566,7 @@ namespace fs::dev::tty
                             visual_erase(' ', termios.c_lflag & echoe);
                         }
 
-                        for (char chr = in_locked->peek(); chr != ' ' && chr != '\0'; )
+                        for (char chr = in_locked->peek(); chr != ' ' && chr != '\0';)
                         {
                             auto erased = in_locked->pop_last();
                             visual_erase(erased.value(), termios.c_lflag & echoe);
@@ -577,12 +581,14 @@ namespace fs::dev::tty
                             echo_out('^');
                             echo_out((chr + '@') % 128);
                         }
-                        else echo_out(chr);
+                        else
+                            echo_out(chr);
                     }
                     continue;
                 }
 
-                const bool is_eol = (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]));
+                const bool is_eol =
+                    (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]));
                 {
                     auto in_locked = self->in_buffer.lock();
                     if (chr == termios.c_cc[veof])
@@ -618,7 +624,8 @@ namespace fs::dev::tty
                         echo_out('^');
                         echo_out((chr + '@') % 128);
                     }
-                    else echo_out(chr);
+                    else
+                        echo_out(chr);
                 }
 
                 if (is_eol)
@@ -643,10 +650,12 @@ namespace fs::dev::tty
                             echo_out('^');
                             echo_out((chr + '@') % 128);
                         }
-                        else echo_out(chr);
+                        else
+                            echo_out(chr);
                     }
                 }
-                else echo_out('\a');
+                else
+                    echo_out('\a');
             }
         }
     }
@@ -658,7 +667,9 @@ namespace fs::dev::tty
             raw_wq.wake_all();
     }
 
-    lib::expect<std::size_t> default_ldisc::read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> default_ldisc::read(
+        std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+    )
     {
         using enum ktermios::lflag;
         using enum ktermios::cc;
@@ -676,22 +687,18 @@ namespace fs::dev::tty
         const auto min = termios.c_cc[vmin];
         const auto time = termios.c_cc[vtime];
 
-        const auto get_available = [&](const auto &in_locked)
-        {
-            return is_cooked
-                ? (in_locked->cooked_head - in_locked->read_tail)
-                : (in_locked->read_head - in_locked->read_tail);
+        const auto get_available = [&](const auto &in_locked) {
+            return is_cooked ? (in_locked->cooked_head - in_locked->read_tail)
+                             : (in_locked->read_head - in_locked->read_tail);
         };
 
-        const auto extract_char = [&](auto &in_locked)
-        {
+        const auto extract_char = [&](auto &in_locked) {
             auto chr = in_locked->data[in_locked->read_tail % in_buffer_t::cap];
             in_locked->read_tail++;
             return chr;
         };
 
-        const auto copy = [&](auto &in_locked, std::size_t available, std::size_t start_from)
-        {
+        const auto copy = [&](auto &in_locked, std::size_t available, std::size_t start_from) {
             std::size_t to_read = std::min(size - start_from, available);
             if (to_read == 0)
                 return 0uz;
@@ -710,9 +717,7 @@ namespace fs::dev::tty
         // vtime resolution is 100ms
         const auto ms = time * 100;
 
-        const auto pipeline_empty = [&] {
-            return raw_buffer.empty() && inst->raw_buffer.empty();
-        };
+        const auto pipeline_empty = [&] { return raw_buffer.empty() && inst->raw_buffer.empty(); };
 
         if (nonblock)
         {
@@ -769,9 +774,7 @@ namespace fs::dev::tty
             if (progress > 0)
             {
                 lib::bug_on(
-                    !buffer.subspan(0, progress).copy_from(
-                        buf.span().subspan(0, progress)
-                    )
+                    !buffer.subspan(0, progress).copy_from(buf.span().subspan(0, progress))
                 );
             }
 
@@ -890,7 +893,9 @@ namespace fs::dev::tty
         std::unreachable();
     }
 
-    lib::expect<std::size_t> default_ldisc::write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> default_ldisc::write(
+        std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer
+    )
     {
         lib::bug_on(!inst);
 
@@ -915,7 +920,7 @@ namespace fs::dev::tty
 
             for (std::size_t i = 0; i < len; i++)
             {
-                again:
+            again:
                 if (output_append(termios, static_cast<char>(buf.data()[i])))
                 {
                     progress++;
@@ -956,8 +961,7 @@ namespace fs::dev::tty
 
     lib::expect<int> default_ldisc::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
-        const auto apply_locked = [&](ktermios &tios, const ktermios &old)
-        {
+        const auto apply_locked = [&](ktermios &tios, const ktermios &old) {
             const auto locked = inst->termios_locked.lock().value();
             tios.c_iflag = (tios.c_iflag & ~locked.c_iflag) | (old.c_iflag & locked.c_iflag);
             tios.c_oflag = (tios.c_oflag & ~locked.c_oflag) | (old.c_oflag & locked.c_oflag);
@@ -1016,8 +1020,8 @@ namespace fs::dev::tty
             {
                 // TODO: magic keys
                 const auto sig = static_cast<int>(argp.address());
-                if (sig < 1 || sig > static_cast<int>(sched::nsig) ||
-                    sig == sched::sigkill || sig == sched::sigstop)
+                if (sig < 1 || sig > static_cast<int>(sched::nsig) || sig == sched::sigkill ||
+                    sig == sched::sigstop)
                     return std::unexpected { lib::err::invalid_argument };
                 return 0;
             }
@@ -1363,9 +1367,8 @@ namespace fs::dev::tty
         std::size_t available = 0;
         {
             auto in_locked = in_buffer.lock();
-            available = is_cooked
-                ? (in_locked->cooked_head - in_locked->read_tail)
-                : (in_locked->read_head - in_locked->read_tail);
+            available = is_cooked ? (in_locked->cooked_head - in_locked->read_tail)
+                                  : (in_locked->read_head - in_locked->read_tail);
         }
 
         if (hung_up || available > 0 || !raw_buffer.empty() || !inst->raw_buffer.empty())
@@ -1383,8 +1386,8 @@ namespace fs::dev::tty
     instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ld)
         : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, kbmode { 0x01 /* K_XLATE */ },
           ldisc { ld }, termios { drv->init_termios }, termios_locked { ktermios { } },
-          winsize { winsize::standard() }, ctrl { }, raw_buffer { }, raw_wq { },
-          worker_thread { }, raw_should_work { ld != nullptr }
+          winsize { winsize::standard() }, ctrl { }, raw_buffer { }, raw_wq { }, worker_thread { },
+          raw_should_work { ld != nullptr }
     {
         lib::bug_on(drv == nullptr);
         if (ld)
@@ -1596,19 +1599,13 @@ namespace fs::dev::tty
         auto drv = get_driver(rdev);
         if (!drv)
         {
-            lib::warn(
-                "tty: set_console: no tty driver for ({}, {})",
-                major(rdev), minor(rdev)
-            );
+            lib::warn("tty: set_console: no tty driver for ({}, {})", major(rdev), minor(rdev));
             return;
         }
         set_console(drv, minor(rdev));
     }
 
-    void register_chrdev(dev_t rdev)
-    {
-        vfs::dev::register_ops(rdev, ops::singleton());
-    }
+    void register_chrdev(dev_t rdev) { vfs::dev::register_ops(rdev, ops::singleton()); }
 
     void register_driver(driver *drv)
     {
@@ -1619,8 +1616,7 @@ namespace fs::dev::tty
         if (drv->flags & dynamic)
             return;
 
-        const auto add_one = [&](std::size_t idx, std::uint32_t minor)
-        {
+        const auto add_one = [&](std::size_t idx, std::uint32_t minor) {
             using namespace vfs::dev;
             register_ops(makedev(drv->major, minor), ops::singleton());
 
@@ -1630,8 +1626,8 @@ namespace fs::dev::tty
                 lib::bug_on(drv->name_base < 0);
                 static const char ptychar[] = "pqrstuvwxyzabcde";
                 const auto i = idx + drv->name_base;
-                name = fmt::format("{}{}{}",
-                    drv->subtyp == subtype::pty_slave ? "tty" : drv->name,
+                name = fmt::format(
+                    "{}{}{}", drv->subtyp == subtype::pty_slave ? "tty" : drv->name,
                     ptychar[i >> 4 & 0xF], i & 0xF
                 );
             }
@@ -1641,17 +1637,11 @@ namespace fs::dev::tty
                 name = drv->name;
 
             auto ret = vfs::create(
-                std::nullopt, "/dev/" + name, stat::s_ifchr | 0666,
-                makedev(drv->major, minor)
+                std::nullopt, "/dev/" + name, stat::s_ifchr | 0666, makedev(drv->major, minor)
             );
 
             if (!ret.has_value())
-            {
-                lib::error(
-                    "tty: could not create '{}': {}",
-                    name, lib::error_name(ret.error())
-                );
-            }
+                lib::error("tty: could not create '{}': {}", name, lib::error_name(ret.error()));
 
             if constexpr (debug)
                 lib::debug("tty: created ({}, {}) as '{}'", drv->major, minor, name);
@@ -1662,27 +1652,23 @@ namespace fs::dev::tty
             add_one(i, drv->minor_start + i);
     }
 
-    lib::initgraph::task tty_task
-    {
-        "vfs.dev.tty.current.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { devtmpfs::registered_stage() },
-        [] {
+    lib::initgraph::task tty_task {
+        "vfs.dev.tty.current.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { devtmpfs::registered_stage() }, [] {
             register_ops(makedev(5, 0), current_ops::singleton());
-            if (const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
+            if (const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0));
+                !ret)
             {
-                lib::panic(
-                    "tty: failed to create '/dev/tty': {}",
-                    lib::error_name(ret.error())
-                );
+                lib::panic("tty: failed to create '/dev/tty': {}", lib::error_name(ret.error()));
             }
 
             register_ops(makedev(5, 1), console_ops::singleton());
-            if (const auto ret = fs::devtmpfs::create("console", stat::s_ifchr | 0666, makedev(5, 1)); !ret)
+            if (const auto ret =
+                    fs::devtmpfs::create("console", stat::s_ifchr | 0666, makedev(5, 1));
+                !ret)
             {
                 lib::panic(
-                    "tty: failed to create '/dev/console': {}",
-                    lib::error_name(ret.error())
+                    "tty: failed to create '/dev/console': {}", lib::error_name(ret.error())
                 );
             }
         }

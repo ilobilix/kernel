@@ -54,15 +54,18 @@ export namespace sched
     // arm process alarm and return previous remaining
     // interval_ns > 0 makes it repeat
     std::uint64_t arm_alarm(
-        alarm_entry_t *entry, process_t *proc,
-        std::uint64_t ns, std::uint64_t interval_ns = 0
+        alarm_entry_t *entry, process_t *proc, std::uint64_t ns, std::uint64_t interval_ns = 0
     );
 
     // cancel alarm and return remaining
     std::uint64_t cancel_alarm(alarm_entry_t *entry);
 
     // get remaining ns until next fire and interval
-    struct alarm_state_t { std::uint64_t remaining_ns; std::uint64_t interval_ns; };
+    struct alarm_state_t
+    {
+        std::uint64_t remaining_ns;
+        std::uint64_t interval_ns;
+    };
     alarm_state_t alarm_state(alarm_entry_t *entry);
 } // export namespace sched
 

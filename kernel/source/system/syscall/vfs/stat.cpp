@@ -51,15 +51,15 @@ namespace syscall::vfs
         return fstatat(at_fdcwd, pathname, statbuf, at_symlink_nofollow | at_no_automount);
     }
 
-    int statx(int dirfd, const char __user *pathname, int flags, std::uint32_t mask, struct statx __user *statxbuf)
+    int statx(
+        int dirfd, const char __user *pathname, int flags, std::uint32_t mask,
+        struct statx __user *statxbuf
+    )
     {
         const auto proc = sched::current_process();
 
         constexpr auto valid_flags =
-            at_symlink_nofollow |
-            at_no_automount |
-            at_empty_path |
-            at_statx_sync_type;
+            at_symlink_nofollow | at_no_automount | at_empty_path | at_statx_sync_type;
 
         if ((flags & ~valid_flags) != 0)
             return -EINVAL;
@@ -98,8 +98,7 @@ namespace syscall::vfs
             val = inode->stat;
         }
 
-        constexpr auto to_statx_timestamp = [](const timespec &ts)
-        {
+        constexpr auto to_statx_timestamp = [](const timespec &ts) {
             return statx_timestamp {
                 .tv_sec = static_cast<std::int64_t>(ts.tv_sec),
                 .tv_nsec = static_cast<std::uint32_t>(ts.tv_nsec),

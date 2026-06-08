@@ -31,10 +31,7 @@ namespace x86_64::apic
 
         bool initialised = false;
 
-        std::uint32_t to_x2apic(std::uint32_t reg)
-        {
-            return (reg >> 4) + 0x800;
-        }
+        std::uint32_t to_x2apic(std::uint32_t reg) { return (reg >> 4) + 0x800; }
 
         void enable(std::uint64_t val)
         {
@@ -80,8 +77,7 @@ namespace x86_64::apic
         static const bool lapic = cpuid && (res.d & (1 << 9));
         static const bool x2apic = cpuid && (res.c & (1 << 21));
 
-        static const auto cached = []
-        {
+        static const auto cached = [] {
             struct [[gnu::packed]] acpi_dmar
             {
                 acpi_sdt_hdr hdr;
@@ -103,9 +99,9 @@ namespace x86_64::apic
             // const auto [hv, _] = cpu::in_hypervisor();
             // if (hv == cpu::hypervisor::none || hv == cpu::hypervisor::kvm)
             // {
-                const auto tsc_supported = timers::tsc::supported();
-                cpu::id_res res;
-                tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
+            const auto tsc_supported = timers::tsc::supported();
+            cpu::id_res res;
+            tsc_deadline = tsc_supported && cpu::id(0x01, 0, res) && (res.c & (1 << 24));
             // }
             lib::debug("lapic: tsc deadline supported: {}", tsc_deadline);
             return true;
@@ -132,7 +128,7 @@ namespace x86_64::apic
             {
                 while (lib::mmio::in<32>(mmio + reg::icr) & (1u << 12))
                     arch::pause();
-                asm volatile ("" ::: "memory");
+                asm volatile ("" : : : "memory");
                 lib::mmio::out<32>(mmio + reg::icrh, val >> 32);
             }
             lib::mmio::out<32>(mmio + reg, val);
@@ -140,7 +136,7 @@ namespace x86_64::apic
         else
         {
             if (reg == reg::icr)
-                asm volatile ("mfence; lfence" ::: "memory");
+                asm volatile ("mfence; lfence" : : : "memory");
             cpu::msr::write(to_x2apic(reg), val);
         }
     }
@@ -196,19 +192,15 @@ namespace x86_64::apic
 
     void ipi(shorthand dest, delivery del, std::uint8_t vec)
     {
-        const auto val =
-            static_cast<std::uint64_t>(del) << 8 |
-            static_cast<std::uint64_t>(dest) << 18 |
-            (1 << 14) | vec;
+        const auto val = static_cast<std::uint64_t>(del) << 8 |
+            static_cast<std::uint64_t>(dest) << 18 | (1 << 14) | vec;
 
         write(reg::icr, val);
     }
 
     void ipi(std::uint32_t id, destination dest, delivery del, std::uint8_t vec)
     {
-        auto val =
-            static_cast<std::uint64_t>(del) << 8 |
-            static_cast<std::uint64_t>(dest) << 10 |
+        auto val = static_cast<std::uint64_t>(del) << 8 | static_cast<std::uint64_t>(dest) << 10 |
             (1 << 14) | vec;
 
         if (x2apic)
@@ -231,7 +223,7 @@ namespace x86_64::apic
             const auto val = timers::tsc::rdtsc();
             const auto ticks = timers::tsc::frequency().ticks(ns);
             write(reg::lvt_timer, (0b10 << 17) | vector);
-            asm volatile ("mfence" ::: "memory");
+            asm volatile ("mfence" : : : "memory");
             cpu::msr::write(reg::deadline, val + ticks);
         }
         else
@@ -270,7 +262,8 @@ namespace x86_64::apic
             const auto flags = vmm::pflag::rwg;
             const auto cache = vmm::caching::mmio;
 
-            if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache); !ret)
+            if (const auto ret = vmm::kernel_pagemap->map(mmio, pmmio, npsize, flags, psize, cache);
+                !ret)
                 lib::panic("could not map lapic mmio: {}", lib::error_name(ret.error()));
         }
     }

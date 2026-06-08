@@ -12,39 +12,39 @@ export namespace sched
 
     enum signo : int
     {
-        sighup    = 1,
-        sigint    = 2,
-        sigquit   = 3,
-        sigill    = 4,
-        sigtrap   = 5,
-        sigabrt   = 6,
-        sigbus    = 7,
-        sigfpe    = 8,
-        sigkill   = 9,
-        sigusr1   = 10,
-        sigsegv   = 11,
-        sigusr2   = 12,
-        sigpipe   = 13,
-        sigalrm   = 14,
-        sigterm   = 15,
+        sighup = 1,
+        sigint = 2,
+        sigquit = 3,
+        sigill = 4,
+        sigtrap = 5,
+        sigabrt = 6,
+        sigbus = 7,
+        sigfpe = 8,
+        sigkill = 9,
+        sigusr1 = 10,
+        sigsegv = 11,
+        sigusr2 = 12,
+        sigpipe = 13,
+        sigalrm = 14,
+        sigterm = 15,
         sigstkflt = 16,
-        sigchld   = 17,
-        sigcont   = 18,
-        sigstop   = 19,
-        sigtstp   = 20,
-        sigttin   = 21,
-        sigttou   = 22,
-        sigurg    = 23,
-        sigxcpu   = 24,
-        sigxfsz   = 25,
+        sigchld = 17,
+        sigcont = 18,
+        sigstop = 19,
+        sigtstp = 20,
+        sigttin = 21,
+        sigttou = 22,
+        sigurg = 23,
+        sigxcpu = 24,
+        sigxfsz = 25,
         sigvtalrm = 26,
-        sigprof   = 27,
-        sigwinch  = 28,
-        sigio     = 29,
-        sigpwr    = 30,
-        sigsys    = 31,
-        sigrtmin  = 32,
-        sigrtmax  = 64
+        sigprof = 27,
+        sigwinch = 28,
+        sigio = 29,
+        sigpwr = 30,
+        sigsys = 31,
+        sigrtmin = 32,
+        sigrtmax = 64
     };
 
     constexpr std::size_t sigset_words = lib::div_roundup(nsig, 64);
@@ -52,15 +52,9 @@ export namespace sched
     {
         std::uint64_t bits[sigset_words] { };
 
-        constexpr void add(int sig)
-        {
-            bits[(sig - 1) / 64] |= (1ul << ((sig - 1) % 64));
-        }
+        constexpr void add(int sig) { bits[(sig - 1) / 64] |= (1ul << ((sig - 1) % 64)); }
 
-        constexpr void rem(int sig)
-        {
-            bits[(sig - 1) / 64] &= ~(1ul << ((sig - 1) % 64));
-        }
+        constexpr void rem(int sig) { bits[(sig - 1) / 64] &= ~(1ul << ((sig - 1) % 64)); }
 
         constexpr bool has(int sig) const
         {
@@ -69,7 +63,7 @@ export namespace sched
 
         constexpr int lowest() const
         {
-            for (std::size_t i = 1; i < nsig  +1; i++)
+            for (std::size_t i = 1; i < nsig + 1; i++)
             {
                 if (has(i))
                     return i;
@@ -194,11 +188,11 @@ export namespace sched
     {
         sa_nocldstop = 0x00000001,
         sa_nocldwait = 0x00000002,
-        sa_siginfo   = 0x00000004,
-        sa_restorer  = 0x04000000,
-        sa_onstack   = 0x08000000,
-        sa_restart   = 0x10000000,
-        sa_nodefer   = 0x40000000,
+        sa_siginfo = 0x00000004,
+        sa_restorer = 0x04000000,
+        sa_onstack = 0x08000000,
+        sa_restart = 0x10000000,
+        sa_nodefer = 0x40000000,
         sa_resethand = 0x80000000
     };
 
@@ -238,7 +232,7 @@ export namespace sched
     struct signal_waiter_t
     {
         sigset_t interest { };
-        std::function<void ()> wake;
+        std::function<void()> wake;
         lib::intrusive_list_hook<signal_waiter_t> hook;
     };
 
@@ -310,10 +304,7 @@ export namespace sched
 
     void add_signal_waiter(process_t *proc, signal_waiter_t &waiter);
     void remove_signal_waiter(process_t *proc, signal_waiter_t &waiter);
-    void update_signal_waiter(
-        process_t *proc, signal_waiter_t &waiter,
-        const sigset_t &interest
-    );
+    void update_signal_waiter(process_t *proc, signal_waiter_t &waiter, const sigset_t &interest);
 
     void flush_signal(process_t *proc, int sig);
 

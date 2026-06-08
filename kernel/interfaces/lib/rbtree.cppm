@@ -7,7 +7,11 @@ import std;
 
 namespace lib
 {
-    enum class colour { red, black };
+    enum class colour
+    {
+        red,
+        black
+    };
 
     template<typename Type>
     struct default_augmentor
@@ -31,23 +35,23 @@ export namespace lib
         Type *predecessor;
         colour colour;
 
-        constexpr rbtree_hook() : parent { nullptr },
-            left { nullptr }, right { nullptr },
-            successor { nullptr }, predecessor { nullptr },
-            colour { colour::black } { }
+        constexpr rbtree_hook()
+            : parent { nullptr }, left { nullptr }, right { nullptr }, successor { nullptr },
+              predecessor { nullptr }, colour { colour::black }
+        { }
     };
 
     template<typename Type>
     struct interval_hook;
 
-    template<typename Type, rbtree_hook<Type> Type::*Member, typename Less, typename Aug = default_augmentor<Type>>
+    template<
+        typename Type, rbtree_hook<Type> Type::*Member, typename Less,
+        typename Aug = default_augmentor<Type>>
     class rbtree
     {
         template<
-            typename Type1, typename IType,
-            IType Type1::*, IType Type1::*,
-            rbtree_hook<Type1> Type1::*, interval_hook<IType> Type1::*
-        >
+            typename Type1, typename IType, IType Type1::*, IType Type1::*,
+            rbtree_hook<Type1> Type1::*, interval_hook<IType> Type1::*>
         friend class interval_tree;
 
         private:
@@ -204,9 +208,7 @@ export namespace lib
                     x = right(nh, x);
             }
             if ((hook(nh, z)->parent = y) == nil())
-            {
                 _root = z;
-            }
             else if (Less::operator()(*z, *y))
             {
                 hook(nh, y)->left = z;
@@ -289,7 +291,8 @@ export namespace lib
                         rotate_left(nh, parent(nh, x));
                         w = right(nh, parent(nh, x));
                     }
-                    if (colour_of(nh, left(nh, w)) == colour::black && colour_of(nh, right(nh, w)) == colour::black)
+                    if (colour_of(nh, left(nh, w)) == colour::black &&
+                        colour_of(nh, right(nh, w)) == colour::black)
                     {
                         hook(nh, w)->colour = colour::red;
                         x = parent(nh, x);
@@ -320,7 +323,8 @@ export namespace lib
                         rotate_right(nh, parent(nh, x));
                         w = left(nh, parent(nh, x));
                     }
-                    if (colour_of(nh, right(nh, w)) == colour::black && colour_of(nh, left(nh, w)) == colour::black)
+                    if (colour_of(nh, right(nh, w)) == colour::black &&
+                        colour_of(nh, left(nh, w)) == colour::black)
                     {
                         hook(nh, w)->colour = colour::red;
                         x = parent(nh, x);
@@ -404,7 +408,8 @@ export namespace lib
                     hook(nh, y)->right = right(nh, z);
                     hook(nh, right(nh, y))->parent = y;
                 }
-                else hook(nh, x)->parent = y;
+                else
+                    hook(nh, x)->parent = y;
 
                 transplant(nh, z, y);
                 hook(nh, y)->left = left(nh, z);
@@ -444,7 +449,8 @@ export namespace lib
 
             constexpr iterator_base(rbtree *tree, Type *data) : _tree { tree }, _current { data } { }
             constexpr iterator_base(const rbtree *tree, Type *data)
-                : iterator_base { const_cast<rbtree *>(tree), data } { }
+                : iterator_base { const_cast<rbtree *>(tree), data }
+            { }
 
             public:
             using iterator_category = std::bidirectional_iterator_tag;
@@ -515,8 +521,7 @@ export namespace lib
         constexpr rbtree() : _root { nil() }, _head { nil() }, _size { 0 } { }
 
         constexpr rbtree(const rbtree &) = delete;
-        constexpr rbtree(rbtree &&rhs)
-            : _root { rhs._root }, _head { rhs._head }, _size { rhs._size }
+        constexpr rbtree(rbtree &&rhs) : _root { rhs._root }, _head { rhs._head }, _size { rhs._size }
         {
             rhs._root = nil();
             rhs._head = nil();
@@ -551,7 +556,8 @@ export namespace lib
                 _root = z;
                 _head = _root;
             }
-            else _insert(&nh, z);
+            else
+                _insert(&nh, z);
 
             _size++;
         }
@@ -582,13 +588,9 @@ export namespace lib
             while (node != nil())
             {
                 if (left(&nh, node) != nil())
-                {
                     node = left(&nh, node);
-                }
                 else if (right(&nh, node) != nil())
-                {
                     node = right(&nh, node);
-                }
                 else
                 {
                     auto p = parent(&nh, node);

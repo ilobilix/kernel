@@ -76,10 +76,7 @@ export namespace lib
             return *this;
         }
 
-        constexpr bitmap(bitmap &&other) : bitmap { }
-        {
-            swap(*this, other);
-        }
+        constexpr bitmap(bitmap &&other) : bitmap { } { swap(*this, other); }
 
         constexpr bitmap &operator=(bitmap &&other)
         {
@@ -122,18 +119,11 @@ export namespace lib
             bitmap &parent;
             std::size_t index;
 
-            constexpr bit(bitmap &parent, std::size_t index)
-                : parent(parent), index(index) { }
+            constexpr bit(bitmap &parent, std::size_t index) : parent(parent), index(index) { }
 
-            constexpr void operator=(bool value)
-            {
-                parent.set(index, value);
-            }
+            constexpr void operator=(bool value) { parent.set(index, value); }
 
-            constexpr operator bool() const
-            {
-                return parent.get(index);
-            }
+            constexpr operator bool() const { return parent.get(index); }
         };
 
         constexpr bit operator[](std::size_t index)
@@ -161,15 +151,9 @@ export namespace lib
             return ret;
         }
 
-        constexpr std::size_t length() const
-        {
-            return _count;
-        }
+        constexpr std::size_t length() const { return _count; }
 
-        constexpr std::size_t size_bytes() const
-        {
-            return div_roundup(_count, 8u);
-        }
+        constexpr std::size_t size_bytes() const { return div_roundup(_count, 8u); }
 
         constexpr std::uint8_t *data()
         {

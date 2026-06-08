@@ -25,14 +25,13 @@ namespace fs::dev::pty
 
         constexpr mode_t slave_mode = stat::s_ifchr | 0620;
         constexpr tty::ktermios slave_termios = tty::ktermios::standard();
-        constexpr tty::ktermios master_termios = []
-        {
+        constexpr tty::ktermios master_termios = [] {
             auto tios = tty::ktermios::standard();
             tios.c_iflag = 0;
             tios.c_oflag = 0;
             tios.c_lflag = 0;
             return tios;
-        }();
+        } ();
     } // namespace
 
     struct ptm_instance;
@@ -95,7 +94,8 @@ namespace fs::dev::pty
     struct pty_instance_base : tty::instance
     {
         pty_instance_base(tty::driver *drv, std::uint32_t pty_minor)
-            : instance { drv, pty_minor, std::make_shared<tty::default_ldisc>(this) } { }
+            : instance { drv, pty_minor, std::make_shared<tty::default_ldisc>(this) }
+        { }
 
         std::size_t transmit(std::span<std::byte> buffer) override
         {
@@ -119,10 +119,7 @@ namespace fs::dev::pty
             return { };
         }
 
-        bool needs_close_erase() const override
-        {
-            return find_pair(minor) == nullptr;
-        }
+        bool needs_close_erase() const override { return find_pair(minor) == nullptr; }
     };
 
     struct ptm_instance : pty_instance_base
@@ -151,20 +148,38 @@ namespace fs::dev::pty
 
     struct ptm_driver : pty_driver_base
     {
-        ptm_driver() : pty_driver_base {
-            "pty_master", "ptm", 0, master_major, 0, master_count,
-            tty::flag::dynamic, tty::type::pty, tty::subtype::pty_master,
-            master_termios
-        } { }
+        ptm_driver()
+            : pty_driver_base {
+                  "pty_master",
+                  "ptm",
+                  0,
+                  master_major,
+                  0,
+                  master_count,
+                  tty::flag::dynamic,
+                  tty::type::pty,
+                  tty::subtype::pty_master,
+                  master_termios
+              }
+        { }
     };
 
     struct pts_driver : pty_driver_base
     {
-        pts_driver() : pty_driver_base {
-            "pty_slave", "pts", 0, slave_major, 0, master_count,
-            tty::flag::dynamic, tty::type::pty, tty::subtype::pty_slave,
-            slave_termios
-        } { }
+        pts_driver()
+            : pty_driver_base {
+                  "pty_slave",
+                  "pts",
+                  0,
+                  slave_major,
+                  0,
+                  master_count,
+                  tty::flag::dynamic,
+                  tty::type::pty,
+                  tty::subtype::pty_slave,
+                  slave_termios
+              }
+        { }
     };
 
     lib::expect<void> pts_instance::permit_open(std::shared_ptr<vfs::file>)
@@ -226,8 +241,7 @@ namespace fs::dev::pty
 
                 auto slave_fdesc = vfs::filedesc::create(resolved->target, open_flags);
                 const auto fdres = proc->fdt->alloc(
-                    slave_fdesc, 0, false,
-                    proc->rlimits->get(sched::rlimit_nofile).cur
+                    slave_fdesc, 0, false, proc->rlimits->get(sched::rlimit_nofile).cur
                 );
                 if (!fdres.has_value())
                     return fdres;
@@ -298,9 +312,8 @@ namespace fs::dev::pty
             if (first_free == state->minor_used.end())
                 return std::unexpected { lib::err::no_space_left };
             *first_free = true;
-            pty_minor = static_cast<std::uint32_t>(
-                std::distance(state->minor_used.begin(), first_free)
-            );
+            pty_minor =
+                static_cast<std::uint32_t>(std::distance(state->minor_used.begin(), first_free));
         }
 
         auto pty_pair = std::make_shared<pair>();
@@ -318,9 +331,8 @@ namespace fs::dev::pty
         if (auto slave_ld = pty_pair->slave->ldisc.lock().value())
             slave_ld->open();
 
-        const auto attach = devpts::attach_slave(
-            pty_minor, slave_mode, vfs::dev::makedev(slave_major, pty_minor)
-        );
+        const auto attach =
+            devpts::attach_slave(pty_minor, slave_mode, vfs::dev::makedev(slave_major, pty_minor));
         if (!attach.has_value())
         {
             ptm->instances.lock()->erase(pty_minor);
@@ -424,7 +436,8 @@ namespace fs::dev::pty
                     file.private_data.reset();
                     pty::release(pty_minor);
                 }
-                else file.private_data.reset();
+                else
+                    file.private_data.reset();
 
                 return { };
             }
@@ -450,8 +463,7 @@ namespace fs::dev::pty
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file> file, std::uint64_t request,
-                lib::uptr_or_addr argp
+                std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp
             ) override
             {
                 const auto master = std::static_pointer_cast<tty::instance>(file->private_data);
@@ -466,30 +478,22 @@ namespace fs::dev::pty
                 return master->poll(poll_tab);
             }
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file>, std::size_t) override
-            {
-                return { };
-            }
+            lib::expect<void> trunc(std::shared_ptr<vfs::file>, std::size_t) override { return { }; }
         };
     } // namespace
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "vfs.dev.pty.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "vfs.dev.pty.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task register_task
-    {
-        "vfs.dev.pty.register",
-        lib::initgraph::postsched_init_engine,
+    lib::initgraph::task register_task {
+        "vfs.dev.pty.register", lib::initgraph::postsched_init_engine,
         lib::initgraph::require { devtmpfs::registered_stage() },
-        lib::initgraph::entail { registered_stage() },
-        [] {
+        lib::initgraph::entail { registered_stage() }, [] {
             ptm = new ptm_driver;
             pts = new pts_driver;
             ptm->other = pts;
@@ -506,12 +510,7 @@ namespace fs::dev::pty
             constexpr auto ptmx_rdev = vfs::dev::makedev(5, 2);
             vfs::dev::register_ops(ptmx_rdev, ptmx_ops::singleton());
             if (const auto ret = devtmpfs::create("ptmx", stat::s_ifchr | 0666, ptmx_rdev); !ret)
-            {
-                lib::panic(
-                    "pty: failed to create '/dev/ptmx': {}",
-                    lib::error_name(ret.error())
-                );
-            }
+                lib::panic("pty: failed to create '/dev/ptmx': {}", lib::error_name(ret.error()));
         }
     };
 } // namespace fs::dev::pty

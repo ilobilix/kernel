@@ -160,8 +160,7 @@ namespace syscall::vfs
         if (stat.type() == stat::type::s_ifreg)
         {
             const auto fsize = proc->rlimits->get(sched::rlimit_fsize).cur;
-            if (static_cast<rlim_t>(offset) >= fsize ||
-                static_cast<rlim_t>(offset) + count > fsize)
+            if (static_cast<rlim_t>(offset) >= fsize || static_cast<rlim_t>(offset) + count > fsize)
                 return -EFBIG;
         }
 
@@ -388,8 +387,9 @@ namespace syscall::vfs
             if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
                 return -EFAULT;
 
-            if (check_fsize && (static_cast<rlim_t>(offset) >= fsize ||
-                static_cast<rlim_t>(offset) + local_iov.iov_len > fsize))
+            if (check_fsize &&
+                (static_cast<rlim_t>(offset) >= fsize ||
+                 static_cast<rlim_t>(offset) + local_iov.iov_len > fsize))
             {
                 if (total_written == 0)
                     return -EFBIG;
@@ -516,8 +516,9 @@ namespace syscall::vfs
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        if (!vfs::check_access(*target, proc->cred,
-            static_cast<std::uint32_t>(sched::access_mode::write)))
+        if (!vfs::check_access(
+                *target, proc->cred, static_cast<std::uint32_t>(sched::access_mode::write)
+            ))
             return -EACCES;
 
         return do_trunc(*target, length);

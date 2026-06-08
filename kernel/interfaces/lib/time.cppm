@@ -6,22 +6,15 @@ import :math;
 import :types;
 import std;
 
-export
-{
+export {
     struct timeval
     {
         time_t tv_sec;
         suseconds_t tv_usec;
 
-        constexpr std::uint64_t to_ns() const
-        {
-            return tv_sec * 1'000'000'000ul + tv_usec * 1'000;
-        }
+        constexpr std::uint64_t to_ns() const { return tv_sec * 1'000'000'000ul + tv_usec * 1'000; }
 
-        constexpr std::uint64_t to_ms() const
-        {
-            return tv_sec * 1000ul + tv_usec / 1'000;
-        }
+        constexpr std::uint64_t to_ms() const { return tv_sec * 1000ul + tv_usec / 1'000; }
     };
 
     struct itimerval
@@ -43,12 +36,12 @@ export
 
         constexpr timespec() : tv_sec { 0 }, tv_nsec { 0 } { }
 
-        constexpr timespec(time_t sec, long nsec)
-            : tv_sec { sec }, tv_nsec { nsec } { }
+        constexpr timespec(time_t sec, long nsec) : tv_sec { sec }, tv_nsec { nsec } { }
 
         constexpr timespec(std::uint64_t ns)
             : tv_sec { static_cast<time_t>(ns / 1'000'000'000ul) },
-              tv_nsec { static_cast<long>(ns % 1'000'000'000ul) } { }
+              tv_nsec { static_cast<long>(ns % 1'000'000'000ul) }
+        { }
 
         constexpr timespec(const timespec &other) = default;
         constexpr timespec(timespec &&other) = default;
@@ -106,24 +99,16 @@ export
             return tv_nsec <=> other.tv_nsec;
         }
 
-        constexpr std::uint64_t to_ns() const
-        {
-            return tv_sec * 1'000'000'000ul + tv_nsec;
-        }
+        constexpr std::uint64_t to_ns() const { return tv_sec * 1'000'000'000ul + tv_nsec; }
 
-        constexpr std::uint64_t to_ms() const
-        {
-            return tv_sec * 1000ul + tv_nsec / 1'000'000;
-        }
+        constexpr std::uint64_t to_ms() const { return tv_sec * 1000ul + tv_nsec / 1'000'000; }
 
         constexpr timeval to_timeval() const
         {
             return timeval {
                 .tv_sec = tv_sec,
                 .tv_usec = static_cast<suseconds_t>(
-                    lib::div_roundup(
-                        static_cast<std::uint64_t>(tv_nsec), 1'000
-                    )
+                    lib::div_roundup(static_cast<std::uint64_t>(tv_nsec), 1'000)
                 )
             };
         }

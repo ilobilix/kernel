@@ -17,7 +17,12 @@ namespace lib::impl
 
 export namespace lib
 {
-    enum class address_space { invalid, user, kernel };
+    enum class address_space
+    {
+        invalid,
+        user,
+        kernel
+    };
     address_space classify_address(std::uintptr_t addr, std::size_t len);
 
     bool copy_to_user(void __user *dest, const void *src, std::size_t len);
@@ -26,13 +31,15 @@ export namespace lib
     bool cmpxchg_user(std::uint32_t __user *uaddr, std::uint32_t &expected, std::uint32_t desired);
     std::ssize_t strnlen_user(const char __user *str, std::size_t len);
 
-    template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
+    template<typename Type, typename Arg>
+        requires(!has_address_space_v<Type>)
     inline Type *remove_user_cast(Arg __user *ptr)
     {
         return (__force Type *)(ptr);
     }
 
-    template<typename Type, typename Arg> requires (!has_address_space_v<Type>)
+    template<typename Type, typename Arg>
+        requires(!has_address_space_v<Type>)
     inline Type __user *add_user_cast(Arg *ptr)
     {
         return (__force Type __user *)(ptr);
@@ -45,8 +52,7 @@ export namespace lib
         std::span<Type> _span;
         bool _is_user;
 
-        maybe_uspan(bool is_user, std::span<Type> span)
-            : _span { span }, _is_user { is_user } { }
+        maybe_uspan(bool is_user, std::span<Type> span) : _span { span }, _is_user { is_user } { }
 
         public:
         maybe_uspan() : _span { }, _is_user { false } { }
@@ -56,7 +62,8 @@ export namespace lib
             if (len == 0)
                 return maybe_uspan<Type> { true, std::span<Type> { } };
 
-            const auto space = classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
+            const auto space =
+                classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
             if (space != address_space::user)
                 return std::nullopt;
             return maybe_uspan<Type> { true, std::span<Type>(remove_user_cast<Type>(ptr), len) };
@@ -67,20 +74,21 @@ export namespace lib
             if (len == 0)
                 return maybe_uspan<Type> { false, std::span<Type> { } };
 
-            const auto space = classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
+            const auto space =
+                classify_address(reinterpret_cast<std::uintptr_t>(ptr), len * sizeof(Type));
             if (space != address_space::kernel)
                 return std::nullopt;
             return maybe_uspan<Type> { false, std::span<Type>(ptr, len) };
         }
 
         static std::optional<maybe_uspan<Type>> create(void __user *ptr, std::size_t len)
-            requires (!std::same_as<Type, void>)
+            requires(!std::same_as<Type, void>)
         {
             return create(reinterpret_cast<Type __user *>(ptr), len);
         }
 
         static std::optional<maybe_uspan<Type>> create(const void __user *ptr, std::size_t len)
-            requires (!std::same_as<Type, void>)
+            requires(!std::same_as<Type, void>)
         {
             return create(const_cast<void __user *>(ptr), len);
         }
@@ -97,9 +105,7 @@ export namespace lib
             if (_is_user)
             {
                 return impl::copy_from_user(
-                    destptr,
-                    add_user_cast<void>(_span.data()),
-                    dest.size_bytes()
+                    destptr, add_user_cast<void>(_span.data()), dest.size_bytes()
                 );
             }
 
@@ -107,10 +113,7 @@ export namespace lib
             return true;
         }
 
-        bool copy_to(Type *dest) const
-        {
-            return copy_to(std::span<Type> { dest, _span.size() });
-        }
+        bool copy_to(Type *dest) const { return copy_to(std::span<Type> { dest, _span.size() }); }
 
         bool copy_from(std::span<const Type> src) const
         {
@@ -120,9 +123,7 @@ export namespace lib
             if (_is_user)
             {
                 return impl::copy_to_user(
-                    add_user_cast<void>(_span.data()),
-                    src.data(),
-                    src.size_bytes()
+                    add_user_cast<void>(_span.data()), src.data(), src.size_bytes()
                 );
             }
 
@@ -143,24 +144,18 @@ export namespace lib
             if (_is_user)
             {
                 return impl::fill_user(
-                    add_user_cast<void>(_span.data()),
-                    static_cast<int>(value),
-                    count * sizeof(Type)
+                    add_user_cast<void>(_span.data()), static_cast<int>(value), count * sizeof(Type)
                 );
             }
 
             std::memset(
-                reinterpret_cast<void *>(_span.data()),
-                static_cast<int>(value),
+                reinterpret_cast<void *>(_span.data()), static_cast<int>(value),
                 count * sizeof(Type)
             );
             return true;
         }
 
-        bool fill(std::uint8_t value) const
-        {
-            return fill(value, _span.size_bytes());
-        }
+        bool fill(std::uint8_t value) const { return fill(value, _span.size_bytes()); }
 
         std::size_t size() const { return _span.size(); }
         std::size_t size_bytes() const { return _span.size_bytes(); }
@@ -194,18 +189,17 @@ export namespace lib
         uptr_or_addr &operator=(const uptr_or_addr &) = default;
         uptr_or_addr &operator=(uptr_or_addr &&) = default;
 
-        std::uintptr_t address() const
-        {
-            return reinterpret_cast<std::uintptr_t>(ptr);
-        }
+        std::uintptr_t address() const { return reinterpret_cast<std::uintptr_t>(ptr); }
 
-        template<typename Type> requires std::is_trivially_copyable_v<Type>
+        template<typename Type>
+            requires std::is_trivially_copyable_v<Type>
         bool read(Type &val) const
         {
             return lib::copy_from_user(&val, ptr, sizeof(Type));
         }
 
-        template<typename Type> requires std::is_trivially_copyable_v<Type>
+        template<typename Type>
+            requires std::is_trivially_copyable_v<Type>
         bool write(const Type &val) const
         {
             return lib::copy_to_user(ptr, &val, sizeof(Type));

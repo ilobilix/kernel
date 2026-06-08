@@ -31,8 +31,7 @@ namespace lib
         if (!frame)
             return;
 
-        auto print = [prefix, &frame](std::uintptr_t ip)
-        {
+        auto print = [prefix, &frame](std::uintptr_t ip) {
             std::array<char, KSYM_NAME_LEN> namebuf { "unknown" };
             auto ret = bin::elf::sym::lookup(ip, namebuf);
 
@@ -40,22 +39,18 @@ namespace lib
             if (ret.has_value())
             {
                 const bool ret = absl::debugging_internal::Demangle(
-                    namebuf.data(),
-                    demangle_buffer,
-                    sizeof(demangle_buffer)
+                    namebuf.data(), demangle_buffer, sizeof(demangle_buffer)
                 );
                 if (ret)
                 {
                     str = std::string_view {
-                        demangle_buffer,
-                        std::strnlen(demangle_buffer, sizeof(demangle_buffer))
+                        demangle_buffer, std::strnlen(demangle_buffer, sizeof(demangle_buffer))
                     };
                 }
                 else
                 {
                     str = std::string_view {
-                        namebuf.data(),
-                        std::strnlen(namebuf.data(), KSYM_NAME_LEN)
+                        namebuf.data(), std::strnlen(namebuf.data(), KSYM_NAME_LEN)
                     };
                 }
             }

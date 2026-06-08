@@ -165,8 +165,8 @@ namespace output::frm
             vmm::object::ptr mmap_obj;
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file> file,
-                std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(file);
@@ -177,15 +177,17 @@ namespace output::frm
                 if (to_copy == 0)
                     return 0;
 
-                if (!buffer.subspan(0, to_copy).copy_from(
-                    reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
+                if (!buffer.subspan(0, to_copy)
+                         .copy_from(
+                             reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)
+                         ))
                     return std::unexpected { lib::err::invalid_address };
                 return to_copy;
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file> file,
-                std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
+                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(file);
@@ -196,8 +198,10 @@ namespace output::frm
                 if (to_copy == 0)
                     return 0;
 
-                if (!buffer.subspan(0, to_copy).copy_to(
-                    reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
+                if (!buffer.subspan(0, to_copy)
+                         .copy_to(
+                             reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)
+                         ))
                     return std::unexpected { lib::err::invalid_address };
                 return to_copy;
             }
@@ -209,8 +213,7 @@ namespace output::frm
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file> file, std::uint64_t request,
-                lib::uptr_or_addr argp
+                std::shared_ptr<vfs::file> file, std::uint64_t request, lib::uptr_or_addr argp
             ) override
             {
                 lib::unused(file);
@@ -284,7 +287,8 @@ namespace output::frm
             lib::expect<std::string> (*fn)(dev::device_t &, fb_dev &);
 
             attribute_t(decltype(fn) fn, std::string_view name, mode_t mode)
-                : dev::attribute_t { name, mode }, fn { fn } { }
+                : dev::attribute_t { name, mode }, fn { fn }
+            { }
 
             lib::expect<std::string> show(dev::kobject_t &kobj) override
             {
@@ -299,31 +303,35 @@ namespace output::frm
         {
             attribute_t name {
                 [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                    return std::string {
-                        fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id))
-                    } + '\n';
-                }, "name", 0444
+                    return std::string { fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id)) } +
+                        '\n';
+                },
+                "name", 0444
             };
             attribute_t dev_node {
                 [](dev::device_t &device, fb_dev &) -> lib::expect<std::string> {
                     using namespace vfs::dev;
                     return fmt::format("{}:{}\n", major(device.devt), minor(device.devt));
-                }, "dev", 0444
+                },
+                "dev", 0444
             };
             attribute_t bits_per_pixel {
                 [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
                     return std::to_string(fb.var.bits_per_pixel) + '\n';
-                }, "bits_per_pixel", 0444
+                },
+                "bits_per_pixel", 0444
             };
             attribute_t virtual_size {
                 [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
                     return fmt::format("{},{}\n", fb.var.xres_virtual, fb.var.yres_virtual);
-                }, "virtual_size", 0444
+                },
+                "virtual_size", 0444
             };
             attribute_t stride {
                 [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
                     return std::to_string(fb.fix.line_length) + '\n';
-                }, "stride", 0444
+                },
+                "stride", 0444
             };
 
             std::span<dev::attribute_t *const> attributes() override
@@ -341,15 +349,9 @@ namespace output::frm
             }
         };
 
-        lib::initgraph::task fbdev_task
-        {
-            "vfs.dev.fbdev.register",
-            lib::initgraph::postsched_init_engine,
-            lib::initgraph::require {
-                dev::available_stage(),
-                pci::registered_stage()
-            },
-            [] {
+        lib::initgraph::task fbdev_task {
+            "vfs.dev.fbdev.register", lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { dev::available_stage(), pci::registered_stage() }, [] {
                 // TODO: move this somewhere else
                 struct graphics_class : dev::class_t
                 {
@@ -410,9 +412,7 @@ namespace output::frm
                         var.bits_per_pixel = fb.bpp;
                         var.grayscale = 0;
                         var.red = fb_bitfield {
-                            .offset = fb.red_mask_shift,
-                            .length = fb.red_mask_size,
-                            .msb_right = 0
+                            .offset = fb.red_mask_shift, .length = fb.red_mask_size, .msb_right = 0
                         };
                         var.green = fb_bitfield {
                             .offset = fb.green_mask_shift,
@@ -447,9 +447,7 @@ namespace output::frm
                         const auto npsize = vmm::pagemap::from_page_size(vmm::default_page_size());
                         const auto pages = lib::div_roundup<std::size_t>(fix.smem_len, npsize);
                         ops->mmap_obj = vmm::object::ptr {
-                            new vmm::pmemobject {
-                                fix.smem_start, pages, vmm::caching::framebuffer
-                            }
+                            new vmm::pmemobject { fix.smem_start, pages, vmm::caching::framebuffer }
                         };
                     }
 
@@ -480,7 +478,8 @@ namespace output::frm
                         );
                         lib::bug_on(!dev::register_kobject(root));
                     }
-                    else root = dev::virtual_root();
+                    else
+                        root = dev::virtual_root();
 
                     auto device = std::make_shared<dev::device_t>(
                         "fb" + std::to_string(i), ktype_t::instance()
@@ -493,8 +492,7 @@ namespace output::frm
                     if (const auto ret = dev::register_device(std::move(device)); !ret)
                     {
                         lib::panic(
-                            "fbdev: failed to register 'fb{}': {}",
-                            i, lib::error_name(ret.error())
+                            "fbdev: failed to register 'fb{}': {}", i, lib::error_name(ret.error())
                         );
                     }
 

@@ -19,46 +19,63 @@ namespace x86_64::output::uart8250
     namespace
     {
         constexpr std::size_t num_ports = 4;
-        constexpr std::array<std::uint16_t, num_ports> ports
-        {
+        constexpr std::array<std::uint16_t, num_ports> ports {
             // irq: 4, 3, 4, 3
             0x3F8, 0x2F8, 0x3E8, 0x2E8
         };
 
         constinit std::array<bool, num_ports> usable { };
-        std::array<std::function<void (char)>, num_ports> hooks;
+        std::array<std::function<void(char)>, num_ports> hooks;
 
         constexpr std::uint32_t speed_to_baud(fs::dev::tty::speed_t speed)
         {
             using enum fs::dev::tty::ktermios::baud;
             switch (speed)
             {
-                case b0: return 0;
-                case b50: return 50;
-                case b75: return 75;
-                case b110: return 110;
-                case b134: return 134;
-                case b150: return 150;
-                case b200: return 200;
-                case b300: return 300;
-                case b600: return 600;
-                case b1200: return 1200;
-                case b1800: return 1800;
-                case b2400: return 2400;
-                case b4800: return 4800;
-                case b9600: return 9600;
-                case b19200: return 19200;
-                case b38400: return 38400;
-                case b57600: return 57600;
-                case b115200: return 115200;
-                default: return speed;
+                case b0:
+                    return 0;
+                case b50:
+                    return 50;
+                case b75:
+                    return 75;
+                case b110:
+                    return 110;
+                case b134:
+                    return 134;
+                case b150:
+                    return 150;
+                case b200:
+                    return 200;
+                case b300:
+                    return 300;
+                case b600:
+                    return 600;
+                case b1200:
+                    return 1200;
+                case b1800:
+                    return 1800;
+                case b2400:
+                    return 2400;
+                case b4800:
+                    return 4800;
+                case b9600:
+                    return 9600;
+                case b19200:
+                    return 19200;
+                case b38400:
+                    return 38400;
+                case b57600:
+                    return 57600;
+                case b115200:
+                    return 115200;
+                default:
+                    return speed;
             }
         }
 
         void irq_handler(cpu::registers *regs)
         {
-            const auto read = [](std::size_t idx)
-            {
+            const auto read = [](std::size_t idx) {
                 const auto port = ports[idx];
 
                 const auto iir = lib::io::in<8>(port + 2);
@@ -116,11 +133,7 @@ namespace x86_64::output::uart8250
             return true;
         }
 
-        void set_irqs(std::uint16_t port, bool on)
-        {
-            lib::io::out<8>(port + 1, on);
-        }
-
+        void set_irqs(std::uint16_t port, bool on) { lib::io::out<8>(port + 1, on); }
 
         lib::spinlock _lock;
         void lock() { _lock.lock(); }
@@ -132,9 +145,7 @@ namespace x86_64::output::uart8250
                 printc(chr, ports[0]);
         }
 
-        constinit lib::logger log {
-            prints, lock, unlock
-        };
+        constinit lib::logger log { prints, lock, unlock };
     } // namespace
 
     void init()
@@ -175,10 +186,7 @@ namespace x86_64::output::uart8250
                 return buffer.size_bytes();
             }
 
-            std::size_t can_transmit() override
-            {
-                return std::numeric_limits<std::size_t>::max();
-            }
+            std::size_t can_transmit() override { return std::numeric_limits<std::size_t>::max(); }
 
             lib::expect<void> open(std::shared_ptr<vfs::file> file) override
             {
@@ -250,33 +258,35 @@ namespace x86_64::output::uart8250
             }
 
             serial_instance(tty::driver *drv, std::uint32_t minor)
-                : instance { drv, minor, usable[minor - 64]
-                    ? std::make_shared<tty::default_ldisc>(this)
-                    : nullptr } { }
+                : instance {
+                      drv, minor,
+                      usable[minor - 64] ? std::make_shared<tty::default_ldisc>(this) : nullptr
+                  }
+            { }
         };
 
-        std::shared_ptr<fs::dev::tty::instance> create_instance(tty::driver *drv, std::uint32_t minor) override
+        std::shared_ptr<fs::dev::tty::instance> create_instance(
+            tty::driver *drv, std::uint32_t minor
+        ) override
         {
             return std::make_shared<serial_instance>(drv, minor);
         }
 
-        void destroy_instance(tty::driver *drv, std::shared_ptr<fs::dev::tty::instance> inst) override
+        void destroy_instance(
+            tty::driver *drv, std::shared_ptr<fs::dev::tty::instance> inst
+        ) override
         {
             lib::unused(drv, inst);
         }
 
-        serial_driver()
-            : driver { "serial", "ttyS", 0, 4, 64, num_ports, tty::flag::none } { }
+        serial_driver() : driver { "serial", "ttyS", 0, 4, 64, num_ports, tty::flag::none } { }
     };
 
     serial_driver driver { };
 
-    lib::initgraph::task com_task
-    {
-        "output.arch.uart8250.tty.register",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::devtmpfs::mounted_stage() },
-        [] {
+    lib::initgraph::task com_task {
+        "output.arch.uart8250.tty.register", lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::devtmpfs::mounted_stage() }, [] {
             for (std::size_t i = 0; i < num_ports; i++)
             {
                 if (usable[i])
@@ -285,10 +295,13 @@ namespace x86_64::output::uart8250
                     if (i < 2 || !usable[i - 2])
                     {
                         const auto gsi = 4 - (i & 1);
-                        lib::panic_if(!irq::request_gsi(
-                            gsi, irq::trigger::edge_rising, cpu::bsp_idx(),
-                            irq_handler, "uart8250"
-                        ), "uart8250: failed to request gsi {}", gsi);
+                        lib::panic_if(
+                            !irq::request_gsi(
+                                gsi, irq::trigger::edge_rising, cpu::bsp_idx(), irq_handler,
+                                "uart8250"
+                            ),
+                            "uart8250: failed to request gsi {}", gsi
+                        );
                     }
                     set_irqs(ports[i], true);
                 }

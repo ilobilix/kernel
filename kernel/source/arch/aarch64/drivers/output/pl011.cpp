@@ -37,9 +37,7 @@ namespace aarch64::output::pl011
         void lock() { _lock.lock(); }
         void unlock() { _lock.unlock(); }
 
-        constinit lib::logger log {
-            prints, lock, unlock
-        };
+        constinit lib::logger log { prints, lock, unlock };
     } // namespace
 
     void init()
@@ -49,7 +47,9 @@ namespace aarch64::output::pl011
         const auto flags = vmm::pflag::rwg;
         const auto caching = vmm::caching::mmio;
 
-        if (const auto ret = vmm::kernel_pagemap->map(addr = uart, uart, len, flags, psize, caching); !ret)
+        if (const auto ret =
+                vmm::kernel_pagemap->map(addr = uart, uart, len, flags, psize, caching);
+            !ret)
             lib::panic("could not map uart: {}", lib::error_name(ret.error()));
 
         // Disable the UART.

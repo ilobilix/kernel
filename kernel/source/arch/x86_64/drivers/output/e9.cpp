@@ -16,9 +16,7 @@ namespace x86_64::output::e9
                 lib::io::out<8>(0xE9, chr);
         }
 
-        constinit lib::logger log {
-            prints, [] { }, [] { }
-        };
+        constinit lib::logger log { prints, [] { }, [] { } };
     } // namespace
 
     void init()

@@ -6,23 +6,15 @@ namespace output
 {
     lib::initgraph::stage *initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "output.available",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "output.available", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task output_task
-    {
-        "output.init",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::entail {
-            lib::initgraph::base_stage(),
-            initialised_stage()
-        },
-        [] {
+    lib::initgraph::task output_task {
+        "output.init", lib::initgraph::presched_init_engine,
+        lib::initgraph::entail { lib::initgraph::base_stage(), initialised_stage() }, [] {
             arch::init();
             frm::init();
             term::init();

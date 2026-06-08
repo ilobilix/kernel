@@ -18,12 +18,14 @@ namespace irq
             bool requested = false;
         };
 
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 handle_t,
                 std::shared_ptr<desc_t>
             >, lib::spinlock_irq
         > descs;
+        // clang-format on
 
         std::atomic<handle_t> next_virq { 1 };
 
@@ -166,8 +168,7 @@ namespace irq
     }
 
     lib::expect<handle_t> alloc_and_request(
-        domain &leaf, const fwspec &spec,
-        handler_fn fn, std::string_view name
+        domain &leaf, const fwspec &spec, handler_fn fn, std::string_view name
     )
     {
         auto handle = alloc(leaf, spec);
@@ -182,15 +183,9 @@ namespace irq
         return *handle;
     }
 
-    domain *msi_parent()
-    {
-        return _msi_parent.load(std::memory_order_acquire);
-    }
+    domain *msi_parent() { return _msi_parent.load(std::memory_order_acquire); }
 
-    void set_msi_parent(domain *parent)
-    {
-        _msi_parent.store(parent, std::memory_order_release);
-    }
+    void set_msi_parent(domain *parent) { _msi_parent.store(parent, std::memory_order_release); }
 
     void set_gsi_requester(gsi_requester_fn fn)
     {
@@ -198,8 +193,7 @@ namespace irq
     }
 
     lib::expect<handle_t> request_gsi(
-        std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name
+        std::uint32_t gsi, trigger trig, std::size_t cpu_idx, handler_fn fn, std::string_view name
     )
     {
         const auto requester = _gsi_requester.load(std::memory_order_acquire);

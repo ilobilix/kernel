@@ -41,8 +41,8 @@ namespace syscall::vfs
             epollet = 1u << 31
         };
 
-        constexpr std::uint32_t valid_events = 0xFFFFu |
-            epollexclusive | epollwakeup | epolloneshot | epollet;
+        constexpr std::uint32_t valid_events =
+            0xFFFFu | epollexclusive | epollwakeup | epolloneshot | epollet;
 
         struct epoll_instance_t;
         struct epoll_entry_t;
@@ -66,10 +66,9 @@ namespace syscall::vfs
                 sched::wait_queue_entry_t entry;
 
                 reg(epoll_entry_t *ent, sched::wait_queue_t *wq)
-                    : wq { wq }, entry {
-                        [ent]{ do_signal(ent); },
-                        (ent->events & epollexclusive) != 0
-                    } { }
+                    : wq { wq },
+                      entry { [ent] { do_signal(ent); }, (ent->events & epollexclusive) != 0 }
+                { }
             };
             lib::list<reg> regs;
         };
@@ -80,15 +79,9 @@ namespace syscall::vfs
             sched::mutex lock;
             lib::spinlock_irq ready_lock;
 
-            lib::map::flat_hash<
-                int,
-                std::shared_ptr<epoll_entry_t>
-            > watched;
+            lib::map::flat_hash<int, std::shared_ptr<epoll_entry_t>> watched;
 
-            lib::intrusive_list<
-                epoll_entry_t,
-                &epoll_entry_t::hook
-            > ready;
+            lib::intrusive_list<epoll_entry_t, &epoll_entry_t::hook> ready;
 
             ~epoll_instance_t()
             {
@@ -121,8 +114,7 @@ namespace syscall::vfs
         {
             epoll_entry_t *ent;
 
-            explicit epoll_table(epoll_entry_t *ent)
-                : ent { ent } { }
+            explicit epoll_table(epoll_entry_t *ent) : ent { ent } { }
 
             void add(sched::wait_queue_t &wq) override
             {
@@ -254,9 +246,8 @@ namespace syscall::vfs
         }
 
         int do_epoll_wait(
-            const std::shared_ptr<epoll_instance_t> &epi,
-            std::vector<epoll_event> &out, int maxevents,
-            bool has_timeout, std::uint64_t timeout_ns
+            const std::shared_ptr<epoll_instance_t> &epi, std::vector<epoll_event> &out,
+            int maxevents, bool has_timeout, std::uint64_t timeout_ns
         )
         {
             const auto timer = chrono::main_timer();
@@ -333,8 +324,8 @@ namespace syscall::vfs
         }
 
         int epoll_wait_common(
-            int epfd, epoll_event __user *events, int maxevents,
-            bool has_timeout, std::uint64_t timeout_ns
+            int epfd, epoll_event __user *events, int maxevents, bool has_timeout,
+            std::uint64_t timeout_ns
         )
         {
             if (maxevents <= 0)
@@ -362,9 +353,8 @@ namespace syscall::vfs
         }
 
         int epoll_pwait_common(
-            int epfd, epoll_event __user *events, int maxevents,
-            bool has_timeout, std::uint64_t timeout_ns,
-            const void __user *sigmask, std::size_t sigsetsize
+            int epfd, epoll_event __user *events, int maxevents, bool has_timeout,
+            std::uint64_t timeout_ns, const void __user *sigmask, std::size_t sigsetsize
         )
         {
             sched::scoped_sigmask guard;
@@ -390,16 +380,18 @@ namespace syscall::vfs
         if (flags & ~epoll_cloexec)
             return -EINVAL;
 
-        auto ret = create_anon_fd({
-            .name = "<[EPOLL]>",
-            .ops = ops::singleton(),
-            .file_private_data = std::make_shared<epoll_instance_t>(),
-            .inode_private_data = nullptr,
-            .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
-            .flags = flags,
-            .skip_open = true,
-            .inode = nullptr
-        });
+        auto ret = create_anon_fd(
+            anon_fd_args {
+                .name = "<[EPOLL]>",
+                .ops = ops::singleton(),
+                .file_private_data = std::make_shared<epoll_instance_t>(),
+                .inode_private_data = nullptr,
+                .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
+                .flags = flags,
+                .skip_open = true,
+                .inode = nullptr
+            }
+        );
         if (!ret)
             return -lib::map_error(ret.error());
 
@@ -539,8 +531,8 @@ namespace syscall::vfs
     )
     {
         const bool has_timeout = (timeout >= 0);
-        const std::uint64_t timeout_ns = has_timeout ?
-            static_cast<std::uint64_t>(timeout) * 1'000'000ul : 0;
+        const std::uint64_t timeout_ns =
+            has_timeout ? static_cast<std::uint64_t>(timeout) * 1'000'000ul : 0;
 
         return epoll_pwait_common(
             epfd, events, maxevents, has_timeout, timeout_ns, sigmask, sigsetsize
@@ -550,8 +542,8 @@ namespace syscall::vfs
     int epoll_wait(int epfd, epoll_event __user *events, int maxevents, int timeout)
     {
         const bool has_timeout = (timeout >= 0);
-        const std::uint64_t timeout_ns = has_timeout
-            ? static_cast<std::uint64_t>(timeout) * 1'000'000ul : 0;
+        const std::uint64_t timeout_ns =
+            has_timeout ? static_cast<std::uint64_t>(timeout) * 1'000'000ul : 0;
 
         return epoll_wait_common(epfd, events, maxevents, has_timeout, timeout_ns);
     }

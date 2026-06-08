@@ -14,11 +14,12 @@ namespace sched
 
             struct entry_t
             {
-                std::function<void ()> func;
+                std::function<void()> func;
                 std::uint64_t deadline;
                 lib::rbtree_hook<entry_t> hook;
             };
 
+            // clang-format off
             lib::rbtree<
                 entry_t,
                 &entry_t::hook,
@@ -28,6 +29,7 @@ namespace sched
                     &entry_t::deadline
                 >
             > queue;
+            // clang-format on
 
             wait_queue_t work_wq;
 
@@ -68,27 +70,19 @@ namespace sched
 
     lib::initgraph::stage *wq_initialised_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "sched.work_queue.initialised",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "sched.work_queue.initialised", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task wq_task
-    {
-        "sched.work_queue.init",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            pid0_created_stage()
-        },
-        [] {
-            sched::spawn(workqueue_t::worker, &wq, 5);
-        }
+    lib::initgraph::task wq_task {
+        "sched.work_queue.init", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { pid0_created_stage() },
+        [] { sched::spawn(workqueue_t::worker, &wq, 5); }
     };
 
-    void schedule_work(std::function<void ()> func)
+    void schedule_work(std::function<void()> func)
     {
         lib::bug_on(!func);
         {
@@ -98,7 +92,7 @@ namespace sched
         wq.work_wq.wake_one();
     }
 
-    void schedule_work_after_ns(std::function<void ()> func, std::uint64_t ns)
+    void schedule_work_after_ns(std::function<void()> func, std::uint64_t ns)
     {
         lib::bug_on(!func);
         {

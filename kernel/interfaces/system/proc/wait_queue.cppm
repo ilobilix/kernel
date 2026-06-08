@@ -12,8 +12,8 @@ export namespace sched
     enum class wait_mode
     {
         interruptible, // woken by signals and kill
-        killable,      // woken by kill
-        unkillable     // uninterruptible
+        killable, // woken by kill
+        unkillable // uninterruptible
     };
 
     struct wait_queue_entry_t
@@ -22,29 +22,25 @@ export namespace sched
         static thread_base_t *current_thread();
 
         public:
-        using callback_t = std::function<void ()>;
+        using callback_t = std::function<void()>;
 
-        std::variant<
-            thread_base_t *,
-            callback_t
-        > type;
+        std::variant<thread_base_t *, callback_t> type;
         bool exclusive;
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
         wait_queue_entry_t(bool exclusive = false)
-            : type { current_thread() }, exclusive { exclusive }, hook { } { }
+            : type { current_thread() }, exclusive { exclusive }, hook { }
+        { }
 
         explicit wait_queue_entry_t(callback_t func, bool exclusive = false)
-            : type { std::move(func) }, exclusive { exclusive }, hook { } { }
+            : type { std::move(func) }, exclusive { exclusive }, hook { }
+        { }
     };
 
     struct wait_queue_t
     {
         private:
-        lib::intrusive_list<
-            wait_queue_entry_t,
-            &wait_queue_entry_t::hook
-        > entries;
+        lib::intrusive_list<wait_queue_entry_t, &wait_queue_entry_t::hook> entries;
 
         lib::spinlock_irq lock;
         std::atomic_size_t pending;
@@ -59,8 +55,7 @@ export namespace sched
         void remove_entry(wait_queue_entry_t &entry);
 
         void unlink_atomic(
-            std::atomic<wait_queue_t *> &on_queue_ref,
-            std::atomic<wait_queue_entry_t *> &entry_ref
+            std::atomic<wait_queue_t *> &on_queue_ref, std::atomic<wait_queue_entry_t *> &entry_ref
         );
 
         struct wait_result_t

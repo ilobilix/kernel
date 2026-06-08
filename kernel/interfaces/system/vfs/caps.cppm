@@ -21,7 +21,8 @@ export namespace vfs
     struct [[gnu::packed]] cap_data
     {
         std::uint32_t magic;
-        struct {
+        struct
+        {
             std::uint32_t permitted;
             std::uint32_t inheritable;
         } data[2];

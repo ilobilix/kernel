@@ -40,15 +40,22 @@ export namespace sched::futex
 
     struct key_t
     {
-        enum class type : std::uint8_t { private_, shared };
+        enum class type : std::uint8_t
+        {
+            private_,
+            shared
+        };
 
         type type;
-        union {
-            struct {
+        union
+        {
+            struct
+            {
                 vmm::vmspace *vmspace;
                 std::uintptr_t vaddr;
             } pvt;
-            struct {
+            struct
+            {
                 vmm::object *obj;
                 std::uint64_t offset;
             } shr;
@@ -105,23 +112,20 @@ export namespace sched::futex
     lib::expect<key_t> resolve(std::uint32_t __user *uaddr, bool private_);
 
     lib::expect<void> wait(
-        std::uint32_t __user *uaddr, const key_t &key,
-        std::uint32_t val, std::uint32_t bitset,
+        std::uint32_t __user *uaddr, const key_t &key, std::uint32_t val, std::uint32_t bitset,
         std::optional<std::uint64_t> wait_ns
     );
 
     std::uint32_t wake(const key_t &key, std::int32_t num, std::uint32_t bitset);
 
     lib::expect<std::int32_t> wake_op(
-        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr2,
-        std::int32_t nr_wake, std::int32_t nr_wake2,
-        std::uint32_t op_encoding
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr2, std::int32_t nr_wake,
+        std::int32_t nr_wake2, std::uint32_t op_encoding
     );
 
     lib::expect<std::pair<std::uint32_t, std::uint32_t>> requeue(
-        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp,
-        std::int32_t nr_wake, std::int32_t nr_requeue,
-        std::optional<std::uint32_t> cmpval
+        const key_t &key1, const key_t &key2, std::uint32_t __user *uaddr_cmp, std::int32_t nr_wake,
+        std::int32_t nr_requeue, std::optional<std::uint32_t> cmpval
     );
 
     void cleanup_robust_list(thread_t *thread);

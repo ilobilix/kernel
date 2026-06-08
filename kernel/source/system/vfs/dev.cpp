@@ -10,12 +10,14 @@ namespace vfs::dev
 {
     namespace
     {
+        // clang-format off
         lib::locker<
             lib::map::flat_hash<
                 dev_t,
                 std::shared_ptr<vfs::ops>
             >, lib::rwspinlock
         > cdev_table;
+        // clang-format on
 
         std::shared_ptr<vfs::ops> get_cdev_ops(dev_t rdev)
         {

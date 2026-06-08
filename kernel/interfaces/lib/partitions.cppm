@@ -25,20 +25,11 @@ export namespace lib::part
             std::uint32_t lba_start;
             std::uint32_t lba_count;
 
-            inline constexpr bool is_bootable()
-            {
-                return flags == 0x80;
-            }
+            inline constexpr bool is_bootable() { return flags == 0x80; }
 
-            inline constexpr bool is_pmbr()
-            {
-                return flags == 0xEE;
-            }
+            inline constexpr bool is_pmbr() { return flags == 0xEE; }
 
-            inline constexpr bool is_unused()
-            {
-                return sid == 0;
-            }
+            inline constexpr bool is_unused() { return sid == 0; }
         };
 
         struct table
@@ -71,25 +62,13 @@ export namespace lib::part
             std::uint64_t attributes;
             char16_t name[36];
 
-            inline constexpr bool is_unused()
-            {
-                return partguid == 0;
-            }
+            inline constexpr bool is_unused() { return partguid == 0; }
 
-            inline constexpr bool is_system()
-            {
-                return attributes & 1;
-            }
+            inline constexpr bool is_system() { return attributes & 1; }
 
-            inline constexpr bool is_boot()
-            {
-                return attributes & 2;
-            }
+            inline constexpr bool is_boot() { return attributes & 2; }
 
-            inline constexpr std::u16string_view get_name()
-            {
-                return name;
-            }
+            inline constexpr std::u16string_view get_name() { return name; }
         };
         static_assert(sizeof(partition) == 128);
 
@@ -111,10 +90,7 @@ export namespace lib::part
             std::uint32_t partentrysize;
             std::uint32_t partchecksum;
 
-            inline constexpr bool is_valid()
-            {
-                return std::u8string_view(signature) == signature;
-            }
+            inline constexpr bool is_valid() { return std::u8string_view(signature) == signature; }
         };
         static_assert(sizeof(table) == 92);
     } // namespace gpt

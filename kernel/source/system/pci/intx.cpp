@@ -5,8 +5,7 @@ module system.pci;
 namespace pci::intx
 {
     lib::expect<irq::handle_t> request(
-        pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        pci::device &dev, std::size_t cpu_idx, irq::handler_fn fn, std::string_view name
     )
     {
         const auto route = dev.irq.route;

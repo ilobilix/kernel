@@ -10,18 +10,16 @@ namespace pci
     {
         struct attribute_t : dev::attribute_t
         {
-            using rfn_t = lib::expect<std::string> (*)(
-                device_t &, std::shared_ptr<pci::device>
-            );
-            using wfn_t = lib::expect<void> (*)(
-                device_t &, std::shared_ptr<pci::device>, std::string_view
-            );
+            using rfn_t = lib::expect<std::string> (*)(device_t &, std::shared_ptr<pci::device>);
+            using wfn_t =
+                lib::expect<void> (*)(device_t &, std::shared_ptr<pci::device>, std::string_view);
 
             rfn_t rfn;
             wfn_t wfn;
 
             attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
-                : dev::attribute_t { name, mode }, rfn { rfn }, wfn { wfn } { }
+                : dev::attribute_t { name, mode }, rfn { rfn }, wfn { wfn }
+            { }
 
             lib::expect<std::string> show(dev::kobject_t &kobj) override
             {
@@ -113,19 +111,25 @@ namespace pci
                 if ((off & 1) && rem >= 1)
                 {
                     put(dev->read<std::uint8_t>(off), 1);
-                    off += 1; pos += 1; rem -= 1;
+                    off += 1;
+                    pos += 1;
+                    rem -= 1;
                 }
                 if ((off & 3) && rem > 2)
                 {
                     put(dev->read<std::uint16_t>(off), 2);
-                    off += 2; pos += 2; rem -= 2;
+                    off += 2;
+                    pos += 2;
+                    rem -= 2;
                 }
                 for (; rem > 3; off += 4, pos += 4, rem -= 4)
                     put(dev->read<std::uint32_t>(off), 4);
                 if (rem >= 2)
                 {
                     put(dev->read<std::uint16_t>(off), 2);
-                    off += 2; pos += 2; rem -= 2;
+                    off += 2;
+                    pos += 2;
+                    rem -= 2;
                 }
                 if (rem >= 1)
                     put(dev->read<std::uint8_t>(off), 1);
@@ -231,8 +235,7 @@ namespace pci
             }
 
             return id_t {
-                static_cast<std::uint16_t>(*vendor),
-                static_cast<std::uint16_t>(*device),
+                static_cast<std::uint16_t>(*vendor), static_cast<std::uint16_t>(*device),
                 class_mask, class_val
             };
         }
@@ -273,50 +276,58 @@ namespace pci
         attribute_t ven {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->venid);
-            }, nullptr, "vendor", 0444
+            },
+            nullptr, "vendor", 0444
         };
 
         attribute_t dev {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->devid);
-            }, nullptr, "device", 0444
+            },
+            nullptr, "device", 0444
         };
 
         attribute_t cls {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:06x}\n", id_t::make_class(dev));
-            }, nullptr, "class", 0444
+            },
+            nullptr, "class", 0444
         };
 
         attribute_t subsysven {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysvenid);
-            }, nullptr, "subsystem_vendor", 0444
+            },
+            nullptr, "subsystem_vendor", 0444
         };
 
         attribute_t subsysdev {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:04x}\n", dev->subsysdevid);
-            }, nullptr, "subsystem_device", 0444
+            },
+            nullptr, "subsystem_device", 0444
         };
 
         attribute_t modalias {
             [](device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
                 return dev.modalias + "\n";
-            }, nullptr, "modalias", 0444
+            },
+            nullptr, "modalias", 0444
         };
 
         attribute_t revision {
             [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
                 return fmt::format("0x{:02x}\n", dev->revision);
-            }, nullptr, "revision", 0444
+            },
+            nullptr, "revision", 0444
         };
 
         attribute_t enable {
             [](device_t &dev, std::shared_ptr<device>) -> lib::expect<std::string> {
                 return fmt::format("{}\n", dev.enable_count);
             },
-            [](device_t &kdev, std::shared_ptr<device> dev, std::string_view data) -> lib::expect<void> {
+            [](device_t &kdev, std::shared_ptr<device> dev,
+               std::string_view data) -> lib::expect<void> {
                 data = lib::trim(data);
 
                 // TODO: D3 to D0
@@ -349,7 +360,8 @@ namespace pci
                     if (kdev.enable_count-- == 1)
                         set(false);
                 }
-                else return std::unexpected { lib::err::invalid_argument };
+                else
+                    return std::unexpected { lib::err::invalid_argument };
                 return { };
             },
             "enable", 0644
@@ -366,10 +378,8 @@ namespace pci
         {
             std::span<dev::attribute_t *const> attributes() override
             {
-                static dev::attribute_t *list[] {
-                    &ven, &dev, &cls, &subsysven, &subsysdev,
-                    &modalias, &revision, &enable
-                };
+                static dev::attribute_t *list[] { &ven,       &dev,      &cls,      &subsysven,
+                                                 &subsysdev, &modalias, &revision, &enable };
                 return list;
             }
 
@@ -385,8 +395,8 @@ namespace pci
             std::span<dev::attribute_t *const> attributes() override
             {
                 static dev::attribute_t *list[] {
-                    dev::bind_attribute(), dev::unbind_attribute(),
-                    &new_id_attribute, &remove_id_attribute
+                    dev::bind_attribute(), dev::unbind_attribute(), &new_id_attribute,
+                    &remove_id_attribute
                 };
                 return list;
             }
@@ -413,18 +423,14 @@ namespace pci
 
     std::string get_slot_name(const std::shared_ptr<pci::device> &dev)
     {
-        return fmt::format(
-            "0000:{:02x}:{:02x}.{:x}",
-            dev->parent.lock()->id, dev->dev, dev->func
-        );
+        return fmt::format("0000:{:02x}:{:02x}.{:x}", dev->parent.lock()->id, dev->dev, dev->func);
     }
 
     std::string get_modalias(const std::shared_ptr<pci::device> &dev)
     {
         return fmt::format(
-            "pci:v{:08x}d{:08x}sv{:08x}sd{:08x}bc{:02x}sc{:02x}i{:02x}",
-            dev->venid, dev->devid, dev->subsysvenid, dev->subsysdevid,
-            dev->class_, dev->subclass, dev->progif
+            "pci:v{:08x}d{:08x}sv{:08x}sd{:08x}bc{:02x}sc{:02x}i{:02x}", dev->venid, dev->devid,
+            dev->subsysvenid, dev->subsysdevid, dev->class_, dev->subclass, dev->progif
         );
     }
 
@@ -443,9 +449,8 @@ namespace pci
         };
 
         return fmt::format(
-            "pci:{}{}sv*sd*{}{}{}*",
-            id("v", vendor), id("d", device),
-            byte("bc", 16), byte("sc", 8), byte("i", 0)
+            "pci:{}{}sv*sd*{}{}{}*", id("v", vendor), id("d", device), byte("bc", 16),
+            byte("sc", 8), byte("i", 0)
         );
     }
 
@@ -456,10 +461,7 @@ namespace pci
             std::ranges::any_of(*_dynamic_ids.read_lock(), pred);
     }
 
-    void driver_t::add_id(const id_t &id)
-    {
-        _dynamic_ids.write_lock()->push_back(id);
-    }
+    void driver_t::add_id(const id_t &id) { _dynamic_ids.write_lock()->push_back(id); }
 
     bool driver_t::remove_id(std::uint16_t vendor, std::uint16_t device)
     {
@@ -476,45 +478,37 @@ namespace pci
     void bus_t::fill_uevent(dev::device_t &dev, dev::uevent_t &uev)
     {
         const auto pcidev = static_cast<device_t *>(&dev)->dev;
-        uev.add("PCI_CLASS", fmt::format("{:02x}{:02x}{:02x}",
-            pcidev->class_, pcidev->subclass, pcidev->progif
-        ));
+        uev.add(
+            "PCI_CLASS",
+            fmt::format("{:02x}{:02x}{:02x}", pcidev->class_, pcidev->subclass, pcidev->progif)
+        );
         uev.add("PCI_ID", fmt::format("{:04x}:{:04x}", pcidev->venid, pcidev->devid));
-        uev.add("PCI_SUBSYS_ID", fmt::format("{:04x}:{:04x}",
-            pcidev->subsysvenid, pcidev->subsysdevid)
+        uev.add(
+            "PCI_SUBSYS_ID", fmt::format("{:04x}:{:04x}", pcidev->subsysvenid, pcidev->subsysdevid)
         );
         uev.add("PCI_SLOT_NAME", dev.name);
     }
 
     lib::initgraph::stage *registered_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "pci.dev.registered",
-            lib::initgraph::postsched_init_engine
+        static lib::initgraph::stage stage {
+            "pci.dev.registered", lib::initgraph::postsched_init_engine
         };
         return &stage;
     }
 
     namespace
     {
-        lib::initgraph::task dev_task
-        {
-            "pci.dev.register",
-            lib::initgraph::postsched_init_engine,
+        lib::initgraph::task dev_task {
+            "pci.dev.register", lib::initgraph::postsched_init_engine,
             lib::initgraph::require {
-                bin::elf::mod::modules_loaded_stage(),
-                dev::available_stage(),
-                enumerated_stage()
+                bin::elf::mod::modules_loaded_stage(), dev::available_stage(), enumerated_stage()
             },
-            lib::initgraph::entail { registered_stage() },
-            [] {
+            lib::initgraph::entail { registered_stage() }, [] {
                 lib::bug_on(!dev::register_bus(*get_bus()));
 
                 auto host = std::make_shared<dev::kobject_t>(
-                    "pci0000:00",
-                    dev::default_ktype(),
-                    dev::devices_root()
+                    "pci0000:00", dev::default_ktype(), dev::devices_root()
                 );
                 lib::bug_on(!dev::register_kobject(host));
 

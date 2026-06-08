@@ -88,8 +88,7 @@ namespace sched
     }
 
     std::uint64_t run_queue_t::calc_vruntime(
-        std::uint64_t delta_ns,
-        std::uint64_t weight, std::uint64_t inv_weight
+        std::uint64_t delta_ns, std::uint64_t weight, std::uint64_t inv_weight
     )
     {
         if (weight == weight0)

@@ -15,7 +15,7 @@ import std;
 namespace
 {
     char nooo_ascii[] {
-        #embed "../../embed/nooo.ascii"
+#embed "../../embed/nooo.ascii"
     };
 
     std::atomic<bool> panicking = false;
@@ -53,8 +53,8 @@ namespace lib
 
     [[noreturn, clang::no_sanitize("undefined")]]
     void vpanic(
-        std::size_t len, std::string_view fmt, fmt::format_args args,
-        cpu::registers *regs, std::source_location location
+        std::size_t len, std::string_view fmt, fmt::format_args args, cpu::registers *regs,
+        std::source_location location
     )
     {
         std::size_t cpu_idx = 0;
@@ -80,9 +80,8 @@ namespace lib
         fatal("kernel panicked with the following message:");
         vfatal(len, fmt, args);
         fatal(
-            "at {}:{}:{}: {}",
-            location.file_name(), location.line(),
-            location.column(), location.function_name()
+            "at {}:{}:{}: {}", location.file_name(), location.line(), location.column(),
+            location.function_name()
         );
 
         if (regs)
@@ -90,7 +89,7 @@ namespace lib
         else
             trace(log::level::fatal, 0, 0);
 
-        end:
+    end:
         arch::halt(false);
         std::unreachable();
     }
@@ -107,16 +106,14 @@ void assert_fail(const char *message, const char *file, int line, const char *fu
         const char *_func;
 
         custom_location(const char *file, int line, const char *func)
-            : _line { line }, _file { file }, _func { func } { }
+            : _line { line }, _file { file }, _func { func }
+        { }
 
-        constexpr std::uint_least32_t line() const noexcept
-        { return _line; }
+        constexpr std::uint_least32_t line() const noexcept { return _line; }
 
-        constexpr const char *file_name() const noexcept
-        { return _file; }
+        constexpr const char *file_name() const noexcept { return _file; }
 
-        constexpr const char *function_name() const noexcept
-        { return _func; }
+        constexpr const char *function_name() const noexcept { return _func; }
     };
     const custom_location loc { file, line, func };
     lib::vpanic(std::strlen(message), message, fmt::make_format_args(), nullptr, loc);

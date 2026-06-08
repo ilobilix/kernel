@@ -12,8 +12,8 @@ export namespace syscall::vfs
 {
     using namespace ::vfs;
     lib::expect<path> get_target(
-        sched::process_t *proc, int dirfd, const char __user *pathname,
-        bool follow_links, bool empty_path, bool automount
+        sched::process_t *proc, int dirfd, const char __user *pathname, bool follow_links,
+        bool empty_path, bool automount
     );
 
     mode_t umask(mode_t mask);
@@ -44,7 +44,10 @@ export namespace syscall::vfs
     int fstat(int fd, struct stat __user *statbuf);
     int lstat(const char __user *pathname, struct stat __user *statbuf);
 
-    int statx(int dirfd, const char __user *pathname, int flags, std::uint32_t mask, struct statx __user *statxbuf);
+    int statx(
+        int dirfd, const char __user *pathname, int flags, std::uint32_t mask,
+        struct statx __user *statxbuf
+    );
 
     int statfs(const char __user *path, struct statfs __user *buf);
     int fstatfs(int fd, struct statfs __user *buf);
@@ -63,7 +66,9 @@ export namespace syscall::vfs
     int fchown(int fd, uid_t owner, gid_t group);
     int lchown(const char __user *pathname, uid_t owner, gid_t group);
 
-    std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz);
+    std::ssize_t readlinkat(
+        int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz
+    );
     std::ssize_t readlink(const char __user *pathname, char __user *buf, std::size_t bufsiz);
 
     int mkdirat(int dirfd, const char __user *pathname, mode_t mode);
@@ -77,8 +82,8 @@ export namespace syscall::vfs
     int mknod(const char __user *pathname, mode_t mode, dev_t dev);
 
     int linkat(
-        int olddirfd, const char __user *oldpath,
-        int newdirfd, const char __user *newpath, int flags
+        int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath,
+        int flags
     );
     int link(const char __user *oldpath, const char __user *newpath);
 
@@ -86,37 +91,36 @@ export namespace syscall::vfs
     int symlink(const char __user *target, const char __user *linkpath);
 
     int renameat2(
-        int olddfd, const char __user *oldname, int newdfd,
-        const char __user *newname, unsigned int flags
+        int olddfd, const char __user *oldname, int newdfd, const char __user *newname,
+        unsigned int flags
     );
-    int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
+    int renameat(
+        int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath
+    );
     int rename(const char __user *oldpath, const char __user *newpath);
 
     int mount(
-        const char __user *source, const char __user *target,
-        const char __user *fstype, std::uint64_t flags, const void __user *data
+        const char __user *source, const char __user *target, const char __user *fstype,
+        std::uint64_t flags, const void __user *data
     );
 
     int setxattr(
-        const char __user *pathname, const char __user *name,
-        const void __user *value, std::size_t size, int flags
+        const char __user *pathname, const char __user *name, const void __user *value,
+        std::size_t size, int flags
     );
     int lsetxattr(
-        const char __user *pathname, const char __user *name,
-        const void __user *value, std::size_t size, int flags
+        const char __user *pathname, const char __user *name, const void __user *value,
+        std::size_t size, int flags
     );
     int fsetxattr(
-        int fd, const char __user *name,
-        const void __user *value, std::size_t size, int flags
+        int fd, const char __user *name, const void __user *value, std::size_t size, int flags
     );
 
     std::ssize_t getxattr(
-        const char __user *pathname, const char __user *name,
-        void __user *value, std::size_t size
+        const char __user *pathname, const char __user *name, void __user *value, std::size_t size
     );
     std::ssize_t lgetxattr(
-        const char __user *pathname, const char __user *name,
-        void __user *value, std::size_t size
+        const char __user *pathname, const char __user *name, void __user *value, std::size_t size
     );
     std::ssize_t fgetxattr(int fd, const char __user *name, void __user *value, std::size_t size);
 
@@ -156,12 +160,12 @@ export namespace syscall::vfs
     int connect(int sockfd, const sockaddr __user *addr, socklen_t addrlen);
     int accept(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
     std::ssize_t sendto(
-        int sockfd, const void __user *buf, std::size_t len,
-        std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
+        int sockfd, const void __user *buf, std::size_t len, std::uint32_t flags,
+        const sockaddr __user *addr, socklen_t addrlen
     );
     std::ssize_t recvfrom(
-        int sockfd, void __user *buf, std::size_t size,
-        std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
+        int sockfd, void __user *buf, std::size_t size, std::uint32_t flags, sockaddr __user *addr,
+        socklen_t __user *addrlen
     );
     std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags);
     std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags);
@@ -172,7 +176,9 @@ export namespace syscall::vfs
     int getpeername(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
     int socketpair(int family, int type, int protocol, int __user *sv);
     int setsockopt(int sockfd, int level, int optname, const char __user *optval, socklen_t optlen);
-    int getsockopt(int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen);
+    int getsockopt(
+        int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen
+    );
     int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags);
 
     int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
@@ -187,15 +193,14 @@ export namespace syscall::vfs
     };
 
     int ppoll(
-        pollfd __user *fds, nfds_t nfds, timespec __user *timeout,
-        struct sigset_t __user *sigmask
+        pollfd __user *fds, nfds_t nfds, timespec __user *timeout, struct sigset_t __user *sigmask
     );
     int poll(pollfd __user *fds, nfds_t nfds, int timeout);
 
     struct fd_set;
     int select(
-        int nfds, fd_set __user *readfds, fd_set __user *writefds,
-        fd_set __user *exceptfds, timeval __user *timeout
+        int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
+        timeval __user *timeout
     );
     int pselect6(
         int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
@@ -214,7 +219,7 @@ export namespace syscall::vfs
 
     int epoll_create(int size);
     int epoll_create1(int flags);
-    int epoll_ctl(int epfd, int op, int fd,  struct epoll_event __user *event);
+    int epoll_ctl(int epfd, int op, int fd, struct epoll_event __user *event);
     int epoll_pwait2(
         int epfd, epoll_event __user *events, int maxevents, const timespec __user *timeout,
         const sigset_t __user *sigmask, std::size_t sigsetsize
@@ -235,13 +240,10 @@ namespace syscall::vfs::detail
     lib::expect<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path);
 
     lib::expect<resolve_res> resolve_from(
-        sched::process_t *proc, int dirfd,
-        lib::path_view path, bool automount = true
+        sched::process_t *proc, int dirfd, lib::path_view path, bool automount = true
     );
 
-    lib::expect<path> resolve_parent_dir(
-        sched::process_t *proc, int dirfd, lib::path_view path
-    );
+    lib::expect<path> resolve_parent_dir(sched::process_t *proc, int dirfd, lib::path_view path);
 
     lib::expect<lib::path> get_path(const char __user *pathname);
 

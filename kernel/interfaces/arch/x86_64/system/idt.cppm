@@ -15,7 +15,7 @@ export namespace x86_64::idt
     {
         using flow_fn = void (*)(cpu::registers *, slot &);
 
-        std::function<void (cpu::registers *)> handler;
+        std::function<void(cpu::registers *)> handler;
 
         flow_fn flow = nullptr;
         std::uintptr_t flow_data = 0;
@@ -26,7 +26,7 @@ export namespace x86_64::idt
         bool is_reserved() const { return reserved; }
 
         void reserve() { reserved = true; }
-        void set(std::function<void (cpu::registers *)> fn) { handler = std::move(fn); }
+        void set(std::function<void(cpu::registers *)> fn) { handler = std::move(fn); }
 
         void set_flow(flow_fn fn, std::uintptr_t data = 0)
         {
@@ -91,10 +91,7 @@ export namespace x86_64::idt
         std::uint16_t limit;
         std::uint64_t base;
 
-        void load() const
-        {
-            asm volatile ("cli; lidt %0" :: "memory"(*this));
-        }
+        void load() const { asm volatile ("cli; lidt %0" : : "memory"(*this)); }
     };
 
     inline constexpr std::uint8_t irq(std::uint8_t num) { return num + 0x20; }
@@ -125,9 +122,7 @@ export namespace x86_64::idt
 
         vector_domain() : domain { "x86_64-vector" } { }
 
-        lib::expect<void> alloc(
-            std::span<irq::irq_data *> data, const irq::fwspec &spec
-        ) override;
+        lib::expect<void> alloc(std::span<irq::irq_data *> data, const irq::fwspec &spec) override;
 
         void free(std::span<irq::irq_data *> data) override;
 

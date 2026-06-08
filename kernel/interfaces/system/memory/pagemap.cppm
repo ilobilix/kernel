@@ -118,13 +118,22 @@ export namespace vmm
                 std::atomic<std::uintptr_t> &_parent;
 
                 accessor(std::atomic<std::uintptr_t> &parent)
-                    : _parent { parent }, value { _parent.load(std::memory_order_acquire) } { }
+                    : _parent { parent }, value { _parent.load(std::memory_order_acquire) }
+                { }
 
                 public:
                 std::uintptr_t value = 0;
 
-                accessor &clear() { value = 0; return *this; }
-                accessor &clearflags() { value &= pa_mask; return *this; }
+                accessor &clear()
+                {
+                    value = 0;
+                    return *this;
+                }
+                accessor &clearflags()
+                {
+                    value &= pa_mask;
+                    return *this;
+                }
 
                 accessor &setflags(std::uintptr_t aflags, bool enabled)
                 {
@@ -135,15 +144,9 @@ export namespace vmm
                     return *this;
                 }
 
-                bool getflags(std::uintptr_t aflags) const
-                {
-                    return (value & aflags) == aflags;
-                }
+                bool getflags(std::uintptr_t aflags) const { return (value & aflags) == aflags; }
 
-                std::uintptr_t getflags() const
-                {
-                    return value & ~pa_mask;
-                }
+                std::uintptr_t getflags() const { return value & ~pa_mask; }
 
                 accessor &setaddr(std::uintptr_t paddr)
                 {
@@ -151,10 +154,7 @@ export namespace vmm
                     return *this;
                 }
 
-                std::uintptr_t getaddr() const
-                {
-                    return value & pa_mask;
-                }
+                std::uintptr_t getaddr() const { return value & pa_mask; }
 
                 bool is_large() const;
 
@@ -177,7 +177,7 @@ export namespace vmm
         table *_table;
         lib::spinlock_irq _lock;
 
-        std::unique_ptr<std::atomic_uint64_t []> _asid_ctx;
+        std::unique_ptr<std::atomic_uint64_t[]> _asid_ctx;
 
         static table *new_table();
         static void free_table(table *ptr);
@@ -189,14 +189,11 @@ export namespace vmm
 
         static asid_t alloc_asid();
 
-        static auto getlvl(
-            entry &entry, bool allocate, bool split,
-            page_size psize, bool user
-        ) -> table *;
+        static auto getlvl(entry &entry, bool allocate, bool split, page_size psize, bool user)
+            -> table *;
 
         lib::expect<entry *> getpte(
-            std::uintptr_t vaddr, page_size psize,
-            bool allocate, bool split
+            std::uintptr_t vaddr, page_size psize, bool allocate, bool split
         );
 
         lib::expect<void> map_internal(
@@ -204,12 +201,12 @@ export namespace vmm
             std::optional<page_size> psize, caching cache, flush_range &fr_out
         );
         lib::expect<void> protect_internal(
-            std::uintptr_t vaddr, std::size_t length, pflag flags,
-            std::optional<page_size> psize, caching cache, flush_range &fr_out
+            std::uintptr_t vaddr, std::size_t length, pflag flags, std::optional<page_size> psize,
+            caching cache, flush_range &fr_out
         );
         lib::expect<void> unmap_internal(
-            std::uintptr_t vaddr, std::size_t length,
-            std::optional<page_size> psize, flush_range &fr_out
+            std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize,
+            flush_range &fr_out
         );
 
         void arch_load(asid_t asid, bool flush) const;
@@ -230,7 +227,7 @@ export namespace vmm
                 return std::nullopt;
 
             return asid_ctx {
-                .gen  = raw >> cpu::tlb::asid_bits,
+                .gen = raw >> cpu::tlb::asid_bits,
                 .asid = static_cast<asid_t>(raw & asid_mask),
             };
         }
@@ -260,8 +257,7 @@ export namespace vmm
             std::optional<page_size> psize = std::nullopt, caching cache = caching::normal
         );
         lib::expect<void> unmap(
-            std::uintptr_t vaddr, std::size_t length,
-            std::optional<page_size> psize = std::nullopt
+            std::uintptr_t vaddr, std::size_t length, std::optional<page_size> psize = std::nullopt
         );
 
         lib::expect<std::uintptr_t> translate(std::uintptr_t vaddr, page_size psize);

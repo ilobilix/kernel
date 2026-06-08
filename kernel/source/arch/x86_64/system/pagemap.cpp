@@ -28,11 +28,10 @@ namespace vmm
                 no_exec = (1ul << 63)
             };
 
-            constexpr std::size_t page_sizes[]
-            {
+            constexpr std::size_t page_sizes[] {
                 lib::kib(4), // page_size::small
                 lib::mib(2), // page_size::medium
-                lib::gib(1)  // page_size::large
+                lib::gib(1) // page_size::large
             };
 
             // 1 gib pages supported
@@ -44,12 +43,10 @@ namespace vmm
 
     const std::uintptr_t pagemap::valid_table_flags = arch::flag::present;
     const std::uintptr_t pagemap::new_kernel_table_flags = arch::flag::present | arch::flag::write;
-    const std::uintptr_t pagemap::new_user_table_flags = pagemap::new_kernel_table_flags | arch::flag::user;
+    const std::uintptr_t pagemap::new_user_table_flags =
+        pagemap::new_kernel_table_flags | arch::flag::user;
 
-    bool pagemap::entry::accessor::is_large() const
-    {
-        return (value & arch::flag::lpages) != 0;
-    }
+    bool pagemap::entry::accessor::is_large() const { return (value & arch::flag::lpages) != 0; }
 
     extern "C" constinit bool pagemap_use_lowmem = false;
     auto pagemap::new_table() -> table *
@@ -59,10 +56,7 @@ namespace vmm
         return reinterpret_cast<table *>(pmm::alloc(1, true, type));
     }
 
-    void pagemap::free_table(table *ptr)
-    {
-        pmm::free(reinterpret_cast<std::uintptr_t>(ptr), 1);
-    }
+    void pagemap::free_table(table *ptr) { pmm::free(reinterpret_cast<std::uintptr_t>(ptr), 1); }
 
     page_size pagemap::fixpsize(page_size psize)
     {
@@ -148,7 +142,8 @@ namespace vmm
 
         auto cache = caching::normal;
         {
-            const bool is_pat = (psize == page_size::small) ? (flags & arch::flag::pat) : (flags & arch::flag::lpat);
+            const bool is_pat = (psize == page_size::small) ? (flags & arch::flag::pat)
+                                                            : (flags & arch::flag::lpat);
             const bool is_pcd = (flags & arch::flag::pcd);
             const bool is_pwt = (flags & arch::flag::pwt);
 
@@ -211,7 +206,7 @@ namespace vmm
         auto addr = reinterpret_cast<std::uintptr_t>(_table) | asid;
         if (!flush)
             addr |= (1ul << 63);
-        asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
+        asm volatile ("mov cr3, %0" : : "r"(addr) : "memory");
     }
 
     pagemap::pagemap() : _table { new_table() }
@@ -229,7 +224,7 @@ namespace vmm
         }
         else
         {
-            _asid_ctx = std::make_unique<std::atomic_uint64_t []>(cpu::count());
+            _asid_ctx = std::make_unique<std::atomic_uint64_t[]>(cpu::count());
 
             auto table = lib::tohh(_table);
             const auto ktable = lib::tohh(kernel_pagemap->_table);

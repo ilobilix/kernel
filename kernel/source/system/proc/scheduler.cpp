@@ -22,29 +22,15 @@ namespace sched
     {
         cpu_local(run_queue_t, run_queue);
 
-        using dead_threads_t = lib::locker<
-            lib::list<
-                std::shared_ptr<thread_t>
-            >, lib::spinlock
-        >;
+        using dead_threads_t = lib::locker<lib::list<std::shared_ptr<thread_t>>, lib::spinlock>;
 
         cpu_local(dead_threads_t, dead_threads);
         cpu_local(wait_queue_t, dead_bell);
         cpu_local(bool, need_reaper_wake);
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::shared_ptr<process_t>
-            >, mutex
-        > processes;
+        lib::locker<lib::map::flat_hash<pid_t, std::shared_ptr<process_t>>, mutex> processes;
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::weak_ptr<thread_t>
-            >, mutex
-        > threads;
+        lib::locker<lib::map::flat_hash<pid_t, std::weak_ptr<thread_t>>, mutex> threads;
 
         std::shared_ptr<process_t> kernel_proc;
 
@@ -71,19 +57,9 @@ namespace sched
             return ret;
         }
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::weak_ptr<group_t>
-            >, mutex
-        > groups;
+        lib::locker<lib::map::flat_hash<pid_t, std::weak_ptr<group_t>>, mutex> groups;
 
-        lib::locker<
-            lib::map::flat_hash<
-                pid_t,
-                std::weak_ptr<session_t>
-            >, mutex
-        > sessions;
+        lib::locker<lib::map::flat_hash<pid_t, std::weak_ptr<session_t>>, mutex> sessions;
 
         std::atomic_bool should_start = false;
 
@@ -92,8 +68,7 @@ namespace sched
         {
             const auto ret = next_id.fetch_add(1, std::memory_order_relaxed);
             lib::panic_if(
-                ret == std::numeric_limits<pid_t>::max(),
-                "implement a proper pid allocator"
+                ret == std::numeric_limits<pid_t>::max(), "implement a proper pid allocator"
             );
             return ret;
         }
@@ -150,9 +125,8 @@ namespace sched
         void enqueue_on(thread_t *thread, std::size_t cpu_idx, bool initial)
         {
             auto &self = cpu::self().unsafe_get();
-            auto &rq = (cpu_idx == self.idx)
-                ? run_queue.unsafe_get()
-                : run_queue.unsafe_get(cpu::local::nth_base(cpu_idx));
+            auto &rq = (cpu_idx == self.idx) ? run_queue.unsafe_get()
+                                             : run_queue.unsafe_get(cpu::local::nth_base(cpu_idx));
 
             const std::unique_lock _ { rq.lock };
 
@@ -177,15 +151,9 @@ namespace sched
             }
         }
 
-        std::uintptr_t allocate_kstack()
-        {
-            return lib::allocz<std::uintptr_t>(kstack_size);
-        }
+        std::uintptr_t allocate_kstack() { return lib::allocz<std::uintptr_t>(kstack_size); }
 
-        void deallocate_kstack(std::uintptr_t kstack)
-        {
-            lib::free(kstack);
-        }
+        void deallocate_kstack(std::uintptr_t kstack) { lib::free(kstack); }
 
         lib::bitmap create_affinity()
         {
@@ -287,26 +255,16 @@ namespace sched
 
     lib::initgraph::stage *pid0_created_stage()
     {
-        static lib::initgraph::stage stage
-        {
-            "sched.pid0.created",
-            lib::initgraph::presched_init_engine
+        static lib::initgraph::stage stage {
+            "sched.pid0.created", lib::initgraph::presched_init_engine
         };
         return &stage;
     }
 
-    lib::initgraph::task pid0_task
-    {
-        "sched.pid0-create",
-        lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            arch::bsp_initialised_stage(),
-            timers::initialised_stage()
-        },
-        lib::initgraph::entail {
-            pid0_created_stage()
-        },
-        [] {
+    lib::initgraph::task pid0_task {
+        "sched.pid0-create", lib::initgraph::presched_init_engine,
+        lib::initgraph::require { arch::bsp_initialised_stage(), timers::initialised_stage() },
+        lib::initgraph::entail { pid0_created_stage() }, [] {
             auto proc = std::make_shared<process_t>();
 
             proc->pid = 0;
@@ -314,9 +272,7 @@ namespace sched
             proc->session = nullptr;
 
             proc->vmspace = std::make_shared<vmm::vmspace>(
-                std::make_shared<vmm::pagemap>(
-                    vmm::kernel_pagemap.get()
-                )
+                std::make_shared<vmm::pagemap>(vmm::kernel_pagemap.get())
             );
 
             proc->vfs = nullptr;
@@ -352,9 +308,7 @@ namespace sched
         rq.idle->affinity = create_affinity();
 
         arch::init_thread(
-            rq.idle.get(),
-            reinterpret_cast<std::uintptr_t>(arch::halt),
-            true, false, false
+            rq.idle.get(), reinterpret_cast<std::uintptr_t>(arch::halt), true, false, false
         );
 
         rq.idle->set_flag(thread_flags::idle);
@@ -373,9 +327,7 @@ namespace sched
         kernel_proc->alive_threads.fetch_add(1, std::memory_order_relaxed);
 
         {
-            auto reaper = create_kthread(
-                reinterpret_cast<std::uintptr_t>(reap), 0, nice_t::max
-            );
+            auto reaper = create_kthread(reinterpret_cast<std::uintptr_t>(reap), 0, nice_t::max);
             reaper->affinity.clear(0);
             reaper->affinity.set(rq.cpu_idx, true);
             enqueue_on(reaper.get(), rq.cpu_idx, true);
@@ -500,8 +452,8 @@ namespace sched
         }
         else
         {
-            const auto &prev_vmspace = prev->saved_vmspace
-                ? prev->saved_vmspace : prev->proc->vmspace;
+            const auto &prev_vmspace =
+                prev->saved_vmspace ? prev->saved_vmspace : prev->proc->vmspace;
             if (next->proc->vmspace != prev_vmspace)
             {
                 if (prev_vmspace)
@@ -552,7 +504,7 @@ namespace sched
         if (!parent)
         {
             proc->pid = 1;
-            proc->parent = proc;                                  // init parents itself
+            proc->parent = proc; // init parents itself
 
             proc->session = std::make_shared<session_t>();
             proc->session->sid = proc->pid;
@@ -618,8 +570,7 @@ namespace sched
 
     std::shared_ptr<thread_t> create_uthread(
         const std::shared_ptr<process_t> &proc, std::uintptr_t ip, std::uintptr_t arg,
-        bool is_trampoline, bool is_clone,
-        std::uintptr_t stack, nice_t nice
+        bool is_trampoline, bool is_clone, std::uintptr_t stack, nice_t nice
     )
     {
         lib::bug_on(!proc);
@@ -648,17 +599,11 @@ namespace sched
             const auto prot = vmm::read | vmm::write;
             const auto flags = vmm::private_ | vmm::anonymous | vmm::stack;
 
-            const auto ret = proc->vmspace->map(
-                0, ustack_size,
-                prot, prot, flags, nullptr, 0
-            );
+            const auto ret = proc->vmspace->map(0, ustack_size, prot, prot, flags, nullptr, 0);
 
             if (!ret.has_value())
             {
-                lib::error(
-                    "sched: could not map user stack: {}",
-                    lib::error_name(ret.error())
-                );
+                lib::error("sched: could not map user stack: {}", lib::error_name(ret.error()));
                 return nullptr;
             }
 
@@ -691,12 +636,7 @@ namespace sched
         if (ustack_base != 0 && saved_vmspace)
         {
             if (const auto ret = saved_vmspace->unmap(ustack_base, ustack_size); !ret)
-            {
-                lib::error(
-                    "sched: could not unmap user stack: {}",
-                    lib::error_name(ret.error())
-                );
-            }
+                lib::error("sched: could not unmap user stack: {}", lib::error_name(ret.error()));
         }
 
         arch::deinit_thread(this);
@@ -749,12 +689,9 @@ namespace sched
         return ptr;
     }
 
-    std::size_t process_count()
-    {
-        return processes.lock()->size();
-    }
+    std::size_t process_count() { return processes.lock()->size(); }
 
-    void for_each_process(std::function_ref<bool (const std::shared_ptr<process_t> &)> func)
+    void for_each_process(std::function_ref<bool(const std::shared_ptr<process_t> &)> func)
     {
         std::vector<std::shared_ptr<process_t>> snapshot;
         {
@@ -784,9 +721,9 @@ namespace sched
                 return false;
 
             if (thread->state.compare_exchange_weak(
-                state, thread_state::runnable,
-                std::memory_order_acq_rel,
-                std::memory_order_acquire))
+                    state, thread_state::runnable, std::memory_order_acq_rel,
+                    std::memory_order_acquire
+                ))
                 break;
         }
 
@@ -1172,9 +1109,7 @@ namespace sched
             src_rq.dequeue(thread);
             src_rq.nr_running--;
 
-            const auto delta = static_cast<std::int64_t>(
-                thread->vruntime - src_rq._min_vruntime
-            );
+            const auto delta = static_cast<std::int64_t>(thread->vruntime - src_rq._min_vruntime);
             thread->vruntime = my_rq._min_vruntime + std::max(0l, delta);
 
             my_rq.enqueue(thread);
@@ -1380,14 +1315,15 @@ namespace sched
                 return -ESRCH;
 
             targets.reserve(locked->size());
-            for (auto it = locked->begin(); it != locked->end(); )
+            for (auto it = locked->begin(); it != locked->end();)
             {
                 if (auto ptr = it->second.lock())
                 {
                     targets.push_back(std::move(ptr));
                     it++;
                 }
-                else it = locked->erase(it);
+                else
+                    it = locked->erase(it);
             }
         }
 
@@ -1584,8 +1520,9 @@ namespace sched
         if ((flags & clone_parent) && caller_proc->pid == 1)
             return -EINVAL;
 
-        const auto needs_priv = flags & (clone_newcgroup | clone_newipc | clone_newnet |
-            clone_newns | clone_newpid | clone_newuts | clone_newtime);
+        const auto needs_priv = flags &
+            (clone_newcgroup | clone_newipc | clone_newnet | clone_newns | clone_newpid |
+             clone_newuts | clone_newtime);
         if (needs_priv && !capable(caller_proc->cred, cap_t::sys_admin))
             return -EPERM;
 
@@ -1597,7 +1534,8 @@ namespace sched
 
             constexpr auto min = vmm::vmspace::mmap_min;
             constexpr auto max = vmm::vmspace::vspace_top;
-            if (args.stack > max || args.stack < min || size > args.stack || args.stack - size < min)
+            if (args.stack > max || args.stack < min || size > args.stack ||
+                args.stack - size < min)
                 return -EINVAL;
 
             stack_top = args.stack + size;
@@ -1643,9 +1581,8 @@ namespace sched
 
         if (created_proc)
         {
-            auto parent_shared = (flags & clone_parent)
-                ? caller_proc->parent.lock()
-                : caller_proc->shared_from_this();
+            auto parent_shared = (flags & clone_parent) ? caller_proc->parent.lock()
+                                                        : caller_proc->shared_from_this();
             target_proc = create_process(parent_shared);
 
             target_proc->no_new_privs = caller_proc->no_new_privs;
@@ -1653,7 +1590,8 @@ namespace sched
             if (flags & clone_vm)
             {
                 // TODO: clear alternate signal stacks
-                if (!(flags & clone_vfork)) { }
+                if (!(flags & clone_vfork))
+                { }
 
                 target_proc->vmspace = caller_proc->vmspace;
             }
@@ -1677,19 +1615,17 @@ namespace sched
             target_proc->cred = caller_proc->cred;
             target_proc->rlimits = caller_proc->rlimits->clone();
             target_proc->dumpable.store(
-                caller_proc->dumpable.load(std::memory_order_relaxed),
-                std::memory_order_relaxed
+                caller_proc->dumpable.load(std::memory_order_relaxed), std::memory_order_relaxed
             );
 
             target_proc->pathname = caller_proc->pathname;
             target_proc->argv = caller_proc->argv;
         }
-        else target_proc = caller_proc->shared_from_this();
+        else
+            target_proc = caller_proc->shared_from_this();
 
-        target_thread = create_uthread(
-            target_proc, 0, 0, false, true,
-            stack_top, caller_thread->nice
-        );
+        target_thread =
+            create_uthread(target_proc, 0, 0, false, true, stack_top, caller_thread->nice);
 
         target_thread->sigmask = caller_thread->sigmask;
 
@@ -1731,9 +1667,8 @@ namespace sched
 
         // TODO: better abstraction
 #if defined(__x86_64__)
-        auto regs = reinterpret_cast<cpu::registers *>(
-            target_thread->kstack_top - sizeof(cpu::registers)
-        );
+        auto regs =
+            reinterpret_cast<cpu::registers *>(target_thread->kstack_top - sizeof(cpu::registers));
         std::memcpy(regs, caller_thread->saved_regs, sizeof(cpu::registers));
 
         regs->rax = 0;
@@ -1771,8 +1706,8 @@ namespace sched
     }
 
     int exec(
-        const vfs::path &path, std::vector<std::string> argv,
-        std::vector<std::string> envp, std::string pathname
+        const vfs::path &path, std::vector<std::string> argv, std::vector<std::string> envp,
+        std::string pathname
     )
     {
         {
@@ -1796,7 +1731,9 @@ namespace sched
             {
                 const std::unique_lock _ { inode->lock };
 
-                if (!vfs::check_access(path, process->cred, static_cast<unsigned>(access_mode::exec)))
+                if (!vfs::check_access(
+                        path, process->cred, static_cast<unsigned>(access_mode::exec)
+                    ))
                     return -EACCES;
             }
 
@@ -1828,7 +1765,8 @@ namespace sched
                     stat.st_mode &= ~(s_isuid | s_isgid);
                     apply_exec_caps(process, stat, fcaps);
                 }
-                else apply_exec_caps(process, inode->stat, fcaps);
+                else
+                    apply_exec_caps(process, inode->stat, fcaps);
             }
 
             auto new_pmap = std::make_shared<vmm::pagemap>();
@@ -1848,12 +1786,14 @@ namespace sched
             process->pathname = pathname;
             process->argv = argv;
 
-            auto new_thread = (*image)->load({
-                .pathname = std::move(pathname),
-                .argv = std::move(argv),
-                .envp = std::move(envp),
-                .proc = process,
-            });
+            auto new_thread = (*image)->load(
+                bin::exec::request {
+                    .pathname = std::move(pathname),
+                    .argv = std::move(argv),
+                    .envp = std::move(envp),
+                    .proc = process,
+                }
+            );
 
             if (!new_thread)
             {
@@ -1923,10 +1863,7 @@ namespace sched
         return ret;
     }
 
-    cputime_t thread_cputime(thread_t *thread)
-    {
-        return { thread->utime_ns, thread->stime_ns };
-    }
+    cputime_t thread_cputime(thread_t *thread) { return { thread->utime_ns, thread->stime_ns }; }
 
     cputime_t children_cputime(process_t *proc)
     {
@@ -2169,15 +2106,12 @@ namespace sched
             return proc->pathname.basename();
         }
 
-        lib::initgraph::task procfs_register_task
-        {
-            "sched.procfs.register",
-            lib::initgraph::postsched_init_engine,
-            lib::initgraph::require { fs::procfs::registered_stage() },
-            [] {
+        lib::initgraph::task procfs_register_task {
+            "sched.procfs.register", lib::initgraph::postsched_init_engine,
+            lib::initgraph::require { fs::procfs::registered_stage() }, [] {
                 using namespace fs::procfs;
-                lib::bug_on(!register_per_pid("status",
-                    make_file_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "status", make_file_ops([](process_t *proc) {
                         // TODO: VmPeak/VmSize/VmRSS/VmData/VmStk, SigQ, CapInh, etc.
                         const std::unique_lock _ { proc->lock };
 
@@ -2195,18 +2129,16 @@ namespace sched
                             "Uid:\t{} {} {} {}\n"
                             "Gid:\t{} {} {} {}\n"
                             "Threads:\t{}\n",
-                            "NoNewPrivs: \t{}\n",
-                            proc_comm(proc), state_letter(proc),
-                            proc->pid, proc->pid, ppid,
-                            cred.ruid, cred.euid, cred.suid, cred.fsuid,
-                            cred.rgid, cred.egid, cred.sgid, cred.fsgid,
-                            threads, proc->no_new_privs ? 1 : 0
+                            "NoNewPrivs: \t{}\n", proc_comm(proc), state_letter(proc), proc->pid,
+                            proc->pid, ppid, cred.ruid, cred.euid, cred.suid, cred.fsuid, cred.rgid,
+                            cred.egid, cred.sgid, cred.fsgid, threads, proc->no_new_privs ? 1 : 0
                         );
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_per_pid("stat",
-                    make_file_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "stat", make_file_ops([](process_t *proc) {
                         // TODO: tty_nr, flags, faults, stime, starttime, rss, wchan, processor, policy
                         const std::unique_lock _ { proc->lock };
 
@@ -2277,20 +2209,16 @@ namespace sched
                             "0 0 {} {} "
                             "0 0 0 "
                             "{}\n",
-                            proc->pid, comm, state, ppid, pgid, sid,
-                            utime_ticks,
-                            priority, nice_val, threads,
-                            vsize,
-                            startcode, endcode,
-                            startstack,
-                            proc->term_signal,
-                            startbrk, curr_brk,
-                            proc->exit_code
+                            proc->pid, comm, state, ppid, pgid, sid, utime_ticks, priority,
+                            nice_val, threads, vsize, startcode, endcode, startstack,
+                            proc->term_signal, startbrk, curr_brk, proc->exit_code
                         );
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_per_pid("comm",
+                lib::bug_on(!register_per_pid(
+                    "comm",
                     make_file_ops(
                         [](process_t *proc) {
                             const std::unique_lock _ { proc->lock };
@@ -2301,11 +2229,12 @@ namespace sched
                             proc->comm = lib::trim(data.substr(0, 15));
                             return { };
                         }
-                    ), node_type::file, 0644
+                    ),
+                    node_type::file, 0644
                 ));
 
-                lib::bug_on(!register_per_pid("cmdline",
-                    make_file_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "cmdline", make_file_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         std::string out;
                         for (const auto &arg : proc->argv)
@@ -2314,11 +2243,12 @@ namespace sched
                             out.push_back('\0');
                         }
                         return out;
-                    }), node_type::file, 0444
+                    }),
+                    node_type::file, 0444
                 ));
 
-                lib::bug_on(!register_per_pid("maps",
-                    make_file_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "maps", make_file_ops([](process_t *proc) {
                         // TODO: missing inode/dev/pathname columns and [stack]/[heap]/[vdso]
                         const std::unique_lock _ { proc->lock };
                         std::string out;
@@ -2332,42 +2262,46 @@ namespace sched
                         for (auto it = locked->begin(); it != locked->end(); it++)
                         {
                             const auto &entry = *it;
-                            const char r = (entry.prot & vmm::read)  ? 'r' : '-';
+                            const char r = (entry.prot & vmm::read) ? 'r' : '-';
                             const char w = (entry.prot & vmm::write) ? 'w' : '-';
-                            const char x = (entry.prot & vmm::exec)  ? 'x' : '-';
+                            const char x = (entry.prot & vmm::exec) ? 'x' : '-';
                             const char p = (entry.flags & vmm::shared) ? 's' : 'p';
-                            fmt::format_to(out_it,
-                                "{:016x}-{:016x} {}{}{}{} {:08x} 00:00 0\n",
-                                entry.startp, entry.endp, r, w, x, p, entry.offp
+                            fmt::format_to(
+                                out_it, "{:016x}-{:016x} {}{}{}{} {:08x} 00:00 0\n", entry.startp,
+                                entry.endp, r, w, x, p, entry.offp
                             );
                         }
                         return out;
-                    }), node_type::file, 0400
+                    }),
+                    node_type::file, 0400
                 ));
 
-                lib::bug_on(!register_per_pid("exe",
-                    make_symlink_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "exe", make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         // TODO
                         const auto res = vfs::resolve(proc->vfs->root, proc->pathname);
                         if (!res)
                             return proc->pathname.str();
                         return vfs::pathname_from(res->target);
-                    }), node_type::symlink, 0777
+                    }),
+                    node_type::symlink, 0777
                 ));
 
-                lib::bug_on(!register_per_pid("cwd",
-                    make_symlink_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "cwd", make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         return vfs::pathname_from(proc->vfs->cwd);
-                    }), node_type::symlink, 0777
+                    }),
+                    node_type::symlink, 0777
                 ));
 
-                lib::bug_on(!register_per_pid("root",
-                    make_symlink_ops([](process_t *proc) {
+                lib::bug_on(!register_per_pid(
+                    "root", make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
                         return vfs::pathname_from(proc->vfs->root);
-                    }), node_type::symlink, 0777
+                    }),
+                    node_type::symlink, 0777
                 ));
             }
         };
