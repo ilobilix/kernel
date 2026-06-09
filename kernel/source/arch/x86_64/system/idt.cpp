@@ -146,7 +146,7 @@ namespace x86_64::idt
 
         lib::expect<std::size_t> reserve_num(std::size_t cpu_idx, std::size_t count)
         {
-            count = lib::next_pow2(count);
+            count = std::bit_ceil(count);
             auto base = lib::align_up(irq(0), count);
 
             while (base + count <= num_ints)

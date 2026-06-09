@@ -225,6 +225,7 @@ export namespace pci
         std::span<bar> get_bars() override { return bars; }
     };
 
+    enum class irq_type { msi, msix, intx };
     struct device : entity
     {
         std::uint16_t venid, devid;
@@ -243,16 +244,15 @@ export namespace pci
 
         std::span<bar> get_bars() override { return bars; }
 
-        lib::expect<irq::handle_t> request_irq(
+        lib::expect<std::pair<irq::handle_t, irq_type>> request_irq(
             irq::handler_fn fn, std::size_t cpu_idx, std::string_view name
         );
 
-        lib::expect<std::vector<irq::handle_t>> alloc_irqs(
+        lib::expect<std::pair<std::vector<irq::handle_t>, irq_type>> alloc_irqs(
             std::size_t count, std::size_t cpu_idx
         );
 
-        // irq::free must be called on every handle before this
-        void release_irqs();
+        void release_irqs(std::span<irq::handle_t> handles, irq_type type);
     };
 
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus);

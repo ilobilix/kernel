@@ -41,14 +41,14 @@ namespace pci
     {
         pci_drv() : pci::driver_t { "pci-driver", drv_ids } { }
 
-        lib::expect<void> probe(dev::device_t &dev) override
+        lib::expect<void> probe(pci::device_t &dev) override
         {
             lib::unused(dev);
             lib::info("probing pci-driver");
             return { }; // success
         }
 
-        bool remove(dev::device_t &dev) override
+        bool remove(pci::device_t &dev) override
         {
             lib::unused(dev);
             lib::info("removing pci-driver");

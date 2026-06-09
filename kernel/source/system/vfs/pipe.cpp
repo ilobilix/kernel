@@ -17,7 +17,7 @@ namespace vfs::pipe
 
         std::size_t round_capacity(std::size_t size)
         {
-            return lib::next_pow2(std::clamp(size, pipe_buf, max_capacity));
+            return std::bit_ceil(std::clamp(size, pipe_buf, max_capacity));
         }
 
         struct data

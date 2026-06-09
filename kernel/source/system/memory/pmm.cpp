@@ -52,14 +52,14 @@ namespace pmm
             {
                 if (size < page_size)
                     return -1;
-                return lib::log2(lib::pre_pow2(size)) - 12;
+                return lib::log2(std::bit_floor(size)) - 12;
             }
 
             static inline std::ptrdiff_t next_order_from(std::size_t size)
             {
                 if (size < page_size)
                     return -1;
-                return lib::log2(lib::next_pow2(size)) - 12;
+                return lib::log2(std::bit_ceil(size)) - 12;
             }
 
             inline void put(std::size_t order, list *pg)

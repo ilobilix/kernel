@@ -7,7 +7,7 @@ import std;
 
 export namespace pci
 {
-    enum class cmd : std::uint16_t
+    enum cmd : std::uint16_t
     {
         io_space = (1 << 0),
         mem_space = (1 << 1),

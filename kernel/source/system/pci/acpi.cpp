@@ -303,7 +303,6 @@ namespace pci::acpi
     {
         "pci.acpi.discover-ios",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { ::acpi::tables_stage() },
         lib::initgraph::entail { ios_discovered_stage() },
         [] {
             uacpi_table table;

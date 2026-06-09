@@ -19,6 +19,7 @@ export namespace pci::msi
         bool _addr64;
         bool _per_vector_mask;
 
+        std::uint8_t _nvec;
         std::uint8_t _allocated_vecs;
         std::vector<irq::irq_data *> _spare_parents;
 
@@ -50,6 +51,7 @@ export namespace pci::msi
             irq::irq_data &data, const lib::bitmap &cpus, bool force
         ) override;
 
+        std::size_t vec_count() const { return _nvec; }
         std::size_t live_count() const { return _allocated_vecs; }
     };
 

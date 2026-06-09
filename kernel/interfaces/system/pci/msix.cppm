@@ -44,6 +44,7 @@ export namespace pci::msix
             irq::irq_data &data, const lib::bitmap &cpus, bool force
         ) override;
 
+        std::size_t vec_count() const { return _nvec; }
         std::size_t live_count() const { return _live_count; }
     };
 

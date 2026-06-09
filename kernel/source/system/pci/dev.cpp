@@ -326,9 +326,9 @@ namespace pci
                     for (const auto &bar : dev->get_bars())
                     {
                         if (bar.type == bar::type::mem)
-                            bits |= 1 << 1;
+                            bits |= cmd::mem_space;
                         else if (bar.type == bar::type::io)
-                            bits |= 1 << 0;
+                            bits |= cmd::io_space;
                     }
                     if (enable)
                         dev->write<16>(reg::cmd, cmd | bits);

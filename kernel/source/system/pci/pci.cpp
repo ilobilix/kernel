@@ -232,7 +232,8 @@ namespace pci
                         auto lenhigh = read<std::uint32_t>(offseth);
                         write<std::uint32_t>(offseth, barh);
 
-                        length = ~((static_cast<std::uint64_t>(lenhigh) << 32) | (lenlow & ~0b1111)) + 1;
+                        length = ~((static_cast<std::uint64_t>(lenhigh) << 32) |
+                            (lenlow & ~0b1111)) + 1;
                         addr = (static_cast<std::uint64_t>(barh) << 32) | (bar & ~0b1111);
 
                         bit64 = true;
@@ -267,32 +268,51 @@ namespace pci
         }
     }
 
-    lib::expect<irq::handle_t> device::request_irq(
+    auto device::request_irq(
         irq::handler_fn fn, std::size_t cpu_idx, std::string_view name
-    )
+    ) -> lib::expect<std::pair<irq::handle_t, irq_type>>
     {
         if (auto handle = msix::request(*this, cpu_idx, fn, name))
-            return handle;
-        if (auto handle = msi::request(*this, cpu_idx, std::move(fn), name))
-            return handle;
-        return intx::request(*this, cpu_idx, std::move(fn), name);
+            return std::make_pair(*handle, irq_type::msix);
+
+        if (auto handle = msi::request(*this, cpu_idx, fn, name))
+            return std::make_pair(*handle, irq_type::msi);
+
+        auto handle = intx::request(*this, cpu_idx, std::move(fn), name);
+        return handle.transform([](const auto &handle) {
+            return std::make_pair(handle, irq_type::intx);
+        });
     }
 
-    lib::expect<std::vector<irq::handle_t>> device::alloc_irqs(
+    auto device::alloc_irqs(
         std::size_t count, std::size_t cpu_idx
-    )
+    ) -> lib::expect<std::pair<std::vector<irq::handle_t>, irq_type>>
     {
         if (auto handles = msix::alloc(*this, count, cpu_idx))
-            return handles;
+            return std::make_pair(std::move(*handles), irq_type::msix);
+
         if (auto handles = msi::alloc(*this, count, cpu_idx))
-            return handles;
+            return std::make_pair(std::move(*handles), irq_type::msi);
+
         return std::unexpected { lib::err::not_supported };
     }
 
-    void device::release_irqs()
+    void device::release_irqs(std::span<irq::handle_t> handles, irq_type type)
     {
-        pci::msi::release(*this);
-        pci::msix::release(*this);
+        for (const auto &handle : handles)
+            irq::free(handle);
+
+        switch (type)
+        {
+            case irq_type::msi:
+                pci::msi::release(*this);
+                break;
+            case irq_type::msix:
+                pci::msix::release(*this);
+                break;
+            case irq_type::intx:
+                break;
+        }
     }
 
     void addio(std::shared_ptr<configio> io, std::uint16_t seg, std::uint16_t bus)

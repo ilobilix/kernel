@@ -243,6 +243,9 @@ export namespace dev
 
     struct device_t : kobject_t
     {
+        static inline std::atomic_size_t next_id = 0;
+        const std::size_t id;
+
         bus_t *bus = nullptr;
         driver_t *drv = nullptr;
         class_t *cls = nullptr;
@@ -256,7 +259,7 @@ export namespace dev
         std::vector<std::pair<std::string, std::string>> props;
 
         device_t(std::string_view name, ktype_t *type)
-            : kobject_t { name, type } { }
+            : kobject_t { name, type }, id { next_id.fetch_add(1, std::memory_order_relaxed) } { }
 
         device_t *as_device() override { return this; }
 

@@ -24,7 +24,7 @@ namespace vfs::socket
 
         std::size_t round_capacity(std::size_t size)
         {
-            return lib::next_pow2(std::clamp(size, min_capacity, max_capacity));
+            return std::bit_ceil(std::clamp(size, min_capacity, max_capacity));
         }
 
         void raise_sigpipe()
