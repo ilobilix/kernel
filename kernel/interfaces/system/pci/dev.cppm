@@ -61,29 +61,6 @@ export namespace pci
         std::string get_modalias() const;
     };
 
-    struct driver_t : dev::driver_t
-    {
-        private:
-        lib::locker<
-            std::vector<id_t>,
-            lib::rwspinlock
-        > _dynamic_ids;
-
-        std::span<const id_t> _ids;
-
-        public:
-        driver_t(std::string_view name, std::span<const id_t> ids)
-            : dev::driver_t { name, get_bus() }, _ids { ids }
-        {
-            type = get_driver_ktype();
-        }
-
-        bool matches(const std::shared_ptr<pci::device> &dev);
-
-        void add_id(const id_t &id);
-        bool remove_id(std::uint16_t vendor, std::uint16_t device);
-    };
-
     struct device_t : dev::device_t
     {
         std::shared_ptr<pci::device> dev;
@@ -98,6 +75,39 @@ export namespace pci
             bus = get_bus();
             modalias = get_modalias(device);
         }
+    };
+
+    struct driver_t : dev::driver_t
+    {
+        private:
+        lib::locker<std::vector<id_t>, lib::rwspinlock> _dynamic_ids;
+
+        std::span<const id_t> _ids;
+
+        public:
+        driver_t(std::string_view name, std::span<const id_t> ids)
+            : dev::driver_t { name, get_bus() }, _ids { ids }
+        {
+            type = get_driver_ktype();
+        }
+
+        virtual lib::expect<void> probe(device_t &dev) = 0;
+        virtual bool remove(device_t &dev) = 0;
+
+        lib::expect<void> probe(dev::device_t &dev) override
+        {
+            return probe(static_cast<device_t &>(dev));
+        }
+
+        bool remove(dev::device_t &dev) override
+        {
+            return remove(static_cast<device_t &>(dev));
+        }
+
+        bool matches(const std::shared_ptr<pci::device> &dev);
+
+        void add_id(const id_t &id);
+        bool remove_id(std::uint16_t vendor, std::uint16_t device);
     };
 
     struct bus_t : dev::bus_t

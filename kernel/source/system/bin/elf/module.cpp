@@ -111,14 +111,15 @@ namespace bin::elf::mod
 
             const auto deps = entry.header->dependencies();
             const auto ndeps = deps.size();
+            if (ndeps == 0)
+                return;
+
             lib::info("elf: - dependencies: {}", ndeps);
 
-            if (ndeps != 0)
-                lib::print(lib::log::level::info, "elf: -  ");
+            lib::print(lib::log::level::info, "elf: -  ");
             for (std::size_t i = 0; i < ndeps; i++)
                 lib::print("'{}'{}", std::string_view { deps[i] }, i == ndeps - 1 ? "" : ", ");
-            if (ndeps != 0)
-                lib::println();
+            lib::println();
         }
 
         std::size_t load(

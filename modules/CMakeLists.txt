@@ -35,6 +35,11 @@ foreach(_arch IN LISTS _module_arches)
             continue()
         endif()
 
+        set(_module_interfaces ${_sources})
+        list(FILTER _module_interfaces INCLUDE REGEX "\\.cppm$")
+        set(_module_compile_sources ${_sources})
+        list(FILTER _module_compile_sources EXCLUDE REGEX "\\.cppm$")
+
         if(NOT EXISTS ${_mod_dir}/EXTERNAL)
             set_source_files_properties(${_sources}
                 PROPERTIES
@@ -42,7 +47,17 @@ foreach(_arch IN LISTS _module_arches)
             )
 
             string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _internal_target "intmod_${_arch}_${_mod}")
-            add_library(${_internal_target} OBJECT ${_sources})
+            add_library(${_internal_target} OBJECT ${_module_compile_sources})
+
+            if(_module_interfaces)
+                target_sources(${_internal_target}
+                    PRIVATE
+                        FILE_SET cxx_modules
+                        TYPE CXX_MODULES
+                        BASE_DIRS ${_mod_dir}
+                        FILES ${_module_interfaces}
+                )
+            endif()
 
             add_dependencies(${_internal_target} generate_git_version)
             target_include_directories(${_internal_target} PRIVATE ${DEPENDENCY_INCLUDES})
@@ -54,7 +69,17 @@ foreach(_arch IN LISTS _module_arches)
         endif()
 
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _target "extmod_${_arch}_${_mod}")
-        add_library(${_target} SHARED ${_sources})
+        add_library(${_target} SHARED ${_module_compile_sources})
+
+        if(_module_interfaces)
+            target_sources(${_target}
+                PRIVATE
+                    FILE_SET cxx_modules
+                    TYPE CXX_MODULES
+                    BASE_DIRS ${_mod_dir}
+                    FILES ${_module_interfaces}
+            )
+        endif()
 
         add_dependencies(${_target} generate_git_version)
         target_compile_definitions(${_target} PRIVATE "__MODULE_NAME__=${_mod}")

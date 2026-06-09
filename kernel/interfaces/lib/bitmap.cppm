@@ -166,6 +166,11 @@ export namespace lib
             return _count;
         }
 
+        constexpr std::size_t size() const
+        {
+            return _count;
+        }
+
         constexpr std::size_t size_bytes() const
         {
             return div_roundup(_count, 8u);

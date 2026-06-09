@@ -121,24 +121,6 @@ export namespace lib
         return !(num & (num - 1));
     }
 
-    inline constexpr std::size_t next_pow2(std::size_t val)
-    {
-        val--;
-        val |= val >> 1;
-        val |= val >> 2;
-        val |= val >> 4;
-        val |= val >> 8;
-        val |= val >> 16;
-        val |= val >> 32;
-        return ++val;
-    }
-
-    inline constexpr std::size_t pre_pow2(std::size_t val)
-    {
-        const auto np2 = next_pow2(val);
-        return np2 == val ? np2 : np2 >> 1;
-    }
-
     class freqfrac
     {
         private:

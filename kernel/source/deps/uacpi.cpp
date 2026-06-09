@@ -58,12 +58,7 @@ namespace uacpi
     {
         "uacpi.create-workers",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            sched::pid0_created_stage()
-        },
-        lib::initgraph::entail {
-            acpi::workers_stage()
-        },
+        lib::initgraph::entail { acpi::workers_stage() },
         [] {
             sched::spawn(+[] {
                 worker_caller(notify, notify_added);
@@ -270,6 +265,8 @@ extern "C"
 
         if (!pmap->unmap(vaddr, size, psize))
             lib::panic("could not unmap acpi memory");
+
+        vmm::free_vspace(vaddr, size);
     }
 
     void *uacpi_kernel_alloc(uacpi_size size) { return lib::alloc(size); }

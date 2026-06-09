@@ -94,6 +94,7 @@ namespace pci::msi
         const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
         _addr64 = (mc_val & mc_addr64) != 0;
         _per_vector_mask = (mc_val & mc_per_vec_mask) != 0;
+        _nvec = lib::pow2((mc_val & mc_mmc_mask) >> mc_mmc_shift);
     }
 
     msi_domain::~msi_domain()
@@ -109,11 +110,8 @@ namespace pci::msi
         if (data.empty())
             return { };
 
-        const auto count = lib::next_pow2(data.size());
-        const auto log2 = lib::log2(count);
-
-        const auto mc_now = _dev->read<std::uint16_t>(_cap_offset + reg::msg_control);
-        if (log2 > ((mc_now & mc_mmc_mask) >> mc_mmc_shift))
+        const auto count = std::bit_ceil(data.size());
+        if (count > _nvec)
             return std::unexpected { lib::err::invalid_argument };
 
         {
@@ -182,7 +180,7 @@ namespace pci::msi
 
             auto mc_val = cap.read<std::uint16_t>(reg::msg_control);
             mc_val &= ~mc_mme_mask;
-            mc_val |= static_cast<std::uint16_t>(log2 << mc_mme_shift);
+            mc_val |= static_cast<std::uint16_t>(lib::log2(count) << mc_mme_shift);
             mc_val |= mc_enable;
             cap.write<std::uint16_t>(reg::msg_control, mc_val);
         }
