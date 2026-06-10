@@ -122,7 +122,7 @@ namespace x86_64::idt
             if ((!acpi::madt::hdr || (acpi::madt::hdr->flags & ACPI_PIC_ENABLED)) &&
                 hint >= irq(0) && hint <= irq(15))
             {
-                if (auto ret = handler_at(cpu_idx, hint); ret && !ret->used())
+                if (auto ret = handler_at(cpu_idx, hint); ret && !ret->used() && !ret->is_reserved())
                 {
                     ret->reserve();
                     return hint;

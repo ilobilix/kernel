@@ -230,6 +230,3 @@ export namespace boot
         get_hhdm_offset(); time();
     }
 } // export namespace boot
-
-// used in math.cppm
-extern "C++" std::uintptr_t (*get_hhdm_offset)() = &boot::get_hhdm_offset;

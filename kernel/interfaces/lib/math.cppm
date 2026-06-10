@@ -3,9 +3,7 @@
 export module lib:math;
 import std;
 
-extern "C++" std::uintptr_t (*get_hhdm_offset)();
-
-namespace lib::detail
+namespace lib
 {
     template<typename Type>
     using get_ret_type =
@@ -16,7 +14,10 @@ namespace lib::detail
                 std::uintptr_t, std::intptr_t
             >, Type
         >;
-} // namespace lib::detail
+
+    std::uintptr_t get_hhdm_offset();
+} // namespace lib
+
 export using uint128_t = unsigned _BitInt(128);
 export using int128_t = _BitInt(128);
 
@@ -38,13 +39,13 @@ export namespace lib
         return std::uintptr_t(val) >= get_hhdm_offset();
     }
 
-    template<typename Type, typename Ret = detail::get_ret_type<Type>>
+    template<typename Type, typename Ret = get_ret_type<Type>>
     inline Ret tohh(Type val)
     {
         return ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) + get_hhdm_offset());
     }
 
-    template<typename Type, typename Ret = detail::get_ret_type<Type>>
+    template<typename Type, typename Ret = get_ret_type<Type>>
     inline Ret fromhh(Type val)
     {
         return !ishh(val) ? Ret(val) : Ret(std::uintptr_t(val) - get_hhdm_offset());
