@@ -8,6 +8,9 @@ module;
 #include <arch/register.hpp>
 #include <arch/variable.hpp>
 
+#include <arch/dma_pool.hpp>
+#include <arch/dma_structs.hpp>
+
 export module libarch;
 
 export namespace arch
@@ -29,4 +32,17 @@ export namespace arch
 
     using ::arch::scalar_storage;
     using ::arch::bit_storage;
+
+    using ::arch::dma_region;
+    using ::arch::dma_ptr;
+
+    using ::arch::contiguous_pool;
+    using ::arch::dma_pool;
+
+    using ::arch::dma_buffer;
+    using ::arch::dma_buffer_view;
+    using ::arch::dma_object;
+    using ::arch::dma_object_view;
+    using ::arch::dma_array;
+    using ::arch::dma_array_view;
 } // export namespace arch

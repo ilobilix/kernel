@@ -148,8 +148,7 @@ namespace syscall::vfs
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto gen = data->bell.snapshot_gen();
-                    const auto res = data->bell.wait_prepared(gen);
+                    const auto res = data->bell.wait();
                     if (res.interrupted || res.killed)
                     {
                         std::size_t after = 0;
