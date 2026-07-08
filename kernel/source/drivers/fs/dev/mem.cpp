@@ -36,12 +36,6 @@ namespace fs::dev::mem
             lib::unused(file, offset);
             return buffer.size_bytes();
         }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
-        }
     };
 
     struct zero_ops : vfs::ops
@@ -70,12 +64,6 @@ namespace fs::dev::mem
             lib::unused(file, offset, buffer);
             return buffer.size_bytes();
         }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
-        }
     };
 
     struct full_ops : vfs::ops
@@ -103,12 +91,6 @@ namespace fs::dev::mem
         {
             lib::unused(file, offset, buffer);
             return std::unexpected { lib::err::no_space_left };
-        }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
         }
     };
 
@@ -157,12 +139,6 @@ namespace fs::dev::mem
                 progress += chunk_size;
             }
             return buffer.size_bytes();
-        }
-
-        lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-        {
-            lib::unused(file, size);
-            return { };
         }
     };
 

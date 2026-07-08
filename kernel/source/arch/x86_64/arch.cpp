@@ -26,7 +26,7 @@ namespace arch
         std::unreachable();
     }
 
-    void halt_others()
+    void nmi_others()
     {
         using namespace x86_64;
         if (cpu::count() > 1 && apic::is_initialised())

@@ -12,55 +12,27 @@ namespace nvme
         _io_queues[idx % _io_queues.size()]->submit(cmd);
     }
 
-    lib::expect<void> namespace_t::rw(
-        bool write, std::uint64_t lba, std::uint32_t nlb,
-        lib::maybe_uspan<std::byte> buf
+    void namespace_t::rw(
+        bool write, std::uint64_t lba, arch::dma_buffer &buffer,
+        std::function<void (lib::expect<void>)> cb
     )
     {
-        if (nlb == 0)
-            return { };
-        if (lba + nlb > _lba_count)
-            return std::unexpected { lib::err::invalid_argument };
-        if (buf.size_bytes() < (static_cast<std::size_t>(nlb) << _lba_shift))
-            return std::unexpected { lib::err::invalid_argument };
+        auto cmd = std::make_shared<command_t>(_pool);
+        cmd->setup(buffer);
 
-        const auto max_blocks = std::min(_max_transfer >> _lba_shift, 0x10000zu);
+        auto &buf = cmd->buffer().rw;
+        buf.opcode = write ? spec::write : spec::read;
+        buf.nsid = _nsid;
+        buf.start_lba = lba;
+        buf.length = (buffer.size() >> _lba_shift) - 1;
 
-        std::size_t offset = 0;
-        while (nlb != 0)
-        {
-            const std::uint32_t chunk = std::min<std::size_t>(nlb, max_blocks);
-            const auto bytes = static_cast<std::size_t>(chunk) << _lba_shift;
-
-            arch::dma_buffer dma { &_pool, bytes };
-            const std::span dma_span { dma.byte_data(), bytes };
-            const auto window = buf.subspan(offset, bytes);
-
-            if (write && !window.copy_to(dma_span))
-                return std::unexpected { lib::err::invalid_address };
-
-            auto cmd = std::make_shared<command_t>(_pool);
-            cmd->setup(dma);
-            cmd->own(std::move(dma));
-
-            auto &buf = cmd->buffer().rw;
-            buf.opcode = write ? spec::write : spec::read;
-            buf.nsid = _nsid;
-            buf.start_lba = lba;
-            buf.length = static_cast<std::uint16_t>(chunk - 1);
-
-            submit(cmd);
-            if (!cmd->wait(io_timeout_ms * 1'000'000ul) || !cmd->get().first.successful())
-                return std::unexpected { lib::err::io_error };
-
-            if (!write && !window.copy_from(dma_span))
-                return std::unexpected { lib::err::invalid_address };
-
-            lba += chunk;
-            nlb -= chunk;
-            offset += bytes;
-        }
-        return { };
+        cmd->on_complete([cb = std::move(cb)](command_t::result res) {
+            cb(res.first.successful()
+                ? lib::expect<void> { }
+                : std::unexpected { lib::err::io_error }
+            );
+        });
+        submit(cmd);
     }
 
     lib::expect<void> namespace_t::flush()

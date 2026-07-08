@@ -9,6 +9,8 @@ export import system.chrono;
 export import system.cmdline;
 export import system.cpu;
 export import system.cpu.local;
+export import system.dev;
+export import system.dev.block;
 export import system.irq;
 export import system.memory;
 export import system.pci;

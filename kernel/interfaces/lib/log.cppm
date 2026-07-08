@@ -65,9 +65,7 @@ export namespace lib::log
 
     void register_logger(logger *lg);
 
-    void set_direct_print(bool _direct);
-    void force_unlock();
-
+    void die();
     void wait_for_logs();
 
     inline void vprint(level lvl, std::size_t len, std::string_view fmt, fmt::format_args args)

@@ -79,11 +79,6 @@ namespace vfs::socket
                 return from_file(*file)->sendmsg(hdr, flags);
             }
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-            {
-                lib::unused(file, size);
-                return std::unexpected { lib::err::illegal_seek };
-            }
 
             lib::expect<std::uint16_t> poll(
                 std::shared_ptr<vfs::file> file, vfs::poll_table *pt
@@ -193,7 +188,7 @@ namespace vfs::socket
 
             lib::bug_on(!register_global("net",
                 make_symlink_ops([](auto) {
-                    return std::string { "self/net" };
+                    return "self/net";
                 }), node_type::symlink, 0777
             ));
         }

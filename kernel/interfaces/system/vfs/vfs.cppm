@@ -213,6 +213,9 @@ export namespace vfs
     struct inode;
     struct ops
     {
+        virtual bool truncable() const { return false; }
+        virtual bool seekable() const { return true; }
+
         virtual lib::expect<void> open(std::shared_ptr<file> file, int flags, pid_t pid)
         {
             lib::unused(file, flags, pid);
@@ -233,15 +236,18 @@ export namespace vfs
             std::shared_ptr<file> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
-        virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size) = 0;
+
+        virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size)
+        {
+            lib::unused(file, size);
+            return std::unexpected { lib::err::invalid_argument };
+        }
 
         virtual lib::expect<void> getattr(std::shared_ptr<inode> inode)
         {
             lib::unused(inode);
             return { };
         }
-
-        virtual bool seekable() const { return true; }
 
         virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt)
         {
@@ -565,6 +571,13 @@ export namespace vfs
 
             if (const auto ret = ops->close(*this); !ret)
                 lib::error("failed to close file: {}", lib::error_name(ret.error()));
+        }
+
+        bool truncable() const
+        {
+            if (!ops)
+                return false;
+            return ops->truncable();
         }
 
         lib::expect<void> open(int flags, pid_t pid)

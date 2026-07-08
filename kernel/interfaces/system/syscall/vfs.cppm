@@ -53,8 +53,8 @@ export namespace syscall::vfs
     int faccessat(int dirfd, const char __user *pathname, int mode);
     int access(const char __user *pathname, int mode);
 
-    int fchmodat(int dirfd, const char __user *pathname, mode_t mode);
     int fchmodat2(int dirfd, const char __user *pathname, mode_t mode, int flags);
+    int fchmodat(int dirfd, const char __user *pathname, mode_t mode);
     int chmod(const char __user *pathname, mode_t mode);
     int fchmod(int fd, mode_t mode);
 

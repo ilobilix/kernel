@@ -27,6 +27,7 @@ namespace lib::log
         constinit std::atomic_uint64_t dropped = 0;
 
         constinit lib::spinlock_irq lock;
+        constinit lib::spinlock consumer_lock;
         constinit std::atomic_bool direct = true;
 
         constinit logger *loggers = nullptr;
@@ -650,14 +651,11 @@ namespace lib::log
         else loggers = lg;
     }
 
-    void set_direct_print(bool _direct)
-    {
-        direct.store(_direct, std::memory_order_release);
-    }
-
     // called from panic
-    void force_unlock()
+    void die()
     {
+        consumer_lock.lock();
+        direct.store(true, std::memory_order_release);
         lock.unlock();
 
         auto current = loggers;
@@ -787,12 +785,13 @@ namespace lib::log
 
     void consumer()
     {
-        set_direct_print(false);
-
+        direct.store(false, std::memory_order_release);
         std::uint64_t reported_drops = 0;
 
         while (true)
         {
+            const std::unique_lock _ { consumer_lock };
+
             const auto gen = available.snapshot_gen();
             auto res = buffer.read(next_seq, std::span {
                 data.data() + len_time, data.size() - len_time

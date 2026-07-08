@@ -367,6 +367,7 @@ namespace fs::procfs
             return buffer.size();
         }
 
+        bool truncable() const override { return true; }
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(size);

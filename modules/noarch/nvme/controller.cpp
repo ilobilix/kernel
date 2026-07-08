@@ -38,7 +38,7 @@ namespace nvme
         _bell.wake_one();
     }
 
-    void controller_t::worker_t::start(std::size_t cpu)
+    void controller_t::worker_t::start()
     {
         lib::bug_on(!_thread.expired());
 
@@ -48,7 +48,7 @@ namespace nvme
             worker_t::nice
         );
         thread->affinity.clear();
-        thread->affinity.set(cpu, true);
+        thread->affinity.set(_cpu, true);
 
         sched::enqueue_new(thread.get());
         _thread = std::move(thread);
@@ -184,7 +184,7 @@ namespace nvme
                 return std::unexpected { lib::err::io_error };
             }
         }
-        lib::info("nvme: identified controller: 0x{:X}:0x{:X}", idctrl->vid, idctrl->ssvid);
+        lib::info("nvme: identified controller: {:X}:{:X}", idctrl->vid, idctrl->ssvid);
 
         if (const auto type = idctrl->cntrltype; type != 0 && type != 1)
         {
@@ -447,8 +447,8 @@ namespace nvme
             }
         }
 
-        for (const auto &[vector, worker] : _workers)
-            worker->start(worker->_cpu);
+        for (const auto &[_, worker] : _workers)
+            worker->start();
 
         for (const auto &handle : _irq_handles)
             irq::unmask(handle);
@@ -483,9 +483,9 @@ namespace nvme
             _dev->release_irqs(_irq_handles, _irq_type);
     }
 
-    lib::expect<std::unique_ptr<controller_t>> controller_t::create(pci::device_t &dev)
+    lib::expect<std::shared_ptr<controller_t>> controller_t::create(pci::device_t &dev)
     {
-        auto ctrl = std::unique_ptr<controller_t> { new controller_t { dev.dev } };
+        auto ctrl = std::shared_ptr<controller_t> { new controller_t { dev.dev } };
         if (const auto ret = ctrl->init(); !ret)
             return std::unexpected { ret.error() };
         return ctrl;

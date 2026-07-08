@@ -13,7 +13,8 @@ export namespace arch
 {
     [[noreturn]]
     void halt(bool ints = true);
-    void halt_others();
+
+    void nmi_others();
 
     void wfi();
     void pause();

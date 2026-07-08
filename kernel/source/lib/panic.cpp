@@ -25,14 +25,6 @@ namespace
 
 namespace lib
 {
-    [[noreturn]]
-    void stop_all()
-    {
-        arch::halt_others();
-        arch::halt(false);
-        std::unreachable();
-    }
-
     void check_if_panicking(cpu::registers *regs)
     {
         if (panicking.load())
@@ -61,10 +53,8 @@ namespace lib
         if (panicking.exchange(true))
             goto end;
 
-        log::set_direct_print(true);
-        log::force_unlock();
-
-        arch::halt_others();
+        log::die();
+        arch::nmi_others();
 
         if (cpu::local::available())
         {
@@ -73,8 +63,6 @@ namespace lib
 
             cpu_idx = cpu::self().unsafe_get().idx;
         }
-
-        arch::dump_regs(cpu_idx, regs, cpu::extra_regs::read());
 
         println("\n{}\n", nooo_ascii);
         fatal("kernel panicked with the following message:");
@@ -86,9 +74,11 @@ namespace lib
         );
 
         if (regs)
+        {
             trace(log::level::fatal, regs->fp(), regs->ip());
-        else
-            trace(log::level::fatal, 0, 0);
+            arch::dump_regs(cpu_idx, regs, cpu::extra_regs::read());
+        }
+        else trace(log::level::fatal, 0, 0);
 
         end:
         arch::halt(false);

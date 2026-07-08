@@ -147,9 +147,10 @@ namespace cpu::mp
             apic::ipi(lapic_id, apic::destination::physical, apic::delivery::startup, (trampoline_page >> 12));
             chrono::stall_ns(200'000);
 
+            std::atomic_ref ref { info->booted_flag };
             for (std::size_t i = 0; i < 1000; i++)
             {
-                if (__atomic_load_n(&info->booted_flag, __ATOMIC_RELAXED) == 1)
+                if (ref.load(std::memory_order_relaxed) == 1)
                     return;
                 chrono::stall_ns(300'000);
             }
@@ -199,8 +200,9 @@ namespace cpu::mp
             lib::panic("could not boot up cores");
         } ();
 
-        unmap("trampoline address", trampoline_page, smp_trampoline_size);
-        unmap("temporary stack", temp_stack_page, pmm::page_size);
+        // TODO: shootdown gets stuck
+        // unmap("trampoline address", trampoline_page, smp_trampoline_size);
+        // unmap("temporary stack", temp_stack_page, pmm::page_size);
     }
 } // export namespace cpu::mp
 

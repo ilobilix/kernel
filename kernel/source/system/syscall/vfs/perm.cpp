@@ -75,68 +75,60 @@ namespace syscall::vfs
         return faccessat2(at_fdcwd, pathname, mode, 0);
     }
 
-    namespace
+    int fchmodat2(int dirfd, const char __user *pathname, mode_t mode, int flags)
     {
-        int do_fchmodat(int dirfd, const char __user *pathname, mode_t mode, int flags)
+        if (flags & ~(at_symlink_nofollow | at_empty_path))
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+
+        const bool follow_links = (flags & at_symlink_nofollow) == 0;
+        const bool empty_path = (flags & at_empty_path) != 0;
+
+        const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        if (detail::readonly_mount(*target))
+            return -EROFS;
+
+        auto &inode = target->dentry->inode;
         {
-            if (flags & ~(at_symlink_nofollow | at_empty_path))
-                return -EINVAL;
+            const std::unique_lock _ { inode->lock };
 
-            const auto proc = sched::current_process();
+            const auto &cred = proc->cred;
+            if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
+                return -EPERM;
 
-            const bool follow_links = (flags & at_symlink_nofollow) == 0;
-            const bool empty_path = (flags & at_empty_path) != 0;
+            if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
+                !cred->supp_gids.contains(inode->stat.st_gid) &&
+                !sched::capable(cred, sched::cap_t::fsetid))
+                mode &= ~s_isgid;
 
-            const auto target = get_target(proc, dirfd, pathname, follow_links, empty_path, true);
-            if (!target.has_value())
-                return -lib::map_error(target.error());
+            constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
 
-            if (detail::readonly_mount(*target))
-                return -EROFS;
+            inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
+            inode->stat.update_time(kstat::time::status);
 
-            auto &inode = target->dentry->inode;
-            {
-                const std::unique_lock _ { inode->lock };
-
-                const auto &cred = proc->cred;
-                if (cred->fsuid != inode->stat.st_uid && !sched::capable(cred, sched::cap_t::fowner))
-                    return -EPERM;
-
-                if ((mode & s_isgid) && cred->fsgid != inode->stat.st_gid &&
-                    !cred->supp_gids.contains(inode->stat.st_gid) &&
-                    !sched::capable(cred, sched::cap_t::fsetid))
-                    mode &= ~s_isgid;
-
-                constexpr auto bits = (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
-
-                inode->stat.st_mode = (inode->stat.st_mode & ~bits) | (mode & bits);
-                inode->stat.update_time(kstat::time::status);
-
-                if (const auto ret = dirty_inode(*target); !ret)
-                    return -lib::map_error(ret.error());
-            }
-            return 0;
+            if (const auto ret = dirty_inode(*target); !ret)
+                return -lib::map_error(ret.error());
         }
+        return 0;
     }
 
     int fchmodat(int dirfd, const char __user *pathname, mode_t mode)
     {
-        return do_fchmodat(dirfd, pathname, mode, 0);
-    }
-
-    int fchmodat2(int dirfd, const char __user *pathname, mode_t mode, int flags)
-    {
-        return do_fchmodat(dirfd, pathname, mode, flags);
+        return fchmodat2(dirfd, pathname, mode, 0);
     }
 
     int chmod(const char __user *pathname, mode_t mode)
     {
-        return do_fchmodat(at_fdcwd, pathname, mode, 0);
+        return fchmodat2(at_fdcwd, pathname, mode, 0);
     }
 
     int fchmod(int fd, mode_t mode)
     {
-        return do_fchmodat(fd, nullptr, mode, at_empty_path);
+        return fchmodat2(fd, nullptr, mode, at_empty_path);
     }
 
     int fchownat(int dirfd, const char __user *pathname, uid_t owner, gid_t group, int flags)
