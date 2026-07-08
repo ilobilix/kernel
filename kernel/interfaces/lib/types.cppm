@@ -41,6 +41,13 @@ export namespace lib
     template<typename ...Funcs>
     overloaded(Funcs ...) -> overloaded<Funcs...>;
 
+    template<typename Type>
+    class private_t
+    {
+        friend Type;
+        constexpr explicit private_t() = default;
+    };
+
     template<typename>
     class signature;
 

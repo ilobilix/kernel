@@ -148,7 +148,7 @@ namespace syscall::vfs
             return -lib::map_error(ret.error());
         }
 
-        if (trunc)
+        if (trunc && fdesc->file->truncable())
         {
             if (const auto ret = fdesc->file->trunc(0); !ret)
                 return -lib::map_error(ret.error());

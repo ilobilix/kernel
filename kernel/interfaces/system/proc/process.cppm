@@ -102,6 +102,7 @@ export namespace sched
 
         int exit_code = 0;
         int term_signal = 0;
+        int exit_signal = 0;
         // this saves 8 bytes :trl:
         bool killed_by_signal : 1 = false;
         bool dumped_core : 1 = false;

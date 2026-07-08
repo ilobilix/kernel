@@ -27,6 +27,7 @@ export namespace fs::tmpfs
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
+        bool truncable() const override { return true; }
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override;
 
         lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override;

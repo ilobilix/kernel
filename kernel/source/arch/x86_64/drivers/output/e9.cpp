@@ -3,6 +3,7 @@
 module x86_64.drivers.output.e9;
 
 import drivers.output.serial;
+import system.cmdline;
 import lib;
 import std;
 
@@ -23,7 +24,9 @@ namespace x86_64::output::e9
 
     void init()
     {
-        if (lib::io::in<8>(0xE9) == 0xE9)
-            register_logger(&log);
+        if (!cmdline::has("debugcon") || lib::io::in<8>(0xE9) != 0xE9)
+            return;
+
+        register_logger(&log);
     }
 } // namespace x86_64::output::e9

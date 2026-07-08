@@ -15,11 +15,11 @@ namespace vfs::dev
                 dev_t,
                 std::shared_ptr<vfs::ops>
             >, lib::rwspinlock
-        > cdev_table;
+        > registry;
 
-        std::shared_ptr<vfs::ops> get_cdev_ops(dev_t rdev)
+        std::shared_ptr<vfs::ops> get_ops(dev_t rdev)
         {
-            const auto lock = cdev_table.read_lock();
+            const auto lock = registry.read_lock();
             const auto it = lock->find(rdev);
             if (it == lock->end())
                 return nullptr;
@@ -29,7 +29,7 @@ namespace vfs::dev
 
     bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops)
     {
-        auto [it, inserted] = cdev_table.write_lock()->emplace(rdev, ops);
+        auto [it, inserted] = registry.write_lock()->emplace(rdev, ops);
         if (inserted)
             lib::debug("dev: registered ops for device ({}, {})", major(rdev), minor(rdev));
         return inserted;
@@ -37,7 +37,7 @@ namespace vfs::dev
 
     bool unregister_ops(dev_t rdev)
     {
-        auto lock = cdev_table.write_lock();
+        auto lock = registry.write_lock();
         const auto it = lock->find(rdev);
         if (it == lock->end())
             return false;
@@ -52,16 +52,15 @@ namespace vfs::dev
         switch (stat::type(mode))
         {
             case stat::type::s_ifchr:
+            case stat::type::s_ifblk:
             {
                 if (rdev == 0)
                     return std::unexpected { lib::err::invalid_device_or_address };
-                auto ops = get_cdev_ops(rdev);
+                auto ops = get_ops(rdev);
                 if (!ops)
                     return std::unexpected { lib::err::invalid_device_or_address };
                 return ops;
             }
-            case stat::type::s_ifblk:
-                return std::unexpected { lib::err::todo };
             default:
                 return std::unexpected { lib::err::invalid_device_or_address };
         }

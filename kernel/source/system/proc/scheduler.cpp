@@ -976,22 +976,26 @@ namespace sched
                     parent->vfork_done.wake_all();
                 }
 
-                const auto chld_code = proc->killed_by_signal
-                    ? (proc->dumped_core ? cld_dumped : cld_killed)
-                    : cld_exited;
-                const auto chld_status = proc->killed_by_signal ? proc->term_signal : exit_code;
+                if (proc->exit_signal)
+                {
+                    const auto chld_code = proc->killed_by_signal
+                        ? (proc->dumped_core ? cld_dumped : cld_killed)
+                        : cld_exited;
+                    const auto chld_status = proc->killed_by_signal ? proc->term_signal : exit_code;
 
-                siginfo_t info {
-                    .signo = sigchld,
-                    .code = chld_code,
-                    .err = 0,
-                    .pid = proc->pid,
-                    .uid = 0,
-                    .status = chld_status,
-                    .addr = 0,
-                    .value = 0
-                };
-                send_signal(parent.get(), info);
+                    siginfo_t info {
+                        .signo = sigchld,
+                        .code = chld_code,
+                        .err = 0,
+                        .pid = proc->pid,
+                        .uid = 0,
+                        .status = chld_status,
+                        .addr = 0,
+                        .value = 0
+                    };
+                    send_signal(parent.get(), info);
+                }
+
                 parent->wait_child.wake_one();
             }
         }
@@ -1724,6 +1728,8 @@ namespace sched
             target_proc->sigactions = caller_proc->sigactions;
         else
             target_proc->sigactions = caller_proc->sigactions->clone();
+
+        target_proc->exit_signal = args.exit_signal;
 
         // TODO: cgroups
         // TODO: namespaces

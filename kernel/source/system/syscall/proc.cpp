@@ -1223,8 +1223,7 @@ namespace syscall::proc
     pid_t fork()
     {
         sched::kclone_args_t args { };
-        // TODO
-        // args.exit_signal = sigchld;
+        args.exit_signal = sched::sigchld;
         return sched::clone(args);
     }
 
@@ -1232,8 +1231,7 @@ namespace syscall::proc
     {
         sched::kclone_args_t args { };
         args.flags = clone_vfork | clone_vm;
-        // TODO
-        // args.exit_signal = sigchld;
+        args.exit_signal = sched::sigchld;
         return sched::clone(args);
     }
 

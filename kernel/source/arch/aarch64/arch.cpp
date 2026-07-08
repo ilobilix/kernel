@@ -27,7 +27,7 @@ namespace arch
     }
 
     // TODO
-    void halt_others() { }
+    void nmi_others() { }
 
     void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs)
     {

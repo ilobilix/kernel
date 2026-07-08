@@ -202,12 +202,6 @@ namespace output::frm
                 return to_copy;
             }
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-            {
-                lib::unused(file, size);
-                return { };
-            }
-
             lib::expect<int> ioctl(
                 std::shared_ptr<vfs::file> file, std::uint64_t request,
                 lib::uptr_or_addr argp
@@ -297,49 +291,41 @@ namespace output::frm
 
         struct ktype_t : dev::ktype_t
         {
-            attribute_t name {
-                [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                    return std::string {
-                        fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id))
-                    } + '\n';
-                }, "name", 0444
-            };
-            attribute_t dev_node {
-                [](dev::device_t &device, fb_dev &) -> lib::expect<std::string> {
-                    using namespace vfs::dev;
-                    return fmt::format("{}:{}\n", major(device.devt), minor(device.devt));
-                }, "dev", 0444
-            };
-            attribute_t bits_per_pixel {
-                [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                    return std::to_string(fb.var.bits_per_pixel) + '\n';
-                }, "bits_per_pixel", 0444
-            };
-            attribute_t virtual_size {
-                [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                    return fmt::format("{},{}\n", fb.var.xres_virtual, fb.var.yres_virtual);
-                }, "virtual_size", 0444
-            };
-            attribute_t stride {
-                [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                    return std::to_string(fb.fix.line_length) + '\n';
-                }, "stride", 0444
-            };
-
-            std::span<dev::attribute_t *const> attributes() override
+            std::span<dev::attribute_t> attributes() const override
             {
-                static dev::attribute_t *list[] {
-                    &name, &dev_node, &bits_per_pixel, &virtual_size, &stride
+                static dev::attribute_t list[] {
+                    attribute_t {
+                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                            return std::string {
+                                fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id))
+                            } + '\n';
+                        }, "name", 0444
+                    },
+                    attribute_t {
+                        [](dev::device_t &device, fb_dev &) -> lib::expect<std::string> {
+                            using namespace vfs::dev;
+                            return fmt::format("{}:{}\n", major(device.devt), minor(device.devt));
+                        }, "dev", 0444
+                    },
+                    attribute_t {
+                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                            return std::to_string(fb.var.bits_per_pixel) + '\n';
+                        }, "bits_per_pixel", 0444
+                    },
+                    attribute_t {
+                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                            return fmt::format("{},{}\n", fb.var.xres_virtual, fb.var.yres_virtual);
+                        }, "virtual_size", 0444
+                    },
+                    attribute_t {
+                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                            return std::to_string(fb.fix.line_length) + '\n';
+                        }, "stride", 0444
+                    }
                 };
                 return list;
             }
-
-            static dev::ktype_t *instance()
-            {
-                static ktype_t instance { };
-                return &instance;
-            }
-        };
+        } ktype;
 
         lib::initgraph::task fbdev_task
         {
@@ -351,17 +337,17 @@ namespace output::frm
             },
             [] {
                 // TODO: move this somewhere else
-                struct graphics_class : dev::class_t
+                struct graphics_class_t final : dev::class_t
                 {
-                    graphics_class() : dev::class_t { "graphics" } { }
+                    graphics_class_t() : dev::class_t { "graphics", dev::empty_ktype(), false } { }
 
-                    std::string devnode(dev::device_t &dev, mode_t &mode) override
+                    std::string devnode(const dev::device_t &dev, mode_t &mode) const override
                     {
                         lib::unused(mode);
                         return dev.name;
                     }
                 };
-                static graphics_class cls;
+                static graphics_class_t cls;
                 if (const auto ret = dev::register_class(cls); !ret)
                     lib::error("fbdev: failed to register class 'graphics'");
 
@@ -475,18 +461,17 @@ namespace output::frm
                     std::shared_ptr<dev::kobject_t> root;
                     if (found)
                     {
-                        root = std::make_shared<dev::kobject_t>(
-                            "graphics", dev::default_ktype(), found
+                        root = dev::kobject_t::create(
+                            "graphics", dev::empty_ktype(), found
                         );
                         lib::bug_on(!dev::register_kobject(root));
                     }
                     else root = dev::virtual_root();
 
-                    auto device = std::make_shared<dev::device_t>(
-                        "fb" + std::to_string(i), ktype_t::instance()
+                    auto device = dev::device_t::create(
+                        "fb" + std::to_string(i), ktype, root
                     );
                     device->cls = &cls;
-                    device->parent = root;
                     device->devt = vfs::dev::makedev(29, i);
                     device->fops = std::move(ops);
 

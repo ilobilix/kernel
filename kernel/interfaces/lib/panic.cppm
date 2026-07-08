@@ -17,9 +17,6 @@ namespace lib
 
 export namespace lib
 {
-    [[noreturn]]
-    void stop_all();
-
     void check_if_panicking(cpu::registers *regs);
 
     [[noreturn]]

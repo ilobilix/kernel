@@ -279,8 +279,7 @@ namespace dev
                 self.bus->fill_uevent(self, uev);
             if (self.cls != nullptr)
                 self.cls->fill_uevent(self, uev);
-            if (self.type != nullptr)
-                self.type->fill_uevent(self, uev);
+            self.type.fill_uevent(self, uev);
 
             if (!self.modalias.empty())
                 uev.add("MODALIAS", self.modalias);
@@ -313,31 +312,14 @@ namespace dev
             return out;
         }
 
-        struct bind_attribute_t : attribute_t
-        {
-            bind_attribute_t() : attribute_t { "bind", 0200 } { }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                return bind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
-            }
-        };
-
-        struct unbind_attribute_t : attribute_t
-        {
-            unbind_attribute_t() : attribute_t { "unbind", 0200 } { }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                return unbind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
-            }
-        };
-
         struct driver_ktype_t : ktype_t
         {
-            std::span<attribute_t *const> attributes() override
+            std::span<attribute_t> attributes() const override
             {
-                static attribute_t *attrs[] { bind_attribute(), unbind_attribute() };
+                static attribute_t attrs[] {
+                    bind_attribute(),
+                    unbind_attribute()
+                };
                 return attrs;
             }
         };
@@ -347,45 +329,46 @@ namespace dev
             return static_cast<bus_kobject_t &>(kobj).bus;
         }
 
-        struct autoprobe_attribute_t : attribute_t
-        {
-            autoprobe_attribute_t() : attribute_t { "drivers_autoprobe", 0644 } { }
-
-            lib::expect<std::string> show(kobject_t &kobj) override
-            {
-                return bus_of(kobj).drivers_autoprobe ? "1\n" : "0\n";
-            }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                const auto value = lib::trim(data);
-                if (value == "0")
-                    bus_of(kobj).drivers_autoprobe = false;
-                else if (value == "1")
-                    bus_of(kobj).drivers_autoprobe = true;
-                else
-                    return std::unexpected { lib::err::invalid_argument };
-                return { };
-            }
-        };
-
-        struct drivers_probe_attribute_t : attribute_t
-        {
-            drivers_probe_attribute_t() : attribute_t { "drivers_probe", 0200 } { }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                return probe_bus(bus_of(kobj), lib::trim(data));
-            }
-        };
-
         struct bus_ktype_t : ktype_t
         {
-            std::span<attribute_t *const> attributes() override
+            std::span<attribute_t> attributes() const override
             {
-                static autoprobe_attribute_t autoprobe { };
-                static drivers_probe_attribute_t drivers_probe { };
-                static attribute_t *attrs[] { &autoprobe, &drivers_probe };
+                struct autoprobe_attribute_t : attribute_t
+                {
+                    autoprobe_attribute_t() : attribute_t { "drivers_autoprobe", 0644 } { }
+
+                    lib::expect<std::string> show(kobject_t &kobj) override
+                    {
+                        return bus_of(kobj).drivers_autoprobe ? "1\n" : "0\n";
+                    }
+
+                    lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+                    {
+                        const auto value = lib::trim(data);
+                        if (value == "0")
+                            bus_of(kobj).drivers_autoprobe = false;
+                        else if (value == "1")
+                            bus_of(kobj).drivers_autoprobe = true;
+                        else
+                            return std::unexpected { lib::err::invalid_argument };
+                        return { };
+                    }
+                };
+
+                struct probe_attribute_t : attribute_t
+                {
+                    probe_attribute_t() : attribute_t { "drivers_probe", 0200 } { }
+
+                    lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+                    {
+                        return probe_bus(bus_of(kobj), lib::trim(data));
+                    }
+                };
+
+                static attribute_t attrs[] {
+                    autoprobe_attribute_t { },
+                    probe_attribute_t { }
+                };
                 return attrs;
             }
         };
@@ -447,19 +430,10 @@ namespace dev
 
         uev.add("ACTION", action_name(act));
         uev.add("DEVPATH", uev.devpath);
-        if (type != nullptr)
-            type->fill_uevent(*this, uev);
+        type.fill_uevent(*this, uev);
 
         // TODO: NETLINK_KOBJECT_UEVENT
         return { };
-    }
-
-    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data)
-    {
-        const auto act = magic_enum::enum_cast<action>(lib::trim(data));
-        if (!act)
-            return std::unexpected { lib::err::invalid_argument };
-        return kobj.emit(*act);
     }
 
     std::string kobject_t::uevent_text()
@@ -469,8 +443,7 @@ namespace dev
             .devpath = path(),
             .envp = { }
         };
-        if (type != nullptr)
-            type->fill_uevent(*this, uev);
+        type.fill_uevent(*this, uev);
         return format_uevent(uev);
     }
 
@@ -568,20 +541,18 @@ namespace dev
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        auto kobj = std::make_shared<bus_kobject_t>(
-            bus.name, bus.type ?: bus_ktype(), bus_root(), bus
-        );
+        auto kobj = bus_kobject_t::create(bus.name, bus.type, bus_root(), bus);
         if (auto res = register_kobject(kobj); !res)
             return res;
 
-        auto devices_kobj = std::make_shared<kobject_t>("devices", default_ktype(), kobj);
+        auto devices_kobj = kobject_t::create("devices", empty_ktype(), kobj);
         if (auto res = register_kobject(devices_kobj); !res)
         {
             unregister_kobject(kobj);
             return res;
         }
 
-        auto drivers_kobj = std::make_shared<kobject_t>("drivers", default_ktype(), kobj);
+        auto drivers_kobj = kobject_t::create("drivers", empty_ktype(), kobj);
         if (auto res = register_kobject(drivers_kobj); !res)
         {
             unregister_kobject(kobj);
@@ -606,11 +577,17 @@ namespace dev
         return { };
     }
 
+    // TODO
+    bool unregister_bus(bus_t &bus)
+    {
+        lib::unused(bus);
+        lib::panic("unregister_bus not implemented");
+        std::unreachable();
+    }
+
     lib::expect<void> register_class(class_t &cls)
     {
-        auto kobj = std::make_shared<kobject_t>(
-            cls.name, cls.type ?: default_ktype(), class_root()
-        );
+        auto kobj = kobject_t::create(cls.name, cls.type, class_root());
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -627,6 +604,14 @@ namespace dev
         return { };
     }
 
+    // TODO
+    bool unregister_class(class_t &cls)
+    {
+        lib::unused(cls);
+        lib::panic("unregister_class not implemented");
+        std::unreachable();
+    }
+
     lib::expect<void> register_driver(driver_t &drv)
     {
         if (drv.bus == nullptr)
@@ -638,9 +623,7 @@ namespace dev
             if (it == locked->end())
                 return std::unexpected { lib::err::no_such_device };
 
-            auto kobj = std::make_shared<driver_kobject_t>(
-                drv.name, drv.type ?: default_ktype(), it->second.drivers_kobj, drv
-            );
+            auto kobj = driver_kobject_t::create(drv.name, drv.type, it->second.drivers_kobj, drv);
             if (auto res = register_kobject(kobj); !res)
                 return res;
 
@@ -652,6 +635,14 @@ namespace dev
 
         probe_driver(drv);
         return { };
+    }
+
+    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data)
+    {
+        const auto act = magic_enum::enum_cast<action>(lib::trim(data));
+        if (!act)
+            return std::unexpected { lib::err::invalid_argument };
+        return kobj.emit(*act);
     }
 
     void probe_driver(driver_t &drv)
@@ -701,28 +692,36 @@ namespace dev
         return std::unexpected { lib::err::no_such_device };
     }
 
-    attribute_t *bind_attribute()
+    attribute_t &bind_attribute()
     {
+        struct bind_attribute_t : attribute_t
+        {
+            bind_attribute_t() : attribute_t { "bind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return bind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
         static bind_attribute_t attr { };
-        return &attr;
+        return attr;
     }
 
-    attribute_t *unbind_attribute()
+    attribute_t &unbind_attribute()
     {
+        struct unbind_attribute_t : attribute_t
+        {
+            unbind_attribute_t() : attribute_t { "unbind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return unbind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
         static unbind_attribute_t attr { };
-        return &attr;
-    }
-
-    ktype_t *driver_ktype()
-    {
-        static driver_ktype_t ktype { };
-        return &ktype;
-    }
-
-    ktype_t *bus_ktype()
-    {
-        static bus_ktype_t ktype { };
-        return &ktype;
+        return attr;
     }
 
     bool unregister_driver(driver_t &drv)
@@ -920,10 +919,22 @@ namespace dev
         return &stage;
     }
 
-    ktype_t *default_ktype()
+    ktype_t &driver_ktype()
+    {
+        static driver_ktype_t ktype { };
+        return ktype;
+    }
+
+    ktype_t &bus_ktype()
+    {
+        static bus_ktype_t ktype { };
+        return ktype;
+    }
+
+    ktype_t &empty_ktype()
     {
         static ktype_t instance { };
-        return &instance;
+        return instance;
     }
 
     namespace
@@ -946,7 +957,7 @@ namespace dev
                     std::shared_ptr<kobject_t> &slot, std::string_view name,
                     std::shared_ptr<kobject_t> parent = { }
                 ) {
-                    slot = std::make_shared<kobject_t>(name, default_ktype(), parent);
+                    slot = kobject_t::create(name, empty_ktype(), parent);
                     lib::bug_on(!register_kobject(slot));
                 };
 

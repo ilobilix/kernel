@@ -69,7 +69,7 @@ export namespace vmm
     };
 
     struct object;
-    struct alignas(64) page
+    struct page
     {
         enum flag : flag_t
         {
@@ -109,7 +109,7 @@ export namespace vmm
             };
         };
     };
-    static_assert(sizeof(page) == 64);
+    static_assert(sizeof(page) == 32);
 
     enum class object_type : std::uint8_t
     {

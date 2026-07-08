@@ -190,7 +190,7 @@ namespace cpu
             if (!cpu::id(0x0D, 0, res13))
                 lib::panic("cpu::id(0x0D, 0) failed");
 
-            // UMIP SMEP SMAP INVPCID
+            // UMIP SMEP SMAP INVPCID PGE
             if (cached7)
             {
                 auto cr4 = read_reg<"cr4">();
@@ -212,6 +212,9 @@ namespace cpu
                         cr4 |= (1 << 17);
                         tlb::_enabled = true;
                     }
+
+                    if (res1.d & (1 << 13))
+                        cr4 |= (1 << 7);
                 }
                 write_reg<"cr4">(cr4);
             }

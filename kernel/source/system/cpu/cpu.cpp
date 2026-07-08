@@ -88,7 +88,7 @@ namespace cpu
                 reinterpret_cast<std::uintptr_t>(cpu)
             };
             entry->extra_argument = reinterpret_cast<std::uint64_t>(&args);
-            __atomic_store_n(&entry->goto_address, mp_entry, __ATOMIC_SEQ_CST);
+            std::atomic_ref { entry->goto_address } .store(mp_entry);
 
             for (std::size_t i = 0; i < 100'000; i++)
             {

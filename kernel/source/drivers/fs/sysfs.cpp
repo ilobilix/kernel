@@ -189,6 +189,7 @@ namespace fs::sysfs
             return buffer.size();
         }
 
+        bool truncable() const override { return true; }
         lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
         {
             lib::unused(size);
@@ -394,25 +395,25 @@ namespace fs::sysfs
                 dentry->inode = mkdir(kobj);
                 dentry->parent = parent;
 
-                for (const auto &attr : kobj->type->attributes())
+                for (auto &attr : kobj->type.attributes())
                 {
                     auto child = std::make_shared<vfs::dentry>();
-                    child->name = attr->name;
-                    child->inode = mkattr(kobj, attr);
+                    child->name = attr.name;
+                    child->inode = mkattr(kobj, std::addressof(attr));
                     child->parent = dentry;
                     dentry->children.lock()->insert(std::move(child));
                 }
 
-                for (const auto &battr : kobj->type->bin_attributes())
+                for (auto &battr : kobj->type.bin_attributes())
                 {
                     auto child = std::make_shared<vfs::dentry>();
-                    child->name = battr->name;
-                    child->inode = mkbin(kobj, battr);
+                    child->name = battr.name;
+                    child->inode = mkbin(kobj, std::addressof(battr));
                     child->parent = dentry;
                     dentry->children.lock()->insert(std::move(child));
                 }
 
-                if (kobj->as_device() || kobj->type != dev::default_ktype())
+                if (kobj->as_device() || kobj->type != dev::empty_ktype())
                 {
                     auto child = std::make_shared<vfs::dentry>();
                     child->name = "uevent";

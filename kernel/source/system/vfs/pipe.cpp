@@ -388,12 +388,6 @@ namespace vfs::pipe
                 return written;
             }
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file> file, std::size_t size) override
-            {
-                lib::unused(file, size);
-                return std::unexpected { lib::err::invalid_argument };
-            }
-
             lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
             {
                 lib::bug_on(!file || !file->private_data);

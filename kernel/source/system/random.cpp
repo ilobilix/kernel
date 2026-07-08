@@ -258,9 +258,8 @@ namespace random
                 bool any = false;
                 for (std::size_t j = 0; j < snapshot.size(); j++)
                 {
-                    snapshot[j] = __atomic_exchange_n(
-                        &pool.entries[j], 0, __ATOMIC_RELAXED
-                    );
+                    snapshot[j] = std::atomic_ref { pool.entries[j] }
+                        .exchange(0, std::memory_order_relaxed);
                     any |= (snapshot[j] != 0);
                 }
 

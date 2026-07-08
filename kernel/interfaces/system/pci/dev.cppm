@@ -13,11 +13,11 @@ namespace pci
 {
     // exported for fbdev
     export dev::bus_t *get_bus();
-    dev::ktype_t *get_ktype();
-    dev::ktype_t *get_driver_ktype();
+    dev::ktype_t &get_ktype();
+    dev::ktype_t &get_driver_ktype();
 
-    std::string get_slot_name(const std::shared_ptr<pci::device> &dev);
-    std::string get_modalias(const std::shared_ptr<pci::device> &dev);
+    std::string get_slot_name(const std::shared_ptr<device> &dev);
+    std::string get_modalias(const std::shared_ptr<device> &dev);
 } // namespace pci
 
 export namespace pci
@@ -61,35 +61,49 @@ export namespace pci
         std::string get_modalias() const;
     };
 
-    struct device_t : dev::device_t
+    class device_t final : public dev::device_t
     {
-        std::shared_ptr<pci::device> dev;
-
-        std::size_t config_size;
-        std::size_t enable_count;
-
-        device_t(const std::shared_ptr<pci::device> &device)
-            : dev::device_t { get_slot_name(device), get_ktype() }, dev { device },
+        private:
+        device_t(const std::shared_ptr<device> &device, std::weak_ptr<dev::kobject_t> parent)
+            : dev::device_t { get_slot_name(device), get_ktype(), parent }, dev { device },
               config_size { 0 }, enable_count { 0 }
         {
             bus = get_bus();
             modalias = get_modalias(device);
         }
+
+        public:
+        const std::shared_ptr<device> dev;
+
+        std::size_t config_size;
+        std::size_t enable_count;
+
+        template<typename ...Args>
+        device_t(lib::private_t<device_t>, Args &&...args)
+            : device_t { std::forward<Args>(args)... } { };
+
+        device_t(const device_t &) = delete;
+        device_t &operator=(const device_t &) = delete;
+
+        static std::shared_ptr<device_t> create(
+            const std::shared_ptr<device> &device, std::weak_ptr<dev::kobject_t> parent
+        )
+        {
+            return std::make_shared<device_t>(
+                lib::private_t<device_t> { }, device, parent
+            );
+        }
     };
 
-    struct driver_t : dev::driver_t
+    class driver_t : public dev::driver_t
     {
         private:
         lib::locker<std::vector<id_t>, lib::rwspinlock> _dynamic_ids;
-
-        std::span<const id_t> _ids;
+        const std::span<const id_t> _ids;
 
         public:
         driver_t(std::string_view name, std::span<const id_t> ids)
-            : dev::driver_t { name, get_bus() }, _ids { ids }
-        {
-            type = get_driver_ktype();
-        }
+            : dev::driver_t { name, get_bus(), get_driver_ktype() }, _ids { ids } { }
 
         virtual lib::expect<void> probe(device_t &dev) = 0;
         virtual bool remove(device_t &dev) = 0;
@@ -104,17 +118,17 @@ export namespace pci
             return remove(static_cast<device_t &>(dev));
         }
 
-        bool matches(const std::shared_ptr<pci::device> &dev);
+        bool matches(const std::shared_ptr<device> &dev);
 
         void add_id(const id_t &id);
         bool remove_id(std::uint16_t vendor, std::uint16_t device);
     };
 
-    struct bus_t : dev::bus_t
+    struct bus_t final : public dev::bus_t
     {
-        bus_t() : dev::bus_t { "pci" } { }
+        bus_t() : dev::bus_t { "pci", dev::bus_ktype() } { }
 
-        bool match(dev::device_t &dev, dev::driver_t &drv) override
+        bool match(dev::device_t &dev, dev::driver_t &drv) const override
         {
             return static_cast<driver_t &>(drv).matches(static_cast<device_t &>(dev).dev);
         }

@@ -465,11 +465,6 @@ namespace fs::dev::pty
                 const auto master = std::static_pointer_cast<tty::instance>(file->private_data);
                 return master->poll(poll_tab);
             }
-
-            lib::expect<void> trunc(std::shared_ptr<vfs::file>, std::size_t) override
-            {
-                return { };
-            }
         };
     } // namespace
 
