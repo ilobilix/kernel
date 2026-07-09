@@ -35,4 +35,6 @@ export namespace vfs::dev
     bool unregister_ops(dev_t rdev);
 
     lib::expect<std::shared_ptr<vfs::ops>> get_ops(dev_t rdev, mode_t mode);
+
+    std::uint32_t alloc_char_major();
 } // export namespace vfs::dev

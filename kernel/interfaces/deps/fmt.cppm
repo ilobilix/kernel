@@ -5,6 +5,8 @@ module;
 #include <fmt/color.h>
 #include <fmt/ranges.h>
 #include <fmt/compile.h>
+#include <fmt/xchar.h>
+#include <fmt/std.h>
 
 export module fmt;
 
