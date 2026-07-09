@@ -2,7 +2,9 @@
 
 export module system.dev.block;
 
+import system.memory.virt;
 import system.dev;
+import system.vfs;
 import libarch;
 import lib;
 import std;
@@ -19,11 +21,14 @@ export namespace dev::block
         arch::dma_pool &_pool;
 
         virtual void rw(
-            bool write, std::uint64_t lba, arch::dma_buffer &buffer,
+            bool write, bool sync, std::uint64_t lba, arch::dma_buffer &buffer,
             std::function<void (lib::expect<void>)> cb
         ) = 0;
 
-        lib::expect<void> rw(bool write, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
+        lib::expect<void> rw(
+            bool write, bool sync, std::uint64_t offset, std::size_t total_size,
+            std::function_ref<lib::maybe_uspan<std::byte> (std::size_t)> getter
+        );
 
         public:
         drive_t(
@@ -39,13 +44,56 @@ export namespace dev::block
         std::uint64_t size_bytes() const { return _lba_count << _lba_shift; }
         std::uint64_t max_transfer_blocks() const { return _max_transfer_lba; }
 
-        lib::expect<void> read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
-        { return rw(false, offset, buffer); }
-
-        lib::expect<void> write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer)
-        { return rw(true, offset, buffer); }
+        template<std::ranges::random_access_range Range>
+            requires std::same_as<std::ranges::range_value_t<Range>, lib::maybe_uspan<std::byte>>
+        lib::expect<void> rw(bool write, bool sync, std::uint64_t offset, Range &&range)
+        {
+            std::size_t total_size = 0;
+            for (const auto &uspan : range)
+                total_size += uspan.size();
+            return rw(write, sync, offset, total_size, [&](std::size_t idx) { return range[idx]; });
+        }
 
         virtual lib::expect<void> flush() { return { }; };
+    };
+
+    struct object_t : vmm::object
+    {
+        friend struct ops_t;
+
+        private:
+        std::weak_ptr<drive_t> drive;
+
+        lib::expect<void> fetch_pages(std::size_t idx, std::span<vmm::page *> pages) override;
+        lib::expect<void> write_pages(std::size_t idx, std::span<vmm::page *> pages) override;
+
+        public:
+        object_t(std::weak_ptr<drive_t> drive)
+            : vmm::object { vmm::object_type::file }, drive { drive } { }
+    };
+
+    struct ops_t : vfs::ops
+    {
+        private:
+        object_t::ptr memory;
+
+        object_t &get_memory() { return static_cast<object_t &>(*memory); }
+
+        public:
+        ops_t(std::weak_ptr<drive_t> drive)
+            : vfs::ops { }, memory { new object_t { std::move(drive) } } { }
+
+        lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) override;
+
+        lib::expect<std::size_t> write(
+            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer
+        ) override;
+
+        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override;
     };
 
     class_t &get_class();

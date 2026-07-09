@@ -90,7 +90,7 @@ export namespace dev
             return std::unexpected { lib::err::io_error };
         }
 
-        virtual lib::expect<vmm::object::ptr> mmap(kobject_t &kobj)
+        virtual lib::expect<vmm::object::ptr> map(kobject_t &kobj)
         {
             lib::unused(kobj);
             return std::unexpected { lib::err::mapping_unsupported };

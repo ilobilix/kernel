@@ -568,7 +568,7 @@ namespace vmm
             target_amap->slots = std::make_unique<anon::ptr []>(target_amap->nslots);
         }
         else if ((flags & flag::shared) && (flags & flag::anonymous))
-            target_obj = new memobject { object_type::shmem };
+            target_obj = new memobject { };
 
         std::uintptr_t startp = 0;
         std::uintptr_t endp = 0;

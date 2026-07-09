@@ -60,6 +60,8 @@ namespace nvme
 
             void fill_uevent(dev::kobject_t &kobj, dev::uevent_t &uev) override
             {
+                lib::unused(uev);
+
                 auto dev = kobj.as_device();
                 lib::bug_on(!dev);
             }
@@ -67,53 +69,12 @@ namespace nvme
     } // namespace
 
     // TODO
-    lib::expect<std::size_t> ns_ops_t::read(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
-        lib::maybe_uspan<std::byte> buffer
-    )
-    {
-        // o_direct bypasses page cache
-        // o_sync waits for write
-        auto ns = this->ns.lock();
-        if (!ns)
-            return std::unexpected { lib::err::invalid_device_or_address };
-
-        if (offset >= ns->size_bytes())
-            return 0;
-        if (buffer.size_bytes() > ns->size_bytes() - offset)
-            buffer = buffer.subspan(0, ns->size_bytes() - offset);
-
-        if (const auto ret = ns->write(offset, buffer); !ret)
-            return std::unexpected { ret.error() };
-        return buffer.size();
-    }
-
-    // TODO
-    lib::expect<std::size_t> ns_ops_t::write(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
-        lib::maybe_uspan<std::byte> buffer
-    )
-    {
-        auto ns = this->ns.lock();
-        if (!ns)
-            return std::unexpected { lib::err::invalid_device_or_address };
-
-        if (offset >= ns->size_bytes())
-            return std::unexpected { lib::err::no_space_left };
-        if (buffer.size_bytes() > ns->size_bytes() - offset)
-            buffer = buffer.subspan(0, ns->size_bytes() - offset);
-
-        if (const auto ret = ns->write(offset, buffer); !ret)
-            return std::unexpected { ret.error() };
-        return buffer.size();
-    }
-
-    // TODO
     lib::expect<std::size_t> ctrl_ops_t::read(
         std::shared_ptr<vfs::file> file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
+        lib::unused(file, offset, buffer);
         auto ctrl = this->ctrl.lock();
         if (!ctrl)
             return std::unexpected { lib::err::invalid_device_or_address };
@@ -126,17 +87,20 @@ namespace nvme
         lib::maybe_uspan<std::byte> buffer
     )
     {
+        lib::unused(file, offset, buffer);
         auto ctrl = this->ctrl.lock();
         if (!ctrl)
             return std::unexpected { lib::err::invalid_device_or_address };
         return std::unexpected { lib::err::todo };
     }
 
+    // TODO
     lib::expect<int> ctrl_ops_t::ioctl(
         std::shared_ptr<vfs::file> file, std::uint64_t request,
         lib::uptr_or_addr argp
     )
     {
+        lib::unused(file, request, argp);
         auto ctrl = this->ctrl.lock();
         if (!ctrl)
             return std::unexpected { lib::err::invalid_device_or_address };

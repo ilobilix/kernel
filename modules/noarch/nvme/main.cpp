@@ -65,7 +65,7 @@ namespace nvme
                     );
                     dev->cls = &dev::block::get_class();
                     dev->devt = vfs::dev::makedev(259, idx);
-                    dev->fops = std::make_shared<ns_ops_t>(ns);
+                    dev->fops = std::make_shared<dev::block::ops_t>(ns);
                     lib::bug_on(!dev::register_device(dev));
                 }
 

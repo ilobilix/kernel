@@ -205,7 +205,7 @@ namespace fs::sysfs
             const auto inod = std::static_pointer_cast<inode>(file->path.dentry->inode);
             if (inod->typ != inode::type::bin)
                 return std::unexpected { lib::err::mapping_unsupported };
-            return inod->battr->mmap(*inod->kobj);
+            return inod->battr->map(*inod->kobj);
         }
 
         lib::expect<void> getattr(std::shared_ptr<vfs::inode> node) override
