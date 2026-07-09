@@ -76,6 +76,9 @@ export namespace lib
         illegal_seek = ESPIPE,
         broken_pipe = EPIPE,
 
+        bad_message = EBADMSG,
+        corrupted_data = EBADMSG,
+
         timed_out = ETIMEDOUT,
 
         address_family_unsupported = EAFNOSUPPORT,

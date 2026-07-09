@@ -42,11 +42,7 @@ namespace nvme
         {
             lib::info("nvme: probing device");
 
-            const auto minor = [](std::uint32_t ctrl, std::uint32_t ns) {
-                return (ctrl * 1048576) + (ns * 256);
-            };
-
-            return controller_t::create(dev).transform([&](auto &&ctrl) {
+            return controller_t::create(dev.dev).transform([&](auto &&ctrl) {
                 auto nvdir = dev::kobject_t::create("nvme", dev::empty_ktype(), dev.as_weak());
                 lib::bug_on(!dev::register_kobject(nvdir));
 
@@ -54,22 +50,25 @@ namespace nvme
                     "nvme" + std::to_string(idx), get_ctrl_ktype(), nvdir
                 );
                 nvctrl->cls = &get_class();
-                nvctrl->devt = vfs::dev::makedev(dev::block::alloc_major(), minor(idx, 0));
+                nvctrl->devt = vfs::dev::makedev(vfs::dev::alloc_char_major(), idx);
                 nvctrl->fops = std::make_shared<ctrl_ops_t>(ctrl);
                 lib::bug_on(!dev::register_device(nvctrl));
 
-                for (const auto &[idx, ns] : ctrl->namespaces() | std::views::enumerate)
+                for (const auto &[nsid, ns] : ctrl->namespaces() | std::views::enumerate)
                 {
                     auto dev = dev::device_t::create(
-                        "nvme0n" + std::to_string(idx + 1), get_ns_ktype(), nvctrl
+                        "nvme0n" + std::to_string(nsid + 1), get_ns_ktype(), nvctrl
                     );
                     dev->cls = &dev::block::get_class();
-                    dev->devt = vfs::dev::makedev(259, idx);
+                    dev->devt = vfs::dev::makedev(259, dev::block::alloc_minor());
                     dev->fops = std::make_shared<dev::block::ops_t>(ns);
-                    lib::bug_on(!dev::register_device(dev));
+                    ns->dev = std::move(dev);
+
+                    lib::bug_on(!dev::block::register_drive(ns, "p"));
                 }
 
-                // TODO: scan partitions
+                ctrl->dev = std::move(nvctrl);
+                ctrl->dir = std::move(nvdir);
 
                 idx++;
                 lib::bug_on(!ctrls.emplace(dev.id, std::move(ctrl)).second);
@@ -78,10 +77,22 @@ namespace nvme
 
         bool remove(pci::device_t &dev) override
         {
-            const auto ret = ctrls.erase(dev.id);
-            if (ret)
-                lib::info("nvme: removed device");
-            return ret;
+            if (auto it = ctrls.find(dev.id); it != ctrls.end())
+            {
+                lib::info("nvme: removing device");
+
+                auto &[_, ctrl] = *it;
+
+                for (const auto &ns : ctrl->namespaces())
+                    lib::bug_on(!dev::block::unregister_drive(ns));
+
+                lib::bug_on(!dev::unregister_device(ctrl->dev));
+                lib::bug_on(!dev::unregister_kobject(ctrl->dir));
+
+                ctrls.erase(it);
+                return true;
+            }
+            return false;
         }
     } driver;
 } // namespace nvme

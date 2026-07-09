@@ -19,6 +19,8 @@ export namespace nvme
 
         void submit(const std::shared_ptr<command_t> &cmd);
 
+        dev_t alloc_id() override;
+
         void rw(
             bool write, bool sync, std::uint64_t lba, arch::dma_buffer &buffer,
             std::function<void (lib::expect<void>)> cb

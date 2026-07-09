@@ -5,6 +5,7 @@ export module nvme:ctrl;
 import system.sched;
 import system.pci;
 import system.irq;
+import system.dev;
 
 import :queue;
 import :ns;
@@ -78,7 +79,12 @@ export namespace nvme
         controller_t(const std::shared_ptr<pci::device> &dev) : _dev { dev } { }
 
         public:
-        static lib::expect<std::shared_ptr<controller_t>> create(pci::device_t &dev);
+        std::shared_ptr<dev::kobject_t> dir;
+        std::shared_ptr<dev::device_t> dev;
+
+        static lib::expect<std::shared_ptr<controller_t>> create(
+            const std::shared_ptr<pci::device> &dev
+        );
 
         std::span<const std::shared_ptr<namespace_t>> namespaces() const { return _namespaces; }
 

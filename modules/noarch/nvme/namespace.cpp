@@ -3,6 +3,7 @@
 module nvme;
 
 import system.cpu.local;
+import system.vfs.dev;
 
 namespace nvme
 {
@@ -10,6 +11,11 @@ namespace nvme
     {
         const auto idx = cpu::self().read<std::size_t, &cpu::processor::idx>();
         _io_queues[idx % _io_queues.size()]->submit(cmd);
+    }
+
+    dev_t namespace_t::alloc_id()
+    {
+        return vfs::dev::makedev(vfs::dev::major(dev->devt), dev::block::alloc_minor());
     }
 
     void namespace_t::rw(

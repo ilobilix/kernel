@@ -66,4 +66,13 @@ namespace vfs::dev
         }
         std::unreachable();
     }
+
+    std::uint32_t alloc_char_major()
+    {
+        static std::atomic_uint32_t next = 254;
+        const auto ret = next.fetch_sub(1, std::memory_order_relaxed);;
+        if (ret < 234)
+            lib::panic("could not allocate char device major");
+        return ret;
+    }
 } // namespace vfs::dev

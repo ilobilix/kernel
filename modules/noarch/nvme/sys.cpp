@@ -17,7 +17,7 @@ namespace nvme
             std::string devnode(const dev::device_t &dev, mode_t &mode) const
             {
                 lib::unused(dev);
-                mode = 0600;
+                mode = (mode & static_cast<mode_t>(stat::type::s_ifmt)) | s_irusr | s_iwusr;
                 return { };
             }
         } cls;

@@ -484,9 +484,11 @@ namespace nvme
             _dev->release_irqs(_irq_handles, _irq_type);
     }
 
-    lib::expect<std::shared_ptr<controller_t>> controller_t::create(pci::device_t &dev)
+    lib::expect<std::shared_ptr<controller_t>> controller_t::create(
+        const std::shared_ptr<pci::device> &dev
+    )
     {
-        auto ctrl = std::shared_ptr<controller_t> { new controller_t { dev.dev } };
+        auto ctrl = std::shared_ptr<controller_t> { new controller_t { dev } };
         if (const auto ret = ctrl->init(); !ret)
             return std::unexpected { ret.error() };
         return ctrl;
