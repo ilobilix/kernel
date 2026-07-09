@@ -440,7 +440,8 @@ namespace nvme
                     continue;
 
                 auto ns = std::make_shared<namespace_t>(
-                    nsid, lba_shift, idns->nsze, _pool, io_queues, _max_transfer, _vwc
+                    nsid, lba_shift, idns->nsze, _pool,
+                    io_queues, _max_transfer >> lba_shift, _vwc
                 );
                 lib::info("nvme: namespace {}, size: {} mib", nsid, ns->size_bytes() / 1024 / 1024);
                 _namespaces.push_back(std::move(ns));

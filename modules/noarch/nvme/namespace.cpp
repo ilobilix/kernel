@@ -13,7 +13,7 @@ namespace nvme
     }
 
     void namespace_t::rw(
-        bool write, std::uint64_t lba, arch::dma_buffer &buffer,
+        bool write, bool sync, std::uint64_t lba, arch::dma_buffer &buffer,
         std::function<void (lib::expect<void>)> cb
     )
     {
@@ -25,6 +25,7 @@ namespace nvme
         buf.nsid = _nsid;
         buf.start_lba = lba;
         buf.length = (buffer.size() >> _lba_shift) - 1;
+        buf.control = (write && sync) ? 0x4000 : 0;
 
         cmd->on_complete([cb = std::move(cb)](command_t::result res) {
             cb(res.first.successful()

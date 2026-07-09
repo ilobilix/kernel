@@ -34,7 +34,7 @@ namespace fs::tmpfs
         fs::instance *owner, dev_t dev, dev_t rdev,
         ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
     ) : vfs::inode { std::move(ops) }, owner { owner },
-        memory { new vmm::memobject { vmm::object_type::shmem } }
+        memory { new vmm::memobject { } }
     {
         stat.st_size = 0;
         stat.st_blocks = 0;
