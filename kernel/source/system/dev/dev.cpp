@@ -587,13 +587,13 @@ namespace dev
 
     lib::expect<void> register_class(class_t &cls)
     {
-        auto kobj = kobject_t::create(cls.name, cls.type, class_root());
-        if (auto res = register_kobject(kobj); !res)
-            return res;
-
         auto locked = classes.write_lock();
         if (locked->contains(cls.name))
             return std::unexpected { lib::err::already_exists };
+
+        auto kobj = kobject_t::create(cls.name, cls.type, class_root());
+        if (auto res = register_kobject(kobj); !res)
+            return res;
 
         lib::info("dev: registering class '{}'", cls.name);
         locked.value()[cls.name] = class_state_t {
@@ -604,12 +604,19 @@ namespace dev
         return { };
     }
 
-    // TODO
     bool unregister_class(class_t &cls)
     {
-        lib::unused(cls);
-        lib::panic("unregister_class not implemented");
-        std::unreachable();
+        auto locked = classes.write_lock();
+
+        auto it = locked->find(cls.name);
+        if (it == locked->end())
+            return false;
+
+        lib::unused(unregister_kobject(it->second.kobj));
+        locked->erase(it);
+
+        lib::info("dev: unregistered class '{}'", cls.name);
+        return true;
     }
 
     lib::expect<void> register_driver(driver_t &drv)
@@ -623,105 +630,22 @@ namespace dev
             if (it == locked->end())
                 return std::unexpected { lib::err::no_such_device };
 
+            if (std::ranges::contains(it->second.drivers, &drv))
+                return std::unexpected { lib::err::already_exists };
+
+            it->second.drivers.push_back(&drv);
+
             auto kobj = driver_kobject_t::create(drv.name, drv.type, it->second.drivers_kobj, drv);
             if (auto res = register_kobject(kobj); !res)
                 return res;
 
             it->second.driver_kobjs[&drv] = std::move(kobj);
-            it->second.drivers.push_back(&drv);
         }
 
         lib::info("dev: registering driver '{}' on bus '{}'", drv.name, drv.bus->name);
 
         probe_driver(drv);
         return { };
-    }
-
-    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data)
-    {
-        const auto act = magic_enum::enum_cast<action>(lib::trim(data));
-        if (!act)
-            return std::unexpected { lib::err::invalid_argument };
-        return kobj.emit(*act);
-    }
-
-    void probe_driver(driver_t &drv)
-    {
-        if (drv.bus == nullptr)
-            return;
-
-        for (const auto &dev : drv.bus->get_devices())
-        {
-            if (dev->bound())
-                continue;
-            if (drv.bus->match(*dev, drv))
-                lib::unused(do_probe(dev, drv));
-        }
-    }
-
-    lib::expect<void> bind_device(driver_t &drv, std::string_view name)
-    {
-        if (drv.bus == nullptr)
-            return std::unexpected { lib::err::invalid_argument };
-
-        for (const auto &dev : drv.bus->get_devices())
-        {
-            if (dev->name != name)
-                continue;
-            if (dev->bound())
-                return std::unexpected { lib::err::target_is_busy };
-            return do_probe(dev, drv);
-        }
-        return std::unexpected { lib::err::no_such_device };
-    }
-
-    lib::expect<void> unbind_device(driver_t &drv, std::string_view name)
-    {
-        if (drv.bus == nullptr)
-            return std::unexpected { lib::err::invalid_argument };
-
-        for (const auto &dev : drv.bus->get_devices())
-        {
-            if (dev->name != name)
-                continue;
-            if (dev->drv != &drv)
-                return std::unexpected { lib::err::invalid_argument };
-            do_unbind(dev);
-            return { };
-        }
-        return std::unexpected { lib::err::no_such_device };
-    }
-
-    attribute_t &bind_attribute()
-    {
-        struct bind_attribute_t : attribute_t
-        {
-            bind_attribute_t() : attribute_t { "bind", 0200 } { }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                return bind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
-            }
-        };
-
-        static bind_attribute_t attr { };
-        return attr;
-    }
-
-    attribute_t &unbind_attribute()
-    {
-        struct unbind_attribute_t : attribute_t
-        {
-            unbind_attribute_t() : attribute_t { "unbind", 0200 } { }
-
-            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
-            {
-                return unbind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
-            }
-        };
-
-        static unbind_attribute_t attr { };
-        return attr;
     }
 
     bool unregister_driver(driver_t &drv)
@@ -762,6 +686,7 @@ namespace dev
 
         // TODO: module unload?
 
+        lib::info("dev: unregistered driver '{}'", drv.name);
         return true;
     }
 
@@ -781,6 +706,12 @@ namespace dev
             {
                 unregister_kobject(dev);
                 return std::unexpected { lib::err::no_such_device };
+            }
+
+            if (std::ranges::contains(it->second.devices, dev))
+            {
+                unregister_kobject(dev);
+                return std::unexpected { lib::err::already_exists };
             }
 
             it->second.devices.push_back(dev);
@@ -896,7 +827,95 @@ namespace dev
         lib::unused(dev->emit(action::remove));
         unregister_kobject(dev);
 
+        lib::info("dev: unregistered device '{}'", dev->name);
         return true;
+    }
+
+    lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data)
+    {
+        const auto act = magic_enum::enum_cast<action>(lib::trim(data));
+        if (!act)
+            return std::unexpected { lib::err::invalid_argument };
+        return kobj.emit(*act);
+    }
+
+    void probe_driver(driver_t &drv)
+    {
+        if (drv.bus == nullptr)
+            return;
+
+        for (const auto &dev : drv.bus->get_devices())
+        {
+            if (dev->bound())
+                continue;
+            if (drv.bus->match(*dev, drv))
+                lib::unused(do_probe(dev, drv));
+        }
+    }
+
+    lib::expect<void> bind_device(driver_t &drv, std::string_view name)
+    {
+        if (drv.bus == nullptr)
+            return std::unexpected { lib::err::invalid_argument };
+
+        for (const auto &dev : drv.bus->get_devices())
+        {
+            if (dev->name != name)
+                continue;
+            if (dev->bound())
+                return std::unexpected { lib::err::target_is_busy };
+            return do_probe(dev, drv);
+        }
+        return std::unexpected { lib::err::no_such_device };
+    }
+
+    lib::expect<void> unbind_device(driver_t &drv, std::string_view name)
+    {
+        if (drv.bus == nullptr)
+            return std::unexpected { lib::err::invalid_argument };
+
+        for (const auto &dev : drv.bus->get_devices())
+        {
+            if (dev->name != name)
+                continue;
+            if (dev->drv != &drv)
+                return std::unexpected { lib::err::invalid_argument };
+            do_unbind(dev);
+            return { };
+        }
+        return std::unexpected { lib::err::no_such_device };
+    }
+
+    attribute_t &bind_attribute()
+    {
+        struct bind_attribute_t : attribute_t
+        {
+            bind_attribute_t() : attribute_t { "bind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return bind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
+        static bind_attribute_t attr { };
+        return attr;
+    }
+
+    attribute_t &unbind_attribute()
+    {
+        struct unbind_attribute_t : attribute_t
+        {
+            unbind_attribute_t() : attribute_t { "unbind", 0200 } { }
+
+            lib::expect<void> store(kobject_t &kobj, std::string_view data) override
+            {
+                return unbind_device(static_cast<driver_kobject_t &>(kobj).drv, lib::trim(data));
+            }
+        };
+
+        static unbind_attribute_t attr { };
+        return attr;
     }
 
     lib::initgraph::stage *core_registered_stage()

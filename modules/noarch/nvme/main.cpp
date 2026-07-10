@@ -28,10 +28,7 @@ namespace nvme
         > ctrls;
         std::size_t idx = 0;
 
-        driver_t() : pci::driver_t { "nvme", ids }
-        {
-            lib::bug_on(!dev::register_class(get_class()));
-        }
+        driver_t() : pci::driver_t { "nvme", ids } { }
 
         ~driver_t()
         {
@@ -41,6 +38,9 @@ namespace nvme
         lib::expect<void> probe(pci::device_t &dev) override
         {
             lib::info("nvme: probing device");
+
+            const auto ret = dev::register_class(get_class());
+            lib::bug_on(!ret && ret.error() != lib::err::already_exists);
 
             return controller_t::create(dev.dev).transform([&](auto &&ctrl) {
                 auto nvdir = dev::kobject_t::create("nvme", dev::empty_ktype(), dev.as_weak());
