@@ -144,7 +144,7 @@ namespace syscall::vfs
 
     namespace
     {
-        int do_statfs(const path &target, struct statfs __user *buf)
+        int do_statfs(const path_t &target, struct statfs __user *buf)
         {
             if (!target.mnt)
                 return -ENOSYS;

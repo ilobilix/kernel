@@ -5,67 +5,68 @@ module drivers.fs.devtmpfs;
 import drivers.fs.tmpfs;
 import system.sched.mutex;
 import system.vfs.dev;
+import frigg;
 
 namespace fs::devtmpfs
 {
-    struct fs : vfs::filesystem
-    {
-        lib::locked_ptr<tmpfs::fs::instance, sched::mutex> instance;
-        std::shared_ptr<vfs::dentry> root;
-
-        std::shared_ptr<struct vfs::mount> internal_mnt;
-        mutable lib::list<std::shared_ptr<struct vfs::mount>> mounts;
-
-        auto mount(
-            std::shared_ptr<vfs::dentry> src,
-            std::optional<lib::maybe_uspan<const std::byte>> data
-        ) const
-            -> lib::expect<std::shared_ptr<struct vfs::mount>> override
-        {
-            lib::unused(src, data);
-
-            auto mount = std::make_shared<struct vfs::mount>(instance, root);
-            mounts.push_back(mount);
-            return mount;
-        }
-
-        fs() : vfs::filesystem { "devtmpfs", 0x01021994 }
-        {
-            instance = lib::make_locked<tmpfs::fs::instance, sched::mutex>();
-            auto locked = instance.lock();
-
-            locked->fs = this;
-            locked->opt_mode = 0755;
-
-            root = std::make_shared<vfs::dentry>();
-            root->name = "devtmpfs root. this shouldn't be visible anywhere";
-            root->inode = std::make_shared<tmpfs::inode>(
-                locked.get(), locked->dev_id, 0, locked->next_inode++,
-                static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-                tmpfs::ops::singleton()
-            );
-            root->parent = root;
-
-            internal_mnt = std::make_shared<struct vfs::mount>(instance, root);
-        }
-    };
-
     namespace
     {
-        std::shared_ptr<fs> main;
+        struct fs_t : vfs::filesystem_t
+        {
+            lib::locked_ptr<tmpfs::fs_t::instance, sched::mutex> instance;
+            std::shared_ptr<vfs::dentry_t> root;
+
+            std::shared_ptr<struct vfs::mount_t> internal_mnt;
+            mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
+
+            auto mount(
+                std::shared_ptr<vfs::dentry_t> src,
+                std::optional<lib::maybe_uspan<const std::byte>> data
+            ) const
+                -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override
+            {
+                lib::unused(src, data);
+
+                auto mount = std::make_shared<struct vfs::mount_t>(instance, root);
+                mounts.push_back(mount);
+                return mount;
+            }
+
+            fs_t() : vfs::filesystem_t { "devtmpfs", 0x01021994 }
+            {
+                instance = lib::make_locked<tmpfs::fs_t::instance, sched::mutex>();
+                auto locked = instance.lock();
+
+                locked->fs = this;
+                locked->opt_mode = 0755;
+
+                root = std::make_shared<vfs::dentry_t>();
+                root->name = "devtmpfs root. this shouldn't be visible anywhere";
+                root->inode = std::make_shared<tmpfs::inode_t>(
+                    locked.get(), locked->dev_id, 0, locked->next_inode++,
+                    static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
+                    tmpfs::ops::singleton()
+                );
+                root->parent = root;
+
+                internal_mnt = std::make_shared<struct vfs::mount_t>(instance, root);
+            }
+        };
+
+        frg::manual_box<fs_t> fs;
     } // namespace
 
     lib::expect<void> create(lib::path path, mode_t mode, dev_t rdev)
     {
-        if (main == nullptr)
+        if (!fs.valid())
             return std::unexpected { lib::err::invalid_filesystem };
 
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
             return std::unexpected { lib::err::invalid_path };
 
-        const vfs::path devroot {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
+        const vfs::path_t devroot {
+            .mnt = fs->internal_mnt,
+            .dentry = fs->root
         };
 
         std::string partial;
@@ -94,15 +95,15 @@ namespace fs::devtmpfs
 
     lib::expect<void> remove(lib::path path)
     {
-        if (main == nullptr)
+        if (!fs.valid())
             return std::unexpected { lib::err::invalid_filesystem };
 
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
             return std::unexpected { lib::err::invalid_path };
 
-        const vfs::path devroot {
-            .mnt = main->internal_mnt,
-            .dentry = main->root
+        const vfs::path_t devroot {
+            .mnt = fs->internal_mnt,
+            .dentry = fs->root
         };
 
         if (const auto ret = vfs::unlink(devroot, path); !ret)
@@ -137,7 +138,8 @@ namespace fs::devtmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(main = std::make_shared<fs>()));
+            fs.initialize();
+            lib::bug_on(!vfs::register_fs(*fs));
         }
     };
 

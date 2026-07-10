@@ -7,12 +7,15 @@ import system.sched.mutex;
 import system.sched;
 import system.chrono;
 import system.vfs.dev;
+import frigg;
 import fmt;
 
 namespace fs::tmpfs
 {
     namespace
     {
+        frg::manual_box<fs_t> fs;
+
         std::size_t page_charge(std::size_t bytes)
         {
             return lib::div_roundup(bytes, pmm::page_size) * pmm::page_size;
@@ -30,10 +33,10 @@ namespace fs::tmpfs
         }
     }
 
-    inode::inode(
-        fs::instance *owner, dev_t dev, dev_t rdev,
-        ino_t ino, mode_t mode, std::shared_ptr<vfs::ops> ops
-    ) : vfs::inode { std::move(ops) }, owner { owner },
+    inode_t::inode_t(
+        fs_t::instance *owner, dev_t dev, dev_t rdev,
+        ino_t ino, mode_t mode, std::shared_ptr<vfs::ops_t> ops
+    ) : vfs::inode_t { std::move(ops) }, owner { owner },
         memory { new vmm::memobject { } }
     {
         stat.st_size = 0;
@@ -59,7 +62,7 @@ namespace fs::tmpfs
         );
     }
 
-    inode::~inode()
+    inode_t::~inode_t()
     {
         if (owner)
         {
@@ -72,11 +75,11 @@ namespace fs::tmpfs
     }
 
     lib::expect<std::size_t> ops::read(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
+        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
-        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
@@ -93,11 +96,11 @@ namespace fs::tmpfs
     }
 
     lib::expect<std::size_t> ops::write(
-        std::shared_ptr<vfs::file> file, std::uint64_t offset,
+        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
-        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         if (file->flags & vfs::o_append)
@@ -130,9 +133,9 @@ namespace fs::tmpfs
         return ret;
     }
 
-    lib::expect<void> ops::trunc(std::shared_ptr<vfs::file> file, std::size_t size)
+    lib::expect<void> ops::trunc(std::shared_ptr<vfs::file_t> file, std::size_t size)
     {
-        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         const auto old_size = static_cast<std::size_t>(inod->stat.st_size);
@@ -170,56 +173,56 @@ namespace fs::tmpfs
         return { };
     }
 
-    lib::expect<vmm::object::ptr> ops::map(std::shared_ptr<vfs::file> file)
+    lib::expect<vmm::object::ptr> ops::map(std::shared_ptr<vfs::file_t> file)
     {
-        auto inod = reinterpret_cast<inode *>(file->path.dentry->inode.get());
+        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         return inod->memory;
     }
 
-    auto fs::instance::create(
-        std::shared_ptr<vfs::inode> &parent, std::string_view name,
-        mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops>> ops
-    ) -> lib::expect<std::shared_ptr<vfs::inode>>
+    auto fs_t::instance::create(
+        std::shared_ptr<vfs::inode_t> &parent, std::string_view name,
+        mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops_t>> ops
+    ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
     {
         lib::unused(parent, name);
         if (!reserve(current_inodes, max_inodes, 1))
             return std::unexpected { lib::err::no_space_left };
 
-        return std::make_shared<inode>(
+        return std::make_shared<inode_t>(
             this, dev_id, rdev, next_inode++,
             mode, ops ? *ops : ops::singleton()
         );
     }
 
-    auto fs::instance::symlink(
-        std::shared_ptr<vfs::inode> &parent,
+    auto fs_t::instance::symlink(
+        std::shared_ptr<vfs::inode_t> &parent,
         std::string_view name, lib::path target
-    ) -> lib::expect<std::shared_ptr<vfs::inode>>
+    ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
     {
         lib::unused(target);
         return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, nullptr);
     }
 
-    auto fs::instance::link(
-        std::shared_ptr<vfs::inode> &parent,
-        std::string_view name, std::shared_ptr<vfs::inode> target
-    ) -> lib::expect<std::shared_ptr<vfs::inode>>
+    auto fs_t::instance::link(
+        std::shared_ptr<vfs::inode_t> &parent,
+        std::string_view name, std::shared_ptr<vfs::inode_t> target
+    ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
     {
         lib::unused(parent, name);
         target->stat.st_nlink++;
         return target;
     }
 
-    auto fs::instance::unlink(std::shared_ptr<vfs::inode> &node) -> lib::expect<void>
+    auto fs_t::instance::unlink(std::shared_ptr<vfs::inode_t> &node) -> lib::expect<void>
     {
         node->stat.st_nlink--;
         return { };
     }
 
-    auto fs::instance::rename(
-        std::shared_ptr<vfs::inode> &old_parent, std::string_view old_name,
-        std::shared_ptr<vfs::inode> &new_parent, std::string_view new_name,
-        std::shared_ptr<vfs::inode> replaced
+    auto fs_t::instance::rename(
+        std::shared_ptr<vfs::inode_t> &old_parent, std::string_view old_name,
+        std::shared_ptr<vfs::inode_t> &new_parent, std::string_view new_name,
+        std::shared_ptr<vfs::inode_t> replaced
     ) -> lib::expect<void>
     {
         lib::unused(old_parent, old_name, new_parent, new_name);
@@ -228,7 +231,7 @@ namespace fs::tmpfs
         return { };
     }
 
-    auto fs::instance::readdir(std::shared_ptr<vfs::dentry> dir, std::size_t cookie)
+    auto fs_t::instance::readdir(std::shared_ptr<vfs::dentry_t> dir, std::size_t cookie)
         -> lib::expect<lib::list<vfs::dir_entry>>
     {
         constexpr std::size_t max_batch = 256;
@@ -250,7 +253,7 @@ namespace fs::tmpfs
         return result;
     }
 
-    auto fs::instance::lookup(std::shared_ptr<vfs::dentry> dir,std::string_view name)
+    auto fs_t::instance::lookup(std::shared_ptr<vfs::dentry_t> dir,std::string_view name)
         -> lib::expect<vfs::dir_entry>
     {
         const auto locked = dir->children.lock();
@@ -259,27 +262,27 @@ namespace fs::tmpfs
         return std::unexpected { lib::err::not_found };
     }
 
-    auto fs::instance::write_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
+    auto fs_t::instance::write_inode(std::shared_ptr<vfs::inode_t> &inode) -> lib::expect<void>
     {
         lib::unused(inode);
         return { };
     }
 
-    auto fs::instance::dirty_inode(std::shared_ptr<vfs::inode> &inode) -> lib::expect<void>
+    auto fs_t::instance::dirty_inode(std::shared_ptr<vfs::inode_t> &inode) -> lib::expect<void>
     {
         lib::unused(inode);
         return { };
     }
 
-    bool fs::instance::sync() { return true; }
+    bool fs_t::instance::sync() { return true; }
 
-    bool fs::instance::unmount(std::shared_ptr<struct vfs::mount>)
+    bool fs_t::instance::unmount(std::shared_ptr<struct vfs::mount_t>)
     {
         lib::panic("todo: tmpfs::unmount");
         return false;
     }
 
-    std::string fs::instance::mount_options() const
+    std::string fs_t::instance::mount_options() const
     {
         constexpr auto none = std::numeric_limits<std::size_t>::max();
         constexpr mode_t default_mode = 0777 | s_isvtx;
@@ -318,9 +321,9 @@ namespace fs::tmpfs
         return out;
     }
 
-    void fs::instance::statfs(struct ::statfs &out)
+    void fs_t::instance::statfs(struct ::statfs &out)
     {
-        vfs::filesystem::instance::statfs(out);
+        vfs::filesystem_t::instance_t::statfs(out);
 
         const auto cur_size = current_size.load(std::memory_order_relaxed);
         const auto cur_inodes = current_inodes.load(std::memory_order_relaxed);
@@ -337,10 +340,10 @@ namespace fs::tmpfs
         out.f_ffree = max_inodes > cur_inodes ? max_inodes - cur_inodes : 0;
     }
 
-    auto fs::mount(
-        std::shared_ptr<vfs::dentry> src,
+    auto fs_t::mount(
+        std::shared_ptr<vfs::dentry_t> src,
         std::optional<lib::maybe_uspan<const std::byte>> data
-    ) const -> lib::expect<std::shared_ptr<struct vfs::mount>>
+    ) const -> lib::expect<std::shared_ptr<struct vfs::mount_t>>
     {
         lib::unused(src);
 
@@ -378,9 +381,9 @@ namespace fs::tmpfs
             }
         }
 
-        auto instance = lib::make_locked<fs::instance, sched::mutex>();
+        auto instance = lib::make_locked<fs_t::instance, sched::mutex>();
         auto locked = instance.lock();
-        locked->fs = const_cast<fs *>(this);
+        locked->fs = const_cast<fs_t *>(this);
         {
             constexpr auto max = std::numeric_limits<std::size_t>::max();
 
@@ -406,10 +409,10 @@ namespace fs::tmpfs
             locked->opt_gid = args.get<"gid">().value();
         }
 
-        auto root = std::make_shared<vfs::dentry>();
+        auto root = std::make_shared<vfs::dentry_t>();
         root->name = "tmpfs root. this shouldn't be visible anywhere";
         locked->current_inodes.fetch_add(1, std::memory_order_relaxed);
-        root->inode = std::make_shared<inode>(
+        root->inode = std::make_shared<inode_t>(
             locked.get(), locked->dev_id, 0, locked->next_inode++,
             static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
             ops::singleton()
@@ -418,7 +421,7 @@ namespace fs::tmpfs
         root->inode->stat.st_gid = locked->opt_gid;
         root->parent = root;
 
-        auto mount = std::make_shared<struct vfs::mount>(std::move(instance), root);
+        auto mount = std::make_shared<struct vfs::mount_t>(std::move(instance), root);
         mounts.push_back(mount);
         return mount;
     }
@@ -439,7 +442,8 @@ namespace fs::tmpfs
         lib::initgraph::postsched_init_engine,
         lib::initgraph::entail { registered_stage() },
         [] {
-            lib::bug_on(!vfs::register_fs(std::make_shared<fs>()));
+            fs.initialize();
+            lib::bug_on(!vfs::register_fs(*fs));
         }
     };
 } // namespace fs::tmpfs

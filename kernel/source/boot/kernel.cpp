@@ -26,7 +26,7 @@ void kthread()
         if (!res.has_value())
             lib::panic("could not reduce {}", path);
 
-        auto file = vfs::file::create(res.value(), 0, 0);
+        auto file = vfs::file_t::create(res.value(), 0, 0);
         auto image = bin::exec::probe(file);
         if (!image || !*image)
             lib::panic("could not identify {} file format", path);

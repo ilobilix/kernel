@@ -8,7 +8,7 @@ namespace syscall::vfs
 
     namespace
     {
-        lib::expect<path> xattr_target_path(
+        lib::expect<path_t> xattr_target_path(
             sched::process_t *proc,
             const char __user *pathname, bool follow_links
         )
@@ -16,7 +16,7 @@ namespace syscall::vfs
             return get_target(proc, at_fdcwd, pathname, follow_links, false, true);
         }
 
-        lib::expect<path> xattr_target_fd(sched::process_t *proc, int fd)
+        lib::expect<path_t> xattr_target_fd(sched::process_t *proc, int fd)
         {
             auto fdesc = detail::get_fd(proc, fd);
             if (!fdesc)
@@ -35,7 +35,7 @@ namespace syscall::vfs
         }
 
         int do_setxattr(
-            const path &target, std::string_view name,
+            const path_t &target, std::string_view name,
             const void __user *value, std::size_t size, int flags
         )
         {
@@ -56,7 +56,7 @@ namespace syscall::vfs
         }
 
         std::ssize_t do_getxattr(
-            const path &target, std::string_view name,
+            const path_t &target, std::string_view name,
             void __user *value, std::size_t size
         )
         {
@@ -75,7 +75,7 @@ namespace syscall::vfs
             return static_cast<std::ssize_t>(buf_size);
         }
 
-        std::ssize_t do_listxattr(const path &target, char __user *list, std::size_t size)
+        std::ssize_t do_listxattr(const path_t &target, char __user *list, std::size_t size)
         {
             if (size == 0)
             {
@@ -109,7 +109,7 @@ namespace syscall::vfs
             return static_cast<std::ssize_t>(total);
         }
 
-        int do_removexattr(const path &target, std::string_view name)
+        int do_removexattr(const path_t &target, std::string_view name)
         {
             if (detail::readonly_mount(target))
                 return -EROFS;

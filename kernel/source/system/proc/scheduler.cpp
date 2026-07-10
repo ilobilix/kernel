@@ -1777,7 +1777,7 @@ namespace sched
     }
 
     int exec(
-        const vfs::path &path, std::vector<std::string> argv,
+        const vfs::path_t &path, std::vector<std::string> argv,
         std::vector<std::string> envp, std::string pathname
     )
     {
@@ -1806,7 +1806,7 @@ namespace sched
                     return -EACCES;
             }
 
-            auto file = vfs::file::create(path, 0, 0);
+            auto file = vfs::file_t::create(path, 0, 0);
             auto image = bin::exec::probe(std::move(file));
             if (!image)
                 return -lib::map_error(image.error());

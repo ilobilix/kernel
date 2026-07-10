@@ -331,7 +331,7 @@ export namespace dev
         class_t *cls = nullptr;
 
         dev_t devt = 0;
-        std::shared_ptr<vfs::ops> fops;
+        std::shared_ptr<vfs::ops_t> fops;
         std::string modalias;
 
         bool probing = false;

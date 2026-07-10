@@ -32,7 +32,7 @@ namespace bin::exec
     }
 
     lib::expect<std::unique_ptr<image>> probe(
-        const std::shared_ptr<vfs::file> &file, std::size_t depth
+        const std::shared_ptr<vfs::file_t> &file, std::size_t depth
     )
     {
         if (depth >= max_depth)

@@ -176,6 +176,15 @@ namespace bin::elf::mod
 
                 switch (ptr->type)
                 {
+                    case ::mod::type::filesystem:
+                    {
+                        const auto match = ptr->matches();
+                        entry->aliases.emplace_back("fs-" + std::string {
+                            reinterpret_cast<const char *>(match.data()),
+                            match.size_bytes()
+                        });
+                        break;
+                    }
                     case ::mod::type::pci:
                     {
                         const auto match = ptr->matches();
@@ -208,7 +217,7 @@ namespace bin::elf::mod
             return count;
         }
 
-        std::size_t load(const lib::path &dir, std::shared_ptr<vfs::file> file)
+        std::size_t load(const lib::path &dir, std::shared_ptr<vfs::file_t> file)
         {
             lib::info("elf: loading '{}'", dir / file->path.dentry->name);
 
@@ -557,7 +566,7 @@ namespace bin::elf::mod
                     if (!res)
                         continue;
 
-                    count += load(dir, vfs::file::create(res->target, 0, 0));
+                    count += load(dir, vfs::file_t::create(res->target, 0, 0));
                 }
             }
             return count;

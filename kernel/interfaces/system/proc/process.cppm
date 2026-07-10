@@ -55,8 +55,8 @@ export namespace sched
 
         struct vfs_state
         {
-            vfs::path root;
-            vfs::path cwd;
+            vfs::path_t root;
+            vfs::path_t cwd;
             mode_t umask = static_cast<mode_t>(s_iwgrp | s_iwoth);
 
             std::shared_ptr<vfs_state> clone() const

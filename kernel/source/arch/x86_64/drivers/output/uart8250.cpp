@@ -180,7 +180,7 @@ namespace x86_64::output::uart8250
                 return std::numeric_limits<std::size_t>::max();
             }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> file) override
+            lib::expect<void> open(std::shared_ptr<vfs::file_t> file) override
             {
                 lib::unused(file);
 

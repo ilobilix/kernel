@@ -52,7 +52,7 @@ namespace syscall::vfs
         {
             epoll_instance_t *epi;
             int fd;
-            std::weak_ptr<file> wfile;
+            std::weak_ptr<file_t> wfile;
             std::uint32_t events;
             epoll_data_t data;
             bool active;
@@ -117,7 +117,7 @@ namespace syscall::vfs
             epi->bell.wake_all();
         }
 
-        struct epoll_table : ::vfs::poll_table
+        struct epoll_table : ::vfs::poll_table_t
         {
             epoll_entry_t *ent;
 
@@ -164,24 +164,24 @@ namespace syscall::vfs
             }
         }
 
-        struct ops : ::vfs::ops
+        struct ops_t : ::vfs::ops_t
         {
-            static std::shared_ptr<ops> singleton()
+            static std::shared_ptr<ops_t> singleton()
             {
-                static auto instance = std::make_shared<ops>();
+                static auto instance = std::make_shared<ops_t>();
                 return instance;
             }
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
+            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
             {
                 lib::unused(file, flags, pid);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -190,7 +190,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -199,7 +199,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file> file, vfs::poll_table *pt
+                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
             ) override
             {
                 auto epi = std::static_pointer_cast<epoll_instance_t>(file->private_data);
@@ -242,7 +242,7 @@ namespace syscall::vfs
             auto desc = sched::current_process()->fdt->get(epfd);
             if (!desc || !desc->file)
                 return nullptr;
-            if (desc->file->ops.get() != ops::singleton().get())
+            if (desc->file->ops.get() != ops_t::singleton().get())
                 return nullptr;
             return std::static_pointer_cast<epoll_instance_t>(desc->file->private_data);
         }
@@ -386,7 +386,7 @@ namespace syscall::vfs
 
         auto ret = create_anon_fd({
             .name = "<[EPOLL]>",
-            .ops = ops::singleton(),
+            .ops = ops_t::singleton(),
             .file_private_data = std::make_shared<epoll_instance_t>(),
             .inode_private_data = nullptr,
             .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
@@ -435,7 +435,7 @@ namespace syscall::vfs
             {
                 if (op == epoll_ctl_mod || (ev.events & epolloneshot))
                     return -EINVAL;
-                if (desc->file->ops.get() == ops::singleton().get())
+                if (desc->file->ops.get() == ops_t::singleton().get())
                     return -EINVAL;
             }
 

@@ -13,11 +13,11 @@ namespace vfs::dev
         lib::locker<
             lib::map::flat_hash<
                 dev_t,
-                std::shared_ptr<vfs::ops>
+                std::shared_ptr<vfs::ops_t>
             >, lib::rwspinlock
         > registry;
 
-        std::shared_ptr<vfs::ops> get_ops(dev_t rdev)
+        std::shared_ptr<vfs::ops_t> get_ops(dev_t rdev)
         {
             const auto lock = registry.read_lock();
             const auto it = lock->find(rdev);
@@ -27,7 +27,7 @@ namespace vfs::dev
         }
     } // namespace
 
-    bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops)
+    bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops_t> ops)
     {
         auto [it, inserted] = registry.write_lock()->emplace(rdev, ops);
         if (inserted)
@@ -47,7 +47,7 @@ namespace vfs::dev
         return true;
     }
 
-    auto get_ops(dev_t rdev, mode_t mode) -> lib::expect<std::shared_ptr<vfs::ops>>
+    auto get_ops(dev_t rdev, mode_t mode) -> lib::expect<std::shared_ptr<vfs::ops_t>>
     {
         switch (stat::type(mode))
         {

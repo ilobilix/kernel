@@ -11,7 +11,7 @@ import std;
 export namespace syscall::vfs
 {
     using namespace ::vfs;
-    lib::expect<path> get_target(
+    lib::expect<path_t> get_target(
         sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     );
@@ -232,22 +232,22 @@ namespace syscall::vfs::detail
 
     lib::expect<std::shared_ptr<filedesc>> get_fd(sched::process_t *proc, int fdnum);
 
-    lib::expect<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path);
+    lib::expect<path_t> get_parent(sched::process_t *proc, int dirfd, lib::path_view path);
 
     lib::expect<resolve_res> resolve_from(
         sched::process_t *proc, int dirfd,
         lib::path_view path, bool automount = true
     );
 
-    lib::expect<path> resolve_parent_dir(
+    lib::expect<path_t> resolve_parent_dir(
         sched::process_t *proc, int dirfd, lib::path_view path
     );
 
     lib::expect<lib::path> get_path(const char __user *pathname);
 
-    std::uint64_t mount_flags(const path &path);
-    bool readonly_mount(const path &path);
-    bool should_update_atime(const path &path, const kstat &stat, int file_flags = 0);
+    std::uint64_t mount_flags(const path_t &path);
+    bool readonly_mount(const path_t &path);
+    bool should_update_atime(const path_t &path, const kstat &stat, int file_flags = 0);
 
-    int touch_atime(const std::shared_ptr<vfs::file> &file);
+    int touch_atime(const std::shared_ptr<vfs::file_t> &file);
 } // namespace syscall::vfs::detail

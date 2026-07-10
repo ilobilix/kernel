@@ -32,6 +32,7 @@ export namespace sched
         {
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     const auto thread = current_thread();
@@ -45,7 +46,7 @@ export namespace sched
                         lib::panic("mutex deadlock");
                 }
 
-                _waiters.wait_unkillable();
+                _waiters.wait_unkillable_prepared(gen);
             }
         }
 
@@ -54,6 +55,7 @@ export namespace sched
         {
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     const auto thread = current_thread();
@@ -67,7 +69,7 @@ export namespace sched
                         lib::panic("mutex deadlock");
                 }
 
-                const auto res = _waiters.wait();
+                const auto res = _waiters.wait_prepared(gen);
                 if (res.interrupted || res.killed)
                     return false;
             }
@@ -84,7 +86,7 @@ export namespace sched
                 _owner = nullptr;
             }
 
-            _waiters.wake_one();
+            _waiters.wake_all();
             return true;
         }
 
@@ -112,6 +114,7 @@ export namespace sched
 
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     if (_owner == nullptr)
@@ -125,7 +128,7 @@ export namespace sched
                 if (now >= deadline)
                     return false;
 
-                const auto res = _waiters.wait(deadline - now);
+                const auto res = _waiters.wait_prepared(gen, deadline - now);
                 if (res.interrupted || res.killed)
                     return false;
             }
@@ -160,6 +163,7 @@ export namespace sched
         {
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     const auto thread = current_thread();
@@ -178,7 +182,7 @@ export namespace sched
                     }
                 }
 
-                _waiters.wait_unkillable();
+                _waiters.wait_unkillable_prepared(gen);
             }
         }
 
@@ -187,6 +191,7 @@ export namespace sched
         {
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     const auto thread = current_thread();
@@ -205,7 +210,7 @@ export namespace sched
                     }
                 }
 
-                const auto res = _waiters.wait();
+                const auto res = _waiters.wait_prepared(gen);
                 if (res.interrupted || res.killed)
                     return false;
             }
@@ -228,7 +233,7 @@ export namespace sched
             }
 
             if (wake)
-                _waiters.wake_one();
+                _waiters.wake_all();
             return true;
         }
 
@@ -270,6 +275,7 @@ export namespace sched
 
             while (true)
             {
+                const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
                     const auto thread = current_thread();
@@ -293,7 +299,7 @@ export namespace sched
                 if (now >= deadline)
                     return false;
 
-                const auto res = _waiters.wait(deadline - now);
+                const auto res = _waiters.wait_prepared(gen, deadline - now);
                 if (res.interrupted || res.killed)
                     return false;
             }

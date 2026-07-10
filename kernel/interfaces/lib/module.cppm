@@ -5,13 +5,15 @@ module;
 #include <version.h>
 
 export module lib:mod;
-import std;
 
+import :string;
+import std;
 export namespace mod
 {
     enum class type
     {
         generic,
+        filesystem,
         pci,
         acpi
     };
@@ -47,7 +49,7 @@ export namespace mod
 
     template<typename Id, std::size_t Num>
         requires std::has_unique_object_representations_v<Id>
-    consteval match_bytes<sizeof(Id) * Num> inline_match(const Id (&ids)[Num])
+    consteval match_bytes<sizeof(Id) * Num> ids_match(const Id (&ids)[Num])
     {
         match_bytes<sizeof(Id) * Num> out { Num, sizeof(Id), { } };
         for (std::size_t i = 0; i < Num; i++)
@@ -55,6 +57,15 @@ export namespace mod
             const auto raw = std::bit_cast<std::array<std::byte, sizeof(Id)>>(ids[i]);
             std::copy_n(raw.begin(), raw.size(), out.data.begin() + i * sizeof(Id));
         }
+        return out;
+    }
+
+    template<lib::comptime_string Str>
+    consteval match_bytes<Str.size()> string_match()
+    {
+        match_bytes<Str.size()> out { 1, Str.size(), { } };
+        for (std::size_t i = 0; i < Str.size(); i++)
+            out.data[i] = std::bit_cast<std::byte>(Str.value[i]);
         return out;
     }
 

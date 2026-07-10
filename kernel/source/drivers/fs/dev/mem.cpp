@@ -11,7 +11,7 @@ import std;
 
 namespace fs::dev::mem
 {
-    struct null_ops : vfs::ops
+    struct null_ops : vfs::ops_t
     {
         static std::shared_ptr<null_ops> singleton()
         {
@@ -20,7 +20,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -29,7 +29,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -38,7 +38,7 @@ namespace fs::dev::mem
         }
     };
 
-    struct zero_ops : vfs::ops
+    struct zero_ops : vfs::ops_t
     {
         static std::shared_ptr<zero_ops> singleton()
         {
@@ -47,7 +47,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -57,7 +57,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -66,7 +66,7 @@ namespace fs::dev::mem
         }
     };
 
-    struct full_ops : vfs::ops
+    struct full_ops : vfs::ops_t
     {
         static std::shared_ptr<full_ops> singleton()
         {
@@ -75,7 +75,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -85,7 +85,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -94,7 +94,7 @@ namespace fs::dev::mem
         }
     };
 
-    struct random_dev : vfs::ops
+    struct random_dev : vfs::ops_t
     {
         static std::shared_ptr<random_dev> singleton()
         {
@@ -103,7 +103,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {
@@ -113,7 +113,7 @@ namespace fs::dev::mem
         }
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file,
+            std::shared_ptr<vfs::file_t> file,
             std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
         ) override
         {

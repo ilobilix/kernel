@@ -31,10 +31,10 @@ export namespace vfs::dev
             (min & 0xFFFFFF00ull) << 12;
     }
 
-    bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops> ops);
+    bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops_t> ops);
     bool unregister_ops(dev_t rdev);
 
-    lib::expect<std::shared_ptr<vfs::ops>> get_ops(dev_t rdev, mode_t mode);
+    lib::expect<std::shared_ptr<vfs::ops_t>> get_ops(dev_t rdev, mode_t mode);
 
     std::uint32_t alloc_char_major();
 } // export namespace vfs::dev

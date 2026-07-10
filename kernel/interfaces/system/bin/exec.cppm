@@ -23,9 +23,10 @@ export namespace bin::exec
     class image
     {
         protected:
-        std::shared_ptr<vfs::file> file;
+        std::shared_ptr<vfs::file_t> file;
 
-        image(std::shared_ptr<vfs::file> f) : file { std::move(f) } { }
+        image(std::shared_ptr<vfs::file_t> file)
+            : file { std::move(file) } { }
 
         public:
         virtual ~image() = default;
@@ -45,7 +46,7 @@ export namespace bin::exec
         virtual ~format() = default;
 
         virtual lib::expect<std::unique_ptr<image>> probe(
-            const std::shared_ptr<vfs::file> &file, std::size_t depth = 0
+            const std::shared_ptr<vfs::file_t> &file, std::size_t depth = 0
         ) const = 0;
 
         std::string_view name() const { return _name; }
@@ -55,6 +56,6 @@ export namespace bin::exec
     std::shared_ptr<format> get_format(std::string_view name);
 
     lib::expect<std::unique_ptr<image>> probe(
-        const std::shared_ptr<vfs::file> &file, std::size_t depth = 0
+        const std::shared_ptr<vfs::file_t> &file, std::size_t depth = 0
     );
 } // export namespace bin::exec

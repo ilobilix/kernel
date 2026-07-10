@@ -19,7 +19,7 @@ namespace syscall::vfs
             return std::unexpected { lib::err::invalid_fd };
         }
 
-        lib::expect<path> get_parent(sched::process_t *proc, int dirfd, lib::path_view path)
+        lib::expect<path_t> get_parent(sched::process_t *proc, int dirfd, lib::path_view path)
         {
             if (path.is_absolute())
                 return get_root(true);
@@ -53,7 +53,7 @@ namespace syscall::vfs
             return std::move(*res);
         }
 
-        lib::expect<path> resolve_parent_dir(
+        lib::expect<path_t> resolve_parent_dir(
             sched::process_t *proc, int dirfd, lib::path_view path
         )
         {
@@ -94,17 +94,17 @@ namespace syscall::vfs
             return path;
         }
 
-        std::uint64_t mount_flags(const path &path)
+        std::uint64_t mount_flags(const path_t &path)
         {
             return path.mnt ? path.mnt->flags : 0ul;
         }
 
-        bool readonly_mount(const path &path)
+        bool readonly_mount(const path_t &path)
         {
             return (mount_flags(path) & ms_rdonly) != 0;
         }
 
-        bool should_update_atime(const path &path, const kstat &stat, int file_flags)
+        bool should_update_atime(const path_t &path, const kstat &stat, int file_flags)
         {
             if (file_flags & o_noatime)
                 return false;
@@ -125,7 +125,7 @@ namespace syscall::vfs
             return chrono::now(chrono::realtime) - atim >= day;
         }
 
-        int touch_atime(const std::shared_ptr<vfs::file> &file)
+        int touch_atime(const std::shared_ptr<vfs::file_t> &file)
         {
             auto &inode = file->path.dentry->inode;
             const std::unique_lock _ { inode->lock };
@@ -139,7 +139,7 @@ namespace syscall::vfs
         }
     } // namespace detail
 
-    lib::expect<path> get_target(
+    lib::expect<path_t> get_target(
         sched::process_t *proc, int dirfd, const char __user *pathname,
         bool follow_links, bool empty_path, bool automount
     )

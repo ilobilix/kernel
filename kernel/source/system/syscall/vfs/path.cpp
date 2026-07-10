@@ -399,7 +399,7 @@ namespace syscall::vfs
             !sched::check_perms(proc->cred, new_parent_stat, sched::access_mode::write))
             return -EACCES;
 
-        const auto sticky_ok = [&](const path &parent_path, const path &target_path) -> bool {
+        const auto sticky_ok = [&](const path_t &parent_path, const path_t &target_path) -> bool {
             const auto &pstat = parent_path.dentry->inode->stat;
             if (!(pstat.st_mode & s_isvtx))
                 return true;

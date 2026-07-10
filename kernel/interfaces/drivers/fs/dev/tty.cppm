@@ -336,12 +336,12 @@ export namespace fs::dev::tty
 
         virtual void shutdown() = 0;
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
-        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
+        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
 
-        virtual lib::expect<std::uint16_t> poll(vfs::poll_table *pt) = 0;
+        virtual lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
 
@@ -450,12 +450,12 @@ export namespace fs::dev::tty
 
         void receive(std::span<std::byte> buffer) override;
 
-        lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
-        lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) override;
+        lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) override;
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
 
-        lib::expect<std::uint16_t> poll(vfs::poll_table *pt) override;
+        lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt) override;
     };
 
     struct driver;
@@ -496,7 +496,7 @@ export namespace fs::dev::tty
         [[noreturn]]
         static void raw_worker(instance *self);
 
-        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer)
         {
             auto ld = ldisc.lock().value();
             if (!ld)
@@ -504,7 +504,7 @@ export namespace fs::dev::tty
             return ld->read(std::move(file), buffer);
         }
 
-        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file> file, lib::maybe_uspan<std::byte> buffer)
+        virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer)
         {
             auto ld = ldisc.lock().value();
             if (!ld)
@@ -515,10 +515,10 @@ export namespace fs::dev::tty
         virtual std::size_t transmit(std::span<std::byte> buffer) = 0;
         virtual std::size_t can_transmit() = 0;
 
-        virtual lib::expect<void> open(std::shared_ptr<vfs::file> file) = 0;
+        virtual lib::expect<void> open(std::shared_ptr<vfs::file_t> file) = 0;
         virtual lib::expect<void> close() = 0;
 
-        virtual lib::expect<void> permit_open(std::shared_ptr<vfs::file> file)
+        virtual lib::expect<void> permit_open(std::shared_ptr<vfs::file_t> file)
         {
             lib::unused(file);
             return { };
@@ -528,7 +528,7 @@ export namespace fs::dev::tty
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
 
-        virtual lib::expect<std::uint16_t> poll(vfs::poll_table *pt);
+        virtual lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt);
 
         virtual void set_termios(ktermios &current, const ktermios &old)
         {

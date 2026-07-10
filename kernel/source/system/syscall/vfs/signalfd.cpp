@@ -85,24 +85,24 @@ namespace syscall::vfs
             return ss;
         }
 
-        struct ops : ::vfs::ops
+        struct ops_t : ::vfs::ops_t
         {
-            static std::shared_ptr<ops> singleton()
+            static std::shared_ptr<ops_t> singleton()
             {
-                static auto instance = std::make_shared<ops>();
+                static auto instance = std::make_shared<ops_t>();
                 return instance;
             }
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
+            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
             {
                 lib::unused(file, flags, pid);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -163,7 +163,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -172,7 +172,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file> file, vfs::poll_table *pt
+                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
             ) override
             {
                 auto data = std::static_pointer_cast<data_t>(file->private_data);
@@ -209,7 +209,7 @@ namespace syscall::vfs
             auto desc = sched::current_process()->fdt->get(fd);
             if (!desc || !desc->file)
                 return -EBADF;
-            if (desc->file->ops.get() != ops::singleton().get())
+            if (desc->file->ops.get() != ops_t::singleton().get())
                 return -EINVAL;
 
             auto data = std::static_pointer_cast<data_t>(desc->file->private_data);
@@ -225,7 +225,7 @@ namespace syscall::vfs
         auto data = std::make_shared<data_t>(kmask);
         auto ret = create_anon_fd({
             .name = "<[SIGNALFD]>",
-            .ops = ops::singleton(),
+            .ops = ops_t::singleton(),
             .file_private_data = data,
             .inode_private_data = nullptr,
             .st_mode = std::to_underlying(stat::s_ifreg) | s_irusr | s_iwusr,
