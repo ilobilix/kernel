@@ -338,7 +338,7 @@ export namespace vfs::socket
         virtual auto recvmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> = 0;
 
         virtual auto ioctl(std::uint64_t request, lib::uptr_or_addr argp) -> lib::expect<int> = 0;
-        virtual auto poll(vfs::poll_table *pt) -> lib::expect<std::uint16_t> = 0;
+        virtual auto poll(vfs::poll_table_t *pt) -> lib::expect<std::uint16_t> = 0;
 
         virtual auto shutdown(int how) -> lib::expect<void> = 0;
 
@@ -359,7 +359,7 @@ export namespace vfs::socket
         virtual ~socket_t() = default;
     };
 
-    std::shared_ptr<socket_t> from_file(const vfs::file &file);
+    std::shared_ptr<socket_t> from_file(const vfs::file_t &file);
 
     struct family_t
     {

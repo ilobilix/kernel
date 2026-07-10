@@ -147,7 +147,7 @@ namespace initramfs
                 const auto devminor = lib::oct2int<time_t>(current->devminor);
                 const dev_t dev = vfs::dev::makedev(devmajor, devminor);
 
-                std::shared_ptr<vfs::inode> inode;
+                std::shared_ptr<vfs::inode_t> inode;
 
                 if (name == "./" || name.ends_with("/.keep"))
                     goto next;
@@ -171,7 +171,7 @@ namespace initramfs
                             current->payload(), payload_size
                         ).value();
 
-                        auto file = vfs::file::create(ret.value(), 0, 0);
+                        auto file = vfs::file_t::create(ret.value(), 0, 0);
                         if (const auto res = file->pwrite(0, payload); !res.has_value() || res.value() != payload_size)
                         {
                             lib::error(

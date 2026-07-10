@@ -77,7 +77,7 @@ namespace vfs::socket
                     return std::make_shared<private_t>(std::move(sock));
                 }
 
-                static auto get(const std::shared_ptr<vfs::inode> &inode)
+                static auto get(const std::shared_ptr<vfs::inode_t> &inode)
                 {
                     return std::static_pointer_cast<private_t>(inode->private_data);
                 }
@@ -104,7 +104,7 @@ namespace vfs::socket
 
                 std::weak_ptr<unix_sock> peer;
 
-                std::shared_ptr<vfs::inode> bound_inode;
+                std::shared_ptr<vfs::inode_t> bound_inode;
                 std::string bound_path;
                 bool bound = false;
 
@@ -1332,7 +1332,7 @@ namespace vfs::socket
                 }
             }
 
-            auto poll(vfs::poll_table *pt) -> lib::expect<std::uint16_t> override
+            auto poll(vfs::poll_table_t *pt) -> lib::expect<std::uint16_t> override
             {
                 if (pt)
                 {

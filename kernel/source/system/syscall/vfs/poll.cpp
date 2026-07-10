@@ -44,7 +44,7 @@ namespace syscall::vfs
             std::memset(set->fds_bits, 0, sizeof(fd_set));
         }
 
-        struct poll_table : ::vfs::poll_table
+        struct poll_table_t : ::vfs::poll_table_t
         {
             struct entry
             {
@@ -58,8 +58,8 @@ namespace syscall::vfs
             lib::list<entry> entries;
             sched::wait_queue_t poll_wq;
 
-            poll_table() = default;
-            ~poll_table()
+            poll_table_t() = default;
+            ~poll_table_t()
             {
                 for (auto &entry : entries)
                     entry.wq->remove_entry(entry.wq_entry);
@@ -97,7 +97,7 @@ namespace syscall::vfs
 
             struct fd_slot
             {
-                std::shared_ptr<file> file;
+                std::shared_ptr<file_t> file;
                 std::uint16_t events;
             };
 
@@ -126,7 +126,7 @@ namespace syscall::vfs
 
             while (true)
             {
-                poll_table pt;
+                poll_table_t pt;
                 std::size_t ready = 0;
 
                 for (nfds_t i = 0; i < fds.size(); i++)

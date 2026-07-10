@@ -86,7 +86,7 @@ export namespace dev::block
               drive { drive }, lba_start { lba_start }, lba_count { lba_count } { }
     };
 
-    struct ops_t : vfs::ops
+    struct ops_t : vfs::ops_t
     {
         private:
         object_t::ptr memory;
@@ -98,23 +98,23 @@ export namespace dev::block
             std::shared_ptr<drive_t> drive,
             std::optional<std::uint64_t> lba_start = std::nullopt,
             std::optional<std::uint64_t> lba_count = std::nullopt
-        ) : vfs::ops { }, memory { new object_t {
+        ) : vfs::ops_t { }, memory { new object_t {
                 lba_start.value_or(0),
                 lba_count.value_or(drive->block_count()),
                 std::move(drive)
             } } { }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file> file, std::uint64_t offset,
+            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
-        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override;
+        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
     };
 
     namespace mbr

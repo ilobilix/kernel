@@ -11,6 +11,6 @@ export namespace fs::devpts
     lib::initgraph::stage *registered_stage();
     lib::initgraph::stage *mounted_stage();
 
-    lib::expect<vfs::path> attach_slave(std::uint32_t minor, mode_t mode, dev_t rdev);
+    lib::expect<vfs::path_t> attach_slave(std::uint32_t minor, mode_t mode, dev_t rdev);
     lib::expect<void> detach_slave(std::uint32_t minor);
 } // export namespace fs::devpts

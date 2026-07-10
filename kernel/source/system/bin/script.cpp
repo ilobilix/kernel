@@ -19,7 +19,7 @@ namespace bin::script
 
         public:
         image(
-            const std::shared_ptr<vfs::file> &file, std::unique_ptr<exec::image> interp,
+            const std::shared_ptr<vfs::file_t> &file, std::unique_ptr<exec::image> interp,
             const std::string_view &interp_path, std::optional<std::string> interp_arg
         ) : exec::image { std::move(file) }, _interp { std::move(interp) },
             _interp_path { interp_path }, _interp_arg { std::move(interp_arg) } { }
@@ -55,7 +55,7 @@ namespace bin::script
         format() : exec::format { fmt_name } { }
 
         lib::expect<std::unique_ptr<exec::image>> probe(
-            const std::shared_ptr<vfs::file> &file, std::size_t depth
+            const std::shared_ptr<vfs::file_t> &file, std::size_t depth
         ) const override
         {
             lib::membuffer data { max_length };
@@ -113,7 +113,7 @@ namespace bin::script
             if (!res.has_value())
                 return std::unexpected { lib::err::invalid_binfmt };
 
-            auto interp_file = vfs::file::create(std::move(*res), 0, 0);
+            auto interp_file = vfs::file_t::create(std::move(*res), 0, 0);
             auto next = exec::probe(interp_file, depth);
             if (!next.has_value())
                 return std::unexpected { next.error() };

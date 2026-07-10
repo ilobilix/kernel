@@ -480,7 +480,7 @@ namespace syscall::vfs
 
     namespace
     {
-        int do_trunc(const path &target, off_t length)
+        int do_trunc(const path_t &target, off_t length)
         {
             auto &inode = target.dentry->inode;
             if (inode->stat.type() == stat::type::s_ifdir)
@@ -491,7 +491,7 @@ namespace syscall::vfs
             if (detail::readonly_mount(target))
                 return -EROFS;
 
-            auto file = vfs::file::create(target, 0, o_wronly);
+            auto file = vfs::file_t::create(target, 0, o_wronly);
             if (const auto ret = file->trunc(static_cast<std::size_t>(length)); !ret)
                 return -lib::map_error(ret.error());
 

@@ -40,7 +40,7 @@ namespace bin::elf::exec
             auxval auxv;
         };
 
-        std::optional<Elf64_Ehdr> read_ehdr(const std::shared_ptr<vfs::file> &file)
+        std::optional<Elf64_Ehdr> read_ehdr(const std::shared_ptr<vfs::file_t> &file)
         {
             Elf64_Ehdr ehdr;
             auto hdruspan = lib::maybe_uspan<std::byte>::create(
@@ -68,9 +68,9 @@ namespace bin::elf::exec
         }
 
         auto load_file(
-            const std::shared_ptr<vfs::file> &file, const Elf64_Ehdr &ehdr,
+            const std::shared_ptr<vfs::file_t> &file, const Elf64_Ehdr &ehdr,
             std::shared_ptr<vmm::vmspace> &vmspace, std::uintptr_t &addr
-        ) -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file>, std::uintptr_t>>
+        ) -> std::optional<std::tuple<auxval, std::shared_ptr<vfs::file_t>, std::uintptr_t>>
         {
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
@@ -78,7 +78,7 @@ namespace bin::elf::exec
             const auto psize = vmm::default_page_size();
             const auto npsize = vmm::pagemap::from_page_size(psize);
 
-            std::shared_ptr<vfs::file> interp { };
+            std::shared_ptr<vfs::file_t> interp { };
 
             std::uintptr_t max_end = 0;
             std::uintptr_t base_addr = addr;
@@ -286,7 +286,7 @@ namespace bin::elf::exec
                             return std::nullopt;
                         }
 
-                        interp = vfs::file::create(std::move(*res), 0, 0);
+                        interp = vfs::file_t::create(std::move(*res), 0, 0);
                         break;
                     }
                     default:
@@ -464,7 +464,7 @@ namespace bin::elf::exec
         Elf64_Ehdr _ehdr;
 
         public:
-        image(std::shared_ptr<vfs::file> file, const Elf64_Ehdr &ehdr)
+        image(std::shared_ptr<vfs::file_t> file, const Elf64_Ehdr &ehdr)
             : bin::exec::image { std::move(file) }, _ehdr { ehdr } { }
 
         std::shared_ptr<sched::thread_t> load(const bin::exec::request &req) const override
@@ -533,7 +533,7 @@ namespace bin::elf::exec
         format() : bin::exec::format { fmt_name } { }
 
         lib::expect<std::unique_ptr<bin::exec::image>> probe(
-            const std::shared_ptr<vfs::file> &file, std::size_t depth
+            const std::shared_ptr<vfs::file_t> &file, std::size_t depth
         ) const override
         {
             lib::unused(depth);

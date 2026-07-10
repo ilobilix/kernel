@@ -203,60 +203,60 @@ export namespace vfs
         pollrdhup  = 0x2000
     };
 
-    struct poll_table
+    struct poll_table_t
     {
         virtual void add(sched::wait_queue_t &wq) = 0;
-        virtual ~poll_table() = default;
+        virtual ~poll_table_t() = default;
     };
 
-    struct file;
-    struct inode;
-    struct ops
+    struct file_t;
+    struct inode_t;
+    struct ops_t
     {
         virtual bool truncable() const { return false; }
         virtual bool seekable() const { return true; }
 
-        virtual lib::expect<void> open(std::shared_ptr<file> file, int flags, pid_t pid)
+        virtual lib::expect<void> open(std::shared_ptr<file_t> file, int flags, pid_t pid)
         {
             lib::unused(file, flags, pid);
             return { };
         }
 
-        virtual lib::expect<void> close(file &file)
+        virtual lib::expect<void> close(file_t &file)
         {
             lib::unused(file);
             return { };
         }
 
         virtual lib::expect<std::size_t> read(
-            std::shared_ptr<file> file, std::uint64_t offset,
+            std::shared_ptr<file_t> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
         virtual lib::expect<std::size_t> write(
-            std::shared_ptr<file> file, std::uint64_t offset,
+            std::shared_ptr<file_t> file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
 
-        virtual lib::expect<void> trunc(std::shared_ptr<file> file, std::size_t size)
+        virtual lib::expect<void> trunc(std::shared_ptr<file_t> file, std::size_t size)
         {
             lib::unused(file, size);
             return std::unexpected { lib::err::invalid_argument };
         }
 
-        virtual lib::expect<void> getattr(std::shared_ptr<inode> inode)
+        virtual lib::expect<void> getattr(std::shared_ptr<inode_t> inode)
         {
             lib::unused(inode);
             return { };
         }
 
-        virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file> file, poll_table *pt)
+        virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file_t> file, poll_table_t *pt)
         {
             lib::unused(file, pt);
             return pollin | pollout;
         }
 
         virtual lib::expect<int> ioctl(
-            std::shared_ptr<file> file, std::uint64_t request,
+            std::shared_ptr<file_t> file, std::uint64_t request,
             lib::uptr_or_addr argp
         )
         {
@@ -264,7 +264,7 @@ export namespace vfs
             return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file> file)
+        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file_t> file)
         {
             lib::unused(file);
             return std::unexpected { lib::err::mapping_unsupported };
@@ -272,77 +272,77 @@ export namespace vfs
 
         virtual lib::expect<void> sync() { return { }; }
 
-        virtual ~ops() = default;
+        virtual ~ops_t() = default;
     };
 
-    struct dentry;
-    struct mount;
+    struct dentry_t;
+    struct mount_t;
 
-    struct path
+    struct path_t
     {
-        std::shared_ptr<mount> mnt;
-        std::shared_ptr<dentry> dentry;
+        std::shared_ptr<mount_t> mnt;
+        std::shared_ptr<dentry_t> dentry;
     };
 
-    struct inode;
+    struct inode_t;
     struct dir_entry
     {
         std::string name;
-        std::shared_ptr<inode> inode;
+        std::shared_ptr<inode_t> inode;
         std::size_t cookie;
     };
 
-    struct filesystem
+    struct filesystem_t
     {
-        std::string name;
-        std::uint32_t magic = 0;
-        bool requires_dev = false;
+        const std::string name;
+        const std::uint32_t magic;
+        const bool requires_dev;
 
-        struct instance
+        struct instance_t
         {
-            filesystem *fs = nullptr;
+            filesystem_t *fs = nullptr;
             std::atomic<ino_t> next_inode = 1;
             dev_t dev_id;
 
             virtual auto create(
-                std::shared_ptr<inode> &parent, std::string_view name,
-                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<ops>> ops
-            ) -> lib::expect<std::shared_ptr<inode>> = 0;
+                std::shared_ptr<inode_t> &parent, std::string_view name,
+                mode_t mode, dev_t rdev, std::optional<std::shared_ptr<ops_t>> ops
+            ) -> lib::expect<std::shared_ptr<inode_t>> = 0;
 
             virtual auto symlink(
-                std::shared_ptr<inode> &parent,
+                std::shared_ptr<inode_t> &parent,
                 std::string_view name, lib::path target
-            ) -> lib::expect<std::shared_ptr<inode>> = 0;
+            ) -> lib::expect<std::shared_ptr<inode_t>> = 0;
 
             virtual auto link(
-                std::shared_ptr<inode> &parent,
-                std::string_view name, std::shared_ptr<inode> target
-            ) -> lib::expect<std::shared_ptr<inode>> = 0;
+                std::shared_ptr<inode_t> &parent,
+                std::string_view name, std::shared_ptr<inode_t> target
+            ) -> lib::expect<std::shared_ptr<inode_t>> = 0;
 
-            virtual auto unlink(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
+            virtual auto unlink(std::shared_ptr<inode_t> &inode) -> lib::expect<void> = 0;
 
             virtual auto rename(
-                std::shared_ptr<inode> &old_parent, std::string_view old_name,
-                std::shared_ptr<inode> &new_parent, std::string_view new_name,
-                std::shared_ptr<inode> replaced
+                std::shared_ptr<inode_t> &old_parent, std::string_view old_name,
+                std::shared_ptr<inode_t> &new_parent, std::string_view new_name,
+                std::shared_ptr<inode_t> replaced
             ) -> lib::expect<void> = 0;
 
-            virtual auto readdir(std::shared_ptr<dentry> dir, std::size_t cookie)
+            virtual auto readdir(std::shared_ptr<dentry_t> dir, std::size_t cookie)
                 -> lib::expect<lib::list<dir_entry>> = 0;
 
-            virtual auto lookup(std::shared_ptr<dentry> dir,std::string_view name)
+            virtual auto lookup(std::shared_ptr<dentry_t> dir,std::string_view name)
                 -> lib::expect<dir_entry>;
 
-            virtual auto readlink(std::shared_ptr<dentry> dentry) -> lib::expect<lib::path>;
+            virtual auto readlink(std::shared_ptr<dentry_t> dentry) -> lib::expect<lib::path>;
 
-            virtual bool revalidate(std::shared_ptr<dentry> dentry)
+            virtual bool revalidate(std::shared_ptr<dentry_t> dentry)
             {
                 lib::unused(dentry);
                 return true;
             }
 
             virtual bool permission(
-                std::shared_ptr<dentry> dentry,
+                std::shared_ptr<dentry_t> dentry,
                 const std::shared_ptr<sched::cred_t> &cred,
                 std::uint32_t mode
             );
@@ -351,10 +351,10 @@ export namespace vfs
 
             virtual void statfs(struct ::statfs &out);
 
-            virtual auto write_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
-            virtual auto dirty_inode(std::shared_ptr<inode> &inode) -> lib::expect<void> = 0;
+            virtual auto write_inode(std::shared_ptr<inode_t> &inode) -> lib::expect<void> = 0;
+            virtual auto dirty_inode(std::shared_ptr<inode_t> &inode) -> lib::expect<void> = 0;
 
-            virtual auto getxattr(std::shared_ptr<inode> &inode, std::string_view name)
+            virtual auto getxattr(std::shared_ptr<inode_t> &inode, std::string_view name)
                 -> lib::expect<lib::membuffer>
             {
                 lib::unused(inode, name);
@@ -362,7 +362,7 @@ export namespace vfs
             }
 
             virtual auto setxattr(
-                std::shared_ptr<inode> &inode, std::string_view name,
+                std::shared_ptr<inode_t> &inode, std::string_view name,
                 lib::maybe_uspan<std::byte> data, int flags
             ) -> lib::expect<void>
             {
@@ -370,14 +370,14 @@ export namespace vfs
                 return std::unexpected { lib::err::not_supported };
             }
 
-            virtual auto remxattr(std::shared_ptr<inode> &inode, std::string_view name)
+            virtual auto remxattr(std::shared_ptr<inode_t> &inode, std::string_view name)
                 -> lib::expect<void>
             {
                 lib::unused(inode, name);
                 return std::unexpected { lib::err::not_supported };
             }
 
-            virtual auto listxattrs(std::shared_ptr<inode> &inode)
+            virtual auto listxattrs(std::shared_ptr<inode_t> &inode)
                 -> lib::expect<std::vector<std::string>>
             {
                 lib::unused(inode);
@@ -385,28 +385,29 @@ export namespace vfs
             }
 
             virtual bool sync() = 0;
-            virtual bool unmount(std::shared_ptr<mount> mnt) = 0;
+            virtual bool unmount(std::shared_ptr<mount_t> mnt) = 0;
 
-            virtual ~instance() = default;
+            virtual ~instance_t() = default;
 
-            instance();
+            instance_t();
         };
 
         virtual auto mount(
-            std::shared_ptr<dentry> src,
+            std::shared_ptr<dentry_t> src,
             std::optional<lib::maybe_uspan<const std::byte>> data
-        ) const -> lib::expect<std::shared_ptr<mount>> = 0;
+        ) const -> lib::expect<std::shared_ptr<mount_t>> = 0;
 
-        filesystem(std::string_view name, std::uint32_t magic = 0, bool requires_dev = false)
+        filesystem_t(std::string_view name, std::uint32_t magic = 0, bool requires_dev = false)
             : name { name }, magic { magic }, requires_dev { requires_dev } { }
-        virtual ~filesystem() = default;
+
+        virtual ~filesystem_t() = default;
     };
 
-    struct mount
+    struct mount_t
     {
-        lib::locked_ptr<filesystem::instance, sched::mutex> fs;
-        std::shared_ptr<dentry> root;
-        std::optional<path> mounted_on;
+        lib::locked_ptr<filesystem_t::instance_t, sched::mutex> fs;
+        std::shared_ptr<dentry_t> root;
+        std::optional<path_t> mounted_on;
 
         std::size_t id;
         std::size_t parent_id;
@@ -415,14 +416,14 @@ export namespace vfs
         std::string fstype;
         std::string source;
 
-        mount(lib::locked_ptr<filesystem::instance, sched::mutex> fs, std::shared_ptr<dentry> root)
+        mount_t(lib::locked_ptr<filesystem_t::instance_t, sched::mutex> fs, std::shared_ptr<dentry_t> root)
             : fs { std::move(fs) }, root { std::move(root) } { }
     };
 
-    struct inode
+    struct inode_t
     {
         sched::mutex lock;
-        std::shared_ptr<ops> ops;
+        std::shared_ptr<ops_t> ops;
         kstat stat;
         bool dirty = false;
 
@@ -433,22 +434,22 @@ export namespace vfs
 
         std::shared_ptr<void> private_data;
 
-        std::shared_ptr<struct ops> get_ops();
+        std::shared_ptr<struct ops_t> get_ops();
 
-        inode(std::shared_ptr<struct ops> ops) : ops { ops } { }
+        inode_t(std::shared_ptr<struct ops_t> ops) : ops { ops } { }
     };
 
-    struct dentry : std::enable_shared_from_this<dentry>
+    struct dentry_t : std::enable_shared_from_this<dentry_t>
     {
-        static std::shared_ptr<dentry> root(bool absolute);
-        static std::shared_ptr<dentry> create();
+        static std::shared_ptr<dentry_t> root(bool absolute);
+        static std::shared_ptr<dentry_t> create();
 
         struct children
         {
             public:
             struct node
             {
-                std::shared_ptr<dentry> dentry;
+                std::shared_ptr<dentry_t> dentry;
                 std::size_t cookie;
             };
 
@@ -470,7 +471,7 @@ export namespace vfs
             public:
             children() = default;
 
-            void insert(std::shared_ptr<dentry> dentry)
+            void insert(std::shared_ptr<dentry_t> dentry)
             {
                 lib::bug_on(_child_map.contains(dentry->name));
                 _child_list.push_back({ dentry, _next_cookie++ });
@@ -490,7 +491,7 @@ export namespace vfs
                 return true;
             }
 
-            std::shared_ptr<dentry> lookup(std::string_view name) const
+            std::shared_ptr<dentry_t> lookup(std::string_view name) const
             {
                 const auto it = _child_map.find(name);
                 if (it == _child_map.end())
@@ -536,26 +537,26 @@ export namespace vfs
         std::string name;
         lib::path symlinked_to;
 
-        std::shared_ptr<inode> inode;
+        std::shared_ptr<inode_t> inode;
 
-        std::weak_ptr<dentry> parent;
+        std::weak_ptr<dentry_t> parent;
         lib::locker<children, sched::mutex> children;
 
-        lib::locker<lib::list<std::weak_ptr<mount>>, sched::mutex> child_mounts;
+        lib::locker<lib::list<std::weak_ptr<mount_t>>, sched::mutex> child_mounts;
     };
 
-    struct file : std::enable_shared_from_this<file>
+    struct file_t : std::enable_shared_from_this<file_t>
     {
         sched::mutex lock;
-        std::shared_ptr<ops> ops;
+        std::shared_ptr<ops_t> ops;
         bool opened;
-        path path;
+        path_t path;
         std::size_t offset;
         int flags;
 
         std::shared_ptr<void> private_data;
 
-        ~file()
+        ~file_t()
         {
             if (!opened)
                 return;
@@ -639,7 +640,7 @@ export namespace vfs
 
         lib::expect<std::size_t> getdents(lib::maybe_uspan<std::byte> buffer);
 
-        lib::expect<std::uint16_t> poll(poll_table *pt)
+        lib::expect<std::uint16_t> poll(poll_table_t *pt)
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
@@ -678,9 +679,9 @@ export namespace vfs
             return { };
         }
 
-        static std::shared_ptr<file> create(const vfs::path &path, std::size_t offset, int flags)
+        static std::shared_ptr<file_t> create(const vfs::path_t &path, std::size_t offset, int flags)
         {
-            auto file = std::make_shared<vfs::file>();
+            auto file = std::make_shared<vfs::file_t>();
             file->opened = false;
             file->path = path;
             file->offset = offset;
@@ -693,13 +694,13 @@ export namespace vfs
 
     struct filedesc
     {
-        std::shared_ptr<file> file { };
+        std::shared_ptr<file_t> file { };
         std::atomic_bool closexec = false;
 
-        static std::shared_ptr<filedesc> create(const path &path, int flags)
+        static std::shared_ptr<filedesc> create(const path_t &path, int flags)
         {
             auto fd = std::make_shared<filedesc>();
-            fd->file = vfs::file::create(path, 0, flags & ~creation_flags);
+            fd->file = vfs::file_t::create(path, 0, flags & ~creation_flags);
             fd->closexec = (flags & o_cloexec) != 0;
             return fd;
         }
@@ -731,25 +732,26 @@ export namespace vfs
 
     struct resolve_res
     {
-        path parent;
-        path target;
+        path_t parent;
+        path_t target;
     };
 
-    path get_root(bool absolute);
-    std::shared_ptr<mount> get_mount(std::size_t id);
+    path_t get_root(bool absolute);
+    std::shared_ptr<mount_t> get_mount(std::size_t id);
 
-    bool register_fs(std::shared_ptr<filesystem> fs);
-    auto find_fs(std::string_view name) -> lib::expect<std::shared_ptr<filesystem>>;
+    bool register_fs(filesystem_t &fs);
+    bool unregister_fs(filesystem_t &fs);
+    filesystem_t *find_fs(std::string_view name);
 
-    std::string pathname_from(path path);
+    std::string pathname_from(path_t path);
 
-    auto path_for(lib::path _path) -> lib::expect<path>;
-    auto resolve(std::optional<path> parent, lib::path path, bool automount = true)
+    auto path_for(lib::path _path) -> lib::expect<path_t>;
+    auto resolve(std::optional<path_t> parent, lib::path path, bool automount = true)
         -> lib::expect<resolve_res>;
     auto reduce(
-        path parent, path src, bool automount = true,
+        path_t parent, path_t src, bool automount = true,
         std::size_t symlink_depth = symloop_max
-    ) -> lib::expect<path>;
+    ) -> lib::expect<path_t>;
 
     auto mount(
         lib::path source_path, lib::path target_path,
@@ -759,53 +761,53 @@ export namespace vfs
     auto unmount(lib::path target) -> lib::expect<void>;
 
     bool check_access(
-        const path &target,
+        const path_t &target,
         const std::shared_ptr<sched::cred_t> &cred,
         std::uint32_t mode
     );
 
-    bool check_access(const path &target, std::uint32_t mode);
+    bool check_access(const path_t &target, std::uint32_t mode);
 
     auto create(
-        std::optional<path> parent, lib::path _path,
-        mode_t mode, dev_t rdev = 0, std::shared_ptr<ops> ops = nullptr
-    ) -> lib::expect<path>;
-    auto symlink(std::optional<path> parent, lib::path src, lib::path target) -> lib::expect<path>;
+        std::optional<path_t> parent, lib::path _path,
+        mode_t mode, dev_t rdev = 0, std::shared_ptr<ops_t> ops = nullptr
+    ) -> lib::expect<path_t>;
+    auto symlink(std::optional<path_t> parent, lib::path src, lib::path target) -> lib::expect<path_t>;
     auto link(
-        std::optional<path> parent, lib::path src,
-        std::optional<path> tgtparent, lib::path target,
+        std::optional<path_t> parent, lib::path src,
+        std::optional<path_t> tgtparent, lib::path target,
         bool follow_links = false
-    ) -> lib::expect<path>;
-    auto unlink(std::optional<path> parent, lib::path path) -> lib::expect<void>;
+    ) -> lib::expect<path_t>;
+    auto unlink(std::optional<path_t> parent, lib::path path) -> lib::expect<void>;
 
     auto rename(
-        std::optional<path> old_parent, lib::path old_path,
-        std::optional<path> new_parent, lib::path new_path
+        std::optional<path_t> old_parent, lib::path old_path,
+        std::optional<path_t> new_parent, lib::path new_path
     ) -> lib::expect<void>;
 
     // called with path.dentry->inode->lock acquired
-    auto dirty_inode(const path &path) -> lib::expect<void>;
+    auto dirty_inode(const path_t &path) -> lib::expect<void>;
 
-    auto getxattr(const path &target, std::string_view name) -> lib::expect<lib::membuffer>;
+    auto getxattr(const path_t &target, std::string_view name) -> lib::expect<lib::membuffer>;
     auto setxattr(
-        const path &target, std::string_view name,
+        const path_t &target, std::string_view name,
         lib::maybe_uspan<std::byte> data, int flags
     ) -> lib::expect<void>;
-    auto remxattr(const path &target, std::string_view name) -> lib::expect<void>;
+    auto remxattr(const path_t &target, std::string_view name) -> lib::expect<void>;
 
-    auto listxattrs(const path &target) -> lib::expect<std::vector<std::string>>;
-    auto lenxattrs(const path &target) -> lib::expect<std::size_t>;
+    auto listxattrs(const path_t &target) -> lib::expect<std::vector<std::string>>;
+    auto lenxattrs(const path_t &target) -> lib::expect<std::size_t>;
 
     struct anon_fd_args
     {
         std::string_view name;
-        std::shared_ptr<ops> ops;
+        std::shared_ptr<ops_t> ops;
         std::shared_ptr<void> file_private_data;
         std::shared_ptr<void> inode_private_data;
         mode_t st_mode;
         int flags;
         bool skip_open;
-        std::shared_ptr<vfs::inode> inode;
+        std::shared_ptr<vfs::inode_t> inode;
     };
 
     auto create_anon_fd(const anon_fd_args &args)

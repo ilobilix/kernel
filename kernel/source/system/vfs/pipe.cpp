@@ -42,7 +42,7 @@ namespace vfs::pipe
                   anon { anon } { }
         };
 
-        std::shared_ptr<data> get_or_create(const std::shared_ptr<vfs::inode> &inode)
+        std::shared_ptr<data> get_or_create(const std::shared_ptr<vfs::inode_t> &inode)
         {
             const std::unique_lock _ { inode->lock };
             if (!inode->private_data)
@@ -166,7 +166,7 @@ namespace vfs::pipe
             }
         }
 
-        struct ops : vfs::ops
+        struct ops : vfs::ops_t
         {
             static std::shared_ptr<ops> singleton()
             {
@@ -176,7 +176,7 @@ namespace vfs::pipe
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file> file, int flags, pid_t pid) override
+            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
             {
                 lib::unused(pid);
                 lib::bug_on(!file || !file->path.dentry || !file->path.dentry->inode);
@@ -206,7 +206,7 @@ namespace vfs::pipe
                 return rd ? wait_for_writer(pdata, nonblock) : wait_for_reader(pdata, nonblock);
             }
 
-            lib::expect<void> close(vfs::file &file) override
+            lib::expect<void> close(vfs::file_t &file) override
             {
                 lib::bug_on(!file.private_data);
 
@@ -235,7 +235,7 @@ namespace vfs::pipe
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer) override
             {
                 lib::unused(offset);
@@ -289,7 +289,7 @@ namespace vfs::pipe
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file> file, std::uint64_t offset,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer) override
             {
                 lib::unused(offset);
@@ -388,7 +388,7 @@ namespace vfs::pipe
                 return written;
             }
 
-            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file> file, vfs::poll_table *pt) override
+            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto pdata = std::static_pointer_cast<data>(file->private_data);
@@ -424,7 +424,7 @@ namespace vfs::pipe
             }
         };
 
-        bool is_pipe(const std::shared_ptr<vfs::file> &file)
+        bool is_pipe(const std::shared_ptr<vfs::file_t> &file)
         {
             if (!file || !file->path.dentry || !file->path.dentry->inode)
                 return false;
@@ -432,7 +432,7 @@ namespace vfs::pipe
             return file->ops == ops::singleton();
         }
 
-        lib::expect<std::shared_ptr<data>> require_pipe(const std::shared_ptr<vfs::file> &file)
+        lib::expect<std::shared_ptr<data>> require_pipe(const std::shared_ptr<vfs::file_t> &file)
         {
             if (!is_pipe(file))
                 return std::unexpected { lib::err::invalid_argument };
@@ -474,7 +474,7 @@ namespace vfs::pipe
         return std::make_pair(rfd->first, wfd->first);
     }
 
-    lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file> file)
+    lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file_t> file)
     {
         const auto pdata = require_pipe(file);
         if (!pdata.has_value())
@@ -484,7 +484,7 @@ namespace vfs::pipe
         return (*pdata)->capacity;
     }
 
-    lib::expect<std::size_t> set_size(std::shared_ptr<vfs::file> file, std::size_t size)
+    lib::expect<std::size_t> set_size(std::shared_ptr<vfs::file_t> file, std::size_t size)
     {
         if (size == 0)
             return std::unexpected { lib::err::invalid_argument };

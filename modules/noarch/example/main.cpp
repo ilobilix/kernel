@@ -63,4 +63,5 @@ pci_module(
     mod::deps { "generic-driver" }
 );
 
+// TODO: filesystem_module(name, desc, fs, ...)
 // TODO: acpi_module(name, desc, drv, hids, ...)

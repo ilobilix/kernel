@@ -231,7 +231,7 @@ export namespace sched
 
     pid_t clone(const kclone_args_t &args);
     int exec(
-        const vfs::path &path, std::vector<std::string> argv,
+        const vfs::path_t &path, std::vector<std::string> argv,
         std::vector<std::string> envp, std::string pathname
     );
 

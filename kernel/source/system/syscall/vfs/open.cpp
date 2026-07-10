@@ -35,7 +35,7 @@ namespace syscall::vfs
 
         bool did_create = false;
 
-        path target { };
+        path_t target { };
         auto res = detail::resolve_from(proc, dirfd, pathstr);
         if (!res.has_value())
         {

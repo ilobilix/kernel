@@ -158,14 +158,14 @@ namespace output::frm
             uint8_t checksum;
         };
 
-        struct fb_dev : vfs::ops
+        struct fb_dev : vfs::ops_t
         {
             fb_fix_screeninfo fix;
             fb_var_screeninfo var;
             vmm::object::ptr mmap_obj;
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file> file,
+                std::shared_ptr<vfs::file_t> file,
                 std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -184,7 +184,7 @@ namespace output::frm
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file> file,
+                std::shared_ptr<vfs::file_t> file,
                 std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -203,7 +203,7 @@ namespace output::frm
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file> file, std::uint64_t request,
+                std::shared_ptr<vfs::file_t> file, std::uint64_t request,
                 lib::uptr_or_addr argp
             ) override
             {
@@ -266,7 +266,7 @@ namespace output::frm
                 return std::unexpected { lib::err::inappropriate_ioctl };
             }
 
-            lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file> file) override
+            lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override
             {
                 lib::unused(file);
                 return mmap_obj;
