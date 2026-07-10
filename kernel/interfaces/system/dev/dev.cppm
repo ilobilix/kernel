@@ -389,6 +389,9 @@ export namespace dev
     lib::expect<void> register_driver(driver_t &drv);
     bool unregister_driver(driver_t &drv);
 
+    lib::expect<void> register_device(std::shared_ptr<device_t> dev);
+    bool unregister_device(std::shared_ptr<device_t> dev);
+
     lib::expect<void> bind_device(driver_t &drv, std::string_view name);
     lib::expect<void> unbind_device(driver_t &drv, std::string_view name);
 
@@ -398,9 +401,6 @@ export namespace dev
 
     attribute_t &bind_attribute();
     attribute_t &unbind_attribute();
-
-    lib::expect<void> register_device(std::shared_ptr<device_t> dev);
-    bool unregister_device(std::shared_ptr<device_t> dev);
 
     lib::initgraph::stage *core_registered_stage();
     lib::initgraph::stage *available_stage();
