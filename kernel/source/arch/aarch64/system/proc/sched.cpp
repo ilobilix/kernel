@@ -80,4 +80,10 @@ namespace sched::arch
         lib::unused(thread, regs);
         return false;
     }
+
+    std::size_t min_altstack_size()
+    {
+        // TODO
+        return 2048;
+    }
 } // namespace sched::arch

@@ -9,6 +9,7 @@ export namespace cpu
     {
         std::uint64_t x[31];
 
+        std::uintptr_t sp() { return 0; }
         std::uintptr_t fp() { return 0; }
         std::uintptr_t ip() { return 0; }
         std::uintptr_t ret() { return 0; }

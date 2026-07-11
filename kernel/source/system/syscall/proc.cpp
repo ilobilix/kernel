@@ -784,9 +784,49 @@ namespace syscall::proc
 
     int sigaltstack(const sched::stack_t __user *ss, sched::stack_t __user *old_ss)
     {
-        // TODO
-        lib::unused(ss, old_ss);
-        return -ENOSYS;
+        using namespace sched;
+
+        auto thread = current_thread();
+
+        const bool active = [sp = thread->saved_regs->sp(), &ss = thread->altstack] {
+            if (ss.sp == 0 || ss.size == 0)
+                return false;
+            const auto end = ss.sp + ss.size;
+            if (end < ss.sp)
+                return false;
+            return sp > ss.sp && sp <= end;
+        } ();
+
+        stack_t news { };
+        if (ss && !lib::copy_from_user(&news, ss, sizeof(news)))
+            return -EFAULT;
+
+        stack_t old = thread->altstack;
+        old.flags = active ? ss_onstack : (old.sp == 0 && old.size == 0 ? ss_disable : 0);
+
+        if (ss != nullptr)
+        {
+            if (active)
+                return -EPERM;
+
+            if (news.flags & ~ss_disable)
+                return -EINVAL;
+
+            if (!(news.flags & ss_disable))
+            {
+                if (news.size < sched::min_altstack_size())
+                    return -ENOMEM;
+
+                news.flags = 0;
+                thread->altstack = news;
+            }
+            else thread->altstack = stack_t { };
+        }
+
+        if (old_ss && !lib::copy_to_user(old_ss, &old, sizeof(old)))
+            return -EFAULT;
+
+        return 0;
     }
 
     std::uintptr_t rt_sigreturn()
@@ -1413,6 +1453,12 @@ namespace syscall::proc
             return -EFAULT;
 
         return aligned;
+    }
+
+    int sched_yield()
+    {
+        sched::yield();
+        return 0;
     }
 
     [[noreturn]] void exit_group(int status)

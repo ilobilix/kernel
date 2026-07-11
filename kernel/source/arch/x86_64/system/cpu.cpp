@@ -246,6 +246,8 @@ namespace cpu
 
                 if (!fpu_set.exchange(true, std::memory_order_acq_rel))
                 {
+                    shared_fpu.is_xsave = true;
+                    shared_fpu.xcr0 = xcr0;
                     shared_fpu.size = res13.c;
                     shared_fpu.save = xopt ? xsaveopt : xsave;
                     shared_fpu.restore = xrstor;
@@ -253,6 +255,8 @@ namespace cpu
             }
             else if (!fpu_set.exchange(true, std::memory_order_acq_rel))
             {
+                shared_fpu.is_xsave = false;
+                shared_fpu.xcr0 = 0b11;
                 shared_fpu.size = 512;
                 shared_fpu.save = fxsave;
                 shared_fpu.restore = fxrstor;

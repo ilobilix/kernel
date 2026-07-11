@@ -253,7 +253,10 @@ export namespace cpu
         // other cores probably share the same state
         struct fpu
         {
+            bool is_xsave = false;
+            std::uint64_t xcr0 = 0;
             std::size_t size = 0;
+
             void (*save)(std::byte *) = nullptr;
             void (*restore)(std::byte *) = nullptr;
         };

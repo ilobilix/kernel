@@ -217,8 +217,11 @@ namespace sched::arch
             sp = thread->altstack.sp + thread->altstack.size;
 
         sp -= 128;
-        auto frame_addr = (sp - sizeof(sigframe_t)) & ~0xFul;
-        frame_addr -= 8;
+
+        const auto fpu_size = thread->adata.fpu_size;
+        const auto fpu_addr = (sp - fpu_size - sizeof(std::uint32_t)) & ~0x3Ful;
+
+        const auto frame_addr = ((fpu_addr - sizeof(sigframe_t)) & ~0xFul) - 8;
 
         sigframe_t kf { };
         kf.pretcode = action.restorer;
@@ -232,6 +235,9 @@ namespace sched::arch
         kf.uc.uc_link = nullptr;
         kf.uc.uc_stack = thread->altstack;
         kf.uc.uc_sigmask = mask;
+
+        if (thread->altstack.flags & ss_autodisarm)
+            thread->altstack = stack_t { };
 
         auto &mc = kf.uc.uc_mcontext;
         mc.r15 = regs->r15;
@@ -255,8 +261,36 @@ namespace sched::arch
         mc.rsp = regs->rsp;
         mc.ss  = regs->ss;
 
+        const auto &fpu = cpu::features::get_fpu();
+        fpu.save(thread->adata.fpu);
+
+        if (fpu.is_xsave)
+        {
+            auto hdr = reinterpret_cast<fpx_sw_bytes *>(thread->adata.fpu + 464);
+            hdr->magic1 = 0x46505853U;
+            hdr->extended_size = fpu_size + 4;
+            hdr->xstate_bv = fpu.xcr0;
+            hdr->xstate_size = fpu_size;
+            std::memset(hdr->padding, 0, sizeof(hdr->padding));
+        }
+
+        mc.fpstate = fpu_addr;
+        kf.uc.uc_flags |= 1;
+
         if (!lib::copy_to_user(reinterpret_cast<void __user *>(frame_addr), &kf, sizeof(kf)))
             return false;
+
+        if (!lib::copy_to_user(reinterpret_cast<void __user *>(fpu_addr),
+            thread->adata.fpu, fpu_size))
+            return false;
+
+        if (fpu.is_xsave)
+        {
+            constexpr std::uint32_t magic2 = 0x46505845U;
+            if (!lib::copy_to_user(reinterpret_cast<void __user *>(fpu_addr + fpu_size),
+                &magic2, sizeof(magic2)))
+                return false;
+        }
 
         regs->rip = action.handler;
         regs->rsp = frame_addr;
@@ -281,37 +315,52 @@ namespace sched::arch
     {
         const auto uc_addr = regs->rsp;
         ucontext_t uc;
-        if (!lib::copy_from_user(&uc, reinterpret_cast<const ucontext_t __user *>(uc_addr), sizeof(uc)))
+        if (!lib::copy_from_user(&uc, reinterpret_cast<const ucontext_t __user *>(uc_addr),
+            sizeof(uc)))
             return false;
 
         const auto &mc = uc.uc_mcontext;
 
-        regs->r15 = mc.r15;
-        regs->r14 = mc.r14;
-        regs->r13 = mc.r13;
-        regs->r12 = mc.r12;
-        regs->r11 = mc.r11;
-        regs->r10 = mc.r10;
-        regs->r9 = mc.r9;
         regs->r8 = mc.r8;
-        regs->rbp = mc.rbp;
+        regs->r9 = mc.r9;
+        regs->r10 = mc.r10;
+        regs->r11 = mc.r11;
+        regs->r12 = mc.r12;
+        regs->r13 = mc.r13;
+        regs->r14 = mc.r14;
+        regs->r15 = mc.r15;
         regs->rdi = mc.rdi;
         regs->rsi = mc.rsi;
-        regs->rdx = mc.rdx;
-        regs->rcx = mc.rcx;
+        regs->rbp = mc.rbp;
         regs->rbx = mc.rbx;
+        regs->rdx = mc.rdx;
         regs->rax = mc.rax;
-        regs->rip = mc.rip;
+        regs->rcx = mc.rcx;
         regs->rsp = mc.rsp;
+        regs->rip = mc.rip;
+
+        regs->rflags = (mc.rflags & 0xDD5) | 0x202;
 
         regs->cs = static_cast<std::uint64_t>(gdt::segment::ucode) | 0x03;
         regs->ss = static_cast<std::uint64_t>(gdt::segment::udata) | 0x03;
 
-        regs->rflags = (mc.rflags & 0xDD5) | 0x202;
+        if (mc.fpstate)
+        {
+            if (!lib::copy_from_user(thread->adata.fpu,
+                reinterpret_cast<const void __user *>(mc.fpstate), thread->adata.fpu_size))
+                return false;
+
+            cpu::features::get_fpu().restore(thread->adata.fpu);
+        }
 
         thread->sigmask = uc.uc_sigmask & ~sigmask_uncatchable;
         thread->altstack = uc.uc_stack;
 
         return true;
+    }
+
+    std::size_t min_altstack_size()
+    {
+        return 128 + sizeof(sigframe_t) + 16 + cpu::features::get_fpu().size + 64;
     }
 } // namespace sched::arch
