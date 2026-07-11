@@ -229,7 +229,7 @@ export namespace pci
     struct device : entity
     {
         std::uint16_t venid, devid;
-        std::uint16_t subsysdevid, subsysvenid;
+        std::uint16_t subdevid, subvenid;
         std::uint8_t progif, subclass, class_, revision;
         std::array<bar, 6> bars;
 

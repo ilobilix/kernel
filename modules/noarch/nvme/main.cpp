@@ -17,7 +17,7 @@ import nvme;
 namespace nvme
 {
     constexpr pci::id_t ids[] {
-        { 0xFFFF, 0xFFFF, 0xFFFFFFFF, pci::id_t::make_class(0x01, 0x08, 0x02) }
+        pci::id_t::from_class(0x01, 0x08, 0x02)
     };
 
     struct driver_t : pci::driver_t

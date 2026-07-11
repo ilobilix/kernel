@@ -24,14 +24,37 @@ export namespace pci
 {
     struct id_t
     {
-        std::uint16_t vendor, device;
-        std::uint32_t class_mask, class_val;
+        static constexpr std::uint32_t any = 0xFFFFFFFF;
 
-        constexpr id_t(
-            std::uint16_t vendor, std::uint16_t device,
-            std::uint32_t class_mask, std::uint32_t class_val
-        ) : vendor { vendor }, device { device },
-            class_mask { class_mask }, class_val { class_val } { }
+        std::uint32_t vendor, device;
+        std::uint32_t subvendor, subdevice;
+        std::uint32_t class_val, class_mask;
+
+        static constexpr id_t from_id(std::uint32_t vendor, std::uint32_t device)
+        {
+            return { vendor, device, any, any, 0, 0 };
+        }
+
+        static constexpr id_t from_subid(
+            std::uint32_t vendor, std::uint32_t device,
+            std::uint32_t subvendor, std::uint32_t subdevice
+        )
+        {
+            return { vendor, device, subvendor, subdevice, 0, 0 };
+        }
+
+        static constexpr id_t from_class(std::uint32_t class_val, std::uint32_t class_mask)
+        {
+            return { any, any, any, any, class_val, class_mask };
+        }
+
+        static constexpr id_t from_class(
+            std::uint8_t class_, std::uint8_t subclass,
+            std::uint8_t progif, std::uint32_t class_mask = any
+        )
+        {
+            return { any, any, any, any, make_class(class_, subclass, progif), class_mask };
+        }
 
         static constexpr std::uint32_t make_class(
             std::uint8_t class_, std::uint8_t subclass, std::uint8_t progif
@@ -46,20 +69,73 @@ export namespace pci
             return make_class(dev->class_, dev->subclass, dev->progif);
         }
 
-        bool constexpr match(std::uint16_t ven, std::uint16_t dev, std::uint32_t cls) const
+        constexpr bool match(
+            std::uint16_t ven, std::uint16_t dev,
+            std::uint16_t subven, std::uint16_t subdev, std::uint32_t cls
+        ) const
         {
-            return (vendor == 0xFFFF || vendor == ven) &&
-                   (device == 0xFFFF || device == dev) &&
+            return (vendor == any || vendor == ven) &&
+                   (device == any || device == dev) &&
+                   (subvendor == any || subvendor == subven) &&
+                   (subdevice == any || subdevice == subdev) &&
                    (class_mask == 0 || (cls & class_mask) == class_val);
         }
 
         bool match(const std::shared_ptr<pci::device> &dev) const
         {
-            return match(dev->venid, dev->devid, make_class(dev));
+            return match(dev->venid, dev->devid, dev->subvenid, dev->subdevid, make_class(dev));
         }
 
-        std::string get_modalias() const;
+        constexpr auto get_formatted_parts() const
+        {
+            const auto get_id = [](std::string_view tag, std::uint32_t id) {
+                if (id == any)
+                    return fmt::format("{}*"_cf, tag);
+                return fmt::format("{}{:08x}"_cf, tag, id);
+            };
+
+            const auto get_byte = [&](std::string_view tag, auto shift, bool last = false) {
+                if (((class_mask >> shift) & 0xFF) == 0xFF)
+                    return fmt::format("{}{:02x}"_cf, tag, (class_val >> shift) & 0xFF);
+                return fmt::format("{}{}"_cf, tag, last ? "" : "*");
+            };
+
+            return std::tuple {
+                get_id("v", vendor), get_id("d", device),
+                get_id("sv", subvendor), get_id("sd", subdevice),
+                get_byte("bc", 16), get_byte("sc",  8), get_byte("i", 0, true)
+            };
+        }
+
+        std::string get_modalias() const
+        {
+            return fmt::format("pci:{}*", fmt::join(get_formatted_parts(), ""));
+        }
     };
+
+    template<id_t Id>
+    consteval auto get_modalias()
+    {
+        constexpr auto parts = Id.get_formatted_parts();
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            return lib::consteval_format<
+                "pci:{}{}{}{}{}{}{}*"_cf,
+                lib::comptime_string<std::get<Is>(parts).size() + 1> {
+                    std::get<Is>(parts).data()
+                } ...
+            >();
+        } (std::make_index_sequence<std::tuple_size_v<decltype(parts)>> { });
+    }
+
+    static_assert(
+        "pci:v0000deadd0000beefsv*sd*bc*sc*i*"sv ==
+        get_modalias<id_t::from_id(0xDEAD, 0xBEEF)>()
+    );
+
+    static_assert(
+        "pci:v*d*sv*sd*bc01sc08i02*"sv ==
+        get_modalias<id_t::from_class(0x01, 0x08, 0x02, id_t::any)>()
+    );
 
     class device_t final : public dev::device_t
     {
@@ -89,9 +165,7 @@ export namespace pci
             const std::shared_ptr<device> &device, std::weak_ptr<dev::kobject_t> parent
         )
         {
-            return std::make_shared<device_t>(
-                lib::private_t<device_t> { }, device, parent
-            );
+            return std::make_shared<device_t>(lib::private_t<device_t> { }, device, parent);
         }
     };
 
@@ -138,3 +212,15 @@ export namespace pci
 
     lib::initgraph::stage *registered_stage();
 } // export namespace pci
+
+export namespace mod
+{
+    template<pci::id_t Id>
+    struct modalias_generator<Id>
+    {
+        static consteval auto get()
+        {
+            return pci::get_modalias<Id>();
+        }
+    };
+} // export namespace mod

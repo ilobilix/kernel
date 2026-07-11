@@ -28,6 +28,10 @@ SECTIONS
         *(.got.*)
     } :rodata
 
+    .modinfo : {
+        KEEP(*(.modinfo))
+    } :rodata
+
     .modules : {
         KEEP(*(.modules))
     } :rodata :modules

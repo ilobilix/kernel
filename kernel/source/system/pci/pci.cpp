@@ -32,15 +32,15 @@ namespace pci
                 const auto progif = bus->template read<8>(dev, func, reg::progif);
                 const auto subclass = bus->template read<8>(dev, func, reg::subclass);
                 const auto class_ = bus->template read<8>(dev, func, reg::class_);
-                const auto subsysdevid = bus->template read<16>(dev, func, reg::subsysdevid);
-                const auto subsysvenid = bus->template read<16>(dev, func, reg::subsysvenid);
+                const auto subdevid = bus->template read<16>(dev, func, reg::subsysdevid);
+                const auto subvenid = bus->template read<16>(dev, func, reg::subsysvenid);
                 const auto revision = bus->template read<8>(dev, func, reg::revision);
 
                 auto device = std::make_shared<pci::device>(bus, dev, func);
                 device->venid = venid;
                 device->devid = devid;
-                device->subsysdevid = subsysdevid;
-                device->subsysvenid = subsysvenid;
+                device->subdevid = subdevid;
+                device->subvenid = subvenid;
                 device->progif = progif;
                 device->subclass = subclass;
                 device->class_ = class_;

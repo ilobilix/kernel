@@ -12,6 +12,7 @@ import system.memory;
 import system.vfs;
 import system.pci;
 import magic_enum;
+import fmt;
 import lib;
 import std;
 
@@ -109,17 +110,17 @@ namespace bin::elf::mod
             lib::info("elf: - description: '{}'", desc);
             lib::info("elf: - type: {}", magic_enum::enum_name(ptr->type));
 
+            lib::info("elf: - aliases:");
+            for (const auto &[pattern] : entry.aliases)
+                lib::info("elf: -  {}", pattern);
+
             const auto deps = entry.header->dependencies();
-            const auto ndeps = deps.size();
-            if (ndeps == 0)
+            if (deps.empty())
                 return;
 
-            lib::info("elf: - dependencies: {}", ndeps);
-
-            lib::print(lib::log::level::info, "elf: -  ");
-            for (std::size_t i = 0; i < ndeps; i++)
-                lib::print("'{}'{}", std::string_view { deps[i] }, i == ndeps - 1 ? "" : ", ");
-            lib::println();
+            lib::info("elf: - dependencies:");
+            for (const auto &dep : deps)
+                lib::info("elf: -  {}", dep);
         }
 
         std::size_t load(
@@ -174,35 +175,13 @@ namespace bin::elf::mod
                 entry->status = status::loaded;
                 entry->dependents = 0;
 
-                switch (ptr->type)
+                const auto match = ptr->matches();
+                for (std::size_t off = 0; ptr->match_stride != 0 &&
+                    off + ptr->match_stride <= match.size(); off += ptr->match_stride)
                 {
-                    case ::mod::type::filesystem:
-                    {
-                        const auto match = ptr->matches();
-                        entry->aliases.emplace_back("fs-" + std::string {
-                            reinterpret_cast<const char *>(match.data()),
-                            match.size_bytes()
-                        });
-                        break;
-                    }
-                    case ::mod::type::pci:
-                    {
-                        const auto match = ptr->matches();
-                        for (std::size_t off = 0; ptr->match_stride != 0 &&
-                            off + ptr->match_stride <= match.size(); off += ptr->match_stride)
-                        {
-                            const auto &id = *reinterpret_cast<const pci::id_t *>(
-                                match.data() + off
-                            );
-                            entry->aliases.emplace_back(id.get_modalias());
-                        }
-                        break;
-                    }
-                    case ::mod::type::acpi:
-                        // TODO
-                        break;
-                    case ::mod::type::generic:
-                        break;
+                    const auto *str = reinterpret_cast<const char *>(match.data() + off);
+                    const auto len = std::strnlen(str, ptr->match_stride);
+                    entry->aliases.emplace_back(std::string { str, len });
                 }
 
                 log_entry(*entry);
@@ -597,7 +576,7 @@ namespace bin::elf::mod
             const auto deps = entry.header->dependencies();
 
             bool success = true;
-            for (const std::string_view name : deps)
+            for (const auto name : deps)
             {
                 std::shared_ptr<entry_t> dep;
                 {
@@ -644,7 +623,7 @@ namespace bin::elf::mod
                 return false;
             }
 
-            for (const std::string_view name : deps)
+            for (const auto name : deps)
             {
                 if (auto it = locked->find(name); it != locked->end())
                     it->second->dependents++;
@@ -665,7 +644,7 @@ namespace bin::elf::mod
             const bool success = entry.header->fini ? entry.header->fini() : true;
 
             auto locked = modules.write_lock();
-            for (const std::string_view name : entry.header->dependencies())
+            for (const auto name : entry.header->dependencies())
             {
                 if (auto it = locked->find(name); it != locked->end() && it->second->dependents)
                     it->second->dependents--;

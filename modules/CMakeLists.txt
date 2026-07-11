@@ -11,6 +11,7 @@ set(_module_objects)
 
 set(_internal_module_targets)
 set(_internal_module_objects)
+set(_internal_module_list)
 
 foreach(_arch IN LISTS _module_arches)
     set(_arch_dir ${CMAKE_CURRENT_SOURCE_DIR}/${_arch})
@@ -43,7 +44,7 @@ foreach(_arch IN LISTS _module_arches)
         if(NOT EXISTS ${_mod_dir}/EXTERNAL)
             set_source_files_properties(${_sources}
                 PROPERTIES
-                    COMPILE_DEFINITIONS "__MODULE_NAME__=${_mod}"
+                    COMPILE_DEFINITIONS "__ILOBILIX_MODULE__=${_mod}"
             )
 
             string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _internal_target "intmod_${_arch}_${_mod}")
@@ -65,6 +66,7 @@ foreach(_arch IN LISTS _module_arches)
 
             list(APPEND _internal_module_targets ${_internal_target})
             list(APPEND _internal_module_objects "$<TARGET_OBJECTS:${_internal_target}>")
+            list(APPEND _internal_module_list "${_mod}.ko")
             continue()
         endif()
 
@@ -82,7 +84,8 @@ foreach(_arch IN LISTS _module_arches)
         endif()
 
         add_dependencies(${_target} generate_git_version)
-        target_compile_definitions(${_target} PRIVATE "__MODULE_NAME__=${_mod}")
+        target_compile_definitions(${_target} PRIVATE "__ILOBILIX_MODULE__=${_mod}")
+        target_compile_definitions(${_target} PRIVATE "__ILOBILIX_EXTERNAL_MODULE__=1")
         target_link_libraries(${_target} PRIVATE $<BUILD_INTERFACE:cxx_modules>)
         target_include_directories(${_target} PRIVATE ${DEPENDENCY_INCLUDES})
 
@@ -124,4 +127,11 @@ if(_module_targets)
     add_custom_target(kernel_external_modules ALL DEPENDS ${_module_targets})
 else()
     add_custom_target(kernel_external_modules)
+endif()
+
+if(_internal_module_list)
+    string(REPLACE ";" "\n" _internal_contents "${_internal_module_list}")
+    file(WRITE ${CMAKE_BINARY_DIR}/modules.builtin "${_internal_contents}\n")
+else()
+    file(WRITE ${CMAKE_BINARY_DIR}/modules.builtin "")
 endif()

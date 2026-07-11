@@ -3,6 +3,7 @@
 include(${CMAKE_SOURCE_DIR}/cmake/kernel-toolchain.cmake)
 
 find_program(LLVM_NM_EXECUTABLE llvm-nm REQUIRED)
+find_program(LLVM_OBJCOPY_EXECUTABLE llvm-objcopy REQUIRED)
 find_program(SED_EXECUTABLE sed REQUIRED)
 find_program(GREP_EXECUTABLE grep REQUIRED)
 find_program(SORT_EXECUTABLE sort REQUIRED)
@@ -44,6 +45,7 @@ list(JOIN KERNEL_LINK_LIBS_FILES "|" KERNEL_LINK_LIBS_JOINED)
 
 set(KERNEL_OUTPUT_ELF ${CMAKE_CURRENT_BINARY_DIR}/kernel_elf)
 set(KERNEL_OUTPUT_SYMS ${KERNEL_OUTPUT_ELF}.syms)
+set(KERNEL_OUTPUT_MODINFO ${CMAKE_CURRENT_BINARY_DIR}/modules.builtin.modinfo)
 set(KERNEL_TMPDIR ${CMAKE_CURRENT_BINARY_DIR}/kallsyms.tmp)
 
 string(STRIP "${CMAKE_ASM_FLAGS}" KERNEL_ASM_FLAGS)
@@ -107,6 +109,25 @@ add_custom_command(
 add_custom_target(kernel ALL DEPENDS ${KERNEL_OUTPUT_ELF})
 add_custom_target(kernel_elf_syms DEPENDS ${KERNEL_OUTPUT_SYMS})
 
+if(INTERNAL_MODULE_OBJECTS)
+    add_custom_command(
+        OUTPUT ${KERNEL_OUTPUT_MODINFO}
+        COMMAND ${LLVM_OBJCOPY_EXECUTABLE} --dump-section .modinfo=${KERNEL_OUTPUT_MODINFO} ${KERNEL_OUTPUT_ELF}
+        DEPENDS ${KERNEL_OUTPUT_ELF}
+        COMMENT "Extracting modinfo"
+    )
+else()
+    file(WRITE ${KERNEL_OUTPUT_MODINFO} "")
+    add_custom_command(
+        OUTPUT ${KERNEL_OUTPUT_MODINFO}
+        COMMAND ${CMAKE_COMMAND} -E touch ${KERNEL_OUTPUT_MODINFO}
+        COMMENT "Clearing modinfo"
+    )
+endif()
+
+add_custom_target(kernel_builtin_modinfo DEPENDS ${KERNEL_OUTPUT_MODINFO})
+
 add_dependencies(kernel generate_git_version)
 add_dependencies(kernel kernel_elf_syms)
+add_dependencies(kernel kernel_builtin_modinfo)
 add_dependencies(kernel kernel_external_modules)

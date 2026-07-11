@@ -33,6 +33,7 @@ export namespace bin::elf::mod
     struct alias_t
     {
         std::string pattern;
+
         bool match(std::string_view modalias) const;
     };
 
