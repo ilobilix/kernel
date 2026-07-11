@@ -90,7 +90,7 @@ namespace bin::script
             while (end != buf && (end[-1] == ' ' || end[-1] == '\t'))
                 end--;
             if (buf == end)
-                return std::unexpected { lib::err::invalid_binfmt };
+                return std::unexpected { lib::err::invalid_exec };
 
             const auto istart = buf;
             while (buf != end && *buf != ' ' && *buf != '\t')
@@ -103,22 +103,22 @@ namespace bin::script
 
             // TODO: relative paths?
             if (lib::path_view { path } .is_absolute() == false)
-                return std::unexpected { lib::err::invalid_binfmt };
+                return std::unexpected { lib::err::invalid_exec };
 
             auto rret = vfs::resolve(file->path, path);
             if (!rret.has_value())
-                return std::unexpected { lib::err::invalid_binfmt };
+                return std::unexpected { lib::err::invalid_exec };
 
             auto res = vfs::reduce(std::move(rret->parent), std::move(rret->target));
             if (!res.has_value())
-                return std::unexpected { lib::err::invalid_binfmt };
+                return std::unexpected { lib::err::invalid_exec };
 
             auto interp_file = vfs::file_t::create(std::move(*res), 0, 0);
             auto next = exec::probe(interp_file, depth);
             if (!next.has_value())
                 return std::unexpected { next.error() };
             if (*next == nullptr)
-                return std::unexpected { lib::err::invalid_binfmt };
+                return std::unexpected { lib::err::invalid_exec };
 
             return std::make_unique<image>(
                 file, std::move(*next), path,

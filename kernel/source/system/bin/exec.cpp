@@ -49,6 +49,6 @@ namespace bin::exec
             }
             else return std::unexpected { ret.error() };
         }
-        return std::unexpected { lib::err::invalid_binfmt };
+        return std::unexpected { lib::err::invalid_exec };
     }
 } // namespace bin::exec

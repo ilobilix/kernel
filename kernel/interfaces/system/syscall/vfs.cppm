@@ -224,6 +224,9 @@ export namespace syscall::vfs
         const sigset_t __user *sigmask, std::size_t sigsetsize
     );
     int epoll_wait(int epfd, epoll_event __user *events, int maxevents, int timeout);
+
+    int init_module(void __user *umod, unsigned long len, const char __user *uargs);
+    int finit_module(int fd, const char __user *uargs, int flags);
 } // export namespace syscall::vfs
 
 namespace syscall::vfs::detail

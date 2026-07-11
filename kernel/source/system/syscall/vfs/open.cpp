@@ -120,8 +120,7 @@ namespace syscall::vfs
             (stat.type() == stat::s_ifchr || stat.type() == stat::s_ifblk))
             return -EACCES;
 
-        if ((flags & o_noatime) &&
-            proc->cred->fsuid != stat.st_uid &&
+        if ((flags & o_noatime) && proc->cred->fsuid != stat.st_uid &&
             !sched::capable(proc->cred, sched::cap_t::fowner))
             return -EPERM;
 
