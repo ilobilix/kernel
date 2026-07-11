@@ -331,6 +331,11 @@ namespace sched
         return thread->saved_regs->ret();
     }
 
+    std::size_t min_altstack_size()
+    {
+        return arch::min_altstack_size();
+    }
+
     void scoped_sigmask::apply(const sigset_t *mask)
     {
         if (!mask)

@@ -52,6 +52,8 @@ namespace x86_64::idt
             if ((regs->cs & 3) != 3)
                 return false;
 
+            arch::dump_regs(cpu::self().unsafe_get().idx, regs, cpu::extra_regs::read());
+
             const auto thread = sched::current_thread();
 
             int signo = 0;

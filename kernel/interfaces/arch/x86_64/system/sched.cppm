@@ -38,9 +38,16 @@ export namespace sched::arch
 
     struct mcontext_t
     {
-        std::uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-        std::uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
-        std::uint64_t rip, cs, rflags, rsp, ss;
+        std::uint64_t r8, r9, r10, r11, r12, r13, r14, r15;
+        std::uint64_t rdi, rsi, rbp, rbx, rdx, rax, rcx, rsp, rip;
+        std::uint64_t rflags;
+        std::uint16_t cs, gs, fs, ss;
+        std::uint64_t err;
+        std::uint64_t trapno;
+        std::uint64_t oldmask;
+        std::uint64_t cr2;
+        std::uint64_t fpstate;
+        std::uint64_t reserved[8];
     };
 
     struct ucontext_t
@@ -50,6 +57,29 @@ export namespace sched::arch
         stack_t uc_stack;
         mcontext_t uc_mcontext;
         sigset_t uc_sigmask;
+    };
+
+    struct fpx_sw_bytes
+    {
+        std::uint32_t magic1;
+        std::uint32_t extended_size;
+        std::uint64_t xstate_bv;
+        std::uint32_t xstate_size;
+        std::uint32_t padding[7];
+    };
+
+    struct fpstate
+    {
+        std::uint16_t cwd, swd, ftw, fop;
+        std::uint64_t rip, rdp;
+        std::uint32_t mxcsr, mxcr_mask;
+        std::uint32_t st_space[32];
+        std::uint32_t xmm_space[64];
+        std::uint32_t reserved0[12];
+        union {
+            std::uint32_t reserved1[12];
+            fpx_sw_bytes sw_reserved;
+        };
     };
 
     struct sigframe_t
@@ -80,4 +110,5 @@ export namespace sched::arch
         int sig, const siginfo_t &info, const sigaction_t &action
     );
     bool restore_sigframe(thread_t *thread, cpu::registers *regs);
+    std::size_t min_altstack_size();
 } // export namespace sched::arch

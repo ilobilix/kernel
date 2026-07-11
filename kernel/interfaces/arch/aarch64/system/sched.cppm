@@ -63,4 +63,5 @@ export namespace sched::arch
         int sig, const siginfo_t &info, const sigaction_t &action
     );
     bool restore_sigframe(thread_t *thread, cpu::registers *regs);
+    std::size_t min_altstack_size();
 } // export namespace sched::arch

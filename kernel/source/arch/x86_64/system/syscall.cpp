@@ -50,6 +50,7 @@ namespace x86_64::syscall
         [21] = { "access", vfs::access },
         [22] = { "pipe", vfs::pipe },
         [23] = { "select", vfs::select, true },
+        [24] = { "sched_yield", proc::sched_yield },
         [25] = { "mremap", memory::mremap, true },
         [27] = { "mincore", memory::mincore },
         [28] = { "madvise", memory::madvise },

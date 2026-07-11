@@ -125,6 +125,8 @@ export namespace syscall::proc
     int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask);
     int sched_getaffinity(pid_t pid, std::size_t cpusetsize, std::uint8_t __user *mask);
 
+    int sched_yield();
+
     [[noreturn]] void exit_group(int status);
     [[noreturn]] void exit(int status);
 } // export namespace syscall::proc

@@ -178,6 +178,13 @@ export namespace sched
         std::uintptr_t value;
     };
 
+    enum ss_flags
+    {
+        ss_onstack = 1,
+        ss_disable = 2,
+        ss_autodisarm = (1u << 31)
+    };
+
     struct stack_t
     {
         std::uintptr_t sp = 0;
@@ -301,9 +308,6 @@ export namespace sched
         void disarm() { armed = false; }
     };
 
-    bool send_signal(thread_t *thread, const siginfo_t &info);
-    bool send_signal(process_t *process, const siginfo_t &info);
-
     bool signal_pending_for(thread_t *thread);
 
     std::optional<siginfo_t> dequeue_signal(process_t *proc, const sigset_t &set);
@@ -317,7 +321,12 @@ export namespace sched
 
     void flush_signal(process_t *proc, int sig);
 
+    bool send_signal(thread_t *thread, const siginfo_t &info);
+    bool send_signal(process_t *process, const siginfo_t &info);
+
+    std::uintptr_t sigreturn();
+    std::size_t min_altstack_size();
+
     void handle_pending_signals(cpu::registers *regs);
     bool consume_pending_stops();
-    std::uintptr_t sigreturn();
 } // export namespace sched

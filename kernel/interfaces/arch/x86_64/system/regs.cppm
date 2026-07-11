@@ -11,6 +11,7 @@ export namespace cpu
         std::uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
         std::uint64_t vector, error_code, rip, cs, rflags, rsp, ss;
 
+        std::uintptr_t sp() { return rsp; }
         std::uintptr_t fp() { return rbp; }
         std::uintptr_t ip() { return rip; }
         std::uintptr_t ret() { return rax; }
