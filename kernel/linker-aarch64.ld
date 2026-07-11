@@ -38,6 +38,10 @@ SECTIONS
         *(.rodata .rodata.*)
     } :rodata
 
+    .modinfo : {
+        KEEP(*(.modinfo))
+    } :rodata
+
     .modules : {
         __start_modules = .;
         KEEP(*(.modules))

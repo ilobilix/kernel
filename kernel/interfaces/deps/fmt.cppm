@@ -37,8 +37,12 @@ export namespace fmt
 
     using ::fmt::make_format_args;
 
+    using ::fmt::join;
+
     inline namespace literals
     {
         using ::fmt::literals::operator""_cf;
     } // inline namespace literals
 } // export namespace fmt
+
+export using namespace fmt::literals;

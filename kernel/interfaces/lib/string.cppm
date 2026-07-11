@@ -26,19 +26,32 @@ export namespace lib
         }
     };
 
-    template<std::size_t N>
+    template<std::size_t Len>
     struct comptime_string
     {
-        char value[N];
+        char value[Len];
 
-        consteval comptime_string(const char (&str)[N])
+        consteval comptime_string() = default;
+
+        consteval comptime_string(const char (&str)[Len])
         {
-            std::copy_n(str, N, value);
+            std::copy_n(str, Len, value);
+        }
+
+        consteval comptime_string(std::array<char, Len> data)
+        {
+            std::copy_n(data.data(), Len, value);
+        }
+
+        template<typename = void>
+        consteval comptime_string(const char *str)
+        {
+            std::copy_n(str, Len, value);
         }
 
         consteval bool is_empty() const
         {
-            return N <= 1;
+            return Len <= 1;
         }
 
         consteval auto data() const
@@ -48,9 +61,23 @@ export namespace lib
 
         consteval std::size_t size() const
         {
-            return N - 1;
+            return Len - 1;
+        }
+
+        constexpr operator std::string_view() const
+        {
+            return std::string_view { value, size() };
         }
     };
+
+    template<auto Fmt, auto ...Args>
+    consteval auto consteval_format()
+    {
+        constexpr auto size = fmt::formatted_size(Fmt, Args...);
+        std::array<char, size + 1> buffer { };
+        fmt::format_to(buffer.begin(), Fmt, Args...);
+        return comptime_string { buffer };
+    }
 
     constexpr std::string_view trim(std::string_view str)
     {
@@ -189,12 +216,28 @@ export namespace lib
     }
 } // export namespace lib
 
-template<>
-struct fmt::formatter<lib::user_string> : fmt::formatter<std::string>
+export
 {
-    template<typename FormatContext>
-    auto format(lib::user_string str, FormatContext &ctx) const
+    template<>
+    struct fmt::formatter<lib::user_string> : fmt::formatter<std::string>
     {
-        return formatter<std::string>::format(str.str.empty() ? std::string { "(null)" } : str.str, ctx);
-    }
-};
+        template<typename FormatContext>
+        auto format(lib::user_string str, FormatContext &ctx) const
+        {
+            return formatter<std::string>::format(str.str.empty() ? "(null)"s : str.str, ctx);
+        }
+    };
+
+    template<std::size_t Len>
+    struct fmt::formatter<lib::comptime_string<Len>> : fmt::formatter<std::string_view>
+    {
+        template<typename FormatContext>
+        constexpr auto format(lib::comptime_string<Len> str, FormatContext &ctx) const
+        {
+            return formatter<std::string_view>::format(str, ctx);
+        }
+    };
+
+    template<lib::comptime_string Str>
+    constexpr auto operator""_cs() { return Str; }
+} // export

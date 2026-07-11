@@ -14,7 +14,6 @@ export namespace cpu
     template<lib::comptime_string Reg>
     std::uint64_t mrs()
     {
-        using namespace fmt::literals;
         std::uint64_t ret;
         asm volatile ((fmt::format("mrs %0, {}"_cf, Reg.value)) : "=r"(ret));
         return ret;
@@ -23,14 +22,12 @@ export namespace cpu
     template<lib::comptime_string Reg, lib::comptime_string Cns = "r">
     void msr(std::uint64_t val)
     {
-        using namespace fmt::literals;
         asm volatile ((fmt::format("msr {}, %0"_cf, Reg.value)) :: (Cns)(val));
     }
 
     template<lib::comptime_string Reg>
     std::uint64_t read_reg()
     {
-        using namespace fmt::literals;
         std::uint64_t ret;
         asm volatile ((fmt::format("mov %0, {}"_cf, Reg.value)) : "=r"(ret));
         return ret;
@@ -39,7 +36,6 @@ export namespace cpu
     template<lib::comptime_string Reg, lib::comptime_string Cns = "r">
     void write_reg(std::uint64_t val)
     {
-        using namespace fmt::literals;
         asm volatile ((fmt::format("mov {}, %0"_cf, Reg.value)) :: (Cns)(val));
     }
 

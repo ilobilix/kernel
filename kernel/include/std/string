@@ -5,5 +5,15 @@
 #define NOSTD_STRING_FLOAT 0
 #include <nostd/string.hpp>
 
-namespace std { using namespace nostd; }
-using namespace nostd::literals::string_literals;
+namespace std
+{
+    using namespace nostd;
+
+    inline namespace literals
+    {
+        inline namespace string_literals
+        {
+            using nostd::literals::string_literals::operator""s;
+        } // namespace string_literals
+    } // namespace literals
+}

@@ -107,13 +107,13 @@ namespace sysctl
             );
 
             lib::bug_on(!register_ro("kernel/ostype",
-                [] { return std::string { "Ilobilix\n" }; }
+                [] { return "Ilobilix\n"; }
             ));
             lib::bug_on(!register_ro("kernel/osrelease",
-                [] { return std::string { ILOBILIX_RELEASE "\n" }; }
+                [] { return ILOBILIX_RELEASE "\n"; }
             ));
             lib::bug_on(!register_ro("kernel/version",
-                [] { return std::string { __DATE__ " " __TIME__ "\n" }; }
+                [] { return __DATE__ " " __TIME__ "\n"; }
             ));
 
             // TODO

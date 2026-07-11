@@ -42,12 +42,27 @@ namespace pci
             if (!vendor || !device)
                 return std::nullopt;
 
+            std::uint32_t subvendor = id_t::any;
+            std::uint32_t subdevice = id_t::any;
+
             std::uint32_t class_val = 0;
-            std::uint32_t class_mask = 0xFFFFFFFF;
+            std::uint32_t class_mask = id_t::any;
+
             if (toks.size() >= 4)
             {
-                const auto cv = parse_hex(toks[2]);
-                const auto cm = parse_hex(toks[3]);
+                const auto sv = parse_hex(toks[2]);
+                const auto sd = parse_hex(toks[3]);
+                if (!sv || !sd)
+                    return std::nullopt;
+
+                subvendor = *sv;
+                subdevice = *sd;
+            }
+
+            if (toks.size() >= 6)
+            {
+                const auto cv = parse_hex(toks[4]);
+                const auto cm = parse_hex(toks[5]);
                 if (!cv || !cm)
                     return std::nullopt;
 
@@ -56,8 +71,8 @@ namespace pci
             }
 
             return id_t {
-                static_cast<std::uint16_t>(*vendor),
-                static_cast<std::uint16_t>(*device),
+                *vendor, *device,
+                subvendor, subdevice,
                 class_mask, class_val
             };
         }
@@ -130,12 +145,12 @@ namespace pci
                     },
                     attribute_t {
                         [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
-                            return fmt::format("0x{:04x}\n", dev->subsysvenid);
+                            return fmt::format("0x{:04x}\n", dev->subvenid);
                         }, nullptr, "subsystem_vendor", 0444
                     },
                     attribute_t {
                         [](device_t &, std::shared_ptr<device> dev) -> lib::expect<std::string> {
-                            return fmt::format("0x{:04x}\n", dev->subsysdevid);
+                            return fmt::format("0x{:04x}\n", dev->subdevid);
                         }, nullptr, "subsystem_device", 0444
                     },
                     attribute_t {
@@ -411,29 +426,8 @@ namespace pci
     {
         return fmt::format(
             "pci:v{:08x}d{:08x}sv{:08x}sd{:08x}bc{:02x}sc{:02x}i{:02x}",
-            dev->venid, dev->devid, dev->subsysvenid, dev->subsysdevid,
+            dev->venid, dev->devid, dev->subvenid, dev->subdevid,
             dev->class_, dev->subclass, dev->progif
-        );
-    }
-
-    std::string id_t::get_modalias() const
-    {
-        const auto id = [](const char *tag, std::uint16_t id) {
-            if (id == 0xFFFF)
-                return fmt::format("{}*", tag);
-            return fmt::format("{}{:08x}", tag, id);
-        };
-
-        const auto byte = [&](const char *tag, auto shift) {
-            if (((class_mask >> shift) & 0xFF) == 0xFF)
-                return fmt::format("{}{:02x}", tag, (class_val >> shift) & 0xFF);
-            return fmt::format("{}*", tag);
-        };
-
-        return fmt::format(
-            "pci:{}{}sv*sd*{}{}{}*",
-            id("v", vendor), id("d", device),
-            byte("bc", 16), byte("sc", 8), byte("i", 0)
         );
     }
 
@@ -468,9 +462,7 @@ namespace pci
             pcidev->class_, pcidev->subclass, pcidev->progif
         ));
         uev.add("PCI_ID", fmt::format("{:04x}:{:04x}", pcidev->venid, pcidev->devid));
-        uev.add("PCI_SUBSYS_ID", fmt::format("{:04x}:{:04x}",
-            pcidev->subsysvenid, pcidev->subsysdevid)
-        );
+        uev.add("PCI_SUBSYS_ID", fmt::format("{:04x}:{:04x}", pcidev->subvenid, pcidev->subdevid));
         uev.add("PCI_SLOT_NAME", dev.name);
     }
 
