@@ -73,7 +73,9 @@ export namespace bin::elf::mod
     std::atomic<std::uint64_t> generation { 0 };
 
     bool request_alias(std::string_view modalias);
+
     bool unload(std::string_view name);
+    lib::expect<void> load(lib::membuffer buffer, bool activate);
 
     lib::initgraph::stage *modules_loaded_stage();
 } // export namespace bin::elf::mod

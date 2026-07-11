@@ -537,6 +537,7 @@ namespace sched
         new_cred->sgid = new_cred->egid;
 
         const bool suid_root = (stat.st_mode & s_isuid) != 0 && stat.st_uid == 0;
+        const bool is_root = (new_cred->euid == 0 || new_cred->fsuid == 0);
         const bool noroot = has_secbit(old_cred->securebits, secbit_t::noroot);
 
         vfs::file_caps caps;
@@ -547,7 +548,7 @@ namespace sched
             caps = *fcaps;
             has_fcaps = true;
         }
-        else if (suid_root && !noroot)
+        else if (is_root && !noroot)
         {
             caps.permitted = cap_t::all;
             caps.inheritable = cap_t::none;
