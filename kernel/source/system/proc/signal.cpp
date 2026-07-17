@@ -62,22 +62,33 @@ namespace sched
         {
             for (auto &[_, thread] : *proc->threads.lock())
             {
-                switch (const auto state = thread->state.load(std::memory_order_acquire))
+                auto state = thread->state.load(std::memory_order_acquire);
+                while (true)
                 {
-                    case thread_state::running:
-                    case thread_state::runnable:
-                    case thread_state::sleeping:
-                        thread->prev_state.store(state, std::memory_order_relaxed);
-                        thread->state.store(thread_state::stopped, std::memory_order_release);
+                    if (state != thread_state::running &&
+                        state != thread_state::runnable &&
+                        state != thread_state::sleeping)
+                        break;
+
+                    thread->prev_state.store(state, std::memory_order_relaxed);
+                    if (!thread->state.compare_exchange_weak(
+                        state, thread_state::stopped,
+                        std::memory_order_acq_rel,
+                        std::memory_order_acquire))
+                        continue;
+
+                    if (state == thread_state::running)
+                    {
                         if (auto on = thread->running_on)
                         {
                             thread->set_flag(thread_flags::needs_resched);
                             if (on != &cpu::self().unsafe_get())
                                 arch::wake_up_other(on->idx);
                         }
-                        break;
-                    default:
-                        break;
+                    }
+                    else if (state == thread_state::runnable)
+                        dequeue_stopped(thread.get());
+                    break;
                 }
             }
 
@@ -100,11 +111,17 @@ namespace sched
                 {
                     case thread_state::sleeping:
                     case thread_state::blocked:
-                        thread->state.store(prev, std::memory_order_release);
+                    {
+                        auto expected = thread_state::stopped;
+                        thread->state.compare_exchange_strong(
+                            expected, prev,
+                            std::memory_order_acq_rel,
+                            std::memory_order_acquire
+                        );
                         break;
+                    }
                     default:
-                        thread->state.store(thread_state::sleeping, std::memory_order_release);
-                        wake_up(thread.get(), true);
+                        wake_stopped(thread.get());
                         break;
                 }
             }
@@ -196,7 +213,7 @@ namespace sched
 
     bool signal_pending_for(thread_t *thread)
     {
-        auto proc = thread->proc;
+        auto proc = thread->proc.get();
         const std::unique_lock _ { proc->sigqueue.lock };
         return (proc->sigqueue.pending & ~thread->sigmask).any();
     }
@@ -239,7 +256,7 @@ namespace sched
         if (sig < 1 || sig > static_cast<int>(nsig))
             return false;
 
-        auto proc = thread->proc;
+        auto proc = thread->proc.get();
 
         if (sig == sigcont)
             drop_queued(proc, is_stop_signal);
@@ -273,6 +290,24 @@ namespace sched
         wake_for_signal(thread, sig);
         wake_signal_waiters(proc, sig);
         return true;
+    }
+
+    bool force_signal(thread_t *thread, const siginfo_t &info)
+    {
+        const int sig = info.signo;
+        if (sig < 1 || sig > static_cast<int>(nsig))
+            return false;
+
+        auto proc = thread->proc.get();
+        {
+            const std::unique_lock _ { proc->sigactions->lock };
+            auto &action = proc->sigactions->actions[sig - 1];
+            if (action.handler == sig_ign || thread->sigmask.has(sig))
+                action = sigaction_t { };
+        }
+        thread->sigmask.rem(sig);
+
+        return send_signal(thread, info);
     }
 
     void flush_signal(process_t *proc, int sig)
@@ -362,7 +397,7 @@ namespace sched
     bool consume_pending_stops()
     {
         auto thread = current_thread();
-        auto proc = thread->proc;
+        auto proc = thread->proc.get();
 
         bool stopped = false;
         while (true)
@@ -417,7 +452,7 @@ namespace sched
             return;
 
         auto thread = current_thread();
-        auto proc = thread->proc;
+        auto proc = thread->proc.get();
 
         bool delivered = false;
         while (true)

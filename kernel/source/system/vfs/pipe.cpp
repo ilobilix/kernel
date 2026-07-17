@@ -236,7 +236,8 @@ namespace vfs::pipe
 
             lib::expect<std::size_t> read(
                 std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
-                lib::maybe_uspan<std::byte> buffer) override
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -290,7 +291,8 @@ namespace vfs::pipe
 
             lib::expect<std::size_t> write(
                 std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
-                lib::maybe_uspan<std::byte> buffer) override
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -388,7 +390,9 @@ namespace vfs::pipe
                 return written;
             }
 
-            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt) override
+            lib::expect<std::uint16_t> poll(
+                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto pdata = std::static_pointer_cast<data>(file->private_data);
@@ -439,6 +443,11 @@ namespace vfs::pipe
             return std::static_pointer_cast<data>(file->private_data);
         }
     } // namespace
+
+    std::shared_ptr<vfs::ops_t> fifo_ops()
+    {
+        return ops::singleton();
+    }
 
     lib::expect<std::pair<int, int>> create_pair(int flags)
     {

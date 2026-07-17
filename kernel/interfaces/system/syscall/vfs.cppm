@@ -37,6 +37,12 @@ export namespace syscall::vfs
     std::ssize_t preadv(int fd, const struct iovec __user *iov, int iovcnt, off_t offset);
     std::ssize_t pwritev(int fd, const struct iovec __user *iov, int iovcnt, off_t offset);
 
+    std::ssize_t splice(
+        int fd_in, off_t __user *off_in,
+        int fd_out, off_t __user *off_out,
+        std::size_t len, std::uint32_t flags
+    );
+
     off_t lseek(int fd, off_t offset, int whence);
 
     int fstatat(int dirfd, const char __user *pathname, stat __user *statbuf, int flags);
@@ -204,16 +210,14 @@ export namespace syscall::vfs
 
     int fsopen(const char __user *fsname, std::uint32_t flags);
 
-    int inotify_init1(int flags);
-
     int eventfd2(unsigned int count, int flags);
     int eventfd(unsigned int count);
 
     int signalfd4(int fd, sigset_t __user *mask, std::size_t sizemask, int flags);
     int signalfd(int fd, sigset_t __user *mask, std::size_t sizemask);
 
-    int epoll_create(int size);
     int epoll_create1(int flags);
+    int epoll_create(int size);
     int epoll_ctl(int epfd, int op, int fd,  struct epoll_event __user *event);
     int epoll_pwait2(
         int epfd, epoll_event __user *events, int maxevents, const timespec __user *timeout,
@@ -224,6 +228,11 @@ export namespace syscall::vfs
         const sigset_t __user *sigmask, std::size_t sigsetsize
     );
     int epoll_wait(int epfd, epoll_event __user *events, int maxevents, int timeout);
+
+    int inotify_init1(int flags);
+    int inotify_init();
+    int inotify_add_watch(int fd, const char __user *pathname, std::uint32_t mask);
+    int inotify_rm_watch(int fd, std::int32_t wd);
 
     int init_module(void __user *umod, unsigned long len, const char __user *uargs);
     int finit_module(int fd, const char __user *uargs, int flags);

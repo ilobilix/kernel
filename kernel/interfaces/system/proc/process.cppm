@@ -126,6 +126,10 @@ export namespace sched
         cpu_itimer_t itimer_virtual { };
         cpu_itimer_t itimer_prof { };
 
+        std::atomic<std::uint8_t> pending_timer_sigs = 0;
+        lib::intrusive_list_hook<process_t> timer_sig_hook;
+        std::shared_ptr<process_t> timer_sig_self;
+
         recursive_mutex lock;
     };
 

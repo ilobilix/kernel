@@ -139,10 +139,14 @@ export namespace vmm
 
         public:
         object_type type;
+        std::atomic_bool shared_mapped;
         lib::intrusive_ptr_hook hook;
 
         lib::expect<void> read_pages(std::uint64_t offp, std::span<page *> pages, std::size_t idx);
         lib::expect<void> write_back(std::uint64_t offp, std::size_t num_pages);
+
+        void drop_cached(std::uint64_t offp, std::size_t num_pages);
+        lib::expect<void> populate(std::size_t num_pages);
 
         std::size_t read(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
         std::size_t write(std::uint64_t offset, lib::maybe_uspan<std::byte> buffer);
@@ -155,7 +159,8 @@ export namespace vmm
         }
         virtual caching cache_attr() const { return caching::normal; }
 
-        explicit object(object_type type = object_type::file) : type { type } { }
+        explicit object(object_type type = object_type::file)
+            : type { type }, shared_mapped { false } { }
         virtual ~object();
 
         using ptr = lib::intrusive_ptr<object, &object::hook>;
@@ -308,7 +313,8 @@ export namespace vmm
         bool is_user;
     };
 
-    bool handle_pfault(pfault_state state);
+    bool handle_spurious_pfault(const pfault_state &state);
+    bool handle_pfault(const pfault_state &state);
 
     std::uintptr_t alloc_vspace(std::size_t length);
     void free_vspace(std::uintptr_t addr, std::size_t length);

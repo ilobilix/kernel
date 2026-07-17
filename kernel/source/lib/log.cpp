@@ -606,6 +606,25 @@ namespace lib::log
             }
         }
 
+        void locked_prints(std::string_view view)
+        {
+            // ehhhhhh
+            lock.lock();
+            const bool reenable = !direct.load(std::memory_order_acquire);
+            if (reenable)
+            {
+                sched::preempt_disable();
+                arch::int_switch(true);
+            }
+            prints(view);
+            if (reenable)
+            {
+                arch::int_switch(false);
+                sched::preempt_enable();
+            }
+            lock.unlock();
+        }
+
         void print(ring_type::info &info)
         {
             if (info.lvl != level::none)
@@ -622,22 +641,9 @@ namespace lib::log
                 ).size != len_time);
                 std::memcpy(data.data(), time.data(), len_time);
 
-                const std::string_view view {
-                    data.data(), info.len + len_time
-                };
-                lock.lock();
-                prints(view);
-                lock.unlock();
+                locked_prints(std::string_view { data.data(), info.len + len_time });
             }
-            else
-            {
-                const std::string_view view {
-                    data.data() + len_time, info.len
-                };
-                lock.lock();
-                prints(view);
-                lock.unlock();
-            }
+            else locked_prints(std::string_view { data.data() + len_time, info.len });
         }
     } // namespace
 
@@ -654,7 +660,16 @@ namespace lib::log
     // called from panic
     void die()
     {
-        consumer_lock.lock();
+        for (std::size_t i = 0; i < (1uz << 27); i++)
+        {
+            if (!consumer_lock.is_locked())
+            {
+                consumer_lock.lock();
+                break;
+            }
+            arch::pause();
+        }
+
         direct.store(true, std::memory_order_release);
         lock.unlock();
 
@@ -777,9 +792,7 @@ namespace lib::log
                 h, m, s, nanos, prefix, count
             ).size;
 
-            lock.lock();
-            prints(std::string_view { buf.data(), sz });
-            lock.unlock();
+            locked_prints(std::string_view { buf.data(), sz });
         }
     } // namespace
 
@@ -790,45 +803,56 @@ namespace lib::log
 
         while (true)
         {
-            const std::unique_lock _ { consumer_lock };
-
-            const auto gen = available.snapshot_gen();
-            auto res = buffer.read(next_seq, std::span {
-                data.data() + len_time, data.size() - len_time
-            });
-            if (!res.has_value())
+            std::size_t wait_gen = 0;
+            bool should_wait = false;
             {
-                if (res.error() == ring_type::error::not_yet_available)
+                const std::unique_lock _ { consumer_lock };
+
+                const auto gen = available.snapshot_gen();
+                auto res = buffer.read(next_seq, std::span {
+                    data.data() + len_time, data.size() - len_time
+                });
+                if (!res.has_value())
                 {
+                    if (res.error() == ring_type::error::not_yet_available)
+                    {
+                        const auto cur = dropped.load(std::memory_order_relaxed);
+                        if (cur > reported_drops)
+                        {
+                            print_dropped(cur - reported_drops);
+                            reported_drops = cur;
+                        }
+                        finished.wake_all();
+                        wait_gen = gen;
+                        should_wait = true;
+                    }
+                    else
+                    {
+                        next_seq = buffer.first_seq();
+                        last_consumed.store(next_seq - 1, std::memory_order_release);
+                    }
+                }
+                else
+                {
+                    if (res->seq != next_seq)
+                        dropped.fetch_add(res->seq - next_seq, std::memory_order_relaxed);
+
                     const auto cur = dropped.load(std::memory_order_relaxed);
                     if (cur > reported_drops)
                     {
                         print_dropped(cur - reported_drops);
                         reported_drops = cur;
                     }
-                    finished.wake_all();
-                    available.wait_prepared(gen);
-                    continue;
+
+                    print(*res);
+
+                    next_seq = res->seq + 1;
+                    last_consumed.store(res->seq, std::memory_order_release);
                 }
-                next_seq = buffer.first_seq();
-                last_consumed.store(next_seq - 1, std::memory_order_release);
-                continue;
             }
 
-            if (res->seq != next_seq)
-                dropped.fetch_add(res->seq - next_seq, std::memory_order_relaxed);
-
-            const auto cur = dropped.load(std::memory_order_relaxed);
-            if (cur > reported_drops)
-            {
-                print_dropped(cur - reported_drops);
-                reported_drops = cur;
-            }
-
-            print(*res);
-
-            next_seq = res->seq + 1;
-            last_consumed.store(res->seq, std::memory_order_release);
+            if (should_wait)
+                available.wait_prepared(wait_gen);
         }
         std::unreachable();
     }

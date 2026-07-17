@@ -47,14 +47,23 @@ namespace x86_64::idt
 
         bool deliver_fault_signal(cpu::registers *regs, std::uintptr_t cr2)
         {
-            if (!sched::is_running())
+            if (!sched::is_ready())
                 return false;
             if ((regs->cs & 3) != 3)
                 return false;
 
-            arch::dump_regs(cpu::self().unsafe_get().idx, regs, cpu::extra_regs::read());
+            const auto idx = cpu::self().unsafe_get().idx;
+            arch::dump_regs(idx, regs, cpu::extra_regs::read());
 
             const auto thread = sched::current_thread();
+            lib::error(
+                "exception {}: '{}' on cpu {} on [{}:{}]",
+                regs->vector, exception_messages[regs->vector], idx,
+                thread->proc->pid, thread->tid,
+                thread->proc->comm.empty()
+                    ? thread->proc->pathname.basename().str()
+                    : thread->proc->comm
+            );
 
             int signo = 0;
             switch (regs->vector)
@@ -109,7 +118,7 @@ namespace x86_64::idt
                 .addr = (regs->vector == 14) ? cr2 : regs->rip,
                 .value = 0
             };
-            sched::send_signal(thread, info);
+            sched::force_signal(thread, info);
             return true;
         }
 
@@ -344,12 +353,15 @@ namespace x86_64::idt
         }
 
         auto &self = cpu::self().unsafe_get();
-        self.in_interrupt.store(true, std::memory_order_relaxed);
+
+        const bool old = self.in_interrupt.exchange(true, std::memory_order_relaxed);
         std::atomic_signal_fence(std::memory_order_acquire);
 
         if (vector >= irq(0) && vector <= 0xFF)
         {
             random::add_irq_jitter(vector, regs->rip);
+
+            self.in_hard_irq.store(true, std::memory_order_relaxed);
 
             const auto idx = vector - irq(0);
             auto &irqh = irq_handlers.unsafe_get();
@@ -366,6 +378,8 @@ namespace x86_64::idt
                 else lib::panic(regs, "unhandled irq {}", vector);
             }
             else apic::eoi();
+
+            self.in_hard_irq.store(false, std::memory_order_relaxed);
         }
         else if (vector < irq(0))
         {
@@ -393,10 +407,18 @@ namespace x86_64::idt
                     (regs->error_code & (1 << 4)) != 0,
                     (regs->error_code & (1 << 2)) != 0
                 };
-                if (vmm::handle_pfault(state))
+
+                if (vmm::handle_spurious_pfault(state))
                     goto end;
 
-                if ((regs->cs & 3) != 3 && sched::is_running())
+                const bool cant_handle = self.in_hard_irq.load(std::memory_order_relaxed) ||
+                    (sched::is_ready() &&
+                        (sched::current_thread()->irq_depth != 0 || sched::is_preempt_disabled()));
+
+                if (!cant_handle && vmm::handle_pfault(state))
+                    goto end;
+
+                if ((regs->cs & 3) != 3 && sched::is_ready())
                 {
                     const auto thread = sched::current_thread();
                     if (thread->fault_frame.pc != 0 &&
@@ -413,7 +435,7 @@ namespace x86_64::idt
             if (deliver_fault_signal(regs, cr2))
                 goto end;
 
-            if (sched::is_running())
+            if (sched::is_ready())
             {
                 const auto thread = sched::current_thread();
                 lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
@@ -435,9 +457,10 @@ namespace x86_64::idt
         }
 
         end:
-        if (sched::is_running())
+        if (sched::is_ready())
         {
-            if (!sched::is_preempt_disabled() && sched::current_thread()->needs_resched())
+            const auto thread = sched::current_thread();
+            if (!sched::is_preempt_disabled() && thread->irq_depth == 0 && thread->needs_resched())
                 sched::schedule();
 
             if ((regs->cs & 3) == 3)
@@ -449,7 +472,7 @@ namespace x86_64::idt
 
         skip_sched:
         std::atomic_signal_fence(std::memory_order_release);
-        self.in_interrupt.store(false, std::memory_order_relaxed);
+        cpu::self().unsafe_get().in_interrupt.store(old, std::memory_order_relaxed);
     }
 
     void init()

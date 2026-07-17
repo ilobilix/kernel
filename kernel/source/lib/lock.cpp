@@ -11,34 +11,45 @@ namespace lib::lock
 {
     namespace
     {
-        cpu_local(std::atomic_size_t, irq_depth, 0uz);
-        cpu_local(bool, irq_status);
+        cpu_local(std::size_t, boot_irq_depth, 0uz);
+        cpu_local(bool, boot_irq_status);
     } // namespace
 
     void acquire_irq()
     {
         const bool status = arch::int_status();
-        sched::preempt_disable();
+        arch::int_switch(false);
 
-        if (irq_depth.unsafe_get().fetch_add(1, std::memory_order_acquire) == 0)
+        if (cpu::self().unsafe_get().sched_ready.load(std::memory_order_relaxed)) [[likely]]
         {
-            irq_status.unsafe_get() = status;
-            if (!cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
-                arch::int_switch(false);
+            const auto thread = sched::current_thread();
+            if (thread->irq_depth++ == 0)
+                thread->irq_status = status;
         }
-
-        sched::preempt_enable();
+        else
+        {
+            auto &depth = boot_irq_depth.unsafe_get();
+            if (depth++ == 0)
+                boot_irq_status.unsafe_get() = status;
+        }
     }
 
     void release_irq()
     {
-        sched::preempt_disable();
-
-        if (irq_depth.unsafe_get().fetch_sub(1, std::memory_order_release) == 1 &&
-            !cpu::self().unsafe_get().in_interrupt.load(std::memory_order_relaxed))
-            arch::int_switch(irq_status.unsafe_get());
-
-        sched::preempt_enable();
+        if (cpu::self().unsafe_get().sched_ready.load(std::memory_order_relaxed)) [[likely]]
+        {
+            const auto thread = sched::current_thread();
+            bug_on(thread->irq_depth == 0);
+            if (--thread->irq_depth == 0)
+                arch::int_switch(thread->irq_status);
+        }
+        else
+        {
+            auto &depth = boot_irq_depth.unsafe_get();
+            bug_on(depth == 0);
+            if (--depth == 0)
+                arch::int_switch(boot_irq_status.unsafe_get());
+        }
     }
 
     void acquire_preempt()

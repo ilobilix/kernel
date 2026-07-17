@@ -43,12 +43,12 @@ export namespace sched
             [rlimit_stack]      = { 8 * 1024 * 1024, rlim_inf }, // _STK_LIM
             [rlimit_core]       = { 0, rlim_inf },
             [rlimit_rss]        = { rlim_inf, rlim_inf },
-            [rlimit_nproc]      = { 0, 0 },
+            [rlimit_nproc]      = { 16384, 16384 },
             [rlimit_nofile]     = { 1024, 4096 }, // INR_OPEN_CUR, INR_OPEN_MAX
             [rlimit_memlock]    = { 8 * 1024 * 1024, 8 * 1024 * 1024 }, // MLOCK_LIMIT
             [rlimit_as]         = { rlim_inf, rlim_inf },
             [rlimit_locks]      = { rlim_inf, rlim_inf },
-            [rlimit_sigpending] = { 0, 0 },
+            [rlimit_sigpending] = { 16384, 16384 },
             [rlimit_msgqueue]   = { 819200, 819200 }, // MQ_BYTES_MAX
             [rlimit_nice]       = { 0, 0 },
             [rlimit_rtprio]     = { 0, 0 },

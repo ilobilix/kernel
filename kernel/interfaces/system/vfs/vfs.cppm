@@ -264,11 +264,7 @@ export namespace vfs
             return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file_t> file)
-        {
-            lib::unused(file);
-            return std::unexpected { lib::err::mapping_unsupported };
-        }
+        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file_t> file);
 
         virtual lib::expect<void> sync() { return { }; }
 
@@ -433,8 +429,13 @@ export namespace vfs
         > xattrs;
 
         std::shared_ptr<void> private_data;
+        vmm::object::ptr mapping;
 
         std::shared_ptr<struct ops_t> get_ops();
+
+        void invalidate_pcache(std::uint64_t offset, std::size_t length);
+        void trunc_pcache(std::size_t size);
+        void orphan_pcache();
 
         inode_t(std::shared_ptr<struct ops_t> ops) : ops { ops } { }
     };
@@ -613,7 +614,11 @@ export namespace vfs
             const std::unique_lock _ { lock };
             const auto ret = ops->write(shared_from_this(), offset, buffer);
             if (ret.has_value())
+            {
+                if (path.dentry && path.dentry->inode)
+                    path.dentry->inode->invalidate_pcache(offset, *ret);
                 offset += *ret;
+            }
             return ret;
         }
 
@@ -628,14 +633,20 @@ export namespace vfs
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
-            return ops->write(shared_from_this(), offset, buffer);
+            const auto ret = ops->write(shared_from_this(), offset, buffer);
+            if (ret.has_value() && path.dentry && path.dentry->inode)
+                path.dentry->inode->invalidate_pcache(offset, *ret);
+            return ret;
         }
 
         lib::expect<void> trunc(std::size_t size)
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
-            return ops->trunc(shared_from_this(), size);
+            const auto ret = ops->trunc(shared_from_this(), size);
+            if (ret.has_value() && path.dentry && path.dentry->inode)
+                path.dentry->inode->trunc_pcache(size);
+            return ret;
         }
 
         lib::expect<std::size_t> getdents(lib::maybe_uspan<std::byte> buffer);

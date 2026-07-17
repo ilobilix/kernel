@@ -13,7 +13,8 @@ import arch;
 namespace tlb
 {
     constexpr std::size_t max_pages = 32;
-    constexpr std::uint64_t timeout_ns = 5'000'000'000ul;
+    constexpr std::uint64_t retry_ns = 3'000'000'000ul;
+    constexpr std::uint64_t timeout_ns = 30'000'000'000ul;
 
     namespace arch
     {
@@ -82,7 +83,7 @@ namespace tlb
             const bool is_user = req.sc == scope::user_range || req.sc == scope::user_full;
 
             vmm::asid_t asid = 0;
-            if (is_user && cpu::tlb::has_asids() && req.pmap)
+            if (is_user && req.pmap)
             {
                 const auto &self = cpu::self().unsafe_get();
 
@@ -90,7 +91,8 @@ namespace tlb
                 if (!ctx || ctx->gen != self.asid_gen.load(std::memory_order_acquire))
                     return;
 
-                asid = ctx->asid;
+                if (cpu::tlb::has_asids())
+                    asid = ctx->asid;
             }
 
             do_flush(req.sc, asid, req.start, req.pages);
@@ -149,6 +151,13 @@ namespace tlb
         }
     }
 
+    void local_flush(const request_t &req)
+    {
+        sched::preempt_disable();
+        flush_local(req);
+        sched::preempt_enable();
+    }
+
     void shootdown(const request_t &req)
     {
         sched::preempt_disable();
@@ -172,10 +181,12 @@ namespace tlb
 
         const bool kernel_broadcast =
             req.sc == scope::kernel_range || req.sc == scope::kernel_full ||
-            req.pmap == nullptr || !req.pmap->has_asid_ctx() || !cpu::tlb::has_asids();
+            req.pmap == nullptr || !req.pmap->has_asid_ctx();
 
         auto &self = cpu::self().unsafe_get();
         const auto self_idx = self.idx;
+
+        std::atomic_thread_fence(std::memory_order_seq_cst);
 
         std::size_t nt = 0;
         for (std::size_t i = 0; i < ncpus; i++)
@@ -229,7 +240,8 @@ namespace tlb
         arch::notify_mask(state.mask);
 
         const auto clock = chrono::main_timer();
-        const auto deadline = clock->ns() + timeout_ns;
+        const auto start = clock->ns();
+        auto next_retry = start + retry_ns;
 
         const bool status = arch::int_switch_status(true);
 
@@ -249,10 +261,32 @@ namespace tlb
 
             arch::pause();
 
-            if (clock->ns() > deadline) [[unlikely]]
+            const auto now = clock->ns();
+            if (now > next_retry) [[unlikely]]
             {
-                lib::panic("tlb shootdown stuck");
-                std::unreachable();
+                std::uint64_t pending = 0;
+                state.mask.clear();
+                for (std::size_t i = 0; i < nt; i++)
+                {
+                    if (!state.data[i].records.done.load(std::memory_order_acquire))
+                    {
+                        pending |= 1ul << state.data[i].target_idx;
+                        state.mask.set(state.data[i].target_idx, true);
+                    }
+                }
+
+                if (now - start > timeout_ns) [[unlikely]]
+                {
+                    lib::panic("tlb shootdown stuck! pending: 0x{:X}", pending);
+                    std::unreachable();
+                }
+
+                lib::warn(
+                    "tlb: shootdown slow after {} ms! pending: 0x{:X}, trying again",
+                    (now - start) / 1'000'000, pending
+                );
+                arch::notify_mask(state.mask);
+                next_retry = now + retry_ns;
             }
         }
 

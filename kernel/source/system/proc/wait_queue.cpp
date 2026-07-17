@@ -81,6 +81,8 @@ namespace sched
         std::size_t gen, std::uint64_t ns, wait_mode mode
     ) -> wait_result_t
     {
+        lib::bug_on(!!in_hard_irq());
+
         auto thread = static_cast<thread_t *>(current_thread());
         const bool kill_aware = (mode != wait_mode::unkillable);
 
@@ -156,7 +158,7 @@ namespace sched
         const bool interrupted = (mode == wait_mode::interruptible) &&
             thread->test_and_clear_flag(thread_flags::interrupted);
         const bool killed = thread->has_flag(thread_flags::kill_pending);
-        if (ns != 0 && !timeout.expired)
+        if (ns != 0)
             cancel_thread_timeout(&timeout);
 
         lock.lock();
@@ -209,16 +211,24 @@ namespace sched
             lock.unlock();
             return;
         }
+
         auto entry = entries.pop_front();
         auto type = entry->type;
-        lock.unlock();
 
-        visit(type, true);
+        if (std::holds_alternative<thread_base_t *>(type))
+        {
+            wake_up(static_cast<thread_t *>(std::get<thread_base_t *>(type)), false);
+            lock.unlock();
+            return;
+        }
+
+        lock.unlock();
+        std::get<wait_queue_entry_t::callback_t>(type)();
     }
 
     void wait_queue_t::wake_all()
     {
-        decltype(entries) tmp;
+        std::vector<decltype(wait_queue_entry_t::type)> callbacks;
         {
             const std::unique_lock _ { lock };
             generation.fetch_add(1, std::memory_order_release);
@@ -237,10 +247,14 @@ namespace sched
                 }
 
                 entries.remove(entry);
-                tmp.push_back(entry);
+
+                if (std::holds_alternative<thread_base_t *>(entry->type))
+                    wake_up(static_cast<thread_t *>(std::get<thread_base_t *>(entry->type)), false);
+                else
+                    callbacks.push_back(entry->type);
             }
         }
-        while (!tmp.empty())
-            visit(tmp.pop_front()->type, false);
+        for (auto &cb : callbacks)
+            std::get<wait_queue_entry_t::callback_t>(cb)();
     }
 } // namespace sched

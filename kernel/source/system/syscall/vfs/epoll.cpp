@@ -48,7 +48,7 @@ namespace syscall::vfs
         struct epoll_entry_t;
         void do_signal(epoll_entry_t *ent);
 
-        struct epoll_entry_t
+        struct epoll_entry_t : std::enable_shared_from_this<epoll_entry_t>
         {
             epoll_instance_t *epi;
             int fd;
@@ -67,7 +67,10 @@ namespace syscall::vfs
 
                 reg(epoll_entry_t *ent, sched::wait_queue_t *wq)
                     : wq { wq }, entry {
-                        [ent]{ do_signal(ent); },
+                        [went = ent->weak_from_this()] {
+                            if (const auto ent = went.lock())
+                                do_signal(ent.get());
+                        },
                         (ent->events & epollexclusive) != 0
                     } { }
             };

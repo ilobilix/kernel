@@ -6,6 +6,7 @@ namespace sched
 {
     void run_queue_t::enqueue(thread_t *thread)
     {
+        lib::bug_on(thread->self != thread);
         lib::bug_on(thread->on_rq != nullptr);
         queue.insert(thread);
         total_weight += thread->weight;
@@ -15,7 +16,7 @@ namespace sched
 
     void run_queue_t::dequeue(thread_t *thread)
     {
-        lib::bug_on(thread->on_rq == nullptr);
+        lib::bug_on(thread->on_rq != this);
         queue.remove(thread);
         total_weight -= thread->weight;
         thread->on_rq = nullptr;
@@ -26,7 +27,9 @@ namespace sched
     {
         if (queue.empty())
             return nullptr;
-        return queue.first();
+        const auto first = queue.first();
+        lib::bug_on(first->on_rq != this);
+        return first;
     }
 
     std::uint64_t run_queue_t::update_current(std::uint64_t now)

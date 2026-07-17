@@ -52,12 +52,16 @@ export namespace sched
 
         std::atomic<std::ssize_t> preempt_count = 0;
 
+        std::size_t irq_depth = 0;
+        bool irq_status = false;
+
         // sizes are fixed
         std::uintptr_t ustack_base;
         std::uintptr_t kstack_base;
 
         pid_t tid;
-        process_t *proc;
+        // shared_ptr cycle is broken on exit so this is fine
+        std::shared_ptr<process_t> proc;
 
         std::atomic<thread_state> state = thread_state::runnable;
         std::atomic<thread_state> prev_state = thread_state::runnable;

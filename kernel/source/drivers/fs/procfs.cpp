@@ -641,11 +641,13 @@ namespace fs::procfs
                     auto stat = inod->stat;
                     if (inod->pid > 0)
                     {
-                        if (auto proc = sched::get_process(inod->pid))
+                        if (const auto proc = sched::get_process(inod->pid))
                         {
-                            lib::bug_on(!proc->cred);
-                            stat.st_uid = proc->cred->ruid;
-                            stat.st_gid = proc->cred->rgid;
+                            if (const auto cred = proc->cred)
+                            {
+                                stat.st_uid = cred->ruid;
+                                stat.st_gid = cred->rgid;
+                            }
                         }
                     }
                     return sched::check_perms(cred, stat, static_cast<sched::access_mode>(mode));

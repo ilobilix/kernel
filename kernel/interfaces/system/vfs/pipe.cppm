@@ -8,6 +8,8 @@ import std;
 
 export namespace vfs::pipe
 {
+    std::shared_ptr<vfs::ops_t> fifo_ops();
+
     lib::expect<std::pair<int, int>> create_pair(int flags);
 
     lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file_t> file);

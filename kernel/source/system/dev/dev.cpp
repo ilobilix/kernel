@@ -980,10 +980,10 @@ namespace dev
                     lib::bug_on(!register_kobject(slot));
                 };
 
-                install_root(devices_kobj, "devices", nullptr);
-                install_root(bus_kobj, "bus", nullptr);
-                install_root(class_kobj, "class", nullptr);
-                install_root(dev_kobj, "dev", nullptr);
+                install_root(devices_kobj, "devices");
+                install_root(bus_kobj, "bus");
+                install_root(class_kobj, "class");
+                install_root(dev_kobj, "dev");
                 install_root(dev_char_kobj, "char", dev_kobj);
                 install_root(dev_block_kobj, "block", dev_kobj);
                 install_root(virtual_kobj, "virtual", devices_kobj);

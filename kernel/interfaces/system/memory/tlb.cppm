@@ -32,5 +32,6 @@ export namespace tlb
     };
 
     void shootdown(const request_t &req);
+    void local_flush(const request_t &req);
     void init_cpu(std::size_t cpu_idx);
 } // export namespace tlb

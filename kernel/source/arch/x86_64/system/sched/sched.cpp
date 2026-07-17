@@ -35,16 +35,17 @@ namespace sched::arch
                 thread->prev_to_release = nullptr;
                 released->on_cpu.store(false, std::memory_order_release);
             }
-            if (thread->needs_unlock)
-            {
-                thread->needs_unlock->unlock();
-                thread->needs_unlock = nullptr;
-            }
 
             if (thread->was_in_interrupt)
             {
                 thread->was_in_interrupt->store(false, std::memory_order_release);
                 thread->was_in_interrupt = nullptr;
+            }
+
+            if (thread->needs_unlock)
+            {
+                thread->needs_unlock->unlock();
+                thread->needs_unlock = nullptr;
             }
 
             if (thread->set_child_tid)

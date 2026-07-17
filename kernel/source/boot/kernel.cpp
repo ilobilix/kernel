@@ -80,7 +80,7 @@ void kthread()
     sched::enqueue_new(thread.get());
 }
 
-extern "C"  [[noreturn]] void kmain()
+extern "C" [[noreturn]] void kmain()
 {
     lib::syscall::log_enabled = cmdline::has("syscall-log");
 

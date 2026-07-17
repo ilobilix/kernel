@@ -194,6 +194,11 @@ export namespace vmm
             page_size psize, bool user
         ) -> table *;
 
+        auto walk(
+            std::uintptr_t vaddr, std::optional<page_size> stop_at,
+            bool allocate, bool split
+        ) const -> lib::expect<std::pair<entry *, page_size>>;
+
         lib::expect<entry *> getpte(
             std::uintptr_t vaddr, page_size psize,
             bool allocate, bool split
@@ -201,11 +206,13 @@ export namespace vmm
 
         lib::expect<void> map_internal(
             std::uintptr_t vaddr, std::uintptr_t paddr, std::size_t length, pflag flags,
-            std::optional<page_size> psize, caching cache, flush_range &fr_out
+            std::optional<page_size> psize, caching cache,
+            flush_range &fr_out, flush_range &lfr_out
         );
         lib::expect<void> protect_internal(
             std::uintptr_t vaddr, std::size_t length, pflag flags,
-            std::optional<page_size> psize, caching cache, flush_range &fr_out
+            std::optional<page_size> psize, caching cache,
+            flush_range &fr_out, flush_range &lfr_out
         );
         lib::expect<void> unmap_internal(
             std::uintptr_t vaddr, std::size_t length,
@@ -217,7 +224,8 @@ export namespace vmm
         public:
         auto get_arch_table(std::uintptr_t addr = 0) const -> table *;
 
-        void invalidate(std::uintptr_t vaddr, std::size_t length);
+        void invalidate(std::uintptr_t vaddr, std::size_t length, bool only_local = false);
+        bool fault_permitted(std::uintptr_t vaddr, bool write, bool exec) const;
 
         bool has_asid_ctx() const { return _asid_ctx != nullptr; }
         std::optional<asid_ctx> cached_asid_ctx(std::size_t cpu_idx) const

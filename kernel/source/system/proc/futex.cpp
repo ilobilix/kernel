@@ -225,13 +225,17 @@ namespace sched::futex
         waiter.timeout.thread = thread;
 
         auto &bucket = bucket_for(key);
-        bucket.lock.lock();
 
         std::uint32_t cur;
-        if (!lib::copy_from_user(&cur, uaddr, sizeof(cur)))
+        while (true)
         {
+            bucket.lock.lock();
+            if (lib::copy_from_user(&cur, uaddr, sizeof(cur)))
+                break;
+
             bucket.lock.unlock();
-            return std::unexpected { lib::err::invalid_address };
+            if (!lib::copy_from_user(&cur, uaddr, sizeof(cur)))
+                return std::unexpected { lib::err::invalid_address };
         }
 
         if (cur != val)
@@ -271,7 +275,7 @@ namespace sched::futex
         const bool interrupted = thread->test_and_clear_flag(thread_flags::interrupted);
         const bool killed = thread->has_flag(thread_flags::kill_pending);
 
-        if (wait_ns.has_value() && !waiter.timeout.expired)
+        if (wait_ns.has_value())
             cancel_thread_timeout(&waiter.timeout);
 
         while (true)
@@ -309,7 +313,7 @@ namespace sched::futex
 
         auto &bucket = bucket_for(key);
 
-        lib::intrusive_list<waiter_t, &waiter_t::hook> targets;
+        std::uint32_t woken = 0;
         std::int32_t collected = 0;
         {
             const std::unique_lock _ { bucket.lock };
@@ -321,18 +325,11 @@ namespace sched::futex
                     continue;
 
                 bucket.waiters.remove(waiter);
+                if (wake_up(waiter->thread, false))
+                    woken++;
                 waiter->lock_ptr.store(nullptr, std::memory_order_release);
-                targets.push_back(waiter);
                 collected++;
             }
-        }
-
-        std::uint32_t woken = 0;
-        while (!targets.empty())
-        {
-            auto waiter = targets.pop_front();
-            if (wake_up(waiter->thread, true))
-                woken++;
         }
         return woken;
     }
@@ -418,10 +415,18 @@ namespace sched::futex
         if (cmpval.has_value())
         {
             std::uint32_t cur;
-            if (!lib::copy_from_user(&cur, uaddr_cmp, sizeof(cur)))
+            while (true)
             {
+                if (lib::copy_from_user(&cur, uaddr_cmp, sizeof(cur)))
+                    break;
+
                 unlock_buckets();
-                return std::unexpected { lib::err::invalid_address };
+                if (!lib::copy_from_user(&cur, uaddr_cmp, sizeof(cur)))
+                    return std::unexpected { lib::err::invalid_address };
+
+                first->lock.lock();
+                if (second)
+                    second->lock.lock();
             }
 
             if (cur != *cmpval)
@@ -431,7 +436,7 @@ namespace sched::futex
             }
         }
 
-        lib::intrusive_list<waiter_t, &waiter_t::hook> to_wake;
+        std::uint32_t woken = 0;
         std::int32_t collected_wake = 0;
         for (auto it = b1.waiters.begin(); it != b1.waiters.end() && collected_wake < nr_wake; )
         {
@@ -440,8 +445,9 @@ namespace sched::futex
                 continue;
 
             b1.waiters.remove(waiter);
+            if (wake_up(waiter->thread, false))
+                woken++;
             waiter->lock_ptr.store(nullptr, std::memory_order_release);
-            to_wake.push_back(waiter);
             collected_wake++;
         }
 
@@ -463,14 +469,6 @@ namespace sched::futex
         }
 
         unlock_buckets();
-
-        std::uint32_t woken = 0;
-        while (!to_wake.empty())
-        {
-            auto waiter = to_wake.pop_front();
-            if (wake_up(waiter->thread, true))
-                woken++;
-        }
 
         return std::make_pair(woken, requeued);
     }

@@ -48,9 +48,39 @@ namespace sched
             return true;
         }
 
-        void send_itimer_signal(process_t *proc, int signo)
+        enum timer_types : std::uint8_t
         {
-            siginfo_t info {
+            timer_sig_alrm = 1 << 0,
+            timer_sig_vtalrm = 1 << 1,
+            timer_sig_prof = 1 << 2
+        };
+
+        lib::locker<
+            lib::intrusive_list<
+                process_t,
+                &process_t::timer_sig_hook
+            >, lib::spinlock_irq
+        > timer_sig_queue;
+
+        wait_queue_t timer_sig_bell;
+
+        void queue_timer_signal(process_t *proc, std::uint8_t bit)
+        {
+            {
+                auto locked = timer_sig_queue.lock();
+                proc->pending_timer_sigs.fetch_or(bit, std::memory_order_relaxed);
+                if (!proc->timer_sig_self)
+                {
+                    proc->timer_sig_self = proc->shared_from_this();
+                    locked->push_back(proc);
+                }
+            }
+            timer_sig_bell.wake_one();
+        }
+
+        void deliver_timer_signal(process_t *proc, int signo)
+        {
+            const siginfo_t info {
                 .signo = signo,
                 .code = si_kernel,
                 .err = 0,
@@ -62,6 +92,47 @@ namespace sched
             };
             send_signal(proc, info);
         }
+
+        [[noreturn]] void timer_sig_worker()
+        {
+            while (true)
+            {
+                while (true)
+                {
+                    std::shared_ptr<process_t> proc;
+                    std::uint8_t bits;
+                    {
+                        auto locked = timer_sig_queue.lock();
+                        if (locked->empty())
+                            break;
+
+                        auto front = locked->pop_front();
+                        proc = std::move(front->timer_sig_self);
+                        bits = front->pending_timer_sigs.exchange(0, std::memory_order_acq_rel);
+                    }
+
+                    if (bits & timer_sig_alrm)
+                        deliver_timer_signal(proc.get(), sigalrm);
+                    if (bits & timer_sig_vtalrm)
+                        deliver_timer_signal(proc.get(), sigvtalrm);
+                    if (bits & timer_sig_prof)
+                        deliver_timer_signal(proc.get(), sigprof);
+                }
+                timer_sig_bell.wait();
+            }
+        }
+
+        lib::initgraph::task timer_sig_task
+        {
+            "sched.timer-signals.init",
+            lib::initgraph::presched_init_engine,
+            lib::initgraph::require {
+                pid0_created_stage()
+            },
+            [] {
+                spawn(timer_sig_worker);
+            }
+        };
     } // namespace
 
     void arm_thread_timeout(sleep_entry_t *entry, std::uint64_t ns)
@@ -109,10 +180,10 @@ namespace sched
 
         yield();
 
-        if (!entry.expired)
         {
             auto locked = sleep_list.lock();
-            locked->remove(&entry);
+            if (!entry.expired)
+                locked->remove(&entry);
         }
 
         const auto now = timer->ns();
@@ -140,22 +211,18 @@ namespace sched
 
         while (true)
         {
-            thread_t *thread;
-            {
-                auto locked = sleep_list.lock();
-                auto it = locked->begin();
-                if (it == locked->end())
-                    break;
+            auto locked = sleep_list.lock();
+            auto it = locked->begin();
+            if (it == locked->end())
+                break;
 
-                auto entry = it.value();
-                if (entry->deadline_ns > now)
-                    break;
+            auto entry = it.value();
+            if (entry->deadline_ns > now)
+                break;
 
-                locked->remove(entry);
-                entry->expired = true;
-                thread = entry->thread;
-            }
-            wake_up(thread, false);
+            locked->remove(entry);
+            entry->expired = true;
+            wake_up(entry->thread, false);
         }
     }
 
@@ -222,10 +289,10 @@ namespace sched
             return;
 
         if (from_user && consume_itimer(proc->itimer_virtual, delta_ns))
-            send_itimer_signal(proc, sigvtalrm);
+            queue_timer_signal(proc, timer_sig_vtalrm);
 
         if (consume_itimer(proc->itimer_prof, delta_ns))
-            send_itimer_signal(proc, sigprof);
+            queue_timer_signal(proc, timer_sig_prof);
     }
 
     void expire_alarms()
@@ -255,17 +322,7 @@ namespace sched
                 entry->expired = true;
             }
 
-            siginfo_t info {
-                .signo = sigalrm,
-                .code = si_kernel,
-                .err = 0,
-                .pid = 0,
-                .uid = 0,
-                .status = 0,
-                .addr = 0,
-                .value = 0,
-            };
-            send_signal(entry->proc, info);
+            queue_timer_signal(entry->proc, timer_sig_alrm);
         }
     }
 } // namespace sched

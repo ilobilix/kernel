@@ -428,6 +428,161 @@ namespace syscall::vfs
     // std::ssize_t preadv2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
     // std::ssize_t pwritev2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
 
+    std::ssize_t splice(
+        int fd_in, off_t __user *off_in,
+        int fd_out, off_t __user *off_out,
+        std::size_t len, std::uint32_t flags
+    )
+    {
+        constexpr std::size_t chunk_max = 64 * 1024;
+
+        constexpr std::uint32_t splice_f_move = 1;
+        constexpr std::uint32_t splice_f_nonblock = 2;
+        constexpr std::uint32_t splice_f_more = 4;
+        constexpr std::uint32_t splice_f_gift = 8;
+
+        if (flags & ~(splice_f_move | splice_f_nonblock | splice_f_more | splice_f_gift))
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+
+        const auto in_res = detail::get_fd(proc, fd_in);
+        if (!in_res)
+            return -lib::map_error(in_res.error());
+        const auto out_res = detail::get_fd(proc, fd_out);
+        if (!out_res)
+            return -lib::map_error(out_res.error());
+
+        const auto &in = (*in_res)->file;
+        const auto &out = (*out_res)->file;
+
+        if (!is_read(in->flags) || !is_write(out->flags))
+            return -EBADF;
+
+        const auto type_of = [](const std::shared_ptr<file_t> &file) {
+            const auto &dentry = file->path.dentry;
+            if (!dentry || !dentry->inode)
+                return stat::type::s_ifsock;
+            return dentry->inode->stat.type();
+        };
+
+        const bool in_pipe = type_of(in) == stat::type::s_ififo;
+        const bool out_pipe = type_of(out) == stat::type::s_ififo;
+
+        if (!in_pipe && !out_pipe)
+            return -EINVAL;
+        if ((in_pipe && off_in) || (out_pipe && off_out))
+            return -ESPIPE;
+
+        if (type_of(out) == stat::type::s_ifdir)
+            return -EISDIR;
+        if (detail::readonly_mount(out->path))
+            return -EROFS;
+
+        off_t in_offset = 0, out_offset = 0;
+        if (off_in && !lib::copy_from_user(&in_offset, off_in, sizeof(in_offset)))
+            return -EFAULT;
+        if (off_out && !lib::copy_from_user(&out_offset, off_out, sizeof(out_offset)))
+            return -EFAULT;
+        if (in_offset < 0 || out_offset < 0)
+            return -EINVAL;
+
+        if (len == 0)
+            return 0;
+
+        if (flags & splice_f_nonblock)
+        {
+            if (in_pipe)
+            {
+                const auto ev = in->poll(nullptr);
+                if (ev.has_value() && !(*ev & (pollin | pollhup)))
+                    return -EAGAIN;
+            }
+
+            if (out_pipe)
+            {
+                const auto ev = out->poll(nullptr);
+                if (ev.has_value() && !(*ev & pollout))
+                    return -EAGAIN;
+            }
+        }
+
+        lib::membuffer buffer { std::min(len, chunk_max) };
+        const auto buffer_uspan = buffer.maybe_uspan();
+        if (!buffer_uspan.has_value())
+            return -ENOMEM;
+
+        std::size_t total = 0;
+        while (total < len)
+        {
+            const auto to_read = std::min(len - total, buffer.size());
+            auto rspan = buffer_uspan->subspan(0, to_read);
+
+            const auto rret = off_in
+                ? in->pread(in_offset, std::move(rspan))
+                : in->read(std::move(rspan));
+            if (!rret.has_value())
+            {
+                if (total > 0)
+                    break;
+                return -lib::map_error(rret.error());
+            }
+
+            const auto nread = *rret;
+            if (nread == 0)
+                break;
+
+            std::size_t written = 0;
+            while (written < nread)
+            {
+                auto wspan = buffer_uspan->subspan(written, nread - written);
+
+                const auto wret = off_out
+                    ? out->pwrite(out_offset, std::move(wspan))
+                    : out->write(std::move(wspan));
+                if (!wret.has_value() || *wret == 0)
+                {
+                    total += written;
+                    if (total > 0)
+                        goto done;
+                    return wret.has_value() ? -EIO : -lib::map_error(wret.error());
+                }
+
+                written += *wret;
+                if (off_out)
+                    out_offset += *wret;
+            }
+
+            total += nread;
+            if (off_in)
+                in_offset += nread;
+
+            if (nread < to_read)
+                break;
+
+            if (in_pipe)
+                break;
+        }
+
+        done:
+        if (off_in && !lib::copy_to_user(off_in, &in_offset, sizeof(in_offset)))
+            return -EFAULT;
+        if (off_out && !lib::copy_to_user(off_out, &out_offset, sizeof(out_offset)))
+            return -EFAULT;
+
+        if (type_of(out) == stat::type::s_ifreg)
+        {
+            auto &inode = out->path.dentry->inode;
+            const std::unique_lock _ { inode->lock };
+
+            inode->stat.update_time(kstat::time::modify | kstat::time::status);
+            if (const auto ret = dirty_inode(out->path); !ret)
+                return -lib::map_error(ret.error());
+        }
+
+        return total;
+    }
+
     off_t lseek(int fd, off_t offset, int whence)
     {
         const auto proc = sched::current_process();

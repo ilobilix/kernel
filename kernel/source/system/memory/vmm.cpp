@@ -369,6 +369,79 @@ namespace vmm
         return { };
     }
 
+    void object::drop_cached(std::uint64_t offp, std::size_t num_pages)
+    {
+        if (num_pages == 0)
+            return;
+
+        if (shared_mapped.load(std::memory_order_acquire))
+            return;
+
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
+
+        const auto end_idx = (offp > ~0ul - num_pages) ? ~0ul : offp + num_pages;
+
+        auto locked = cache.lock();
+        while (true)
+        {
+            const auto it = locked->lower_bound(offp);
+            if (it == locked->end() || it->first >= end_idx)
+                break;
+
+            auto pg = it->second;
+            if (pg->flags.load(std::memory_order_acquire) & page::flag::busy)
+            {
+                pg->ref();
+                locked.unlock();
+                wait_on_busy_page(pg);
+                if (pg->unref())
+                    pmm::free(paddr_from(pg), num_alloc_pages);
+                locked.lock();
+                continue;
+            }
+
+            offp = it->first + 1;
+            locked->erase(it->first);
+            stats_for(type).fetch_sub(1, std::memory_order_relaxed);
+            pg->obj_ptr = nullptr;
+
+            if (pg->unref())
+                pmm::free(paddr_from(pg), num_alloc_pages);
+        }
+    }
+
+    lib::expect<void> object::populate(std::size_t num_pages)
+    {
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+        const auto num_alloc_pages = npsize / pmm::page_size;
+
+        page *pages[max_readahead];
+
+        for (std::size_t i = 0; i < num_pages; )
+        {
+            const auto chunk = std::min(max_readahead, num_pages - i);
+            std::span<page *> span { pages, chunk };
+            std::ranges::fill(span, nullptr);
+
+            const auto ret = read_pages(i, span, 0);
+
+            for (const auto pg : span)
+            {
+                if (pg && pg->unref())
+                    pmm::free(paddr_from(pg), num_alloc_pages);
+            }
+
+            if (!ret.has_value())
+                return ret;
+
+            i += chunk;
+        }
+        return { };
+    }
+
     std::size_t object::apply_func(std::uint64_t offset, std::size_t size, auto func)
     {
         const auto psize = default_page_size();
@@ -560,6 +633,9 @@ namespace vmm
 
         if (is_file)
             target_obj = std::move(obj);
+
+        if (target_obj && (flags & flag::shared))
+            target_obj->shared_mapped.store(true, std::memory_order_release);
 
         if ((flags & flag::private_) && !is_mmio)
         {
@@ -1259,9 +1335,38 @@ namespace vmm
         }
     }
 
-    bool handle_pfault(pfault_state state)
+    bool handle_spurious_pfault(const pfault_state &state)
     {
-        if (!sched::is_running())
+        if (!state.is_present || (!state.is_write && !state.is_exec))
+            return false;
+
+        if (!sched::is_ready())
+            return false;
+
+        if (state.address < vmspace::mmap_min || state.address >= vmspace::vspace_top)
+            return false;
+
+        const auto thread = sched::current_thread();
+        if (thread->is_kernel())
+            return false;
+
+        const auto &vmspace = thread->proc->vmspace;
+        if (!vmspace)
+            return false;
+
+        if (!vmspace->pmap->fault_permitted(state.address, state.is_write, state.is_exec))
+            return false;
+
+        const auto psize = default_page_size();
+        const auto npsize = pagemap::from_page_size(psize);
+        vmspace->pmap->invalidate(lib::align_down(state.address, npsize), npsize, true);
+
+        return true;
+    }
+
+    bool handle_pfault(const pfault_state &state)
+    {
+        if (!sched::is_ready())
             return false;
 
         if (state.address < vmspace::mmap_min || state.address >= vmspace::vspace_top)
@@ -1274,7 +1379,7 @@ namespace vmm
         if (thread->is_kernel())
             return false;
 
-        const auto proc = thread->proc;
+        const auto proc = thread->proc.get();
         const auto &vmspace = proc->vmspace;
 
         const auto psize = default_page_size();
@@ -1555,8 +1660,6 @@ namespace vmm
 
         if (vmspace->pmap->map(aligned, paddr, npsize, prot_to_pflags(prot), psize))
         {
-            if (state.is_present && state.is_write)
-                vmspace->pmap->invalidate(aligned, npsize);
             check_pinned();
             return true;
         }
