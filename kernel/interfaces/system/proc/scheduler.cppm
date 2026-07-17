@@ -18,8 +18,10 @@ export import :process;
 export import :run_queue;
 export import :work_queue;
 
-import :arch;
+import system.cpu.local;
 import boot;
+
+import :arch;
 
 // implemented in :arch
 namespace sched::arch
@@ -74,31 +76,44 @@ export namespace sched
 
     inline process_t *current_process()
     {
-        return current_thread()->proc;
+        return current_thread()->proc.get();
+    }
+
+    inline bool is_ready()
+    {
+        return cpu::self().unsafe_get().sched_ready.load(std::memory_order_relaxed);
+    }
+
+    inline bool is_running()
+    {
+        return _running;
     }
 
     inline void preempt_disable()
     {
-        if (!_running) [[unlikely]]
+        if (!is_ready()) [[unlikely]]
             return;
         current_thread()->preempt_count.fetch_add(1, std::memory_order_acquire);
     }
 
     inline bool preempt_enable()
     {
-        if (!_running) [[unlikely]]
+        if (!is_ready()) [[unlikely]]
             return false;
         return current_thread()->preempt_count.fetch_sub(1, std::memory_order_release) == 1;
     }
 
     inline bool is_preempt_disabled()
     {
-        return _running && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
+        return is_ready() && current_thread()->preempt_count.load(std::memory_order_relaxed) > 0;
     }
 
-    inline bool is_running()
+    inline bool in_hard_irq()
     {
-        return _running;
+        preempt_disable();
+        const auto ret = cpu::self().unsafe_get().in_hard_irq.load(std::memory_order_relaxed);
+        preempt_enable();
+        return ret;
     }
 
     // pick next thread and switch to it
@@ -140,6 +155,9 @@ export namespace sched
     }
 
     bool wake_up(thread_t *thread, bool preempt = true, bool force = false);
+
+    void dequeue_stopped(thread_t *thread);
+    bool wake_stopped(thread_t *thread);
 
     bool yield();
 
@@ -231,7 +249,7 @@ export namespace sched
 
     pid_t clone(const kclone_args_t &args);
     int exec(
-        const vfs::path_t &path, std::vector<std::string> argv,
+        vfs::path_t path, std::vector<std::string> argv,
         std::vector<std::string> envp, std::string pathname
     );
 

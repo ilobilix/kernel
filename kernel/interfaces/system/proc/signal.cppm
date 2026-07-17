@@ -323,6 +323,7 @@ export namespace sched
 
     bool send_signal(thread_t *thread, const siginfo_t &info);
     bool send_signal(process_t *process, const siginfo_t &info);
+    bool force_signal(thread_t *thread, const siginfo_t &info);
 
     std::uintptr_t sigreturn();
     std::size_t min_altstack_size();

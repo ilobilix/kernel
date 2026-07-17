@@ -33,11 +33,4 @@ namespace syscall::vfs
     {
         return pipe2(pipefd, 0);
     }
-
-    int inotify_init1(int flags)
-    {
-        // TODO
-        lib::unused(flags);
-        return -ENOSYS;
-    }
 } // namespace syscall::vfs

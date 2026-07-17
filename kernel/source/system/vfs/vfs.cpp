@@ -3,6 +3,7 @@
 module system.vfs;
 
 import system.cpu.local;
+import system.vfs.pipe;
 import system.vfs.dev;
 import system.bin.elf;
 import system.sched;
@@ -195,6 +196,8 @@ namespace vfs
 
     std::shared_ptr<ops_t> inode_t::get_ops()
     {
+        if (stat.type() == stat::type::s_ififo)
+            return pipe::fifo_ops();
         if (ops)
             return ops;
         return dev::get_ops(stat.st_rdev, stat.st_mode).value_or(nullptr);
@@ -786,7 +789,12 @@ namespace vfs
         }
         else _ops = std::move(ops);
 
-        auto ret = real_parent.mnt->fs.lock()->create(
+        auto fs = real_parent.mnt->fs.lock();
+        auto children = real_parent.dentry->children.lock();
+        if (children->lookup(name))
+            return std::unexpected { lib::err::already_exists };
+
+        auto ret = fs->create(
             real_parent.dentry->inode, name, mode, rdev, std::move(_ops)
         );
         if (!ret)
@@ -797,7 +805,7 @@ namespace vfs
         dentry->name = name;
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.lock()->insert(dentry);
+        children->insert(dentry);
         return path_t { real_parent.mnt, dentry };
     }
 
@@ -814,7 +822,12 @@ namespace vfs
         const auto real_parent = std::move(*pres);
         const auto name = src.basename();
 
-        auto ret = real_parent.mnt->fs.lock()->symlink(real_parent.dentry->inode, name, target);
+        auto fs = real_parent.mnt->fs.lock();
+        auto children = real_parent.dentry->children.lock();
+        if (children->lookup(name))
+            return std::unexpected { lib::err::already_exists };
+
+        auto ret = fs->symlink(real_parent.dentry->inode, name, target);
         if (!ret)
             return std::unexpected { ret.error() };
 
@@ -824,7 +837,7 @@ namespace vfs
         dentry->symlinked_to = target.str();
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.lock()->insert(dentry);
+        children->insert(dentry);
         return path_t { real_parent.mnt, dentry };
     }
 
@@ -862,7 +875,12 @@ namespace vfs
         if (real_parent.mnt != tgt.mnt)
             return std::unexpected { lib::err::different_filesystem };
 
-        auto ret = real_parent.mnt->fs.lock()->link(
+        auto fs = real_parent.mnt->fs.lock();
+        auto children = real_parent.dentry->children.lock();
+        if (children->lookup(name))
+            return std::unexpected { lib::err::already_exists };
+
+        auto ret = fs->link(
             real_parent.dentry->inode,
             name,
             tgt.dentry->inode
@@ -875,7 +893,7 @@ namespace vfs
         dentry->name = name;
         dentry->inode = std::move(*ret);
 
-        real_parent.dentry->children.lock()->insert(dentry);
+        children->insert(dentry);
         return path_t { real_parent.mnt, dentry };
     }
 
@@ -922,8 +940,13 @@ namespace vfs
         if (!ret)
             return std::unexpected { ret.error() };
 
-        auto wlocked = real_parent->children.lock();
-        lib::bug_on(!wlocked->erase(target_dentry->name));
+        {
+            auto wlocked = real_parent->children.lock();
+            lib::bug_on(!wlocked->erase(target_dentry->name));
+        }
+
+        if (inode->stat.st_nlink <= 0)
+            inode->orphan_pcache();
         return { };
     }
 
@@ -1001,43 +1024,53 @@ namespace vfs
             }
         }
 
-        auto fs = old_res->parent.mnt->fs.lock();
-        const auto do_rename = [&](auto &locked_old, auto &locked_new) -> lib::expect<void> {
-            const auto ret = fs->rename(
-                old_parent_dentry->inode, old_base.str(),
-                new_parent_dentry->inode, new_base.str(),
-                new_dentry ? new_dentry->inode : std::shared_ptr<inode_t> { }
-            );
-            if (!ret.has_value())
-                return std::unexpected { ret.error() };
+        const auto replaced_inode = new_dentry
+            ? new_dentry->inode
+            : std::shared_ptr<inode_t> { };
 
-            if (new_dentry)
-                locked_new->erase(new_dentry->name);
-            locked_old->erase(old_dentry->name);
+        const auto result = [&] -> lib::expect<void> {
+            auto fs = old_res->parent.mnt->fs.lock();
+            const auto do_rename = [&](auto &locked_old, auto &locked_new) -> lib::expect<void> {
+                const auto ret = fs->rename(
+                    old_parent_dentry->inode, old_base.str(),
+                    new_parent_dentry->inode, new_base.str(),
+                    replaced_inode
+                );
+                if (!ret.has_value())
+                    return std::unexpected { ret.error() };
 
-            old_dentry->name = std::string { new_base.str() };
-            old_dentry->parent = new_parent_dentry;
-            locked_new->insert(old_dentry);
-            return { };
-        };
+                if (new_dentry)
+                    locked_new->erase(new_dentry->name);
+                locked_old->erase(old_dentry->name);
 
-        if (old_parent_dentry == new_parent_dentry)
-        {
-            auto locked = old_parent_dentry->children.lock();
-            return do_rename(locked, locked);
-        }
-        else if (old_parent_dentry.get() < new_parent_dentry.get())
-        {
-            auto locked_old = old_parent_dentry->children.lock();
-            auto locked_new = new_parent_dentry->children.lock();
-            return do_rename(locked_old, locked_new);
-        }
-        else
-        {
-            auto locked_new = new_parent_dentry->children.lock();
-            auto locked_old = old_parent_dentry->children.lock();
-            return do_rename(locked_old, locked_new);
-        }
+                old_dentry->name = std::string { new_base.str() };
+                old_dentry->parent = new_parent_dentry;
+                locked_new->insert(old_dentry);
+                return { };
+            };
+
+            if (old_parent_dentry == new_parent_dentry)
+            {
+                auto locked = old_parent_dentry->children.lock();
+                return do_rename(locked, locked);
+            }
+            else if (old_parent_dentry.get() < new_parent_dentry.get())
+            {
+                auto locked_old = old_parent_dentry->children.lock();
+                auto locked_new = new_parent_dentry->children.lock();
+                return do_rename(locked_old, locked_new);
+            }
+            else
+            {
+                auto locked_new = new_parent_dentry->children.lock();
+                auto locked_old = old_parent_dentry->children.lock();
+                return do_rename(locked_old, locked_new);
+            }
+        } ();
+
+        if (result.has_value() && replaced_inode)
+            replaced_inode->orphan_pcache();
+        return result;
     }
 
     auto dirty_inode(const path_t &path) -> lib::expect<void>

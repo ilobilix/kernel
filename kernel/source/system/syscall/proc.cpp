@@ -1000,7 +1000,7 @@ namespace syscall::proc
             if (!hold)
                 return -ESRCH;
 
-            if (hold->proc != sched::current_process())
+            if (hold->proc.get() != sched::current_process())
                 return -EPERM;
             target = hold.get();
         }
@@ -1354,7 +1354,7 @@ namespace syscall::proc
     {
         int status = 0;
         sched::cputime_t cputime;
-        const auto ret = sched::waitpid(pid, options, &status, &cputime);
+        const auto ret = sched::waitpid(pid, options | sched::wexited, &status, &cputime);
         if (ret <= 0)
             return ret;
 
@@ -1373,6 +1373,86 @@ namespace syscall::proc
         }
 
         return ret;
+    }
+
+    int waitid(
+        int idtype, pid_t id, sched::siginfo_t __user *infop,
+        int options, struct rusage __user *rusage
+    )
+    {
+        if (!(options & (sched::wexited | sched::wstopped | sched::wcontinued)))
+            return -EINVAL;
+
+        pid_t wait_pid;
+        switch (idtype)
+        {
+            case 0: // P_ALL
+                wait_pid = -1;
+                break;
+            case 1: // P_PID
+                if (id <= 0)
+                    return -EINVAL;
+                wait_pid = id;
+                break;
+            case 2: // P_PGID
+                if (id < 0)
+                    return -EINVAL;
+                wait_pid = id == 0 ? 0 : -id;
+                break;
+            default:
+                return -EINVAL;
+        }
+
+        int status = 0;
+        sched::cputime_t cputime;
+        const auto ret = sched::waitpid(wait_pid, options, &status, &cputime);
+        if (ret < 0)
+            return ret;
+
+        sched::siginfo_t info { };
+        if (ret > 0)
+        {
+            info.signo = sched::sigchld;
+            info.pid = ret;
+
+            if ((status & 0xFF) == 0x7F)
+            {
+                info.code = sched::cld_stopped;
+                info.status = (status >> 8) & 0xFF;
+            }
+            else if (status == 0xFFFF)
+            {
+                info.code = sched::cld_continued;
+                info.status = sched::sigcont;
+            }
+            else if ((status & 0x7F) != 0)
+            {
+                info.code = (status & 0x80) ? sched::cld_dumped : sched::cld_killed;
+                info.status = status & 0x7F;
+            }
+            else
+            {
+                info.code = sched::cld_exited;
+                info.status = (status >> 8) & 0xFF;
+            }
+        }
+
+        if (infop && !lib::copy_to_user(infop, &info, sizeof(info)))
+            return -EFAULT;
+
+        if (rusage)
+        {
+            struct rusage kbuf { };
+            if (ret > 0)
+            {
+                kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
+                kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+            }
+            if (!lib::copy_to_user(rusage, &kbuf, sizeof(kbuf)))
+                return -EFAULT;
+        }
+
+        return 0;
     }
 
     int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask)

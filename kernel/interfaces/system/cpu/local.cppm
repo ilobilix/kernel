@@ -33,6 +33,8 @@ export namespace cpu
         std::size_t next_asid = 1;
 
         std::atomic_bool in_interrupt = false;
+        std::atomic_bool in_hard_irq = false;
+        std::atomic_bool sched_ready = false;
 
         std::atomic_bool online = false;
     };

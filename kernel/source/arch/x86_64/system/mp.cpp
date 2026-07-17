@@ -200,9 +200,11 @@ namespace cpu::mp
             lib::panic("could not boot up cores");
         } ();
 
-        // TODO: shootdown gets stuck
-        // unmap("trampoline address", trampoline_page, smp_trampoline_size);
-        // unmap("temporary stack", temp_stack_page, pmm::page_size);
+        unmap("trampoline address", trampoline_page, smp_trampoline_size);
+        unmap("temporary stack", temp_stack_page, pmm::page_size);
+
+        pmm::free(trampoline_page);
+        pmm::free(temp_stack_page);
     }
 } // export namespace cpu::mp
 

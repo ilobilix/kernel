@@ -120,6 +120,15 @@ namespace bin::elf::exec
                 {
                     case PT_LOAD:
                     {
+                        if (phdr.p_memsz == 0)
+                            break;
+
+                        if (phdr.p_filesz > phdr.p_memsz)
+                        {
+                            lib::error("elf: phdr filesz larger than memsz");
+                            return std::nullopt;
+                        }
+
                         auto prot = vmm::prot::none;
                         if (phdr.p_flags & PF_R)
                             prot |= vmm::prot::read;
@@ -129,91 +138,103 @@ namespace bin::elf::exec
                             prot |= vmm::prot::exec;
 
                         const auto misalign = phdr.p_vaddr & (npsize - 1);
-
                         const auto paloffset = phdr.p_offset - misalign;
-                        const auto padded = phdr.p_filesz + misalign;
 
-                        // TODO: map the file
-                        vmm::object::ptr obj { new vmm::memobject { } };
+                        const auto file_span = misalign + phdr.p_filesz;
+                        const auto mem_span = lib::align_up(misalign + phdr.p_memsz, npsize);
 
-                        lib::membuffer file_buffer { padded };
-                        const auto file_uspan = file_buffer.maybe_uspan();
-                        lib::panic_if(!file_uspan.has_value());
+                        vmm::object::ptr fobj;
+                        if (auto oret = file->map(); oret.has_value() && *oret &&
+                            (*oret)->type != vmm::object_type::mmio)
+                            fobj = std::move(*oret);
 
-                        const auto ret = file->pread(paloffset, file_uspan.value());
-                        if (!ret.has_value())
-                        {
-                            lib::error(
-                                "elf: could not read phdr data: {}",
-                                lib::error_name(ret.error())
-                            );
-                            return std::nullopt;
-                        }
+                        const auto full_len = fobj ? lib::align_down(file_span, npsize) : 0;
 
-                        if (*ret != file_uspan->size_bytes())
-                        {
-                            lib::error(
-                                "elf: phdr data size mismatch: {} != {}",
-                                *ret, file_uspan->size_bytes()
-                            );
-                            return std::nullopt;
-                        }
+                        const auto seg_vaddr = phdr.p_vaddr - misalign;
+                        std::uintptr_t seg_addr = 0;
 
-                        if (obj->write(0, file_uspan.value()) != padded)
-                        {
-                            lib::error("elf: could not write data to memobject");
-                            return std::nullopt;
-                        }
+                        const auto map_part = [&](
+                            std::uintptr_t seg_off, std::size_t length,
+                            vmm::object::ptr obj, std::uint64_t obj_offset
+                        ) {
+                            auto flags = vmm::flag::private_;// | vmm::flag::untouchable;
+                            std::uintptr_t address = 0;
 
-                        if (phdr.p_memsz > phdr.p_filesz)
-                        {
-                            const auto zeroes_len = phdr.p_memsz - phdr.p_filesz;
-                            lib::membuffer zeroes { zeroes_len };
-                            std::memset(zeroes.data(), 0, zeroes.size());
-
-                            const auto zeroes_uspan = zeroes.maybe_uspan();
-                            lib::bug_on(!zeroes_uspan.has_value());
-                            if (obj->write(padded, *zeroes_uspan) != zeroes_len)
+                            if (ehdr.e_type != ET_DYN)
                             {
-                                lib::error("elf: could not zero out bss");
-                                return std::nullopt;
-                            }
-                        }
-
-                        auto flags = vmm::flag::private_;// | vmm::flag::untouchable;
-                        std::uintptr_t address = 0;
-
-                        if (ehdr.e_type != ET_DYN)
-                        {
-                            flags |= vmm::flag::fixed;
-                            address = phdr.p_vaddr - misalign;
-                        }
-                        else
-                        {
-                            if (base_addr || !is_first)
                                 flags |= vmm::flag::fixed;
+                                address = seg_vaddr + seg_off;
+                            }
+                            else
+                            {
+                                if (base_addr || !is_first)
+                                    flags |= vmm::flag::fixed;
 
-                            address = base_addr ? (base_addr + phdr.p_vaddr - misalign) : 0;
-                        }
+                                address = base_addr ? (base_addr + seg_vaddr + seg_off) : 0;
+                            }
 
-                        const auto mret = vmspace->map(
-                            address, phdr.p_memsz + misalign,
-                            prot, prot, flags, obj, 0
-                        );
-
-                        if (!mret.has_value())
-                        {
-                            lib::error(
-                                "elf: could not map segment: {}",
-                                lib::error_name(mret.error())
+                            const auto mret = vmspace->map(
+                                address, length, prot, prot, flags,
+                                std::move(obj), obj_offset
                             );
-                            return std::nullopt;
+
+                            if (!mret.has_value())
+                            {
+                                lib::error(
+                                    "elf: could not map segment: {}",
+                                    lib::error_name(mret.error())
+                                );
+                                return false;
+                            }
+
+                            if (!base_addr && is_first)
+                            {
+                                base_addr = mret.value() - (seg_vaddr + seg_off);
+                                addr = base_addr;
+                            }
+
+                            if (seg_off == 0)
+                            {
+                                seg_addr = base_addr
+                                    ? (base_addr + seg_vaddr)
+                                    : (mret.value() - seg_off);
+                            }
+
+                            is_first = false;
+                            return true;
                         };
 
-                        if (!base_addr && is_first)
+                        if (full_len > 0 && !map_part(0, full_len, fobj, paloffset))
+                            return std::nullopt;
+
+                        if (mem_span > full_len)
                         {
-                            base_addr = mret.value() - (phdr.p_vaddr - misalign);
-                            addr = base_addr;
+                            vmm::object::ptr tail_obj { new vmm::memobject { } };
+
+                            if (const auto tail_len = file_span - full_len; tail_len > 0)
+                            {
+                                lib::membuffer tail_buffer { tail_len };
+                                const auto tail_uspan = tail_buffer.maybe_uspan();
+                                lib::panic_if(!tail_uspan.has_value());
+
+                                const auto ret = file->pread(
+                                    paloffset + full_len, tail_uspan.value()
+                                );
+                                if (!ret.has_value() || *ret != tail_len)
+                                {
+                                    lib::error("elf: could not read phdr data");
+                                    return std::nullopt;
+                                }
+
+                                if (tail_obj->write(0, tail_uspan.value()) != tail_len)
+                                {
+                                    lib::error("elf: could not write data to memobject");
+                                    return std::nullopt;
+                                }
+                            }
+
+                            if (!map_part(full_len, mem_span - full_len, std::move(tail_obj), 0))
+                                return std::nullopt;
                         }
 
                         if (!has_phdr_load)
@@ -228,8 +249,7 @@ namespace bin::elf::exec
                             }
                         }
 
-                        max_end = std::max(max_end, *mret + phdr.p_memsz + misalign);
-                        is_first = false;
+                        max_end = std::max(max_end, seg_addr + misalign + phdr.p_memsz);
                         break;
                     }
                     case PT_PHDR:
@@ -319,7 +339,7 @@ namespace bin::elf::exec
                 auto &auxv = ctx->auxv;
 
                 const auto thread = sched::current_thread();
-                const auto proc = thread->proc;
+                const auto proc = thread->proc.get();
 
                 const auto stack_size = boot::ustack_size;
                 const auto addr_top = thread->ustack_top;
@@ -417,6 +437,7 @@ namespace bin::elf::exec
                 write_auxv(AT_EXECFN, execfn_offset);
                 write_auxv(AT_RANDOM, random_offset);
                 write_auxv(AT_SECURE, 0);
+                write_auxv(AT_MINSIGSTKSZ, sched::min_altstack_size());
 
                 offset -= 8;
                 write(0);

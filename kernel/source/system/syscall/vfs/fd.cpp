@@ -80,9 +80,9 @@ namespace syscall::vfs
                 return *fdres;
             }
             case 1: // F_GETFD
-                return fdesc->closexec ? o_cloexec : 0;
+                return fdesc->closexec ? 1 : 0;
             case 2: // F_SETFD
-                fdesc->closexec = (arg & o_cloexec) != 0;
+                fdesc->closexec = (arg & 1) != 0; // FD_CLOEXEC
                 break;
             case 3: // F_GETFL
                 return fdesc->file->flags;

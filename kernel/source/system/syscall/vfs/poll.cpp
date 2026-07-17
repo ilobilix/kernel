@@ -56,9 +56,11 @@ namespace syscall::vfs
             };
 
             lib::list<entry> entries;
-            sched::wait_queue_t poll_wq;
+            std::shared_ptr<sched::wait_queue_t> poll_wq;
 
-            poll_table_t() = default;
+            poll_table_t()
+                : entries { }, poll_wq { std::make_shared<sched::wait_queue_t>() } { }
+
             ~poll_table_t()
             {
                 for (auto &entry : entries)
@@ -67,7 +69,7 @@ namespace syscall::vfs
 
             void add(sched::wait_queue_t &wq) override
             {
-                entries.emplace_back(&wq, [this] { poll_wq.wake_one(); });
+                entries.emplace_back(&wq, [poll_wq = poll_wq] { poll_wq->wake_one(); });
                 wq.add_entry(entries.back().wq_entry);
             }
         };
@@ -84,7 +86,7 @@ namespace syscall::vfs
             }
 
             auto thread = sched::current_thread();
-            auto process = thread->proc;
+            auto process = thread->proc.get();
 
             sched::scoped_sigmask guard;
             if (sigmask)
@@ -157,7 +159,7 @@ namespace syscall::vfs
                 if (timeout && timeout_ns == 0)
                     return 0;
 
-                const auto res = pt.poll_wq.wait(timeout ? timeout_ns : 0);
+                const auto res = pt.poll_wq->wait(timeout ? timeout_ns : 0);
                 if (res.killed || res.interrupted)
                 {
                     guard.disarm();
