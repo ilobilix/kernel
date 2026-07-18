@@ -700,7 +700,19 @@ namespace syscall::vfs
 
     int fadvise64(int fd, loff_t offset, std::size_t len, int advice)
     {
-        lib::unused(fd, offset, len, advice);
-        return -ENOSYS;
+        // TODO
+        if (advice < 0 || advice > 5)
+            return -EINVAL;
+
+        if (offset < 0)
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+        const auto fdesc_res = detail::get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+
+        lib::unused(len);
+        return 0;
     }
 } // namespace syscall::vfs

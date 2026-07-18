@@ -129,6 +129,16 @@ export namespace syscall::proc
     int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask);
     int sched_getaffinity(pid_t pid, std::size_t cpusetsize, std::uint8_t __user *mask);
 
+    struct sched_param { int sched_priority; };
+
+    int sched_setparam(pid_t pid, const sched_param __user *param);
+    int sched_getparam(pid_t pid, sched_param __user *param);
+    int sched_setscheduler(pid_t pid, int policy, const sched_param __user *param);
+    int sched_getscheduler(pid_t pid);
+    int sched_get_priority_max(int policy);
+    int sched_get_priority_min(int policy);
+    int sched_rr_get_interval(pid_t pid, timespec __user *interval);
+
     int sched_yield();
 
     [[noreturn]] void exit_group(int status);

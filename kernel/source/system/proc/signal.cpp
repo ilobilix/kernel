@@ -156,37 +156,44 @@ namespace sched
             return false;
         }
 
-        void drop_queued(process_t *proc, auto &&pred)
+        void drop_queued(signal_queue_t &sq, auto &&pred)
         {
-            const std::unique_lock _ { proc->sigqueue.lock };
-            auto it = proc->sigqueue.queue.begin();
-            while (it != proc->sigqueue.queue.end())
+            const std::unique_lock _ { sq.lock };
+            auto it = sq.queue.begin();
+            while (it != sq.queue.end())
             {
                 auto next = std::next(it);
                 if (pred(it->info.signo))
                 {
-                    proc->sigqueue.pending.rem(it->info.signo);
-                    proc->sigqueue.queue.erase(it);
+                    sq.pending.rem(it->info.signo);
+                    sq.queue.erase(it);
                 }
                 it = next;
             }
         }
 
-        std::optional<siginfo_t> dequeue_signal(process_t *proc, int sig)
+        void drop_queued_all(process_t *proc, auto &&pred)
+        {
+            drop_queued(proc->sigqueue, pred);
+            for (auto &[_, thread] : *proc->threads.lock())
+                drop_queued(thread->sigqueue, pred);
+        }
+
+        std::optional<siginfo_t> dequeue_from(signal_queue_t &sq, int sig)
         {
             std::optional<siginfo_t> info;
-            for (auto it = proc->sigqueue.queue.begin(); it != proc->sigqueue.queue.end(); it++)
+            for (auto it = sq.queue.begin(); it != sq.queue.end(); it++)
             {
                 if (it->info.signo == sig)
                 {
                     info = it->info;
-                    proc->sigqueue.queue.erase(it);
+                    sq.queue.erase(it);
                     break;
                 }
             }
 
             bool more = false;
-            for (const auto &entry : proc->sigqueue.queue)
+            for (const auto &entry : sq.queue)
             {
                 if (entry.info.signo == sig)
                 {
@@ -195,9 +202,50 @@ namespace sched
                 }
             }
             if (!more)
-                proc->sigqueue.pending.rem(sig);
+                sq.pending.rem(sig);
 
             return info;
+        }
+
+        int lowest_deliverable(thread_t *thread)
+        {
+            {
+                const std::unique_lock _ { thread->sigqueue.lock };
+                if (const auto sig = (thread->sigqueue.pending & ~thread->sigmask).lowest(); sig != 0)
+                    return sig;
+            }
+
+            auto proc = thread->proc.get();
+            const std::unique_lock _ { proc->sigqueue.lock };
+            return (proc->sigqueue.pending & ~thread->sigmask).lowest();
+        }
+
+        std::optional<siginfo_t> take_signal(thread_t *thread, int sig)
+        {
+            {
+                const std::unique_lock _ { thread->sigqueue.lock };
+                if (thread->sigqueue.pending.has(sig))
+                    return dequeue_from(thread->sigqueue, sig);
+            }
+
+            auto proc = thread->proc.get();
+            const std::unique_lock _ { proc->sigqueue.lock };
+            if (proc->sigqueue.pending.has(sig))
+                return dequeue_from(proc->sigqueue, sig);
+
+            return std::nullopt;
+        }
+
+        bool queue_signal(signal_queue_t &sq, const siginfo_t &info)
+        {
+            const std::unique_lock _ { sq.lock };
+
+            if (info.signo >= sigrtmin || !sq.pending.has(info.signo))
+            {
+                sq.pending.add(info.signo);
+                sq.queue.emplace_back(info);
+            }
+            return true;
         }
 
         void wake_signal_waiters(process_t *proc, int sig)
@@ -213,6 +261,12 @@ namespace sched
 
     bool signal_pending_for(thread_t *thread)
     {
+        {
+            const std::unique_lock _ { thread->sigqueue.lock };
+            if ((thread->sigqueue.pending & ~thread->sigmask).any())
+                return true;
+        }
+
         auto proc = thread->proc.get();
         const std::unique_lock _ { proc->sigqueue.lock };
         return (proc->sigqueue.pending & ~thread->sigmask).any();
@@ -224,7 +278,18 @@ namespace sched
         const auto sig = (proc->sigqueue.pending & set).lowest();
         if (sig == 0)
             return std::nullopt;
-        return dequeue_signal(proc, sig);
+        return dequeue_from(proc->sigqueue, sig);
+    }
+
+    std::optional<siginfo_t> dequeue_signal(thread_t *thread, const sigset_t &set)
+    {
+        {
+            const std::unique_lock _ { thread->sigqueue.lock };
+            const auto sig = (thread->sigqueue.pending & set).lowest();
+            if (sig != 0)
+                return dequeue_from(thread->sigqueue, sig);
+        }
+        return dequeue_signal(thread->proc.get(), set);
     }
 
     void add_signal_waiter(process_t *proc, signal_waiter_t &waiter)
@@ -259,27 +324,18 @@ namespace sched
         auto proc = thread->proc.get();
 
         if (sig == sigcont)
-            drop_queued(proc, is_stop_signal);
+            drop_queued_all(proc, is_stop_signal);
         else if (is_stop_signal(sig))
-            drop_queued(proc, [](int sig) { return sig == sigcont; });
+            drop_queued_all(proc, [](int sig) { return sig == sigcont; });
 
-        if (is_ignored(proc, sig))
+        if (!thread->sigmask.has(sig) && is_ignored(proc, sig))
         {
             if (sig == sigcont)
                 continue_process(proc);
             return true;
         }
 
-        {
-            const std::unique_lock _ { proc->sigqueue.lock };
-
-            const bool already = proc->sigqueue.pending.has(sig);
-            if (sig >= sigrtmin || !already)
-            {
-                proc->sigqueue.pending.add(sig);
-                proc->sigqueue.queue.emplace_back(info);
-            }
-        }
+        queue_signal(thread->sigqueue, info);
 
         if (sig == sigcont)
             continue_process(proc);
@@ -315,7 +371,7 @@ namespace sched
         if (sig < 1 || sig > static_cast<int>(nsig))
             return;
 
-        drop_queued(proc, [sig](int s) { return s == sig; });
+        drop_queued_all(proc, [sig](int s) { return s == sig; });
     }
 
     bool send_signal(process_t *process, const siginfo_t &info)
@@ -355,7 +411,29 @@ namespace sched
         if (!target)
             return false;
 
-        return send_signal(target.get(), info);
+        if (sig == sigcont)
+            drop_queued_all(process, is_stop_signal);
+        else if (is_stop_signal(sig))
+            drop_queued_all(process, [](int sig) { return sig == sigcont; });
+
+        if (!target->sigmask.has(sig) && is_ignored(process, sig))
+        {
+            if (sig == sigcont)
+                continue_process(process);
+            return true;
+        }
+
+        queue_signal(process->sigqueue, info);
+
+        if (sig == sigcont)
+            continue_process(process);
+
+        target->set_flag(thread_flags::signal_pending);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
+        wake_for_signal(target.get(), sig);
+        wake_signal_waiters(process, sig);
+        return true;
     }
 
     std::uintptr_t sigreturn()
@@ -402,13 +480,9 @@ namespace sched
         bool stopped = false;
         while (true)
         {
-            int sig = 0;
-            {
-                const std::unique_lock _ { proc->sigqueue.lock };
-                sig = (proc->sigqueue.pending & ~thread->sigmask).lowest();
-                if (sig == 0)
-                    break;
-            }
+            const int sig = lowest_deliverable(thread);
+            if (sig == 0)
+                break;
 
             sigaction_t action;
             {
@@ -422,10 +496,7 @@ namespace sched
             const auto da = default_for(sig);
             if (da == default_action::stop)
             {
-                {
-                    const std::unique_lock _ { proc->sigqueue.lock };
-                    dequeue_signal(proc, sig);
-                }
+                take_signal(thread, sig);
                 stop_process(proc, sig);
                 yield();
                 stopped = true;
@@ -434,8 +505,7 @@ namespace sched
 
             if (da == default_action::ignore || da == default_action::cont)
             {
-                const std::unique_lock _ { proc->sigqueue.lock };
-                dequeue_signal(proc, sig);
+                take_signal(thread, sig);
                 continue;
             }
 
@@ -457,17 +527,11 @@ namespace sched
         bool delivered = false;
         while (true)
         {
-            int sig = 0;
-            std::optional<siginfo_t> info;
-            {
-                const std::unique_lock _ { proc->sigqueue.lock };
-                sig = (proc->sigqueue.pending & ~thread->sigmask).lowest();
-                if (sig == 0)
-                    break;
+            const int sig = lowest_deliverable(thread);
+            if (sig == 0)
+                break;
 
-                info = dequeue_signal(proc, sig);
-            }
-
+            const auto info = take_signal(thread, sig);
             if (!info)
                 continue;
 
@@ -517,10 +581,7 @@ namespace sched
             thread->saved_sigmask = std::nullopt;
         }
 
-        {
-            const std::unique_lock _ { proc->sigqueue.lock };
-            if (!(proc->sigqueue.pending & ~thread->sigmask).any())
-                thread->clear_flag(thread_flags::signal_pending);
-        }
+        if (!signal_pending_for(thread))
+            thread->clear_flag(thread_flags::signal_pending);
     }
 } // namespace sched

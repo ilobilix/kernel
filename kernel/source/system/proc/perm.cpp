@@ -108,6 +108,9 @@ namespace sched
             return true;
 
         const auto &tcred = target->cred;
+        if (!tcred)
+            return true;
+
         if (cred->euid == tcred->euid || cred->euid == tcred->suid ||
             cred->ruid == tcred->euid || cred->ruid == tcred->suid)
             return true;

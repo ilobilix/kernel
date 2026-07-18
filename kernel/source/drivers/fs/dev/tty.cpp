@@ -190,6 +190,55 @@ namespace fs::dev::tty
                 return inst->poll(pt);
             }
         };
+
+        lib::expect<void> background_check(instance &inst, int sig)
+        {
+            const auto thread = sched::current_thread();
+            const auto proc = thread->proc.get();
+
+            auto fg_group = inst.ctrl.lock()->group.lock();
+            if (!fg_group || fg_group == proc->group)
+                return { };
+
+            if (thread->sigmask.has(sig))
+                return { };
+
+            const bool sig_ign = [&] {
+                auto sa = proc->sigactions;
+                if (!sa)
+                    return false;
+
+                const std::unique_lock _ { sa->lock };
+                return sa->actions[sig - 1].handler == sched::sig_ign;
+            } ();
+
+            if (sig_ign)
+                return { };
+
+            const bool is_orphaned = [&] {
+                for (const auto &[_, weak] : *proc->group->members.lock())
+                {
+                    auto member = weak.lock();
+                    if (!member)
+                        continue;
+
+                    auto parent = member->parent.lock();
+                    if (!parent)
+                        continue;
+
+                    if (parent->session == proc->group->session && parent->group != proc->group)
+                        return false;
+                }
+                return true;
+            } ();
+
+            if (is_orphaned)
+                return std::unexpected { lib::err::io_error };
+
+            proc->group->signal_all(sig);
+            sched::consume_pending_stops();
+            return { };
+        }
     } // namespace
 
     void instance::detach(sched::session_t *session)
@@ -1056,22 +1105,28 @@ namespace fs::dev::tty
 
                 const auto proc = sched::current_process();
 
-                auto locked = inst->ctrl.lock();
-                auto tty_session = locked->session.lock();
-                if (!tty_session || tty_session != proc->session)
-                    return std::unexpected { lib::err::inappropriate_ioctl };
+                std::shared_ptr<sched::session_t> tty_session;
+                {
+                    auto locked = inst->ctrl.lock();
+                    tty_session = locked->session.lock();
+                    if (!tty_session || tty_session != proc->session)
+                        return std::unexpected { lib::err::inappropriate_ioctl };
+                }
+
+                if (const auto ret = background_check(*inst, sched::sigttou); !ret)
+                    return std::unexpected { ret.error() };
 
                 std::shared_ptr<sched::group_t> new_group;
                 {
                     auto members = tty_session->members.lock();
                     auto it = members->find(pgid);
                     if (it == members->end())
-                        return std::unexpected { lib::err::permission_denied };
+                        return std::unexpected { lib::err::not_permitted };
                     new_group = it->second.lock();
                     if (!new_group)
-                        return std::unexpected { lib::err::permission_denied };
+                        return std::unexpected { lib::err::not_permitted };
                 }
-                locked->group = std::move(new_group);
+                inst->ctrl.lock()->group = std::move(new_group);
                 return 0;
             }
             case tiocgwinsz:
@@ -1097,7 +1152,7 @@ namespace fs::dev::tty
                         return 0;
 
                     if (force != 1 || !sched::capable(sched::cap_t::sys_admin))
-                        return std::unexpected { lib::err::permission_denied };
+                        return std::unexpected { lib::err::not_permitted };
 
                     auto old_ctty = existing->ctty.lock();
                     if (old_ctty.value().get() == inst)
@@ -1110,7 +1165,7 @@ namespace fs::dev::tty
                 {
                     auto locked = proc->session->ctty.lock();
                     if (locked.value())
-                        return std::unexpected { lib::err::permission_denied };
+                        return std::unexpected { lib::err::not_permitted };
                     locked.value() = inst->shared_from_this();
                 }
 
@@ -1126,7 +1181,7 @@ namespace fs::dev::tty
                 {
                     auto locked = inst->ctrl.lock();
                     if (locked->session.lock() != proc->session)
-                        return std::unexpected { lib::err::not_permitted };
+                        return std::unexpected { lib::err::inappropriate_ioctl };
 
                     if (proc->pid != proc->session->sid)
                         return 0;
@@ -1369,7 +1424,7 @@ namespace fs::dev::tty
             mask |= pollout;
 
         if (hung_up)
-            mask |= pollhup;
+            mask |= pollhup | pollerr;
 
         return mask;
     }

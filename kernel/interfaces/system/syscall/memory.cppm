@@ -17,4 +17,10 @@ export namespace syscall::memory
     int mincore(std::size_t start, std::size_t len, unsigned char __user *vec);
 
     int madvise(void *addr, std::size_t length, int advice);
+
+    int msync(void *addr, std::size_t length, int flags);
+    int mlock(void *addr, std::size_t length);
+    int munlock(void *addr, std::size_t length);
+    int mlockall(int flags);
+    int munlockall();
 } // export namespace syscall::memory

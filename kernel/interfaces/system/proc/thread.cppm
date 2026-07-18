@@ -114,6 +114,7 @@ export namespace sched
 
         sigset_t sigmask { };
         std::optional<sigset_t> saved_sigmask;
+        signal_queue_t sigqueue;
         stack_t altstack { };
 
         inline void set_flag(thread_flags flag)
