@@ -137,6 +137,7 @@ export namespace syscall::vfs
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
     int fsync(int fd);
+    int sync();
 
     int truncate(const char __user *pathname, off_t length);
     int ftruncate(int fd, off_t length);
@@ -205,7 +206,7 @@ export namespace syscall::vfs
     );
     int pselect6(
         int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
-        const timespec __user *timeout, const struct sigset_t __user *sigmask
+        const timespec __user *timeout, const void __user *sigmask_pack
     );
 
     int fsopen(const char __user *fsname, std::uint32_t flags);

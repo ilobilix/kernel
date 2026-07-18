@@ -12,6 +12,7 @@ namespace syscall::vfs
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
         const auto proc = sched::current_process();
+        const auto fd_max = proc->rlimits->get(sched::rlimit_nofile).cur;
         auto &fdt = proc->fdt;
 
         const bool follow_links = (flags & o_nofollow) == 0;
@@ -26,6 +27,79 @@ namespace syscall::vfs
 
         // ignore other bits
         mode &= (s_irwxu | s_irwxg | s_irwxo | s_isvtx | s_isuid | s_isgid);
+
+        if ((flags & o_tmpfile) == o_tmpfile)
+        {
+            auto val = detail::get_path(pathname);
+            if (!val.has_value())
+                return -lib::map_error(val.error());
+            const auto pathstr = std::move(*val);
+
+            auto res = detail::resolve_from(proc, dirfd, pathstr);
+            if (!res.has_value())
+                return -lib::map_error(res.error());
+
+            auto dir = std::move(res->target);
+            if (dir.dentry->inode->stat.type() == stat::type::s_iflnk)
+            {
+                auto reduced = reduce(res->parent, dir);
+                if (!reduced.has_value())
+                    return -lib::map_error(reduced.error());
+                dir = std::move(*reduced);
+            }
+
+            const auto &dir_stat = dir.dentry->inode->stat;
+            if (dir_stat.type() != stat::type::s_ifdir)
+                return -ENOTDIR;
+
+            if (detail::readonly_mount(dir))
+                return -EROFS;
+
+            if (!sched::check_perms(proc->cred, dir_stat, sched::access_mode::write))
+                return -EACCES;
+
+            lib::bug_on(!dir.mnt);
+            auto fs = dir.mnt->fs.lock();
+            if (!fs.get())
+                return -EIO;
+
+            const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
+            // hmmmmm
+            auto inode_res = fs->create(dir.dentry->inode, "", cmode, 0, std::nullopt);
+            if (!inode_res.has_value())
+                return -lib::map_error(inode_res.error());
+
+            auto tmp_inode = std::move(*inode_res);
+            {
+                const std::unique_lock _ { tmp_inode->lock };
+
+                tmp_inode->stat.st_nlink = 0;
+                tmp_inode->stat.st_uid = proc->cred->euid;
+                if (dir_stat.st_mode & s_isgid)
+                    tmp_inode->stat.st_gid = dir_stat.st_gid;
+                else
+                    tmp_inode->stat.st_gid = proc->cred->egid;
+            }
+
+            auto dentry = std::make_shared<vfs::dentry_t>();
+            dentry->parent = dir.dentry;
+            dentry->inode = std::move(tmp_inode);
+
+            const path_t target { dir.mnt, std::move(dentry) };
+
+            const auto fdesc = filedesc::create(target, flags);
+            const auto fdres = fdt->alloc(fdesc, 0, false, fd_max);
+            if (!fdres.has_value())
+                return -lib::map_error(fdres.error());
+
+            if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
+            {
+                proc->fdt->close(*fdres);
+                return -lib::map_error(ret.error());
+            }
+
+            return *fdres;
+        }
 
         auto val = detail::get_path(pathname);
         if (!val.has_value())
@@ -104,13 +178,12 @@ namespace syscall::vfs
 
         auto &stat = target.dentry->inode->stat;
         const auto mflags = detail::mount_flags(target);
-        const bool is_tmpfile = (flags & o_tmpfile) == o_tmpfile;
-        const bool needs_write = is_tmpfile || ((write || trunc) && !did_create);
+        const bool needs_write = (write || trunc) && !did_create;
 
         if (needs_write && (mflags & ms_rdonly))
             return -EROFS;
 
-        if (stat.type() == stat::s_ifdir && (write || trunc) && !is_tmpfile)
+        if (stat.type() == stat::s_ifdir && (write || trunc))
             return -EISDIR;
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))
@@ -137,7 +210,7 @@ namespace syscall::vfs
 
         const auto fdesc = filedesc::create(target, flags);
 
-        const auto fdres = fdt->alloc(fdesc, 0, false, proc->rlimits->get(sched::rlimit_nofile).cur);
+        const auto fdres = fdt->alloc(fdesc, 0, false, fd_max);
         if (!fdres.has_value())
             return -lib::map_error(fdres.error());
 

@@ -373,6 +373,12 @@ namespace syscall::vfs
                 if (!lib::copy_from_user(&kmask, sigmask, sizeof(kmask)))
                     return -EFAULT;
                 guard.apply(&kmask);
+
+                if (sched::signal_pending_for(sched::current_thread()))
+                {
+                    guard.disarm();
+                    return -EINTR;
+                }
             }
 
             const auto ret = epoll_wait_common(epfd, events, maxevents, has_timeout, timeout_ns);

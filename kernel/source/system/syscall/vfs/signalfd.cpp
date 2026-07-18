@@ -115,14 +115,14 @@ namespace syscall::vfs
 
                 const bool nonblock = file->flags & sfd_nonblock;
                 auto data = std::static_pointer_cast<data_t>(file->private_data);
-                auto proc = sched::current_process();
+                auto thread = sched::current_thread();
 
                 const auto mask = *data->mask.lock();
                 const auto drain = [&](std::size_t &count) -> lib::expect<void>
                 {
                     while (count < max)
                     {
-                        const auto info = sched::dequeue_signal(proc, mask);
+                        const auto info = sched::dequeue_signal(thread, mask);
                         if (!info)
                             break;
 
@@ -180,7 +180,14 @@ namespace syscall::vfs
                     pt->add(data->bell);
 
                 const auto mask = *data->mask.lock();
-                auto proc = sched::current_process();
+                auto thread = sched::current_thread();
+                auto proc = thread->proc.get();
+
+                {
+                    const std::unique_lock _ { thread->sigqueue.lock };
+                    if ((thread->sigqueue.pending & mask).any())
+                        return pollin;
+                }
 
                 const std::unique_lock _ { proc->sigqueue.lock };
                 if ((proc->sigqueue.pending & mask).any())

@@ -311,6 +311,7 @@ export namespace sched
     bool signal_pending_for(thread_t *thread);
 
     std::optional<siginfo_t> dequeue_signal(process_t *proc, const sigset_t &set);
+    std::optional<siginfo_t> dequeue_signal(thread_t *thread, const sigset_t &set);
 
     void add_signal_waiter(process_t *proc, signal_waiter_t &waiter);
     void remove_signal_waiter(process_t *proc, signal_waiter_t &waiter);

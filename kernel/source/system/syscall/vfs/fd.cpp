@@ -106,9 +106,13 @@ namespace syscall::vfs
                     return -lib::map_error(ret.error());
                 return *ret;
             }
-            // TODO: flock
+            // TODO: actually enforce locks
+            case 5: // F_GETLK
             case 6: // F_SETLK
             case 7: // F_SETLKW
+            case 36: // F_OFD_GETLK
+            case 37: // F_OFD_SETLK
+            case 38: // F_OFD_SETLKW
             {
                 struct flock
                 {
@@ -118,6 +122,9 @@ namespace syscall::vfs
                     off_t l_len;
                     pid_t l_pid;
                 };
+
+                const bool ofd = (cmd >= 0x24);
+                const bool getlk = (cmd == 5 || cmd == 0x24);
 
                 flock fl;
                 if (!lib::copy_from_user(&fl, reinterpret_cast<const flock __user *>(arg), sizeof(fl)))
@@ -130,7 +137,15 @@ namespace syscall::vfs
                 if (fl.l_whence != seek_set && fl.l_whence != seek_cur && fl.l_whence != seek_end)
                     return -EINVAL;
 
-                // TODO: actually enforce locks
+                if (ofd && fl.l_pid != 0)
+                    return -EINVAL;
+
+                if (getlk)
+                {
+                    fl.l_type = 2;
+                    if (!lib::copy_to_user(reinterpret_cast<flock __user *>(arg), &fl, sizeof(fl)))
+                        return -EFAULT;
+                }
                 break;
             }
             default:

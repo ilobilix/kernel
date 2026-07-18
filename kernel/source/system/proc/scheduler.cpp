@@ -1025,18 +1025,9 @@ namespace sched
                 }
 
                 const std::unique_lock _ { proc->lock };
-
-                bool empty;
                 {
                     auto glocked = proc->group->members.lock();
                     glocked->erase(proc->pid);
-                    empty = glocked->empty();
-                }
-
-                if (empty)
-                {
-                    proc->session->members.lock()->erase(proc->group->pgid);
-                    groups.lock()->erase(proc->group->pgid);
                 }
             }
 
@@ -1507,13 +1498,6 @@ namespace sched
         if (!target)
             return -ESRCH;
 
-        if (target->group->pgid == pgid)
-            return 0;
-
-        // is leader
-        if (pid == target->session->sid)
-            return -EPERM;
-
         if (proc->children.lock()->contains(pid))
         {
             if (target->has_execved)
@@ -1524,6 +1508,10 @@ namespace sched
         }
         else if (pid != proc->pid)
             return -ESRCH;
+
+        // is leader
+        if (pid == target->session->sid)
+            return -EPERM;
 
         const std::unique_lock _ { target->lock };
         if (target->group->pgid == pgid)
@@ -1817,7 +1805,15 @@ namespace sched
         }
 
         if (flags & clone_clear_sighand)
-            target_proc->sigactions = std::make_shared<signal_actions_t>();
+        {
+            target_proc->sigactions = caller_proc->sigactions->clone();
+            const std::unique_lock _ { target_proc->sigactions->lock };
+            for (auto &action : target_proc->sigactions->actions)
+            {
+                if (action.handler != sig_dfl && action.handler != sig_ign)
+                    action = sigaction_t { };
+            }
+        }
         else if (flags & clone_sighand)
             target_proc->sigactions = caller_proc->sigactions;
         else
@@ -1989,6 +1985,19 @@ namespace sched
             }
             lib::bug_on(new_thread->tid != process->pid);
 
+            new_thread->sigmask = old_thread->sigmask;
+            {
+                const std::unique_lock _ { old_thread->sigqueue.lock };
+                new_thread->sigqueue.pending = old_thread->sigqueue.pending;
+                new_thread->sigqueue.queue = std::move(old_thread->sigqueue.queue);
+                old_thread->sigqueue.pending = { };
+            }
+            {
+                const std::unique_lock _ { process->sigqueue.lock };
+                if (process->sigqueue.pending.any() || new_thread->sigqueue.pending.any())
+                    new_thread->set_flag(thread_flags::signal_pending);
+            }
+
             add_cputime(process, old_thread);
 
             old_thread->state.store(thread_state::dead, std::memory_order_release);
@@ -2114,9 +2123,18 @@ namespace sched
                             proc->children_utime_ns.fetch_add(ctime.utime_ns, std::memory_order_relaxed);
                             proc->children_stime_ns.fetch_add(ctime.stime_ns, std::memory_order_relaxed);
 
+                            auto grp = child->group;
+                            auto sess = child->session;
+
                             locked->erase(it);
                             processes.lock()->erase(cpid);
                             free_id(cpid);
+
+                            if (grp->members.lock()->empty())
+                            {
+                                sess->members.lock()->erase(grp->pgid);
+                                groups.lock()->erase(grp->pgid);
+                            }
                         }
 
                         if (status != nullptr)

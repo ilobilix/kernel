@@ -213,6 +213,7 @@ namespace syscall::memory
 
     int mincore(std::size_t start, std::size_t len, unsigned char __user *vec)
     {
+        // TODO
         lib::unused(start, len, vec);
         return -ENOSYS;
     }
@@ -221,6 +222,64 @@ namespace syscall::memory
     {
         // TODO
         lib::unused(addr, length, advice);
+        return 0;
+    }
+
+    int msync(void *addr, std::size_t length, int flags)
+    {
+        constexpr int ms_async = 1;
+        constexpr int ms_invalidate = 2;
+        constexpr int ms_sync = 4;
+
+        if (flags & ~(ms_async | ms_invalidate | ms_sync))
+            return -EINVAL;
+
+        if ((flags & ms_async) && (flags & ms_sync))
+            return -EINVAL;
+
+        const auto psize = vmm::default_page_size();
+        const auto npsize = vmm::pagemap::from_page_size(psize);
+        if (reinterpret_cast<std::uintptr_t>(addr) & (npsize - 1))
+            return -EINVAL;
+
+        // TODO
+        lib::unused(length);
+        return 0;
+    }
+
+    int mlock(void *addr, std::size_t length)
+    {
+        // TODO
+        lib::unused(addr, length);
+        return 0;
+    }
+
+    int munlock(void *addr, std::size_t length)
+    {
+        // TODO
+        lib::unused(addr, length);
+        return 0;
+    }
+
+    int mlockall(int flags)
+    {
+        // TODO
+        constexpr int mcl_current = 1;
+        constexpr int mcl_future = 2;
+        constexpr int mcl_onfault = 4;
+
+        if (flags == 0 || (flags & ~(mcl_current | mcl_future | mcl_onfault)))
+            return -EINVAL;
+
+        if (flags == mcl_onfault)
+            return -EINVAL;
+
+        return 0;
+    }
+
+    int munlockall()
+    {
+        // TODO
         return 0;
     }
 } // namespace syscall::memory

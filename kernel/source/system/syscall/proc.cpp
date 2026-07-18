@@ -592,8 +592,7 @@ namespace syscall::proc
                 sigacts->actions[signum - 1] = newact;
         }
 
-        if (act && (newact.handler == sched::sig_ign || (
-            newact.handler == sched::sig_dfl &&
+        if (act && (newact.handler == sched::sig_ign || (newact.handler == sched::sig_dfl &&
             sched::default_for(signum) == sched::default_action::ignore)))
             sched::flush_signal(proc, signum);
 
@@ -656,13 +655,19 @@ namespace syscall::proc
         if (sigsetsize != sizeof(sigset_t))
             return -EINVAL;
 
-        auto proc = current_process();
+        auto thread = current_thread();
+        auto proc = thread->proc.get();
+
         sigset_t pending;
         {
             const std::unique_lock _ { proc->sigqueue.lock };
             pending = proc->sigqueue.pending;
         }
-        pending &= current_thread()->sigmask;
+        {
+            const std::unique_lock _ { thread->sigqueue.lock };
+            pending |= thread->sigqueue.pending;
+        }
+        pending &= thread->sigmask;
 
         if (!lib::copy_to_user(set, &pending, sigsetsize))
             return -EFAULT;
@@ -699,7 +704,8 @@ namespace syscall::proc
             timeout_ns = kts.to_ns();
         }
 
-        auto proc = current_process();
+        auto thread = current_thread();
+        auto proc = thread->proc.get();
 
         const auto timer = chrono::main_timer();
         std::uint64_t deadline_ns = 0;
@@ -723,7 +729,7 @@ namespace syscall::proc
         const auto result = [&] {
             while (true)
             {
-                if (const auto info = dequeue_signal(proc, set))
+                if (const auto info = dequeue_signal(thread, set))
                     return deliver(*info);
 
                 std::uint64_t wait_ns = 0;
@@ -740,7 +746,7 @@ namespace syscall::proc
                 if (consume_pending_stops())
                     continue;
 
-                if (const auto info = dequeue_signal(proc, set))
+                if (const auto info = dequeue_signal(thread, set))
                     return deliver(*info);
 
                 if (res.expired)
@@ -1327,7 +1333,7 @@ namespace syscall::proc
             return -EFAULT;
 
         std::string kpathname;
-        if (pathname)
+        if (pathname && lib::strnlen_user(pathname, 1) != 0)
         {
             auto ret = lib::user_string::get(pathname);
             if (!ret.has_value())
@@ -1533,6 +1539,151 @@ namespace syscall::proc
             return -EFAULT;
 
         return aligned;
+    }
+
+    namespace
+    {
+        enum policies
+        {
+            policy_other = 0,
+            policy_fifo = 1,
+            policy_rr = 2,
+            policy_batch = 3,
+            policy_idle = 5,
+            policy_reset_on_fork = 0x40000000
+        };
+
+        bool thread_exists(pid_t pid)
+        {
+            return pid == 0 || sched::get_thread(pid) != nullptr;
+        }
+    } // namespace
+
+    // TODO: sched_* are stubs
+
+    int sched_setparam(pid_t pid, const sched_param __user *param)
+    {
+        if (pid < 0 || param == nullptr)
+            return -EINVAL;
+
+        sched_param kparam;
+        if (!lib::copy_from_user(&kparam, param, sizeof(kparam)))
+            return -EFAULT;
+
+        if (!thread_exists(pid))
+            return -ESRCH;
+
+        if (kparam.sched_priority != 0)
+            return -EINVAL;
+
+        return 0;
+    }
+
+    int sched_getparam(pid_t pid, sched_param __user *param)
+    {
+        if (pid < 0 || param == nullptr)
+            return -EINVAL;
+
+        if (!thread_exists(pid))
+            return -ESRCH;
+
+        const sched_param kparam { .sched_priority = 0 };
+        if (!lib::copy_to_user(param, &kparam, sizeof(kparam)))
+            return -EFAULT;
+
+        return 0;
+    }
+
+    int sched_setscheduler(pid_t pid, int policy, const sched_param __user *param)
+    {
+        if (pid < 0 || param == nullptr || policy < 0)
+            return -EINVAL;
+
+        policy &= ~policy_reset_on_fork;
+
+        sched_param kparam;
+        if (!lib::copy_from_user(&kparam, param, sizeof(kparam)))
+            return -EFAULT;
+
+        if (!thread_exists(pid))
+            return -ESRCH;
+
+        switch (policy)
+        {
+            case policy_other:
+            case policy_batch:
+            case policy_idle:
+                return kparam.sched_priority == 0 ? 0 : -EINVAL;
+            case policy_fifo:
+            case policy_rr:
+                if (kparam.sched_priority < 1 || kparam.sched_priority > 99)
+                    return -EINVAL;
+                // TODO: real time scheduling :clueless:
+                return -EPERM;
+            default:
+                return -EINVAL;
+        }
+    }
+
+    int sched_getscheduler(pid_t pid)
+    {
+        if (pid < 0)
+            return -EINVAL;
+
+        if (!thread_exists(pid))
+            return -ESRCH;
+
+        return policy_other;
+    }
+
+    int sched_get_priority_max(int policy)
+    {
+        switch (policy)
+        {
+            case policy_other:
+            case policy_batch:
+            case policy_idle:
+                return 0;
+            case policy_fifo:
+            case policy_rr:
+                return 99;
+            default:
+                return -EINVAL;
+        }
+    }
+
+    int sched_get_priority_min(int policy)
+    {
+        switch (policy)
+        {
+            case policy_other:
+            case policy_batch:
+            case policy_idle:
+                return 0;
+            case policy_fifo:
+            case policy_rr:
+                return 1;
+            default:
+                return -EINVAL;
+        }
+    }
+
+    int sched_rr_get_interval(pid_t pid, timespec __user *interval)
+    {
+        if (pid < 0)
+            return -EINVAL;
+
+        if (interval == nullptr)
+            return -EFAULT;
+
+        if (!thread_exists(pid))
+            return -ESRCH;
+
+        const timespec ts { 0, 10'000'000 };
+        if (!lib::copy_to_user(interval, &ts, sizeof(ts)))
+            return -EFAULT;
+
+        return 0;
     }
 
     int sched_yield()

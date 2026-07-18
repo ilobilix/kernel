@@ -78,6 +78,12 @@ namespace syscall::vfs
         return 0;
     }
 
+    int sync()
+    {
+        // TODO
+        return 0;
+    }
+
     int fsopen(const char __user *fsname, std::uint32_t flags)
     {
         // TODO

@@ -95,6 +95,12 @@ namespace syscall::vfs
                 static_assert(sizeof(kmask) <= sizeof(*sigmask));
                 std::memcpy(&kmask, sigmask, sizeof(kmask));
                 guard.apply(&kmask);
+
+                if (sched::signal_pending_for(thread))
+                {
+                    guard.disarm();
+                    return -EINTR;
+                }
             }
 
             struct fd_slot
@@ -104,6 +110,7 @@ namespace syscall::vfs
             };
 
             std::vector<fd_slot> slots(fds.size());
+            std::size_t pre_ready = 0;
 
             for (nfds_t i = 0; i < fds.size(); i++)
             {
@@ -119,6 +126,7 @@ namespace syscall::vfs
                 {
                     fds[i].revents = pollnval;
                     slots[i].file = nullptr;
+                    pre_ready++;
                     continue;
                 }
 
@@ -129,7 +137,7 @@ namespace syscall::vfs
             while (true)
             {
                 poll_table_t pt;
-                std::size_t ready = 0;
+                std::size_t ready = pre_ready;
 
                 for (nfds_t i = 0; i < fds.size(); i++)
                 {
@@ -406,7 +414,7 @@ namespace syscall::vfs
 
     int pselect6(
         int nfds, fd_set __user *readfds, fd_set __user *writefds, fd_set __user *exceptfds,
-        const timespec __user *timeout, const struct sigset_t __user *sigmask
+        const timespec __user *timeout, const void __user *sigmask_pack
     )
     {
         timespec ktimeout;
@@ -414,6 +422,28 @@ namespace syscall::vfs
         {
             if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
                 return -EFAULT;
+        }
+
+        struct sigset_argpack
+        {
+            const sigset_t __user *ss;
+            std::size_t ss_len;
+        };
+
+        const sigset_t __user *sigmask = nullptr;
+        if (sigmask_pack != nullptr)
+        {
+            sigset_argpack pack;
+            if (!lib::copy_from_user(&pack,
+                static_cast<const sigset_argpack __user *>(sigmask_pack), sizeof(pack)))
+                return -EFAULT;
+
+            if (pack.ss != nullptr)
+            {
+                if (pack.ss_len != sizeof(sched::sigset_t))
+                    return -EINVAL;
+                sigmask = pack.ss;
+            }
         }
 
         return pselect(
