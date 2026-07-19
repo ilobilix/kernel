@@ -58,6 +58,50 @@ namespace vfs
             return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
         }
 
+        sched::mutex mount_tree_lock;
+
+        void detach_mount(const std::shared_ptr<mount_t> &mnt)
+        {
+            if (!mnt || !mnt->mounted_on.has_value() || !mnt->mounted_on->dentry)
+                return;
+
+            auto locked = mnt->mounted_on->dentry->child_mounts.lock();
+            for (auto it = locked->begin(); it != locked->end(); )
+            {
+                const auto sp = it->lock();
+                if (!sp || sp.get() == mnt.get())
+                {
+                    const auto to_erase = it++;
+                    locked->erase(to_erase);
+                }
+                else it++;
+            }
+        }
+
+        void attach_mount(const std::shared_ptr<mount_t> &mnt, const path_t &tgt)
+        {
+            mnt->mounted_on = tgt;
+            mnt->parent_id = tgt.mnt ? tgt.mnt->id : 0;
+            tgt.dentry->child_mounts.lock()->push_back(mnt);
+        }
+
+        bool dentry_at_or_under(
+            std::shared_ptr<dentry_t> dnt,
+            const std::shared_ptr<dentry_t> &limit
+        )
+        {
+            while (dnt)
+            {
+                if (dnt == limit)
+                    return true;
+                auto parent = dnt->parent.lock();
+                if (parent == dnt)
+                    break;
+                dnt = std::move(parent);
+            }
+            return false;
+        }
+
         path_t resolve_mounts(path_t path)
         {
             while (path.mnt != nullptr && path.dentry == path.mnt->root)
@@ -187,7 +231,11 @@ namespace vfs
             auto fs = target.mnt->fs.lock();
             return fs->permission(target.dentry, cred, mode);
         }
-        return sched::check_perms(cred, target.dentry->inode->stat, static_cast<sched::access_mode>(mode));
+
+        return sched::check_perms(
+            cred, target.dentry->inode->stat,
+            static_cast<sched::access_mode>(mode)
+        );
     }
 
     bool check_access(const path_t &target, std::uint32_t mode)
@@ -440,15 +488,18 @@ namespace vfs
         return std::make_shared<dentry_t>();
     }
 
-    std::string pathname_from(path_t path)
+    std::string pathname_from(path_t path, std::shared_ptr<dentry_t> boundary)
     {
         std::size_t len = 0;
         std::vector<std::string_view> segments;
 
         while (true)
         {
+            if (path.dentry == boundary)
+                break;
+
             path = resolve_mounts(path);
-            if (path.dentry == nullptr || path.dentry == vfs::root)
+            if (path.dentry == nullptr || path.dentry == vfs::root || path.dentry == boundary)
                 break;
 
             auto parent = path.dentry->parent.lock();
@@ -712,6 +763,133 @@ namespace vfs
             return { };
         }
 
+        if (flags & ms_move)
+        {
+            auto src = path_for(source_path);
+            if (!src)
+                return std::unexpected { src.error() };
+
+            if (!src->mnt || src->dentry != src->mnt->root ||
+                !src->mnt->mounted_on.has_value() || src->mnt->parent_id == 0)
+                return std::unexpected { lib::err::invalid_path };
+
+            auto tgt = resolve_real_dir(std::nullopt, target_path);
+            if (!tgt)
+                return std::unexpected { tgt.error() };
+            if (tgt->dentry->inode->stat.type() != stat::type::s_ifdir)
+                return std::unexpected { lib::err::not_a_dir };
+
+            const std::unique_lock _ { mount_tree_lock };
+
+            for (auto mnt = tgt->mnt; mnt; )
+            {
+                if (mnt == src->mnt)
+                    return std::unexpected { lib::err::invalid_path };
+                if (!mnt->mounted_on.has_value() || !mnt->mounted_on->mnt)
+                    break;
+                mnt = mnt->mounted_on->mnt;
+            }
+
+            detach_mount(src->mnt);
+            attach_mount(src->mnt, *tgt);
+
+            if (!(flags & ms_silent))
+                lib::info("vfs: ms_move('{}', '{}')", source_path, target_path);
+
+            return { };
+        }
+
+        if (flags & ms_bind)
+        {
+            auto src = resolve_real_dir(std::nullopt, source_path);
+            if (!src)
+                return std::unexpected { src.error() };
+            if (!src->mnt)
+                return std::unexpected { lib::err::invalid_path };
+
+            auto tgt = resolve_real_dir(std::nullopt, target_path);
+            if (!tgt)
+                return std::unexpected { tgt.error() };
+
+            const auto src_type = src->dentry->inode->stat.type();
+            const auto tgt_type = tgt->dentry->inode->stat.type();
+            if (src_type != tgt_type)
+            {
+                return std::unexpected {
+                    tgt_type == stat::type::s_ifdir
+                        ? lib::err::not_a_dir
+                        : lib::err::target_is_a_dir
+                };
+            }
+
+            const std::unique_lock _ { mount_tree_lock };
+
+            const auto make_bind = [&](
+                const path_t &from, const std::shared_ptr<dentry_t> &root_dentry
+            ) {
+                auto bind = std::make_shared<mount_t>(from.mnt->fs, root_dentry);
+                bind->id = allocate_mount_id();
+                bind->flags = flags;
+                bind->fstype = from.mnt->fstype;
+                bind->source = from.mnt->source;
+                return bind;
+            };
+
+            std::vector<std::shared_ptr<mount_t>> snapshot;
+            if (flags & ms_rec)
+            {
+                const auto locked = mounts.lock();
+                snapshot.reserve(locked->size());
+                for (const auto &[_, mnt] : *locked)
+                    snapshot.push_back(mnt);
+            }
+
+            auto bind = make_bind(*src, src->dentry);
+            attach_mount(bind, *tgt);
+            (*mounts.lock())[bind->id] = bind;
+
+            if (flags & ms_rec)
+            {
+                struct frame_t
+                {
+                    std::shared_ptr<mount_t> orig;
+                    std::shared_ptr<mount_t> clone;
+                    std::shared_ptr<dentry_t> limit;
+                };
+                std::vector<frame_t> queue;
+                queue.push_back({ src->mnt, bind, src->dentry });
+
+                for (std::size_t i = 0; i < queue.size(); i++)
+                {
+                    const auto &orig = queue[i].orig;
+                    const auto &clone = queue[i].clone;
+                    const auto &limit = queue[i].limit;
+
+                    for (const auto &child : snapshot)
+                    {
+                        if (!child->mounted_on.has_value() || !child->root)
+                            continue;
+                        if (child->mounted_on->mnt != orig)
+                            continue;
+
+                        const auto &at = child->mounted_on->dentry;
+                        if (limit && !dentry_at_or_under(at, limit))
+                            continue;
+
+                        auto sub = make_bind({ child, child->root }, child->root);
+                        attach_mount(sub, path_t { clone, at });
+                        (*mounts.lock())[sub->id] = sub;
+                        queue.push_back({ child, sub, nullptr });
+                    }
+                }
+            }
+
+            if (!(flags & ms_silent))
+                lib::info("vfs: ms_bind('{}', '{}', 0x{:X})", source_path, target_path, flags);
+
+            return { };
+        }
+
         auto fs = find_fs(fstype);
         if (!fs)
             return std::unexpected { lib::err::invalid_filesystem };
@@ -766,8 +944,121 @@ namespace vfs
 
     auto unmount(lib::path target) -> lib::expect<void>
     {
-        lib::unused(target);
-        return std::unexpected { lib::err::todo };
+        auto res = path_for(target);
+        if (!res)
+            return std::unexpected { res.error() };
+
+        auto mnt = res->mnt;
+        if (!mnt || res->dentry != mnt->root)
+            return std::unexpected { lib::err::invalid_path };
+
+        const std::unique_lock _ { mount_tree_lock };
+
+        if (mnt->parent_id == 0)
+            return std::unexpected { lib::err::target_is_busy };
+
+        {
+            const auto locked = mounts.lock();
+            for (const auto &[_, mnt_] : *locked)
+            {
+                if (mnt_->parent_id == mnt->id)
+                    return std::unexpected { lib::err::target_is_busy };
+            }
+        }
+
+        {
+            auto fs = mnt->fs.lock();
+            if (fs.get() != nullptr && !fs->unmount(mnt))
+                return std::unexpected { lib::err::target_is_busy };
+        }
+
+        detach_mount(mnt);
+        mounts.lock()->erase(mnt->id);
+
+        if (!(mnt->flags & ms_silent))
+            lib::info("vfs: unmount('{}')", target);
+
+        return { };
+    }
+
+    auto pivot_root(lib::path new_root, lib::path put_old) -> lib::expect<void>
+    {
+        auto nr = resolve_real_dir(std::nullopt, new_root);
+        if (!nr)
+            return std::unexpected { nr.error() };
+        if (nr->dentry->inode->stat.type() != stat::type::s_ifdir)
+            return std::unexpected { lib::err::not_a_dir };
+
+        auto po = resolve_real_dir(std::nullopt, put_old);
+        if (!po)
+            return std::unexpected { po.error() };
+        if (po->dentry->inode->stat.type() != stat::type::s_ifdir)
+            return std::unexpected { lib::err::not_a_dir };
+
+        const std::unique_lock _ { mount_tree_lock };
+
+        if (!nr->mnt || nr->dentry != nr->mnt->root)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto old = get_root(true);
+        if (!old.mnt)
+            return std::unexpected { lib::err::invalid_argument };
+
+        if (nr->mnt == old.mnt)
+            return std::unexpected { lib::err::invalid_argument };
+
+        if (po->mnt == nr->mnt && po->dentry == nr->dentry)
+            return std::unexpected { lib::err::invalid_argument };
+
+        {
+            bool under = false;
+            auto cur = *po;
+            while (cur.dentry)
+            {
+                if (cur.mnt == nr->mnt && cur.dentry == nr->dentry)
+                {
+                    under = true;
+                    break;
+                }
+
+                if (cur.mnt && cur.dentry == cur.mnt->root)
+                {
+                    if (!cur.mnt->mounted_on.has_value() || !cur.mnt->mounted_on->mnt)
+                        break;
+                    cur = *cur.mnt->mounted_on;
+                    continue;
+                }
+
+                auto parent = cur.dentry->parent.lock();
+                if (parent == cur.dentry)
+                    break;
+                cur.dentry = std::move(parent);
+            }
+            if (!under)
+                return std::unexpected { lib::err::invalid_argument };
+        }
+
+        detach_mount(old.mnt);
+        attach_mount(old.mnt, *po);
+
+        detach_mount(nr->mnt);
+        nr->mnt->mounted_on = path_t { nullptr, root };
+        nr->mnt->parent_id = 0;
+        root->child_mounts.lock()->push_back(nr->mnt);
+
+        const path_t new_root_path { nr->mnt, nr->mnt->root };
+        sched::for_each_process([&](const std::shared_ptr<sched::process_t> &proc) {
+            if (!proc->vfs)
+                return true;
+            if (proc->vfs->root.mnt == old.mnt && proc->vfs->root.dentry == old.dentry)
+                proc->vfs->root = new_root_path;
+            if (proc->vfs->cwd.mnt == old.mnt && proc->vfs->cwd.dentry == old.dentry)
+                proc->vfs->cwd = new_root_path;
+            return true;
+        });
+
+        lib::info("vfs: pivot_root('{}', '{}')", new_root, put_old);
+        return { };
     }
 
     auto create(

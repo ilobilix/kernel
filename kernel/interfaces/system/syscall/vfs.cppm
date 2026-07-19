@@ -102,6 +102,8 @@ export namespace syscall::vfs
         const char __user *source, const char __user *target,
         const char __user *fstype, std::uint64_t flags, const void __user *data
     );
+    int pivot_root(const char __user *new_root, const char __user *put_old);
+    int umount2(const char __user *target, int flags);
 
     int setxattr(
         const char __user *pathname, const char __user *name,
@@ -155,6 +157,7 @@ export namespace syscall::vfs
 
     int chdir(const char __user *pathname);
     int fchdir(int fd);
+    int chroot(const char __user *pathname);
 
     int pipe2(int __user *pipefd, int flags);
     int pipe(int __user *pipefd);

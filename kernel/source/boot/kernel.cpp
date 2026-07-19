@@ -1,6 +1,7 @@
 // Copyright (C) 2024-2026  ilobilo
 
 import ilobilix;
+import fmt;
 import std;
 
 std::byte kernel_stack[boot::kstack_size] { };
@@ -15,21 +16,60 @@ void kthread()
 
     std::shared_ptr<sched::thread_t> thread;
     {
-        const std::string path { cmdline::get("init").value_or("/sbin/init") };
-        lib::info("loading {}", path);
+        constexpr std::array init_paths {
+            "/init",
+            "/sbin/init",
+            "/etc/init",
+            "/bin/init",
+            "/bin/sh"
+        };
 
-        auto ret = vfs::resolve(std::nullopt, path);
-        if (!ret.has_value())
-            lib::panic("could not resolve {}", path);
+        const auto try_path = [](const auto &path) -> lib::expect<vfs::path_t> {
+            auto ret = vfs::resolve(std::nullopt, path);
+            if (!ret.has_value())
+                return std::unexpected { ret.error() };
 
-        auto res = vfs::reduce(ret->parent, ret->target);
-        if (!res.has_value())
-            lib::panic("could not reduce {}", path);
+            auto res = vfs::reduce(ret->parent, ret->target);
+            if (!res.has_value())
+                return std::unexpected { res.error() };
 
-        auto file = vfs::file_t::create(res.value(), 0, 0);
+            return *res;
+        };
+
+        vfs::path_t init;
+        lib::path path;
+
+        if (const auto val = cmdline::get("init"))
+        {
+            auto res = try_path(*val);
+            if (!res)
+                lib::panic("could not load '{}'", *val);
+
+            path = *val;
+            init = std::move(*res);
+        }
+        else
+        {
+            for (auto val : init_paths)
+            {
+                auto res = try_path(val);
+                if (!res)
+                    continue;
+
+                path = val;
+                init = std::move(*res);
+                break;
+            }
+            if (!init.dentry)
+                lib::panic("could not find init! tried: '{}'", fmt::join(init_paths, "', '"));
+        }
+
+        lib::info("loading '{}'", path);
+
+        auto file = vfs::file_t::create(std::move(init), 0, 0);
         auto image = bin::exec::probe(file);
         if (!image || !*image)
-            lib::panic("could not identify {} file format", path);
+            lib::panic("could not identify '{}' file format", path);
 
         auto proc = sched::create_process(nullptr);
 
@@ -49,7 +89,7 @@ void kthread()
         proc->sigactions = std::make_shared<sched::signal_actions_t>();
 
         const std::string tty_path { cmdline::get("console").value_or("/dev/ttyS0") };
-        ret = vfs::resolve(std::nullopt, tty_path);
+        auto ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);
         auto tty = vfs::filedesc::create(ret->target, vfs::o_rdwr);

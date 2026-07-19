@@ -34,7 +34,7 @@ namespace syscall::vfs
             if (!fstype_str.has_value())
                 return -EINVAL;
         }
-        else if (!(flags & ms_remount))
+        else if (!(flags & (ms_remount | ms_move | ms_bind)))
             return -EFAULT;
 
         lib::path source_path { };
@@ -67,6 +67,55 @@ namespace syscall::vfs
 
         const std::string_view fstype_sv = fstype_str ? *fstype_str : std::string_view { };
         if (const auto ret = ::vfs::mount(source_path, *target_val, fstype_sv, flags, data_uspan); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
+    int pivot_root(const char __user *new_root, const char __user *put_old)
+    {
+        const auto proc = sched::current_process();
+
+        if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
+            return -EPERM;
+
+        if (new_root == nullptr || put_old == nullptr)
+            return -EFAULT;
+
+        auto nr = detail::get_path(new_root);
+        if (!nr.has_value())
+            return -lib::map_error(nr.error());
+
+        auto po = detail::get_path(put_old);
+        if (!po.has_value())
+            return -lib::map_error(po.error());
+
+        if (const auto ret = ::vfs::pivot_root(*nr, *po); !ret)
+            return -lib::map_error(ret.error());
+        return 0;
+    }
+
+    int umount2(const char __user *target, int flags)
+    {
+        const auto proc = sched::current_process();
+
+        if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
+            return -EPERM;
+
+        if (target == nullptr)
+            return -EFAULT;
+
+        if (flags & ~(mnt_force | mnt_detach | mnt_expire | umount_nofollow))
+            return -EINVAL;
+
+        if ((flags & mnt_expire) && (flags & (mnt_force | mnt_detach)))
+            return -EINVAL;
+
+        auto target_val = detail::get_path(target);
+        if (!target_val.has_value())
+            return -lib::map_error(target_val.error());
+
+        // TODO: flags
+        if (const auto ret = ::vfs::unmount(*target_val); !ret)
             return -lib::map_error(ret.error());
         return 0;
     }

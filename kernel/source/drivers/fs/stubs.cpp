@@ -16,7 +16,6 @@ namespace fs::stubs
         {
             lib::locked_ptr<tmpfs::fs_t::instance, sched::mutex> instance;
             std::shared_ptr<vfs::dentry_t> root;
-            mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
 
             auto mount(
                 std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
@@ -25,10 +24,7 @@ namespace fs::stubs
                 -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override
             {
                 lib::unused(src, data, flags);
-
-                auto mount = std::make_shared<struct vfs::mount_t>(instance, root);
-                mounts.push_back(mount);
-                return mount;
+                return std::make_shared<struct vfs::mount_t>(instance, root);
             }
 
             stub_fs(std::string_view name, std::uint32_t magic)

@@ -19,7 +19,6 @@ namespace fs::devpts
             std::shared_ptr<vfs::dentry_t> root;
 
             std::shared_ptr<struct vfs::mount_t> internal_mnt;
-            mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
 
             auto mount(
                 std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
@@ -28,10 +27,7 @@ namespace fs::devpts
                 -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override
             {
                 lib::unused(src, data, flags);
-
-                auto mount = std::make_shared<struct vfs::mount_t>(instance, root);
-                mounts.push_back(mount);
-                return mount;
+                return std::make_shared<struct vfs::mount_t>(instance, root);
             }
 
             fs_t() : vfs::filesystem_t { "devpts", 0x1CD1 }

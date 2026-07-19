@@ -88,7 +88,6 @@ export namespace fs::tmpfs
             ~instance() = default;
         };
 
-        mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
         auto mount(
             std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
             std::optional<lib::maybe_uspan<const std::byte>> data
