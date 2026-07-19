@@ -395,7 +395,7 @@ namespace ext2
             {
                 // TODO
                 lib::unused(mnt);
-                return false;
+                return true;
             }
 
             ~instance_t() = default;
@@ -634,7 +634,6 @@ namespace ext2
 
             const auto block_size = 1024 << sb->log_block_size;
             const auto inode_size = sb->rev_level >= 1 ? sb->inode_size : 128;
-            lib::debug("ext2: block size: {} bytes, inode size: {} bytes", block_size, inode_size);
 
             const auto group_count = lib::div_roundup(
                 sb->blocks_count - sb->first_data_block,

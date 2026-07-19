@@ -218,7 +218,7 @@ namespace syscall::vfs
     {
         const auto proc = sched::current_process();
 
-        const auto path_str = pathname_from(proc->vfs->cwd);
+        const auto path_str = pathname_from(proc->vfs->cwd, proc->vfs->root.dentry);
         const auto len = path_str.size() + 1;
         if (len > size)
             return -ERANGE;
@@ -246,6 +246,29 @@ namespace syscall::vfs
             return -EACCES;
 
         proc->vfs->cwd = *target;
+        return 0;
+    }
+
+    int chroot(const char __user *pathname)
+    {
+        const auto proc = sched::current_process();
+
+        if (!sched::capable(proc->cred, sched::cap_t::sys_chroot))
+            return -EPERM;
+
+        const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
+        if (!target.has_value())
+            return -lib::map_error(target.error());
+
+        const auto &stat = target->dentry->inode->stat;
+        if (stat.type() != stat::type::s_ifdir)
+            return -ENOTDIR;
+
+        if (!vfs::check_access(*target, proc->cred,
+            static_cast<std::uint32_t>(sched::access_mode::exec)))
+            return -EACCES;
+
+        proc->vfs->root = *target;
         return 0;
     }
 

@@ -135,8 +135,17 @@ export namespace vfs
         ms_supported = ms_rdonly | ms_nosuid | ms_nodev | ms_noexec |
                        ms_synchronous | ms_remount | ms_dirsync |
                        ms_nosymfollow | ms_noatime | ms_nodiratime |
+                       ms_bind | ms_move | ms_rec |
                        ms_silent | ms_relatime | ms_strictatime |
                        ms_lazytime
+    };
+
+    enum unmountflags
+    {
+        mnt_force = 1,
+        mnt_detach = 2,
+        mnt_expire = 4,
+        umount_nofollow = 8
     };
 
     // stat and s_* bits are defined in lib/types.cppm
@@ -754,7 +763,7 @@ export namespace vfs
     bool unregister_fs(filesystem_t &fs);
     filesystem_t *find_fs(std::string_view name);
 
-    std::string pathname_from(path_t path);
+    std::string pathname_from(path_t path, std::shared_ptr<dentry_t> boundary = nullptr);
 
     auto path_for(lib::path _path) -> lib::expect<path_t>;
     auto resolve(std::optional<path_t> parent, lib::path path, bool automount = true)
@@ -770,6 +779,7 @@ export namespace vfs
         std::optional<lib::maybe_uspan<const std::byte>> data = std::nullopt
     ) -> lib::expect<void>;
     auto unmount(lib::path target) -> lib::expect<void>;
+    auto pivot_root(lib::path new_root, lib::path put_old) -> lib::expect<void>;
 
     bool check_access(
         const path_t &target,

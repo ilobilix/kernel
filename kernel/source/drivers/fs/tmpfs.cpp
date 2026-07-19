@@ -278,8 +278,7 @@ namespace fs::tmpfs
 
     bool fs_t::instance::unmount(std::shared_ptr<struct vfs::mount_t>)
     {
-        lib::panic("todo: tmpfs::unmount");
-        return false;
+        return true;
     }
 
     std::string fs_t::instance::mount_options() const
@@ -421,9 +420,7 @@ namespace fs::tmpfs
         root->inode->stat.st_gid = locked->opt_gid;
         root->parent = root;
 
-        auto mount = std::make_shared<struct vfs::mount_t>(std::move(instance), root);
-        mounts.push_back(mount);
-        return mount;
+        return std::make_shared<struct vfs::mount_t>(std::move(instance), root);
     }
 
     lib::initgraph::stage *registered_stage()
