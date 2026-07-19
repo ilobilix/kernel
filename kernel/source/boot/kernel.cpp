@@ -15,7 +15,7 @@ void kthread()
 
     std::shared_ptr<sched::thread_t> thread;
     {
-        lib::path_view path { cmdline::get("init").value_or("/sbin/init") };
+        const std::string path { cmdline::get("init").value_or("/sbin/init") };
         lib::info("loading {}", path);
 
         auto ret = vfs::resolve(std::nullopt, path);
@@ -48,7 +48,7 @@ void kthread()
 
         proc->sigactions = std::make_shared<sched::signal_actions_t>();
 
-        lib::path_view tty_path { cmdline::get("console").value_or("/dev/ttyS0") };
+        const std::string tty_path { cmdline::get("console").value_or("/dev/ttyS0") };
         ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);
@@ -64,7 +64,7 @@ void kthread()
 
         thread = image.value()->load({
             .pathname = path.data(),
-            .argv = { path.basename().data() },
+            .argv = { lib::path_view { path } .basename().data() },
             .envp = {
                 "TERM=xterm-256color",
                 "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"

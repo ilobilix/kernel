@@ -50,7 +50,7 @@ namespace nvme
                     "nvme" + std::to_string(idx), get_ctrl_ktype(), nvdir
                 );
                 nvctrl->cls = &get_class();
-                nvctrl->devt = vfs::dev::makedev(vfs::dev::alloc_char_major(), idx);
+                nvctrl->devt = makedev(vfs::dev::alloc_char_major(), idx);
                 nvctrl->fops = std::make_shared<ctrl_ops_t>(ctrl);
                 lib::bug_on(!dev::register_device(nvctrl));
 
@@ -60,7 +60,7 @@ namespace nvme
                         "nvme0n" + std::to_string(nsid + 1), get_ns_ktype(), nvctrl
                     );
                     dev->cls = &dev::block::get_class();
-                    dev->devt = vfs::dev::makedev(259, dev::block::alloc_minor());
+                    dev->devt = makedev(259, dev::block::alloc_minor());
                     dev->fops = std::make_shared<dev::block::ops_t>(ns);
                     ns->dev = std::move(dev);
 

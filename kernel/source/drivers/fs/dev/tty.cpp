@@ -1656,7 +1656,7 @@ namespace fs::dev::tty
 
     void register_chrdev(dev_t rdev)
     {
-        vfs::dev::register_ops(rdev, ops::singleton());
+        register_ops(rdev, ops::singleton());
     }
 
     void register_driver(driver *drv)
@@ -1670,7 +1670,6 @@ namespace fs::dev::tty
 
         const auto add_one = [&](std::size_t idx, std::uint32_t minor)
         {
-            using namespace vfs::dev;
             register_ops(makedev(drv->major, minor), ops::singleton());
 
             std::string name;

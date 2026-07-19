@@ -687,11 +687,11 @@ namespace fs::procfs
             > mounts;
 
             auto mount(
-                std::shared_ptr<vfs::dentry_t> src,
+                std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
                 std::optional<lib::maybe_uspan<const std::byte>> data
             ) const -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override
             {
-                lib::unused(src, data);
+                lib::unused(src, data, flags);
 
                 auto mount = std::make_shared<struct vfs::mount_t>(inst, root);
                 mounts.lock()->push_back(mount);

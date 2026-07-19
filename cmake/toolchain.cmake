@@ -4,6 +4,15 @@ include(${CMAKE_SOURCE_DIR}/cmake/build-type.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/arch.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/config.cmake)
 
+if(ILOBILIX_SCCACHE)
+    find_program(SCCACHE_PROGRAM sccache)
+    if(SCCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+        message(STATUS "sccache enabled: ${SCCACHE_PROGRAM}")
+    endif()
+endif()
+
 set(_C_CXX_ASM_FLAGS
     "--target=${ILOBILIX_ARCH}-elf"
 

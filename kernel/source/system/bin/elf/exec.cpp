@@ -214,7 +214,7 @@ namespace bin::elf::exec
                             if (const auto tail_len = file_span - full_len; tail_len > 0)
                             {
                                 lib::membuffer tail_buffer { tail_len };
-                                const auto tail_uspan = tail_buffer.maybe_uspan();
+                                const auto tail_uspan = tail_buffer.uspan();
                                 lib::panic_if(!tail_uspan.has_value());
 
                                 const auto ret = file->pread(
@@ -259,7 +259,7 @@ namespace bin::elf::exec
                     case PT_INTERP:
                     {
                         lib::membuffer buffer { phdr.p_filesz - 1 };
-                        const auto buffer_uspan = buffer.maybe_uspan();
+                        const auto buffer_uspan = buffer.uspan();
                         lib::panic_if(!buffer_uspan.has_value());
 
                         const auto ret = file->pread(phdr.p_offset, buffer_uspan.value());

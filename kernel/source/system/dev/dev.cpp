@@ -110,8 +110,8 @@ namespace dev
             {
                 const auto node = (dev->cls != nullptr && dev->cls->is_block)
                     ? dev_block_root() : dev_char_root();
-                const auto maj = vfs::dev::major(dev->devt);
-                const auto min = vfs::dev::minor(dev->devt);
+                const auto maj = major(dev->devt);
+                const auto min = minor(dev->devt);
                 ref->add_link(node, fmt::format("{}:{}", maj, min), devpath);
             }
         }
@@ -143,8 +143,8 @@ namespace dev
             {
                 const auto node = (dev->cls != nullptr && dev->cls->is_block)
                     ? dev_block_root() : dev_char_root();
-                const auto maj = vfs::dev::major(dev->devt);
-                const auto min = vfs::dev::minor(dev->devt);
+                const auto maj = major(dev->devt);
+                const auto min = minor(dev->devt);
                 ref->remove_link(node, fmt::format("{}:{}", maj, min));
             }
 
@@ -286,8 +286,8 @@ namespace dev
 
             if (self.devt != 0)
             {
-                uev.add("MAJOR", std::to_string(vfs::dev::major(self.devt)));
-                uev.add("MINOR", std::to_string(vfs::dev::minor(self.devt)));
+                uev.add("MAJOR", std::to_string(major(self.devt)));
+                uev.add("MINOR", std::to_string(minor(self.devt)));
 
                 if (self.cls != nullptr)
                 {

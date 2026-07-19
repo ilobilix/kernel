@@ -9,11 +9,11 @@ import std;
 
 export namespace fs::tmpfs
 {
-    struct ops : vfs::ops_t
+    struct ops_t : vfs::ops_t
     {
-        static std::shared_ptr<ops> singleton()
+        static std::shared_ptr<ops_t> singleton()
         {
-            static auto instance = std::make_shared<ops>();
+            static auto instance = std::make_shared<ops_t>();
             return instance;
         }
 
@@ -90,7 +90,7 @@ export namespace fs::tmpfs
 
         mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
         auto mount(
-            std::shared_ptr<vfs::dentry_t> src,
+            std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
             std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override;
 
