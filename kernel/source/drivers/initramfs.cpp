@@ -3,8 +3,8 @@
 module drivers.initramfs;
 
 import system.vfs;
-import system.vfs.dev;
 import boot;
+import lib;
 import std;
 
 namespace initramfs
@@ -78,21 +78,25 @@ namespace initramfs
 
         bool load(std::span<std::byte> data)
         {
-            lib::info("ustar: extracting initramfs");
-
+            auto current = reinterpret_cast<header *>(data.data());
             const auto data_end = data.data() + data.size();
-            const auto fits = [&](const header *cur) {
-                return reinterpret_cast<const std::byte *>(cur) + sizeof(header) <= data_end;
+
+            const auto check = [&] {
+                return reinterpret_cast<const std::byte *>(current) + sizeof(header) <= data_end &&
+                       magic == std::string_view { current->magic, 5 };
             };
+
+            if (!check())
+                return false;
+
+            lib::info("ustar: extracting initramfs");
 
             std::string long_name;
             std::string long_linkname;
             bool have_long_name = false;
             bool have_long_linkname = false;
 
-            auto current = reinterpret_cast<header *>(data.data());
-            while (fits(current) && magic == std::string_view { current->magic, 5 })
-            {
+            do {
                 if (current->name[0] == '\0')
                     break;
 
@@ -145,7 +149,7 @@ namespace initramfs
 
                 const auto devmajor = lib::oct2int<time_t>(current->devmajor);
                 const auto devminor = lib::oct2int<time_t>(current->devminor);
-                const dev_t dev = vfs::dev::makedev(devmajor, devminor);
+                const dev_t dev = makedev(devmajor, devminor);
 
                 std::shared_ptr<vfs::inode_t> inode;
 
@@ -286,10 +290,285 @@ namespace initramfs
                 have_long_name = false;
                 have_long_linkname = false;
                 current = advance(current, payload_size);
-            }
+            } while (check());
+
             return true;
         }
     } // namespace ustar
+
+    namespace newc
+    {
+        constexpr std::string_view magic { "070701", 6 };
+        constexpr std::string_view magic_crc { "070702", 6 };
+        constexpr std::string_view trailer { "TRAILER!!!" };
+        constexpr std::size_t align = 4;
+
+        struct [[gnu::packed]] header
+        {
+            char magic[6];
+            char ino[8];
+            char mode[8];
+            char uid[8];
+            char gid[8];
+            char nlink[8];
+            char mtime[8];
+            char filesize[8];
+            char devmajor[8];
+            char devminor[8];
+            char rdevmajor[8];
+            char rdevminor[8];
+            char namesize[8];
+            char check[8];
+        };
+        static_assert(sizeof(header) == 110);
+
+        std::uint32_t hex(const char (&field)[8])
+        {
+            std::uint32_t value = 0;
+            for (const char chr : field)
+            {
+                std::uint32_t digit;
+                if (chr >= '0' && chr <= '9')
+                    digit = chr - '0';
+                else if (chr >= 'a' && chr <= 'f')
+                    digit = chr - 'a' + 10;
+                else if (chr >= 'A' && chr <= 'F')
+                    digit = chr - 'A' + 10;
+                else
+                    break;
+                value = (value << 4) | digit;
+            }
+            return value;
+        }
+
+        bool load(std::span<std::byte> data)
+        {
+            const std::string_view head {
+                reinterpret_cast<char *>(data.data()),
+                std::min<std::size_t>(6, data.size())
+            };
+
+            if (head != newc::magic && head != newc::magic_crc)
+                return false;
+
+            lib::info("newc: extracting initramfs");
+
+            const auto size = data.size();
+            std::size_t off = 0;
+
+            lib::map::flat_hash<std::uint32_t, std::string> links;
+
+            while (off + sizeof(header) <= size)
+            {
+                const auto *cur = reinterpret_cast<const header *>(data.data() + off);
+
+                const std::string_view mag { cur->magic, 6 };
+                const bool crc = (mag == magic_crc);
+                if (mag != magic && !crc)
+                {
+                    lib::error("newc: bad magic at offset {}", off);
+                    return false;
+                }
+
+                const auto mode = hex(cur->mode);
+                const auto uid = hex(cur->uid);
+                const auto gid = hex(cur->gid);
+                const auto mtim = hex(cur->mtime);
+                const auto nlink = hex(cur->nlink);
+                const auto ino = hex(cur->ino);
+                const auto filesize = hex(cur->filesize);
+                const auto namesize = hex(cur->namesize);
+                const dev_t dev = makedev(hex(cur->rdevmajor), hex(cur->rdevminor));
+
+                const auto name_off = off + sizeof(header);
+                if (name_off + namesize > size)
+                {
+                    lib::error("newc: name extends past end of archive");
+                    return false;
+                }
+
+                const auto *name_ptr = reinterpret_cast<const char *>(data.data() + name_off);
+                const std::string_view name { name_ptr, std::strnlen(name_ptr, namesize) };
+
+                const auto data_off = lib::align_up(name_off + namesize, align);
+                if (data_off + filesize > size)
+                {
+                    lib::error("newc: payload extends past end of archive");
+                    return false;
+                }
+
+                const auto payload = data.data() + data_off;
+                const auto next = lib::align_up(data_off + filesize, align);
+
+                if (name == trailer)
+                {
+                    links.clear();
+                    off = next;
+                    while (off < size && data[off] == std::byte { 0 })
+                        off++;
+                    off = lib::align_up(off, align);
+                    continue;
+                }
+
+                std::string_view path = name;
+                if (path.starts_with("./"))
+                    path.remove_prefix(2);
+
+                if (path.empty() || path == ".")
+                {
+                    off = next;
+                    continue;
+                }
+
+                if (crc)
+                {
+                    std::uint32_t sum = 0;
+                    for (std::size_t i = 0; i < filesize; i++)
+                        sum += static_cast<std::uint8_t>(payload[i]);
+
+                    if (sum != hex(cur->check))
+                        lib::warn("newc: checksum mismatch for '{}'", path);
+                }
+
+                std::shared_ptr<vfs::inode_t> inode;
+                switch (stat::type(mode))
+                {
+                    case stat::type::s_ifreg:
+                    {
+                        std::optional<vfs::path_t> entry;
+                        if (nlink > 1)
+                        {
+                            if (auto it = links.find(ino); it != links.end())
+                            {
+                                auto ret = vfs::link(std::nullopt, path, std::nullopt, it->second);
+                                if (!ret)
+                                {
+                                    lib::error(
+                                        "newc: could not create hardlink '{}' -> '{}': {}",
+                                        path, it->second, lib::error_name(ret.error())
+                                    );
+                                    break;
+                                }
+                                entry = std::move(ret.value());
+                            }
+                        }
+
+                        if (!entry)
+                        {
+                            auto ret = vfs::create(std::nullopt, path, mode);
+                            if (!ret)
+                            {
+                                lib::error(
+                                    "newc: could not create regular file '{}': {}",
+                                    path, lib::error_name(ret.error())
+                                );
+                                break;
+                            }
+                            if (nlink > 1)
+                                links.emplace(ino, path);
+                            entry = std::move(ret.value());
+                        }
+
+                        if (filesize != 0)
+                        {
+                            const auto buf = lib::maybe_uspan<std::byte>::create(payload, filesize);
+                            lib::bug_on(!buf.has_value());
+
+                            auto file = vfs::file_t::create(*entry, 0, 0);
+                            if (const auto res = file->pwrite(0, *buf);
+                                !res.has_value() || res.value() != filesize)
+                            {
+                                lib::error(
+                                    "newc: could not write to regular file '{}': {}",
+                                    path, res.has_value()
+                                        ? "size mismatch"
+                                        : lib::error_name(res.error())
+                                );
+                                break;
+                            }
+                        }
+                        inode = entry->dentry->inode;
+                        break;
+                    }
+                    case stat::type::s_ifdir:
+                    {
+                        auto ret = vfs::create(std::nullopt, path, mode);
+                        if (!ret)
+                        {
+                            lib::error(
+                                "newc: could not create directory '{}': {}",
+                                path, lib::error_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret->dentry->inode;
+                        break;
+                    }
+                    case stat::type::s_iflnk:
+                    {
+                        const std::string_view target {
+                            reinterpret_cast<const char *>(payload), filesize
+                        };
+                        auto ret = vfs::symlink(std::nullopt, path, target);
+                        if (!ret)
+                        {
+                            lib::error(
+                                "newc: could not create symlink '{}' -> '{}': {}",
+                                path, target, lib::error_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret->dentry->inode;
+                        break;
+                    }
+                    case stat::type::s_ifchr:
+                    case stat::type::s_ifblk:
+                    {
+                        auto ret = vfs::create(std::nullopt, path, mode, dev);
+                        if (!ret)
+                        {
+                            lib::error(
+                                "newc: could not create device node '{}': {}",
+                                path, lib::error_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret->dentry->inode;
+                        break;
+                    }
+                    case stat::type::s_ififo:
+                    case stat::type::s_ifsock:
+                    {
+                        auto ret = vfs::create(std::nullopt, path, mode);
+                        if (!ret)
+                        {
+                            lib::error(
+                                "newc: could not create {} '{}': {}",
+                                stat::type(mode) == stat::type::s_ififo ? "fifo" : "socket",
+                                path, lib::error_name(ret.error())
+                            );
+                            break;
+                        }
+                        inode = ret->dentry->inode;
+                        break;
+                    }
+                    default:
+                        lib::error("newc: unsupported mode {:#o} for file '{}'", mode, path);
+                        break;
+                }
+
+                if (inode != nullptr)
+                {
+                    inode->stat.st_uid = uid;
+                    inode->stat.st_gid = gid;
+                    inode->stat.st_mtim = timespec { mtim, 0 };
+                }
+
+                off = next;
+            }
+            return true;
+        }
+    } // namespace newc
 
     lib::initgraph::stage *extracted_stage()
     {
@@ -317,8 +596,8 @@ namespace initramfs
                 module->size
             };
 
-            if (!ustar::load(data))
-                lib::panic("could not load initramfs as ustar archive");
+            if (!newc::load(data) && !ustar::load(data))
+                lib::panic("could not load initramfs");
         }
     };
 } // namespace initramfs

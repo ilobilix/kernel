@@ -97,6 +97,11 @@ namespace vfs::socket
         };
     } // namespace
 
+    std::shared_ptr<vfs::ops_t> sock_ops()
+    {
+        return ops_t::singleton();
+    }
+
     std::shared_ptr<socket_t> from_file(const vfs::file_t &file)
     {
         return std::static_pointer_cast<socket_t>(file.private_data);

@@ -22,12 +22,12 @@ namespace fs::devpts
             mutable lib::list<std::shared_ptr<struct vfs::mount_t>> mounts;
 
             auto mount(
-                std::shared_ptr<vfs::dentry_t> src,
+                std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
                 std::optional<lib::maybe_uspan<const std::byte>> data
             ) const
                 -> lib::expect<std::shared_ptr<struct vfs::mount_t>> override
             {
-                lib::unused(src, data);
+                lib::unused(src, data, flags);
 
                 auto mount = std::make_shared<struct vfs::mount_t>(instance, root);
                 mounts.push_back(mount);
@@ -47,7 +47,7 @@ namespace fs::devpts
                 root->inode = std::make_shared<tmpfs::inode_t>(
                     locked.get(), locked->dev_id, 0, locked->next_inode++,
                     static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-                    tmpfs::ops::singleton()
+                    tmpfs::ops_t::singleton()
                 );
                 root->parent = root;
 

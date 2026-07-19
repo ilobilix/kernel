@@ -59,7 +59,7 @@ namespace bin::script
         ) const override
         {
             lib::membuffer data { max_length };
-            auto uspan = data.maybe_uspan();
+            auto uspan = data.uspan();
             lib::bug_on(!uspan);
 
             const auto ret = file->pread(0, *uspan);

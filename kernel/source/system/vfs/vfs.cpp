@@ -3,12 +3,13 @@
 module system.vfs;
 
 import system.cpu.local;
+import system.vfs.socket;
 import system.vfs.pipe;
 import system.vfs.dev;
 import system.bin.elf;
 import system.sched;
-import drivers.fs;
 import drivers.fs.procfs;
+import drivers.fs;
 import fmt;
 
 namespace vfs
@@ -198,6 +199,8 @@ namespace vfs
     {
         if (stat.type() == stat::type::s_ififo)
             return pipe::fifo_ops();
+        else if (stat.type() == stat::type::s_ifsock)
+            return socket::sock_ops();
         if (ops)
             return ops;
         return dev::get_ops(stat.st_rdev, stat.st_mode).value_or(nullptr);
@@ -736,7 +739,8 @@ namespace vfs
         if (target.dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
 
-        auto mnt = fs->mount(source ? source->dentry : std::shared_ptr<vfs::dentry_t> { }, data);
+        auto src = source ? source->dentry : std::shared_ptr<vfs::dentry_t> { };
+        auto mnt = fs->mount(std::move(src), flags, data);
         if (!mnt)
             return std::unexpected { mnt.error() };
 

@@ -84,7 +84,7 @@ export
 
     struct kstat : stat
     {
-        timespec st_btim;
+        timespec st_btim { };
 
         enum time : std::uint8_t
         {
@@ -95,6 +95,22 @@ export
         };
         void update_time(std::uint8_t flags);
     };
+
+    constexpr std::uint32_t major(dev_t dev)
+    {
+        return ((dev & 0x00000000000FFF00ull) >> 8) | ((dev & 0xFFFFF00000000000ull) >> 32);
+    }
+
+    constexpr std::uint32_t minor(dev_t dev)
+    {
+        return (dev & 0x00000000000000FFull) | ((dev & 0x00000FFFFFF00000ull) >> 12);
+    }
+
+    constexpr dev_t makedev(std::uint32_t maj, std::uint32_t min)
+    {
+        return (maj & 0x00000FFFull) << 8 | (maj & 0xFFFFF000ull) << 32 |
+               (min & 0x000000FFull) | (min & 0xFFFFFF00ull) << 12;
+    }
 
     struct statx_timestamp
     {

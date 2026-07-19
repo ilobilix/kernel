@@ -88,12 +88,25 @@ export namespace lib
         }
 
         template<typename Self>
-        std::optional<maybe_uspan<Type>> maybe_uspan(this Self &&self)
+        std::optional<maybe_uspan<Type>> uspan(this Self &&self)
         {
             return lib::maybe_uspan<Type>::create(
                 std::forward<Self>(self)._ptr,
                 std::forward<Self>(self)._count
             );
+        }
+
+        template<typename Self>
+        auto byte_span(this Self &&self)
+        {
+            return std::as_writable_bytes(std::forward<Self>(self).span());
+        }
+
+        template<typename Self>
+        std::optional<lib::maybe_uspan<std::byte>> byte_uspan(this Self &&self)
+        {
+            auto bytes = std::forward<Self>(self).byte_span();
+            return lib::maybe_uspan<std::byte>::create(bytes.data(), bytes.size());
         }
 
         template<typename Self>
@@ -106,25 +119,17 @@ export namespace lib
         auto phys_data(this Self &&self) { return fromhh(std::forward<Self>(self)._ptr); }
 
         template<typename Self>
-        auto at(this Self &&self, std::size_t index)
+        auto &at(this Self &&self, std::size_t index)
         {
             lib::bug_on(self._ptr == nullptr || index >= self._count);
             return std::forward<Self>(self)._ptr[index];
         }
 
         template<typename Self>
-        auto begin(this Self &&self)
-        {
-            lib::bug_on(self._ptr == nullptr || self.count == 0);
-            return std::forward<Self>(self)._ptr;
-        }
+        auto begin(this Self &&self) { return std::forward<Self>(self)._ptr; }
 
         template<typename Self>
-        auto end(this Self &&self)
-        {
-            lib::bug_on(self._ptr == nullptr || self.count == 0);
-            return std::forward<Self>(self)._ptr + (self.count - 1);
-        }
+        auto end(this Self &&self) { return std::forward<Self>(self)._ptr + self._count; }
 
         std::size_t size() const { return _count; }
         std::size_t size_bytes() const { return _count * sizeof(Type); }

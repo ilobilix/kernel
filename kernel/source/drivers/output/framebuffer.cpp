@@ -9,7 +9,6 @@ module drivers.output.framebuffer;
 import drivers.fs.devtmpfs;
 import drivers.fs.sysfs;
 import system.memory.virt;
-import system.vfs.dev;
 import system.vfs;
 import system.dev;
 import system.pci;
@@ -303,7 +302,6 @@ namespace output::frm
                     },
                     attribute_t {
                         [](dev::device_t &device, fb_dev &) -> lib::expect<std::string> {
-                            using namespace vfs::dev;
                             return fmt::format("{}:{}\n", major(device.devt), minor(device.devt));
                         }, "dev", 0444
                     },
@@ -472,7 +470,7 @@ namespace output::frm
                         "fb" + std::to_string(i), ktype, root
                     );
                     device->cls = &cls;
-                    device->devt = vfs::dev::makedev(29, i);
+                    device->devt = makedev(29, i);
                     device->fops = std::move(ops);
 
                     if (const auto ret = dev::register_device(std::move(device)); !ret)

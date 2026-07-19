@@ -319,7 +319,7 @@ namespace fs::dev::pty
             slave_ld->open();
 
         const auto attach = devpts::attach_slave(
-            pty_minor, slave_mode, vfs::dev::makedev(slave_major, pty_minor)
+            pty_minor, slave_mode, makedev(slave_major, pty_minor)
         );
         if (!attach.has_value())
         {
@@ -494,11 +494,11 @@ namespace fs::dev::pty
 
             for (std::uint32_t idx = 0; idx < master_count; idx++)
             {
-                tty::register_chrdev(vfs::dev::makedev(master_major, idx));
-                tty::register_chrdev(vfs::dev::makedev(slave_major, idx));
+                tty::register_chrdev(makedev(master_major, idx));
+                tty::register_chrdev(makedev(slave_major, idx));
             }
 
-            constexpr auto ptmx_rdev = vfs::dev::makedev(5, 2);
+            constexpr auto ptmx_rdev = makedev(5, 2);
             vfs::dev::register_ops(ptmx_rdev, ptmx_ops::singleton());
             if (const auto ret = devtmpfs::create("ptmx", stat::s_ifchr | 0666, ptmx_rdev); !ret)
             {

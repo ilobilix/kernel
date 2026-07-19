@@ -336,7 +336,7 @@ namespace dev::block
             -> lib::expect<lib::membuffer>
         {
             lib::membuffer lba0 { count * 512 };
-            auto uspan = lba0.maybe_uspan();
+            auto uspan = lba0.uspan();
             lib::bug_on(!uspan);
 
             if (const auto ret = drive->rw(false, true, idx * 512, std::views::single(*uspan)); !ret)
@@ -473,7 +473,7 @@ namespace dev::block
                     part->is_system() ? ", system" : part->is_boot() ? ", boot" : ""
                 );
 
-                add_part(part->lbastart, part->lbaend - part->lbastart);
+                add_part(part->lbastart, part->lbaend - part->lbastart + 1);
             }
         }
         else
@@ -489,7 +489,7 @@ namespace dev::block
 
                 lib::info(
                     "block: partition {}: lba {}-{}{}",
-                    i++, part.lbastart, part.lbastart + part.lbacount,
+                    i++, part.lbastart, part.lbastart + part.lbacount - 1,
                     part.is_bootable() ? ", boot" : ""
                 );
 

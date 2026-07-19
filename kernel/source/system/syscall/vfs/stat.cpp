@@ -2,8 +2,6 @@
 
 module system.syscall.vfs;
 
-import system.vfs.dev;
-
 namespace syscall::vfs
 {
     using namespace ::vfs;
@@ -121,10 +119,10 @@ namespace syscall::vfs
         ret.stx_btime = to_statx_timestamp(val.st_btim);
         ret.stx_ctime = to_statx_timestamp(val.st_ctim);
         ret.stx_mtime = to_statx_timestamp(val.st_mtim);
-        ret.stx_rdev_major = dev::major(val.st_rdev);
-        ret.stx_rdev_minor = dev::minor(val.st_rdev);
-        ret.stx_dev_major = dev::major(val.st_dev);
-        ret.stx_dev_minor = dev::minor(val.st_dev);
+        ret.stx_rdev_major = major(val.st_rdev);
+        ret.stx_rdev_minor = minor(val.st_rdev);
+        ret.stx_dev_major = major(val.st_dev);
+        ret.stx_dev_minor = minor(val.st_dev);
 
         if (target->mnt != nullptr)
         {

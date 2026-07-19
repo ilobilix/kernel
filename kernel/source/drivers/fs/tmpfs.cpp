@@ -74,7 +74,7 @@ namespace fs::tmpfs
         }
     }
 
-    lib::expect<std::size_t> ops::read(
+    lib::expect<std::size_t> ops_t::read(
         std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
@@ -95,7 +95,7 @@ namespace fs::tmpfs
         return inod->memory->read(offset, buffer.subspan(0, real_size));
     }
 
-    lib::expect<std::size_t> ops::write(
+    lib::expect<std::size_t> ops_t::write(
         std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
@@ -133,7 +133,7 @@ namespace fs::tmpfs
         return ret;
     }
 
-    lib::expect<void> ops::trunc(std::shared_ptr<vfs::file_t> file, std::size_t size)
+    lib::expect<void> ops_t::trunc(std::shared_ptr<vfs::file_t> file, std::size_t size)
     {
         auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -173,7 +173,7 @@ namespace fs::tmpfs
         return { };
     }
 
-    lib::expect<vmm::object::ptr> ops::map(std::shared_ptr<vfs::file_t> file)
+    lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
     {
         auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         return inod->memory;
@@ -190,7 +190,7 @@ namespace fs::tmpfs
 
         return std::make_shared<inode_t>(
             this, dev_id, rdev, next_inode++,
-            mode, ops ? *ops : ops::singleton()
+            mode, ops ? *ops : ops_t::singleton()
         );
     }
 
@@ -341,11 +341,11 @@ namespace fs::tmpfs
     }
 
     auto fs_t::mount(
-        std::shared_ptr<vfs::dentry_t> src,
+        std::shared_ptr<vfs::dentry_t> src, std::uint64_t flags,
         std::optional<lib::maybe_uspan<const std::byte>> data
     ) const -> lib::expect<std::shared_ptr<struct vfs::mount_t>>
     {
-        lib::unused(src);
+        lib::unused(src, flags);
 
         const auto mem = pmm::info().usable;
         lib::kvargs args {
@@ -415,7 +415,7 @@ namespace fs::tmpfs
         root->inode = std::make_shared<inode_t>(
             locked.get(), locked->dev_id, 0, locked->next_inode++,
             static_cast<mode_t>(stat::type::s_ifdir) | locked->opt_mode,
-            ops::singleton()
+            ops_t::singleton()
         );
         root->inode->stat.st_uid = locked->opt_uid;
         root->inode->stat.st_gid = locked->opt_gid;

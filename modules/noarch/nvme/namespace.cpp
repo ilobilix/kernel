@@ -3,7 +3,6 @@
 module nvme;
 
 import system.cpu.local;
-import system.vfs.dev;
 
 namespace nvme
 {
@@ -15,7 +14,7 @@ namespace nvme
 
     dev_t namespace_t::alloc_id()
     {
-        return vfs::dev::makedev(vfs::dev::major(dev->devt), dev::block::alloc_minor());
+        return makedev(major(dev->devt), dev::block::alloc_minor());
     }
 
     void namespace_t::rw(

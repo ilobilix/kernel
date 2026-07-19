@@ -389,7 +389,7 @@ export namespace vfs
         };
 
         virtual auto mount(
-            std::shared_ptr<dentry_t> src,
+            std::shared_ptr<dentry_t> src, std::uint64_t flags,
             std::optional<lib::maybe_uspan<const std::byte>> data
         ) const -> lib::expect<std::shared_ptr<mount_t>> = 0;
 
@@ -412,7 +412,7 @@ export namespace vfs
         std::string fstype;
         std::string source;
 
-        mount_t(lib::locked_ptr<filesystem_t::instance_t, sched::mutex> fs, std::shared_ptr<dentry_t> root)
+        mount_t(decltype(fs) fs, std::shared_ptr<dentry_t> root)
             : fs { std::move(fs) }, root { std::move(root) } { }
     };
 

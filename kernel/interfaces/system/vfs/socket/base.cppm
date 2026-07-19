@@ -376,6 +376,8 @@ export namespace vfs::socket
         }
     };
 
+    std::shared_ptr<vfs::ops_t> sock_ops();
+
     lib::expect<void> register_family(family_t *fam);
 
     auto create(addr_fam af, sock_type type, int protocol)

@@ -508,7 +508,7 @@ namespace syscall::vfs
         }
 
         lib::membuffer buffer { std::min(len, chunk_max) };
-        const auto buffer_uspan = buffer.maybe_uspan();
+        const auto buffer_uspan = buffer.uspan();
         if (!buffer_uspan.has_value())
             return -ENOMEM;
 
