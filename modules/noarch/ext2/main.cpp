@@ -648,7 +648,7 @@ namespace ext2
 
             std::shared_ptr<vfs::dentry_t> root;
 
-            auto instance = lib::make_locked<ext2::instance_t, sched::mutex>(
+            auto instance = lib::make_locked<ext2::instance_t, sched::mutex_t>(
                 std::move(file), std::move(sbuf), std::move(*gdres),
                 block_size, inode_size, flags
             );

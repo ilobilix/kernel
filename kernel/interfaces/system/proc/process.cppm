@@ -45,7 +45,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::shared_ptr<process_t>
-            >, mutex
+            >, mutex_t
         > children;
 
         std::shared_ptr<group_t> group;
@@ -88,7 +88,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::shared_ptr<thread_t>
-            >, mutex
+            >, mutex_t
         > threads;
 
         std::atomic<std::size_t> alive_threads = 0;
@@ -99,6 +99,7 @@ export namespace sched
         std::atomic<std::uint64_t> children_stime_ns = 0;
 
         std::atomic<dumpable_t> dumpable = dumpable_t::user;
+        std::atomic<int> pdeathsig = 0;
 
         int exit_code = 0;
         int term_signal = 0;
@@ -130,7 +131,7 @@ export namespace sched
         lib::intrusive_list_hook<process_t> timer_sig_hook;
         std::shared_ptr<process_t> timer_sig_self;
 
-        recursive_mutex lock;
+        recursive_mutex_t lock;
     };
 
     struct group_t
@@ -142,7 +143,7 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<process_t>
-            >, mutex
+            >, mutex_t
         > members;
 
         int signal_all(int sig);
@@ -156,13 +157,13 @@ export namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<group_t>
-            >, mutex
+            >, mutex_t
         > members;
 
         lib::locker<
             std::shared_ptr<
                 ctty_base
-            >, mutex
+            >, mutex_t
         > ctty;
     };
 } // export namespace sched

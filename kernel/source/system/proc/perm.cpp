@@ -568,6 +568,11 @@ namespace sched
         new_cred->effective = caps.effective ? new_cred->permitted : new_cred->ambient;
         new_cred->securebits &= ~secbit_t::keep_caps;
 
+        if (old_cred->euid != new_cred->euid || old_cred->egid != new_cred->egid ||
+            old_cred->fsuid != new_cred->fsuid || old_cred->fsgid != new_cred->fsgid ||
+            !has_cap(old_cred->permitted, new_cred->permitted))
+            process->pdeathsig.store(0, std::memory_order_relaxed);
+
         set_creds(process, std::move(new_cred));
     }
 } // namespace sched

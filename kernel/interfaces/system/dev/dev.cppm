@@ -112,12 +112,12 @@ export namespace dev
             return id == rhs.id;
         }
 
-        virtual std::span<attribute_t> attributes() const
+        virtual std::span<attribute_t *const> attributes() const
         {
             return { };
         }
 
-        virtual std::span<bin_attribute_t> bin_attributes() const
+        virtual std::span<bin_attribute_t *const> bin_attributes() const
         {
             return { };
         }
@@ -313,6 +313,7 @@ export namespace dev
         virtual ~class_t() = default;
     };
 
+    class reflector_t;
     class device_t : public kobject_t
     {
         private:
@@ -329,6 +330,10 @@ export namespace dev
         bus_t *bus = nullptr;
         driver_t *drv = nullptr;
         class_t *cls = nullptr;
+
+        std::function<void (reflector_t &, device_t &)> add_ref_fn;
+        std::function<void (reflector_t &, device_t &)> rem_ref_fn;
+        std::shared_ptr<void> private_data;
 
         dev_t devt = 0;
         std::shared_ptr<vfs::ops_t> fops;
@@ -360,6 +365,38 @@ export namespace dev
         std::string uevent_text() override;
     };
 
+    struct make_attribute_t : attribute_t
+    {
+        using rfn_t = std::function<lib::expect<std::string> (device_t &)>;
+        using wfn_t = std::function<lib::expect<void> (device_t &, std::string_view)>;
+
+        rfn_t rfn;
+        wfn_t wfn;
+
+        make_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
+            : attribute_t { name, mode }, rfn { rfn }, wfn { wfn } { }
+
+        lib::expect<std::string> show(kobject_t &kobj) override
+        {
+            auto device = static_cast<device_t *>(kobj.as_device());
+            if (!device)
+                return std::unexpected { lib::err::io_error };
+            if (!rfn)
+                return attribute_t::show(kobj);
+            return rfn(*device);
+        }
+
+        lib::expect<void> store(kobject_t &kobj, std::string_view value) override
+        {
+            auto device = static_cast<device_t *>(kobj.as_device());
+            if (!device)
+                return std::unexpected { lib::err::io_error };
+            if (!wfn)
+                return attribute_t::store(kobj, value);
+            return wfn(*device, value);
+        }
+    };
+
     class reflector_t
     {
         public:
@@ -376,6 +413,9 @@ export namespace dev
 
     void attach_reflector(reflector_t *ref);
     void detach_reflector();
+
+    using uevent_broadcaster_t = void (*)(const uevent_t &);
+    void set_uevent_broadcaster(uevent_broadcaster_t fn);
 
     lib::expect<void> register_kobject(std::shared_ptr<kobject_t> kobj);
     bool unregister_kobject(std::shared_ptr<kobject_t> kobj);
@@ -399,8 +439,9 @@ export namespace dev
 
     lib::expect<void> uevent_store(kobject_t &kobj, std::string_view data);
 
-    attribute_t &bind_attribute();
-    attribute_t &unbind_attribute();
+    attribute_t *bind_attribute();
+    attribute_t *unbind_attribute();
+    attribute_t *dev_attribute();
 
     lib::initgraph::stage *core_registered_stage();
     lib::initgraph::stage *available_stage();
@@ -412,6 +453,7 @@ export namespace dev
     std::shared_ptr<kobject_t> devices_root();
     std::shared_ptr<kobject_t> bus_root();
     std::shared_ptr<kobject_t> class_root();
+    std::shared_ptr<kobject_t> block_root();
     std::shared_ptr<kobject_t> dev_char_root();
     std::shared_ptr<kobject_t> dev_block_root();
     std::shared_ptr<kobject_t> virtual_root();

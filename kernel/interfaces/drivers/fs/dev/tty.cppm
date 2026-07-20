@@ -422,7 +422,7 @@ export namespace fs::dev::tty
         lib::rbspscd<std::byte, buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
 
-        lib::locker<in_buffer_t, sched::mutex> in_buffer;
+        lib::locker<in_buffer_t, sched::mutex_t> in_buffer;
         sched::wait_queue_t in_wq;
 
         lib::rbmpscd<char, buffer_size> out_buffer;
@@ -470,18 +470,18 @@ export namespace fs::dev::tty
         std::atomic_bool hung_up;
         std::atomic<int> kbmode;
 
-        lib::locker<std::shared_ptr<line_discipline>, sched::mutex> ldisc;
+        lib::locker<std::shared_ptr<line_discipline>, sched::mutex_t> ldisc;
 
-        lib::locker<ktermios, sched::mutex> termios;
-        lib::locker<ktermios, sched::mutex> termios_locked;
-        lib::locker<winsize, sched::mutex> winsize;
+        lib::locker<ktermios, sched::mutex_t> termios;
+        lib::locker<ktermios, sched::mutex_t> termios_locked;
+        lib::locker<winsize, sched::mutex_t> winsize;
 
         struct ctrl_t
         {
             std::weak_ptr<sched::group_t> group;
             std::weak_ptr<sched::session_t> session;
         };
-        lib::locker<ctrl_t, sched::mutex> ctrl;
+        lib::locker<ctrl_t, sched::mutex_t> ctrl;
 
         lib::rbspscd<std::byte, raw_buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
@@ -599,7 +599,7 @@ export namespace fs::dev::tty
             lib::map::flat_hash<
                 std::uint32_t,
                 std::shared_ptr<instance>
-            >, sched::mutex
+            >, sched::mutex_t
         > instances;
 
         lib::intrusive_list_hook<driver> hook;

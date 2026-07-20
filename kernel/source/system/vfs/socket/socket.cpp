@@ -97,6 +97,33 @@ namespace vfs::socket
         };
     } // namespace
 
+    lib::expect<bool> msg_header_t::write_cmsg(int type, std::span<const std::byte> data)
+    {
+        const auto total = sizeof(cmsghdr) + data.size();
+        const auto stride = (total + cmsg_align - 1) & ~(cmsg_align - 1);
+
+        if (msgctrl_len_out + total > msgctrl.size())
+        {
+            out_flags |= msg_ctrunc;
+            return false;
+        }
+
+        const cmsghdr hd {
+            .cmsg_len = total,
+            .cmsg_level = sol_socket,
+            .cmsg_type = type
+        };
+        if (!msgctrl.subspan(msgctrl_len_out, sizeof(cmsghdr))
+            .copy_from(std::as_bytes(std::span { &hd, 1 })))
+            return std::unexpected { lib::err::invalid_address };
+        if (!msgctrl.subspan(msgctrl_len_out + sizeof(cmsghdr), data.size())
+            .copy_from(data))
+            return std::unexpected { lib::err::invalid_address };
+
+        msgctrl_len_out = std::min(msgctrl_len_out + stride, msgctrl.size());
+        return true;
+    }
+
     std::shared_ptr<vfs::ops_t> sock_ops()
     {
         return ops_t::singleton();

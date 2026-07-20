@@ -13,12 +13,11 @@ namespace lib
             return std::nullopt;
 
         const auto length = strnlen_user(ustr, max_length);
-        if (length <= 0 || static_cast<std::size_t>(length) == max_length)
+        if (length < 0 || static_cast<std::size_t>(length) == max_length)
             return std::nullopt;
 
-        std::string ret = "";
-        ret.resize(length);
-        if (!copy_from_user(ret.data(), ustr, length))
+        std::string ret(static_cast<std::size_t>(length), '\0');
+        if (length != 0 && !copy_from_user(ret.data(), ustr, length))
             return std::nullopt;
         return ret;
     }

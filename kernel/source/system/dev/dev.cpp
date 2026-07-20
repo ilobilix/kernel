@@ -65,6 +65,18 @@ namespace dev
         > devices;
 
         std::atomic<reflector_t *> current_ref { nullptr };
+        std::atomic<uevent_broadcaster_t> uevent_broadcaster { nullptr };
+        std::atomic_uint64_t uevent_seqnum { 1 };
+
+        void broadcast_uevent(uevent_t &uev)
+        {
+            uev.add("SEQNUM", std::to_string(
+                uevent_seqnum.fetch_add(1, std::memory_order_relaxed)
+            ));
+
+            if (const auto fn = uevent_broadcaster.load(std::memory_order_acquire))
+                fn(uev);
+        }
 
         void reflect_device_links(const std::shared_ptr<device_t> &dev)
         {
@@ -114,6 +126,9 @@ namespace dev
                 const auto min = minor(dev->devt);
                 ref->add_link(node, fmt::format("{}:{}", maj, min), devpath);
             }
+
+            if (dev->add_ref_fn)
+                dev->add_ref_fn(*ref, *dev);
         }
 
         void unreflect_device_links(const std::shared_ptr<device_t> &dev)
@@ -154,6 +169,9 @@ namespace dev
                 ref->remove_link(bus_devices_kobj, dev->name);
 
             ref->remove_link(dev, "subsystem");
+
+            if (dev->rem_ref_fn)
+                dev->rem_ref_fn(*ref, *dev);
         }
 
         std::shared_ptr<kobject_t> driver_kobj_of(driver_t &drv)
@@ -221,9 +239,8 @@ namespace dev
             }
 
             lib::info("dev: bound '{}' to driver '{}'", dev->name, drv.name);
-            lib::unused(dev->emit(action::bind));
             reflect_driver_links(dev, drv);
-            return { };
+            return dev->emit(action::bind);
         }
 
         void probe_device(const std::shared_ptr<device_t> &dev)
@@ -314,9 +331,9 @@ namespace dev
 
         struct driver_ktype_t : ktype_t
         {
-            std::span<attribute_t> attributes() const override
+            std::span<attribute_t *const> attributes() const override
             {
-                static attribute_t attrs[] {
+                static attribute_t *attrs[] {
                     bind_attribute(),
                     unbind_attribute()
                 };
@@ -331,11 +348,11 @@ namespace dev
 
         struct bus_ktype_t : ktype_t
         {
-            std::span<attribute_t> attributes() const override
+            std::span<attribute_t *const> attributes() const override
             {
-                struct autoprobe_attribute_t : attribute_t
+                struct autoprobe_attr_t : attribute_t
                 {
-                    autoprobe_attribute_t() : attribute_t { "drivers_autoprobe", 0644 } { }
+                    autoprobe_attr_t() : attribute_t { "drivers_autoprobe", 0644 } { }
 
                     lib::expect<std::string> show(kobject_t &kobj) override
                     {
@@ -355,9 +372,9 @@ namespace dev
                     }
                 };
 
-                struct probe_attribute_t : attribute_t
+                struct probe_attr_t : attribute_t
                 {
-                    probe_attribute_t() : attribute_t { "drivers_probe", 0200 } { }
+                    probe_attr_t() : attribute_t { "drivers_probe", 0200 } { }
 
                     lib::expect<void> store(kobject_t &kobj, std::string_view data) override
                     {
@@ -365,11 +382,20 @@ namespace dev
                     }
                 };
 
-                static attribute_t attrs[] {
-                    autoprobe_attribute_t { },
-                    probe_attribute_t { }
+                static autoprobe_attr_t autoprobe { };
+                static probe_attr_t probe { };
+
+                static attribute_t *attrs[] {
+                    &autoprobe,
+                    &probe
                 };
                 return attrs;
+            }
+
+            void fill_uevent(kobject_t &kobj, uevent_t &uev) override
+            {
+                auto &bus = bus_of(kobj);
+                uev.add("SUBSYSTEM", bus.name);
             }
         };
     } // namespace
@@ -415,8 +441,7 @@ namespace dev
 
         collect_env(*this, uev);
 
-        // TODO: NETLINK_KOBJECT_UEVENT
-        // lib::debug("dev: uevent {}", uev.envp);
+        broadcast_uevent(uev);
         return { };
     }
 
@@ -432,7 +457,7 @@ namespace dev
         uev.add("DEVPATH", uev.devpath);
         type.fill_uevent(*this, uev);
 
-        // TODO: NETLINK_KOBJECT_UEVENT
+        broadcast_uevent(uev);
         return { };
     }
 
@@ -480,6 +505,11 @@ namespace dev
     void detach_reflector()
     {
         current_ref.store(nullptr, std::memory_order_release);
+    }
+
+    void set_uevent_broadcaster(uevent_broadcaster_t fn)
+    {
+        uevent_broadcaster.store(fn, std::memory_order_release);
     }
 
     lib::expect<void> register_kobject(std::shared_ptr<kobject_t> kobj)
@@ -731,7 +761,6 @@ namespace dev
             dev->name, dev->bus ? fmt::format(" on bus '{}'", dev->bus->name) : ""
         );
 
-        lib::unused(dev->emit(action::add));
         reflect_device_links(dev);
 
         if (dev->bus == nullptr || dev->bus->drivers_autoprobe)
@@ -767,10 +796,18 @@ namespace dev
             }
 
             if (const auto ret = fs::devtmpfs::create(name, mode, dev->devt); !ret)
+            {
                 lib::error("dev: failed to create device node for '{}'", dev->name);
+                {
+                    unreflect_device_links(dev);
+                    vfs::dev::unregister_ops(dev->devt);
+                    unregister_kobject(dev);
+                    return std::unexpected { ret.error() };
+                }
+            }
         }
 
-        return { };
+        return dev->emit(action::add);
     }
 
     bool unregister_device(std::shared_ptr<device_t> dev)
@@ -886,7 +923,7 @@ namespace dev
         return std::unexpected { lib::err::no_such_device };
     }
 
-    attribute_t &bind_attribute()
+    attribute_t *bind_attribute()
     {
         struct bind_attribute_t : attribute_t
         {
@@ -899,10 +936,10 @@ namespace dev
         };
 
         static bind_attribute_t attr { };
-        return attr;
+        return &attr;
     }
 
-    attribute_t &unbind_attribute()
+    attribute_t *unbind_attribute()
     {
         struct unbind_attribute_t : attribute_t
         {
@@ -915,7 +952,26 @@ namespace dev
         };
 
         static unbind_attribute_t attr { };
-        return attr;
+        return &attr;
+    }
+
+    attribute_t *dev_attribute()
+    {
+        struct dev_attribute_t : attribute_t
+        {
+            dev_attribute_t() : attribute_t { "dev", 0444 } { }
+
+            lib::expect<std::string> show(kobject_t &kobj) override
+            {
+                auto device = kobj.as_device();
+                if (!device)
+                    return std::unexpected { lib::err::io_error };
+                return fmt::format("{}:{}\n", major(device->devt), minor(device->devt));
+            }
+        };
+
+        static dev_attribute_t attr { };
+        return &attr;
     }
 
     lib::initgraph::stage *core_registered_stage()
@@ -962,6 +1018,7 @@ namespace dev
         std::shared_ptr<kobject_t> bus_kobj;
         std::shared_ptr<kobject_t> class_kobj;
         std::shared_ptr<kobject_t> dev_kobj;
+        std::shared_ptr<kobject_t> block_kobj;
         std::shared_ptr<kobject_t> dev_char_kobj;
         std::shared_ptr<kobject_t> dev_block_kobj;
         std::shared_ptr<kobject_t> virtual_kobj;
@@ -984,6 +1041,7 @@ namespace dev
                 install_root(bus_kobj, "bus");
                 install_root(class_kobj, "class");
                 install_root(dev_kobj, "dev");
+                install_root(block_kobj, "block");
                 install_root(dev_char_kobj, "char", dev_kobj);
                 install_root(dev_block_kobj, "block", dev_kobj);
                 install_root(virtual_kobj, "virtual", devices_kobj);
@@ -1020,6 +1078,12 @@ namespace dev
     {
         lib::bug_on(!class_kobj);
         return class_kobj;
+    }
+
+    std::shared_ptr<kobject_t> block_root()
+    {
+        lib::bug_on(!block_kobj);
+        return block_kobj;
     }
 
     std::shared_ptr<kobject_t> dev_char_root()

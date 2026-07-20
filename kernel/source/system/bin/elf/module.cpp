@@ -10,6 +10,7 @@ module;
 module system.bin.elf;
 
 import drivers.initramfs;
+import drivers.fs.procfs;
 import system.memory;
 import system.vfs;
 import system.pci;
@@ -716,6 +717,43 @@ namespace bin::elf::mod
 
             for (const auto &entry : entries)
                 activate(*entry);
+        }
+    };
+
+    lib::initgraph::task procfs_modules_task
+    {
+        "bin.elf.procfs.register-modules",
+        lib::initgraph::postsched_init_engine,
+        lib::initgraph::require { fs::procfs::registered_stage() },
+        [] {
+            using namespace fs::procfs;
+            lib::bug_on(!register_global("modules",
+                make_file_ops([](auto) {
+                    // name size refcount deps state address.
+                    // TODO: deps
+                    std::string out;
+
+                    const auto rlocked = modules.read_lock();
+                    auto it = std::back_inserter(out);
+                    for (const auto &[name, entry] : *rlocked)
+                    {
+                        if (entry->internal || !entry->header)
+                            continue;
+
+                        const auto size = entry->image
+                            ? entry->image->pages.size() * pmm::page_size : 0uz;
+                        const std::uintptr_t addr = (entry->image && !entry->image->pages.empty())
+                            ? entry->image->pages.front().first : 0;
+                        const std::string_view state = entry->status == status::active
+                            ? "Live" : "Loading";
+
+                        fmt::format_to(it, "{} {} {} - {} 0x{:016x}\n",
+                            entry->header->name(), size, entry->dependents, state, addr
+                        );
+                    }
+                    return out;
+                }), node_type::file, 0444
+            ));
         }
     };
 } // namespace bin::elf::mod

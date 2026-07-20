@@ -8,6 +8,7 @@ list(REMOVE_DUPLICATES _module_arches)
 set(_module_output_dir ${CMAKE_BINARY_DIR}/modules/modules)
 set(_module_targets)
 set(_module_objects)
+set(_module_ko_files)
 
 set(_internal_module_targets)
 set(_internal_module_objects)
@@ -41,7 +42,8 @@ foreach(_arch IN LISTS _module_arches)
         set(_module_compile_sources ${_sources})
         list(FILTER _module_compile_sources EXCLUDE REGEX "\\.cppm$")
 
-        if(NOT EXISTS ${_mod_dir}/EXTERNAL)
+        file(GLOB _external_marker CONFIGURE_DEPENDS ${_mod_dir}/EXTERNAL)
+        if(NOT _external_marker)
             set_source_files_properties(${_sources}
                 PROPERTIES
                     COMPILE_DEFINITIONS "__ILOBILIX_MODULE__=${_mod}"
@@ -114,7 +116,16 @@ foreach(_arch IN LISTS _module_arches)
 
         list(APPEND _module_targets ${_target})
         list(APPEND _module_objects "$<TARGET_FILE:${_target}>")
+        list(APPEND _module_ko_files ${_arch_out}/${_mod}.ko)
     endforeach()
+endforeach()
+
+file(GLOB_RECURSE _existing_ko_files ${_module_output_dir}/*.ko)
+foreach(_ko ${_existing_ko_files})
+    list(FIND _module_ko_files ${_ko} _ko_idx)
+    if(_ko_idx EQUAL -1)
+        file(REMOVE ${_ko})
+    endif()
 endforeach()
 
 set(INTERNAL_MODULE_TARGETS ${_internal_module_targets} PARENT_SCOPE)

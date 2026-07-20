@@ -56,8 +56,9 @@ namespace nvme
 
                 for (const auto &[nsid, ns] : ctrl->namespaces() | std::views::enumerate)
                 {
+                    // TODO: nvme specific disk attributes
                     auto dev = dev::device_t::create(
-                        "nvme0n" + std::to_string(nsid + 1), get_ns_ktype(), nvctrl
+                        "nvme0n" + std::to_string(nsid + 1), dev::block::get_ktype(), nvctrl
                     );
                     dev->cls = &dev::block::get_class();
                     dev->devt = makedev(259, dev::block::alloc_minor());

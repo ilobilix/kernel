@@ -322,12 +322,12 @@ extern "C"
 
     uacpi_handle uacpi_kernel_create_mutex()
     {\
-        return reinterpret_cast<uacpi_handle>(new sched::mutex);
+        return reinterpret_cast<uacpi_handle>(new sched::mutex_t);
     }
 
     void uacpi_kernel_free_mutex(uacpi_handle handle)
     {
-        delete reinterpret_cast<sched::mutex *>(handle);
+        delete reinterpret_cast<sched::mutex_t *>(handle);
     }
 
     struct simple_event
@@ -381,7 +381,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout)
     {
-        auto mutex = reinterpret_cast<sched::mutex *>(handle);
+        auto mutex = reinterpret_cast<sched::mutex_t *>(handle);
         bool locked = false;
 
         if (timeout == 0xFFFF)
@@ -399,7 +399,7 @@ extern "C"
 
     void uacpi_kernel_release_mutex(uacpi_handle handle)
     {
-        auto mutex = reinterpret_cast<sched::mutex *>(handle);
+        auto mutex = reinterpret_cast<sched::mutex_t *>(handle);
         mutex->unlock();
     }
 

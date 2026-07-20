@@ -380,7 +380,7 @@ namespace fs::tmpfs
             }
         }
 
-        auto instance = lib::make_locked<fs_t::instance, sched::mutex>();
+        auto instance = lib::make_locked<fs_t::instance, sched::mutex_t>();
         auto locked = instance.lock();
         locked->fs = const_cast<fs_t *>(this);
         {

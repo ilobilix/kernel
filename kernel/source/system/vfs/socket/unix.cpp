@@ -19,7 +19,6 @@ namespace vfs::socket
         constexpr std::size_t dgram_cap = lib::kib(208);
         constexpr std::size_t msg_cap = lib::kib(64);
 
-        constexpr std::size_t cmsg_align = sizeof(std::size_t);
         constexpr std::size_t scm_max_fd = 253;
 
         std::size_t round_capacity(std::size_t size)
@@ -62,8 +61,14 @@ namespace vfs::socket
             lib::map::flat_hash<
                 std::string,
                 std::weak_ptr<unix_sock>
-            >, sched::mutex
+            >, sched::mutex_t
         > abstract;
+
+        struct sockaddr_un
+        {
+            addr_fam sun_family;
+            char sun_path[108];
+        };
 
         enum state { unconnected, connecting, connected, listening, disconnecting };
         struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
@@ -125,11 +130,7 @@ namespace vfs::socket
 
                 state_t(enum state state) : state { state } { }
             };
-
-            lib::locker<
-                state_t,
-                sched::mutex
-            > state;
+            lib::locker<state_t, sched::mutex_t> state;
 
             struct receive_t
             {
@@ -156,11 +157,7 @@ namespace vfs::socket
                 };
                 lib::list<dgram> dgram_queue;
             };
-
-            lib::locker<
-                receive_t,
-                sched::mutex
-            > receive;
+            lib::locker<receive_t, sched::mutex_t> receive;
 
             auto parse_ancdata(msg_header_t &hdr) -> lib::expect<ancdata_t>
             {
@@ -238,34 +235,6 @@ namespace vfs::socket
                 const bool cloexec = (flags & msg_cmsg_cloexec) != 0;
                 const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
 
-                const auto write_cmsg = [&](int type, std::span<const std::byte> data)
-                    -> lib::expect<bool>
-                {
-                    const auto total = sizeof(cmsghdr) + data.size();
-                    const auto stride = (total + cmsg_align - 1) & ~(cmsg_align - 1);
-
-                    if (hdr.msgctrl_len_out + total > hdr.msgctrl.size())
-                    {
-                        hdr.out_flags |= msg_ctrunc;
-                        return false;
-                    }
-
-                    const cmsghdr hd {
-                        .cmsg_len = total,
-                        .cmsg_level = sol_socket,
-                        .cmsg_type = type
-                    };
-                    if (!hdr.msgctrl.subspan(hdr.msgctrl_len_out, sizeof(cmsghdr))
-                        .copy_from(std::as_bytes(std::span { &hd, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    if (!hdr.msgctrl.subspan(hdr.msgctrl_len_out + sizeof(cmsghdr), data.size())
-                        .copy_from(data))
-                        return std::unexpected { lib::err::invalid_address };
-
-                    hdr.msgctrl_len_out += stride;
-                    return true;
-                };
-
                 if (!anc.passed_fds.empty())
                 {
                     std::vector<int> new_fds;
@@ -285,7 +254,7 @@ namespace vfs::socket
                         new_fds.push_back(*res);
                     }
 
-                    const auto res = write_cmsg(scm_rights, std::as_bytes(std::span { new_fds }));
+                    const auto res = hdr.write_cmsg(scm_rights, std::as_bytes(std::span { new_fds }));
                     if (!res.has_value())
                     {
                         for (const auto fd : new_fds)
@@ -302,7 +271,7 @@ namespace vfs::socket
                 if (anc.creds.has_value())
                 {
                     std::span span { std::addressof(*anc.creds), 1 };
-                    if (const auto ret = write_cmsg(scm_credentials, std::as_bytes(span)); !ret)
+                    if (const auto ret = hdr.write_cmsg(scm_credentials, std::as_bytes(span)); !ret)
                         return std::unexpected { ret.error() };
                 }
                 return { };
@@ -341,9 +310,9 @@ namespace vfs::socket
             }
 
             unix_sock(
-                int protocol, sock_type type, enum state state = unconnected,
+                int protocol, sock_type type, enum state state_ = unconnected,
                 std::size_t cap = default_capacity
-            ) : socket_t { protocol, af_unix, type }, state { state }
+            ) : socket_t { protocol, af_unix, type }, state { state_ }
             {
                 if (type == sock_stream)
                 {
@@ -351,6 +320,16 @@ namespace vfs::socket
                     locked->capacity = cap;
                     locked->storage.allocate(locked->capacity);
                 }
+
+                {
+                    const auto proc = sched::current_process();
+                    state.lock()->cred = ucred {
+                        .pid = proc->pid,
+                        .uid = proc->cred->euid,
+                        .gid = proc->cred->egid
+                    };
+                }
+
                 register_sock(this);
             }
 
@@ -539,6 +518,7 @@ namespace vfs::socket
                     return { };
                 }
 
+                std::size_t wait_ns;
                 {
                     auto slocked = state.lock();
                     if (slocked->state == connected)
@@ -554,90 +534,70 @@ namespace vfs::socket
                         .uid = proc->cred->euid,
                         .gid = proc->cred->egid
                     };
+                    wait_ns = slocked->sndtimeo.to_ns();
                 }
 
                 {
                     while (true)
                     {
                         std::size_t gen = 0;
-                        bool queued = false;
 
                         {
                             auto tlocked = target->state.lock();
-                            if (tlocked->state != listening)
+                            if (tlocked->state != listening || tlocked->shut_read)
                             {
                                 state.lock()->state = unconnected;
                                 return std::unexpected { lib::err::connection_refused };
                             }
 
-                            if (tlocked->accept_queue.size() < tlocked->backlog)
+                            if (tlocked->accept_queue.size() < tlocked->backlog + 1)
                             {
                                 std::shared_ptr<unix_sock> server;
                                 {
                                     auto slocked = state.lock();
                                     server = std::make_shared<unix_sock>(
-                                        protocol, type, unconnected,
+                                        protocol, type, connected,
                                         slocked->resize_on_con
                                             ? *slocked->resize_on_con
                                             : default_capacity
                                     );
                                     slocked->resize_on_con = std::nullopt;
                                     slocked->peer = server;
+                                    slocked->state = connected;
                                 }
                                 {
                                     auto sslocked = server->state.lock();
                                     sslocked->peer = shared_from_this();
-                                    sslocked->state = connecting;
+                                    sslocked->state = connected;
                                     sslocked->bound_path = tlocked->bound_path;
+                                    sslocked->passcred = tlocked->passcred;
+                                    sslocked->cred = tlocked->cred;
                                 }
 
                                 tlocked->accept_queue.push_back(server);
                                 target->accept_wait.wake_one();
-                                queued = true;
+                                return { };
                             }
-                            else gen = target->accept_wait.snapshot_gen();
+                            else gen = target->conn_wait.snapshot_gen();
                         }
 
-                        if (!queued)
+                        if (nonblock)
                         {
-                            if (nonblock)
-                            {
-                                state.lock()->state = unconnected;
-                                return std::unexpected { lib::err::try_again };
-                            }
-
-                            const auto res = target->accept_wait.wait_prepared(gen);
-                            if (res.interrupted || res.killed)
-                            {
-                                state.lock()->state = unconnected;
-                                return std::unexpected { lib::err::interrupted };
-                            }
-                            continue;
+                            state.lock()->state = unconnected;
+                            return std::unexpected { lib::err::try_again };
                         }
 
-                        if (nonblock && state.lock()->state != connected)
-                            return std::unexpected { lib::err::operation_in_progress };
-
-                        while (true)
+                        const auto res = target->conn_wait.wait_prepared(gen, wait_ns);
+                        if (res.interrupted || res.killed)
                         {
-                            std::size_t wgen = 0;
-
-                            {
-                                auto slocked = state.lock();
-                                if (slocked->state != connecting)
-                                {
-                                    if (slocked->state != connected)
-                                        return std::unexpected { lib::err::connection_refused };
-                                    break;
-                                }
-                                wgen = conn_wait.snapshot_gen();
-                            }
-
-                            const auto res = conn_wait.wait_prepared(wgen);
-                            if (res.interrupted || res.killed)
-                                return std::unexpected { lib::err::interrupted };
+                            state.lock()->state = unconnected;
+                            return std::unexpected { lib::err::interrupted };
                         }
-                        break;
+                        if (res.expired)
+                        {
+                            state.lock()->state = unconnected;
+                            return std::unexpected { lib::err::try_again };
+                        }
                     }
                 }
 
@@ -659,6 +619,12 @@ namespace vfs::socket
                 slocked->backlog = std::clamp(backlog, 0, somaxconn);
                 slocked->state = listening;
 
+                const auto proc = sched::current_process();
+                slocked->cred = ucred {
+                    .pid = proc->pid,
+                    .uid = proc->cred->euid,
+                    .gid = proc->cred->egid
+                };
                 return { };
             }
 
@@ -677,6 +643,7 @@ namespace vfs::socket
                 {
                     std::shared_ptr<unix_sock> client;
                     std::size_t gen = 0;
+                    bool freed_slot = false;
 
                     {
                         auto slocked = state.lock();
@@ -690,33 +657,23 @@ namespace vfs::socket
                         {
                             client = std::move(slocked->accept_queue.front());
                             slocked->accept_queue.pop_front();
+                            freed_slot = true;
                         }
                         else gen = accept_wait.snapshot_gen();
                     }
 
+                    if (freed_slot)
+                        conn_wait.wake_one();
+
                     if (client)
                     {
-                        const auto proc = sched::current_process();
-                        std::shared_ptr<unix_sock> connecting;
-                        {
-                            auto cslocked = client->state.lock();
-                            connecting = cslocked->peer.lock();
-                            cslocked->state = connected;
-                            cslocked->cred = {
-                                .pid = proc->pid,
-                                .uid = proc->cred->euid,
-                                .gid = proc->cred->egid
-                            };
-                        }
-
                         sockaddr_un sa { };
                         sa.sun_family = af_unix;
                         socklen_t actual = sizeof(addr_fam);
 
-                        if (connecting)
+                        if (auto peer = client->state.lock()->peer.lock())
                         {
-                            auto pslocked = connecting->state.lock();
-                            pslocked->state = connected;
+                            const auto pslocked = peer->state.lock();
                             if (!pslocked->bound_path.empty())
                             {
                                 const bool is_abstract = pslocked->bound_path[0] == 0;
@@ -724,8 +681,8 @@ namespace vfs::socket
                                     pslocked->bound_path.size(), sizeof(sa.sun_path)
                                 );
                                 std::memcpy(sa.sun_path, pslocked->bound_path.data(), copy_size);
-                                actual = static_cast<socklen_t>(sizeof(addr_fam) +
-                                    pslocked->bound_path.size() + !is_abstract);
+                                actual = sizeof(addr_fam) +
+                                    pslocked->bound_path.size() + !is_abstract;
                             }
                         }
 
@@ -736,12 +693,6 @@ namespace vfs::socket
                                 std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
                                 return std::unexpected { lib::err::invalid_address };
                             *addr_len_inout = actual;
-                        }
-
-                        if (connecting)
-                        {
-                            connecting->conn_wait.wake_all();
-                            connecting->write_wait.wake_all();
                         }
 
                         return client;
@@ -772,11 +723,11 @@ namespace vfs::socket
                 for (const auto &iov : hdr.iovs)
                     total += iov.size();
 
-                if (total == 0)
-                    return 0uz;
-
                 if (type == sock_stream)
                 {
+                    if (total == 0)
+                        return 0uz;
+
                     std::shared_ptr<unix_sock> peer_ptr;
                     std::size_t wait_ns;
 
@@ -1014,9 +965,9 @@ namespace vfs::socket
                             auto locked = dest->receive.lock();
                             std::size_t queued = 0;
                             for (auto &dgram : locked->dgram_queue)
-                                queued += dgram.payload.size();
+                                queued += std::max(dgram.payload.size(), 1uz);
 
-                            if (queued + total <= dgram_cap)
+                            if (queued <= dgram_cap - std::max(total, 1uz))
                             {
                                 locked->dgram_queue.push_back({
                                     std::move(sender_path),
@@ -1051,7 +1002,7 @@ namespace vfs::socket
                 for (const auto &iov : hdr.iovs)
                     total += iov.size();
 
-                if (total == 0)
+                if (type == sock_stream && total == 0)
                     return 0uz;
 
                 std::size_t wait_ns;
@@ -1258,10 +1209,6 @@ namespace vfs::socket
                             if (payload_size > total)
                                 hdr.out_flags |= msg_trunc;
 
-                            const auto ret = (flags & msg_trunc)
-                                ? payload_size
-                                : std::min(total, payload_size);
-
                             if (!hdr.name.empty() && !msg->sender_path.empty())
                             {
                                 sockaddr_un sa { };
@@ -1289,7 +1236,9 @@ namespace vfs::socket
                             if (auto peer_ptr = peer_weak.lock())
                                 peer_ptr->write_wait.wake_all();
 
-                            return ret;
+                            return (flags & msg_trunc)
+                                ? payload_size
+                                : std::min(total, payload_size);
                         }
 
                         if (flags & msg_dontwait)
@@ -1444,7 +1393,10 @@ namespace vfs::socket
                 read_wait.wake_all();
                 write_wait.wake_all();
                 if (was_listening)
+                {
                     accept_wait.wake_all();
+                    conn_wait.wake_all();
+                }
 
                 if (auto peer_ptr = peer_weak.lock())
                 {
@@ -1760,6 +1712,7 @@ namespace vfs::socket
                 read_wait.wake_all();
                 write_wait.wake_all();
                 accept_wait.wake_all();
+                conn_wait.wake_all();
 
                 if (auto peer_ptr = peer_weak.lock())
                 {
@@ -1771,9 +1724,16 @@ namespace vfs::socket
                 {
                     {
                         auto clocked = conn->state.lock();
-                        if (clocked->state == connecting)
-                            clocked->state = unconnected;
+                        if (clocked->state == connected || clocked->state == connecting)
+                        {
+                            clocked->state = disconnecting;
+                            clocked->peer.reset();
+                            clocked->pending_error = ECONNRESET;
+                        }
                     }
+
+                    conn->read_wait.wake_all();
+                    conn->write_wait.wake_all();
                     conn->conn_wait.wake_all();
                 }
 
@@ -1785,7 +1745,7 @@ namespace vfs::socket
             lib::intrusive_list<
                 unix_sock,
                 &unix_sock::sockets_hook
-            >, sched::mutex
+            >, sched::mutex_t
         > sockets;
 
         void register_sock(unix_sock *sock)
@@ -1916,9 +1876,7 @@ namespace vfs::socket
 
                 return std::make_pair(std::move(one), std::move(two));
             }
-        };
-
-        unix_family_t unix_family;
+        } unix_family;
 
         lib::initgraph::task unix_task
         {

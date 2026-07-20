@@ -22,7 +22,7 @@ namespace vfs::pipe
 
         struct data
         {
-            sched::mutex lock;
+            sched::mutex_t lock;
 
             lib::membuffer storage;
             std::size_t capacity, head, tail, buffered;

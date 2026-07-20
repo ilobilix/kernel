@@ -232,7 +232,7 @@ namespace fs::sysfs
                     lib::map::flat_hash<
                         dev::kobject_t *,
                         std::shared_ptr<vfs::dentry_t>
-                    >, sched::mutex
+                    >, sched::mutex_t
                 > nodes;
 
                 auto create(
@@ -398,20 +398,20 @@ namespace fs::sysfs
                     dentry->inode = mkdir(kobj);
                     dentry->parent = parent;
 
-                    for (auto &attr : kobj->type.attributes())
+                    for (auto attr : kobj->type.attributes())
                     {
                         auto child = std::make_shared<vfs::dentry_t>();
-                        child->name = attr.name;
-                        child->inode = mkattr(kobj, std::addressof(attr));
+                        child->name = attr->name;
+                        child->inode = mkattr(kobj, attr);
                         child->parent = dentry;
                         dentry->children.lock()->insert(std::move(child));
                     }
 
-                    for (auto &battr : kobj->type.bin_attributes())
+                    for (auto battr : kobj->type.bin_attributes())
                     {
                         auto child = std::make_shared<vfs::dentry_t>();
-                        child->name = battr.name;
-                        child->inode = mkbin(kobj, std::addressof(battr));
+                        child->name = battr->name;
+                        child->inode = mkbin(kobj, battr);
                         child->parent = dentry;
                         dentry->children.lock()->insert(std::move(child));
                     }
@@ -491,7 +491,7 @@ namespace fs::sysfs
                 ~instance_t() = default;
             };
 
-            lib::locked_ptr<instance_t, sched::mutex> inst;
+            lib::locked_ptr<instance_t, sched::mutex_t> inst;
             std::shared_ptr<vfs::dentry_t> root;
 
             std::shared_ptr<struct vfs::mount_t> internal_mnt;
@@ -507,7 +507,7 @@ namespace fs::sysfs
 
             fs_t() : vfs::filesystem_t { "sysfs", 0x62656572 }
             {
-                inst = lib::make_locked<instance_t, sched::mutex>();
+                inst = lib::make_locked<instance_t, sched::mutex_t>();
                 auto locked = inst.lock();
                 locked->fs = this;
 

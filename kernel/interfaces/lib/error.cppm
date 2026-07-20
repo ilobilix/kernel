@@ -57,6 +57,7 @@ export namespace lib
         not_mapped = EFAULT,
 
         no_space_left = ENOSPC,
+        no_buffer_space = ENOBUFS,
 
         try_again = EAGAIN,
         interrupted = EINTR,

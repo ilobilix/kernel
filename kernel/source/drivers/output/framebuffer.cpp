@@ -290,36 +290,37 @@ namespace output::frm
 
         struct ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t> attributes() const override
+            std::span<dev::attribute_t *const> attributes() const override
             {
-                static dev::attribute_t list[] {
-                    attribute_t {
-                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                            return std::string {
-                                fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id))
-                            } + '\n';
-                        }, "name", 0444
-                    },
-                    attribute_t {
-                        [](dev::device_t &device, fb_dev &) -> lib::expect<std::string> {
-                            return fmt::format("{}:{}\n", major(device.devt), minor(device.devt));
-                        }, "dev", 0444
-                    },
-                    attribute_t {
-                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                            return std::to_string(fb.var.bits_per_pixel) + '\n';
-                        }, "bits_per_pixel", 0444
-                    },
-                    attribute_t {
-                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                            return fmt::format("{},{}\n", fb.var.xres_virtual, fb.var.yres_virtual);
-                        }, "virtual_size", 0444
-                    },
-                    attribute_t {
-                        [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
-                            return std::to_string(fb.fix.line_length) + '\n';
-                        }, "stride", 0444
-                    }
+                static attribute_t name {
+                    [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                        return std::string {
+                            fb.fix.id, std::strnlen(fb.fix.id, sizeof(fb.fix.id))
+                        } + '\n';
+                    }, "name", 0444
+                };
+                static attribute_t bits_per_pixel {
+                    [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                        return std::to_string(fb.var.bits_per_pixel) + '\n';
+                    }, "bits_per_pixel", 0444
+                };
+                static attribute_t virtual_size {
+                    [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                        return fmt::format("{},{}\n", fb.var.xres_virtual, fb.var.yres_virtual);
+                    }, "virtual_size", 0444
+                };
+                static attribute_t stride {
+                    [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
+                        return std::to_string(fb.fix.line_length) + '\n';
+                    }, "stride", 0444
+                };
+
+                static dev::attribute_t *list[] {
+                    &name,
+                    &bits_per_pixel,
+                    &virtual_size,
+                    &stride,
+                    dev::dev_attribute()
                 };
                 return list;
             }

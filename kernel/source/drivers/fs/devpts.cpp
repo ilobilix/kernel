@@ -15,7 +15,7 @@ namespace fs::devpts
     {
         struct fs_t : vfs::filesystem_t
         {
-            lib::locked_ptr<tmpfs::fs_t::instance, sched::mutex> instance;
+            lib::locked_ptr<tmpfs::fs_t::instance, sched::mutex_t> instance;
             std::shared_ptr<vfs::dentry_t> root;
 
             std::shared_ptr<struct vfs::mount_t> internal_mnt;
@@ -32,7 +32,7 @@ namespace fs::devpts
 
             fs_t() : vfs::filesystem_t { "devpts", 0x1CD1 }
             {
-                instance = lib::make_locked<tmpfs::fs_t::instance, sched::mutex>();
+                instance = lib::make_locked<tmpfs::fs_t::instance, sched::mutex_t>();
                 auto locked = instance.lock();
 
                 locked->fs = this;
