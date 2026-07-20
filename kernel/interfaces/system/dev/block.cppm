@@ -13,6 +13,8 @@ export namespace dev::block
 {
     class drive_t
     {
+        static inline std::atomic_uint64_t disk_seq { 1 };
+
         friend lib::expect<void> register_drive(
             std::shared_ptr<drive_t> drive, std::string_view part_prefix
         );
@@ -25,6 +27,7 @@ export namespace dev::block
         arch::dma_pool &_pool;
 
         std::vector<std::shared_ptr<dev::device_t>> _parts;
+        std::uint64_t _seq;
 
         virtual dev_t alloc_id() = 0;
 
@@ -45,7 +48,8 @@ export namespace dev::block
             std::uint8_t lba_shift, std::uint64_t lba_count,
             std::uint64_t max_transfer_lba, arch::dma_pool &pool
         ) : _lba_shift { lba_shift }, _lba_count { lba_count },
-            _max_transfer_lba { max_transfer_lba }, _pool { pool } { }
+            _max_transfer_lba { max_transfer_lba }, _pool { pool },
+            _seq { disk_seq.fetch_add(1, std::memory_order_relaxed) }  { }
 
         virtual ~drive_t() = default;
 
@@ -54,6 +58,7 @@ export namespace dev::block
         std::uint64_t size_bytes() const { return _lba_count << _lba_shift; }
 
         std::span<const std::shared_ptr<dev::device_t>> partitions() const { return _parts; }
+        std::uint64_t seq() const { return _seq; }
 
         template<std::ranges::random_access_range Range>
             requires std::same_as<std::ranges::range_value_t<Range>, lib::maybe_uspan<std::byte>>
@@ -72,7 +77,6 @@ export namespace dev::block
     {
         friend struct ops_t;
 
-        private:
         std::weak_ptr<drive_t> drive;
         std::uint64_t lba_start;
         std::uint64_t lba_count;
@@ -80,7 +84,6 @@ export namespace dev::block
         lib::expect<void> fetch_pages(std::size_t idx, std::span<vmm::page *> pages) override;
         lib::expect<void> write_pages(std::size_t idx, std::span<vmm::page *> pages) override;
 
-        public:
         object_t(std::uint64_t lba_start, std::uint64_t lba_count, std::weak_ptr<drive_t> drive)
             : vmm::object { vmm::object_type::file },
               drive { drive }, lba_start { lba_start }, lba_count { lba_count } { }
@@ -90,8 +93,6 @@ export namespace dev::block
     {
         private:
         object_t::ptr memory;
-
-        object_t &get_memory() { return static_cast<object_t &>(*memory); }
 
         public:
         ops_t(
@@ -103,6 +104,8 @@ export namespace dev::block
                 lba_count.value_or(drive->block_count()),
                 std::move(drive)
             } } { }
+
+        object_t &get_memory() { return static_cast<object_t &>(*memory); }
 
         lib::expect<std::size_t> read(
             std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
@@ -249,5 +252,7 @@ export namespace dev::block
     bool unregister_drive(std::shared_ptr<drive_t> drive);
 
     class_t &get_class();
+    ktype_t &get_ktype();
+
     std::uint32_t alloc_minor();
 } // export namespace dev::block

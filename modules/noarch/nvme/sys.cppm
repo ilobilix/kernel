@@ -35,5 +35,4 @@ export namespace nvme
 
     dev::class_t &get_class();
     dev::ktype_t &get_ctrl_ktype();
-    dev::ktype_t &get_ns_ktype();
 } // export namespace nvme

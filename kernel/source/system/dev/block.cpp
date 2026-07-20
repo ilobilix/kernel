@@ -10,38 +10,237 @@ namespace dev::block
 {
     namespace
     {
+        struct drive_data_t
+        {
+            std::weak_ptr<drive_t> drive;
+        };
+
+        struct part_data_t
+        {
+            std::size_t id;
+            std::string name;
+            std::weak_ptr<drive_t> drive;
+        };
+
         class block_class_t : public class_t
         {
             public:
-            block_class_t() : dev::class_t { "block", dev::empty_ktype(), true } { }
+            block_class_t() : class_t { "block", empty_ktype(), true } { }
 
-            std::string devnode(const dev::device_t &dev, mode_t &mode) const override
+            std::string devnode(const device_t &dev, mode_t &mode) const override
             {
                 lib::unused(mode);
                 return dev.name;
             }
         };
 
-        // TODO
-        struct part_ktype_t : dev::ktype_t
+        std::optional<std::uint64_t> to_sectors(std::uint64_t lbas, const drive_t &drive)
         {
-            std::span<dev::attribute_t> attributes() const override
+            const auto block_size = drive.block_size();
+            if (block_size < 512 || block_size % 512 != 0)
+                return std::nullopt;
+
+            const auto sectors_per_lba = block_size / 512;
+            if (lbas > std::numeric_limits<std::uint64_t>::max() / sectors_per_lba)
+                return std::nullopt;
+
+            return lbas * sectors_per_lba;
+        }
+
+        struct disk_ktype_t : ktype_t
+        {
+            static std::shared_ptr<drive_t> drive_from(device_t &device)
             {
-                return { };
+                if (!device.private_data)
+                    return nullptr;
+
+                return std::static_pointer_cast<drive_data_t>(device.private_data)->drive.lock();
             }
 
-            std::span<dev::bin_attribute_t> bin_attributes() const override
+            std::span<attribute_t *const> attributes() const override
             {
-                return { };
+                struct drive_attribute_t : make_attribute_t
+                {
+                    using rfn_t = lib::expect<std::string> (*)(
+                        device_t &, std::shared_ptr<drive_t>
+                    );
+                    using wfn_t = lib::expect<void> (*)(
+                        device_t &, std::shared_ptr<drive_t>, std::string_view
+                    );
+
+                    drive_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
+                        : make_attribute_t {
+                            [rfn](device_t &dev) -> lib::expect<std::string> {
+                                auto drive = drive_from(dev);
+                                if (!drive)
+                                    return std::unexpected { lib::err::io_error };
+                                return rfn(dev, std::move(drive));
+                            },
+                            [wfn](device_t &dev, std::string_view value) -> lib::expect<void> {
+                                auto drive = drive_from(dev);
+                                if (!drive)
+                                    return std::unexpected { lib::err::io_error };
+                                return wfn(dev, std::move(drive), value);
+                            }, name, mode
+                        } { }
+                };
+
+                static drive_attribute_t size {
+                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                        auto sectors = to_sectors(drv->block_count(), *drv);
+                        if (!sectors)
+                            return std::unexpected { lib::err::io_error };
+                        return fmt::format("{}\n", *sectors);
+                    }, nullptr, "size", 0444
+                };
+                static drive_attribute_t diskseq {
+                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                        return fmt::format("{}\n", drv->seq());
+                    }, nullptr, "diskseq", 0444
+                };
+                static drive_attribute_t ro {
+                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                        lib::unused(drv);
+                        return "0\n"; // TODO
+                    }, nullptr, "ro", 0444
+                };
+                static drive_attribute_t removable {
+                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                        lib::unused(drv);
+                        return "0\n"; // TODO
+                    }, nullptr, "removable", 0444
+                };
+
+                static attribute_t *list[] {
+                    &size, &diskseq, &ro, &removable,
+                    dev_attribute()
+                };
+                return list;
             }
 
-            void fill_uevent(dev::kobject_t &kobj, dev::uevent_t &uev) override
+            void fill_uevent(kobject_t &kobj, uevent_t &uev) override
             {
-                lib::unused(kobj, uev);
+                auto device = kobj.as_device();
+                if (!device)
+                    return;
+
+                auto drive = drive_from(*device);
+                if (!drive)
+                    return;
+
+                uev.add("DEVTYPE", "disk");
+                uev.add("DISKSEQ", std::to_string(drive->seq()));
             }
         };
 
-        dev::ktype_t &get_part_ktype()
+        struct part_ktype_t : ktype_t
+        {
+            std::span<attribute_t *const> attributes() const override
+            {
+                struct part_attribute_t : make_attribute_t
+                {
+                    using rfn_t = lib::expect<std::string> (*)(
+                        device_t &, std::shared_ptr<part_data_t>
+                    );
+                    using wfn_t = lib::expect<void> (*)(
+                        device_t &, std::shared_ptr<part_data_t>, std::string_view
+                    );
+
+                    part_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
+                        : make_attribute_t {
+                            [this, rfn](device_t &dev) -> lib::expect<std::string> {
+                                if (!dev.private_data)
+                                    return std::unexpected { lib::err::io_error };
+                                if (!rfn)
+                                    return attribute_t::show(dev);
+                                return rfn(dev, std::static_pointer_cast<part_data_t>(dev.private_data));
+                            },
+                            [this, wfn](device_t &dev, std::string_view value) -> lib::expect<void> {
+                                if (!dev.private_data)
+                                    return std::unexpected { lib::err::io_error };
+                                if (!wfn)
+                                    return attribute_t::store(dev, value);
+                                return wfn(dev, std::static_pointer_cast<part_data_t>(dev.private_data), value);
+                            }, name, mode
+                        } { }
+                };
+
+                static part_attribute_t size {
+                    [](device_t &dev, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                        if (!dev.fops)
+                            return std::unexpected { lib::err::io_error };
+
+                        auto drive = part->drive.lock();
+                        if (!drive)
+                            return std::unexpected { lib::err::io_error };
+
+                        auto ops = std::static_pointer_cast<ops_t>(dev.fops);
+                        auto sectors = to_sectors(ops->get_memory().lba_count, *drive);
+                        if (!sectors)
+                            return std::unexpected { lib::err::io_error };
+
+                        return fmt::format("{}\n", *sectors);
+                    }, nullptr, "size", 0444
+                };
+                static part_attribute_t start {
+                    [](device_t &dev, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                        if (!dev.fops)
+                            return std::unexpected { lib::err::io_error };
+
+                        auto drive = part->drive.lock();
+                        if (!drive)
+                            return std::unexpected { lib::err::io_error };
+
+                        auto ops = std::static_pointer_cast<ops_t>(dev.fops);
+
+                        auto sectors = to_sectors(ops->get_memory().lba_start, *drive);
+                        if (!sectors)
+                            return std::unexpected { lib::err::io_error };
+
+                        return fmt::format("{}\n", *sectors);
+                    }, nullptr, "start", 0444
+                };
+                static part_attribute_t partition {
+                    [](device_t &, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                        return fmt::format("{}\n", part->id);
+                    }, nullptr, "partition", 0444
+                };
+                static part_attribute_t removable {
+                    [](device_t &, std::shared_ptr<part_data_t>) -> lib::expect<std::string> {
+                        return "0\n"; // TODO
+                    }, nullptr, "removable", 0444
+                };
+
+                static attribute_t *list[] {
+                    &size, &start, &partition, &removable,
+                    dev_attribute()
+                };
+                return list;
+            }
+
+            void fill_uevent(kobject_t &kobj, uevent_t &uev) override
+            {
+                auto device = kobj.as_device();
+                if (!device)
+                    return;
+
+                if (!device->private_data)
+                    return;
+                auto part = std::static_pointer_cast<part_data_t>(device->private_data);
+
+                auto drive = part->drive.lock();
+                if (!drive)
+                    return;
+
+                uev.add("DEVTYPE", "partition");
+                uev.add("PARTN", std::to_string(part->id));
+                if (!part->name.empty())
+                    uev.add("PARTNAME", part->name);
+                uev.add("DISKSEQ", std::to_string(drive->seq()));
+            }
+        };
+
+        ktype_t &get_part_ktype()
         {
             static part_ktype_t type { };
             return type;
@@ -329,7 +528,15 @@ namespace dev::block
 
     lib::expect<void> register_drive(std::shared_ptr<drive_t> drive, std::string_view part_prefix)
     {
-        if (const auto ret = dev::register_device(drive->dev); !ret)
+        drive->dev->add_ref_fn = [](auto &ref, auto &dev) {
+            ref.add_link(block_root(), dev.name, dev.path());
+        };
+        drive->dev->rem_ref_fn = [](auto &ref, auto &dev) {
+            ref.remove_link(block_root(), dev.name);
+        };
+        drive->dev->private_data = std::make_shared<drive_data_t>(drive);
+
+        if (const auto ret = register_device(drive->dev); !ret)
             return ret;
 
         const auto read_lbas = [&](std::uint64_t idx, std::uint32_t count)
@@ -353,22 +560,25 @@ namespace dev::block
         if (!mbr->is_valid())
             return { };
 
-        const auto add_part = [&](std::uint64_t lba_start, std::uint64_t lba_count)
+        const auto add_part = [&](std::string name, std::uint64_t lba_start, std::uint64_t lba_count)
         {
             const auto max = drive->block_count();
             lib::bug_on(lba_start >= max || lba_count > max || lba_start > max - lba_count);
 
-            auto part = dev::device_t::create(
-                fmt::format("{}{}{}", drive->dev->name, part_prefix, drive->_parts.size() + 1),
+            const auto id = drive->_parts.size() + 1;
+            auto part = device_t::create(
+                fmt::format("{}{}{}", drive->dev->name, part_prefix, id),
                 get_part_ktype(), drive->dev
             );
             part->cls = &get_class();
             part->devt = drive->alloc_id();
             part->fops = std::make_shared<ops_t>(drive, lba_start, lba_count);
 
+            part->private_data = std::make_shared<part_data_t>(id, name, drive);
+
             drive->_parts.push_back(part);
 
-            if (const auto ret = dev::register_device(std::move(part)); !ret)
+            if (const auto ret = register_device(std::move(part)); !ret)
             {
                 lib::error(
                     "block: could not register partition: {}",
@@ -473,7 +683,7 @@ namespace dev::block
                     part->is_system() ? ", system" : part->is_boot() ? ", boot" : ""
                 );
 
-                add_part(part->lbastart, part->lbaend - part->lbastart + 1);
+                add_part(ascii_name(part->name), part->lbastart, part->lbaend - part->lbastart + 1);
             }
         }
         else
@@ -493,7 +703,7 @@ namespace dev::block
                     part.is_bootable() ? ", boot" : ""
                 );
 
-                add_part(part.lbastart, part.lbacount);
+                add_part("", part.lbastart, part.lbacount);
             }
         }
 
@@ -504,11 +714,11 @@ namespace dev::block
     {
         for (const auto &part : drive->partitions())
         {
-            if (!dev::unregister_device(part))
+            if (!unregister_device(part))
                 return false;
         }
 
-        if (!dev::unregister_device(drive->dev))
+        if (!unregister_device(drive->dev))
             return false;
 
         // TODO
@@ -519,6 +729,12 @@ namespace dev::block
     {
         static block_class_t blk { };
         return blk;
+    }
+
+    ktype_t &get_ktype()
+    {
+        static disk_ktype_t type { };
+        return type;
     }
 
     std::uint32_t alloc_minor()

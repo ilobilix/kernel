@@ -22,7 +22,7 @@ namespace fs::dev::tty
             driver *drv = nullptr;
             std::uint32_t minor = 0;
         };
-        lib::locker<console_target_t, sched::mutex> console_target;
+        lib::locker<console_target_t, sched::mutex_t> console_target;
 
         driver *get_driver(dev_t rdev)
         {

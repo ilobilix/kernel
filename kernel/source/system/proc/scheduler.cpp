@@ -37,14 +37,14 @@ namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::shared_ptr<process_t>
-            >, mutex
+            >, mutex_t
         > processes;
 
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<thread_t>
-            >, mutex
+            >, mutex_t
         > threads;
 
         std::shared_ptr<process_t> kernel_proc;
@@ -76,14 +76,14 @@ namespace sched
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<group_t>
-            >, mutex
+            >, mutex_t
         > groups;
 
         lib::locker<
             lib::map::flat_hash<
                 pid_t,
                 std::weak_ptr<session_t>
-            >, mutex
+            >, mutex_t
         > sessions;
 
         std::atomic_bool should_start = false;
@@ -998,18 +998,38 @@ namespace sched
             auto init = get_process(1);
             lib::bug_on(!init);
 
+            std::vector<std::pair<std::shared_ptr<process_t>, int>> pdeath_notify;
             {
                 auto locked = proc->children.lock();
                 auto init_children = init->children.lock();
                 for (auto &[pid, child] : *locked)
                 {
                     child->parent = init;
+
+                    if (const int psig = child->pdeathsig.load(std::memory_order_relaxed))
+                        pdeath_notify.emplace_back(child, psig);
+
                     const bool was_zombie = child->is_zombie;
                     init_children->emplace(pid, std::move(child));
                     if (was_zombie)
                         init->wait_child.wake_one();
                 }
                 locked->clear();
+            }
+
+            for (auto &[child, psig] : pdeath_notify)
+            {
+                const siginfo_t info {
+                    .signo = psig,
+                    .code = si_user,
+                    .err = 0,
+                    .pid = proc->pid,
+                    .uid = proc->cred->ruid,
+                    .status = 0,
+                    .addr = 0,
+                    .value = 0
+                };
+                send_signal(child.get(), info);
             }
 
             {

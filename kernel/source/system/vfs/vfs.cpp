@@ -30,14 +30,14 @@ namespace vfs
             lib::map::flat_hash<
                 std::string_view,
                 filesystem_t *
-            >, sched::mutex
+            >, sched::mutex_t
         > filesystems;
 
         lib::locker<
             lib::map::flat_hash<
                 std::size_t,
                 std::shared_ptr<struct mount_t>
-            >, sched::mutex
+            >, sched::mutex_t
         > mounts;
 
         std::atomic<dev_t> next_dev = 1;
@@ -58,7 +58,7 @@ namespace vfs
             return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
         }
 
-        sched::mutex mount_tree_lock;
+        sched::mutex_t mount_tree_lock;
 
         void detach_mount(const std::shared_ptr<mount_t> &mnt)
         {
@@ -1778,7 +1778,7 @@ namespace vfs
             [] {
                 using namespace fs::procfs;
 
-                lib::bug_on(!register_global("mounts",
+                lib::bug_on(!register_per_pid("mounts",
                     make_file_ops([](auto) {
                         const auto snapshot = *mounts.lock();
                         std::string out;
@@ -1806,6 +1806,12 @@ namespace vfs
                         }
                         return out;
                     }), node_type::file, 0444
+                ));
+
+                lib::bug_on(!register_global("mounts",
+                    make_symlink_ops([](auto) {
+                        return "self/mounts";
+                    }), node_type::symlink, 0777
                 ));
 
                 lib::bug_on(!register_per_pid("mountinfo",

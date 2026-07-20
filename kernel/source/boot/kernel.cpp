@@ -24,14 +24,14 @@ void kthread()
             "/bin/sh"
         };
 
-        const auto try_path = [](const auto &path) -> lib::expect<vfs::path_t> {
+        const auto try_path = [](const auto &path) -> std::optional<vfs::path_t> {
             auto ret = vfs::resolve(std::nullopt, path);
             if (!ret.has_value())
-                return std::unexpected { ret.error() };
+                return std::nullopt;
 
             auto res = vfs::reduce(ret->parent, ret->target);
             if (!res.has_value())
-                return std::unexpected { res.error() };
+                return std::nullopt;
 
             return *res;
         };

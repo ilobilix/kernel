@@ -8,7 +8,7 @@ namespace vfs
     {
         struct file_object : vmm::object
         {
-            sched::mutex lock;
+            sched::mutex_t lock;
             std::shared_ptr<file_t> backing;
 
             file_object(std::shared_ptr<file_t> file)

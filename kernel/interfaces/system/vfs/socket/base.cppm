@@ -11,6 +11,8 @@ export
     constexpr int somaxconn = 4096;
     constexpr std::size_t uio_maxiov = 1024;
 
+    constexpr std::size_t cmsg_align = sizeof(std::size_t);
+
     enum prot_fam : int
     {
         pf_unspec = 0,
@@ -170,9 +172,14 @@ export
         so_peercred = 17,
         so_rcvtimeo = 20,
         so_sndtimeo = 21,
+        so_attach_filter = 26,
+        so_detach_filter = 27,
         so_acceptconn = 30,
+        so_sndbufforce = 32,
+        so_rcvbufforce = 33,
         so_protocol = 38,
-        so_domain = 39
+        so_domain = 39,
+        so_lock_filter = 44
     };
 
     enum ip_proto : int
@@ -301,6 +308,13 @@ export
         int l_onoff;
         int l_linger;
     };
+
+    struct ucred
+    {
+        pid_t pid;
+        uid_t uid;
+        gid_t gid;
+    };
 } // export
 
 export namespace vfs::socket
@@ -313,6 +327,8 @@ export namespace vfs::socket
         socklen_t msgctrl_len_out;
         socklen_t addr_len_out;
         int out_flags;
+
+        lib::expect<bool> write_cmsg(int type, std::span<const std::byte> data);
     };
 
     struct socket_t

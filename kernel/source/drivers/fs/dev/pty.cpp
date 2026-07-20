@@ -58,7 +58,7 @@ namespace fs::dev::pty
             std::array<bool, master_count> minor_used { };
             lib::map::flat_hash<std::uint32_t, std::shared_ptr<pair>> pairs;
         };
-        lib::locker<allocator_t, sched::mutex> allocator;
+        lib::locker<allocator_t, sched::mutex_t> allocator;
 
         std::shared_ptr<pair> find_pair(std::uint32_t pty_minor)
         {

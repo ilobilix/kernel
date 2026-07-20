@@ -25,12 +25,12 @@ namespace nvme
         // TODO
         struct ctrl_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t> attributes() const override
+            std::span<dev::attribute_t *const> attributes() const override
             {
                 return { };
             }
 
-            std::span<dev::bin_attribute_t> bin_attributes() const override
+            std::span<dev::bin_attribute_t *const> bin_attributes() const override
             {
                 return { };
             }
@@ -48,12 +48,12 @@ namespace nvme
         // TODO
         struct ns_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t> attributes() const override
+            std::span<dev::attribute_t *const> attributes() const override
             {
                 return { };
             }
 
-            std::span<dev::bin_attribute_t> bin_attributes() const override
+            std::span<dev::bin_attribute_t *const> bin_attributes() const override
             {
                 return { };
             }
@@ -116,12 +116,6 @@ namespace nvme
     dev::ktype_t &get_ctrl_ktype()
     {
         static ctrl_ktype_t type { };
-        return type;
-    }
-
-    dev::ktype_t &get_ns_ktype()
-    {
-        static ns_ktype_t type { };
         return type;
     }
 } // namespace nvme

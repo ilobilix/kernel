@@ -32,7 +32,7 @@ namespace fs::procfs
             lib::map::flat_hash<
                 std::string,
                 node_t
-            >, sched::mutex
+            >, sched::mutex_t
         >;
         registry_t global_registry;
 
@@ -676,7 +676,7 @@ namespace fs::procfs
                 ~instance_t() = default;
             };
 
-            lib::locked_ptr<instance_t, sched::mutex> inst;
+            lib::locked_ptr<instance_t, sched::mutex_t> inst;
             std::shared_ptr<vfs::dentry_t> root;
 
             std::shared_ptr<struct vfs::mount_t> internal_mnt;
@@ -692,7 +692,7 @@ namespace fs::procfs
 
             fs_t() : vfs::filesystem_t { "proc", 0x9FA0 }
             {
-                inst = lib::make_locked<instance_t, sched::mutex>();
+                inst = lib::make_locked<instance_t, sched::mutex_t>();
                 auto locked = inst.lock();
                 locked->fs = this;
 

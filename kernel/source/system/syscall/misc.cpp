@@ -228,6 +228,19 @@ namespace syscall::misc
         lib::unused(arg4, arg5);
         switch (option)
         {
+            case 1: // PR_SET_PDEATHSIG
+                if (arg2 > static_cast<unsigned long>(sched::nsig))
+                    return -EINVAL;
+
+                sched::current_process()->pdeathsig.store(arg2, std::memory_order_relaxed);
+                return 0;
+            case 2: // PR_GET_PDEATHSIG
+            {
+                const int sig = sched::current_process()->pdeathsig.load(std::memory_order_relaxed);
+                if (!lib::copy_to_user(reinterpret_cast<int __user *>(arg2), &sig, sizeof(sig)))
+                    return -EFAULT;
+                return 0;
+            }
             case 3: // PR_GET_DUMPABLE
                 return static_cast<int>(
                     sched::current_process()->dumpable.load(std::memory_order_relaxed)

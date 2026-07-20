@@ -3,4 +3,4 @@
 export module system.vfs.socket;
 
 export import :base;
-export import :unix;
+export import :netlink;

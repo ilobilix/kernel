@@ -410,7 +410,7 @@ export namespace vfs
 
     struct mount_t
     {
-        lib::locked_ptr<filesystem_t::instance_t, sched::mutex> fs;
+        lib::locked_ptr<filesystem_t::instance_t, sched::mutex_t> fs;
         std::shared_ptr<dentry_t> root;
         std::optional<path_t> mounted_on;
 
@@ -427,7 +427,7 @@ export namespace vfs
 
     struct inode_t
     {
-        sched::mutex lock;
+        sched::mutex_t lock;
         std::shared_ptr<ops_t> ops;
         kstat stat;
         bool dirty = false;
@@ -550,14 +550,14 @@ export namespace vfs
         std::shared_ptr<inode_t> inode;
 
         std::weak_ptr<dentry_t> parent;
-        lib::locker<children, sched::mutex> children;
+        lib::locker<children, sched::mutex_t> children;
 
-        lib::locker<lib::list<std::weak_ptr<mount_t>>, sched::mutex> child_mounts;
+        lib::locker<lib::list<std::weak_ptr<mount_t>>, sched::mutex_t> child_mounts;
     };
 
     struct file_t : std::enable_shared_from_this<file_t>
     {
-        sched::mutex lock;
+        sched::mutex_t lock;
         std::shared_ptr<ops_t> ops;
         bool opened;
         path_t path;

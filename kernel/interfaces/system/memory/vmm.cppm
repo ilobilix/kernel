@@ -58,7 +58,7 @@ export namespace vmm
 
     struct anon_map
     {
-        sched::mutex lock;
+        sched::mutex_t lock;
         lib::intrusive_ptr_hook hook;
 
         // TODO: some kind of tree
@@ -128,7 +128,7 @@ export namespace vmm
         private:
         lib::locker<
             lib::btree::map<std::size_t, page *>,
-            sched::mutex
+            sched::mutex_t
         > cache;
 
         protected:
@@ -255,7 +255,7 @@ export namespace vmm
                 &entry::hook,
                 &entry::interval
             >,
-            sched::mutex
+            sched::mutex_t
         > tree;
 
         std::uintptr_t brk_start;

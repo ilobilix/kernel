@@ -80,7 +80,7 @@ namespace syscall::vfs
         struct epoll_instance_t
         {
             sched::wait_queue_t bell;
-            sched::mutex lock;
+            sched::mutex_t lock;
             lib::spinlock_irq ready_lock;
 
             lib::map::flat_hash<

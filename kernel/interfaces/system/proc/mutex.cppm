@@ -11,7 +11,7 @@ import std;
 
 export namespace sched
 {
-    struct mutex
+    struct mutex_t
     {
         private:
         mutable lib::spinlock _lock;
@@ -21,12 +21,12 @@ export namespace sched
         static thread_base_t *current_thread();
 
         public:
-        mutex() : _lock { }, _owner { nullptr }, _waiters { } { }
+        mutex_t() : _lock { }, _owner { nullptr }, _waiters { } { }
 
-        mutex(const mutex &) = delete;
-        mutex(mutex &&) = delete;
-        mutex &operator=(const mutex &) = delete;
-        mutex &operator=(mutex &&) = delete;
+        mutex_t(const mutex_t &) = delete;
+        mutex_t(mutex_t &&) = delete;
+        mutex_t &operator=(const mutex_t &) = delete;
+        mutex_t &operator=(mutex_t &&) = delete;
 
         void lock()
         {
@@ -141,7 +141,7 @@ export namespace sched
         }
     };
 
-    struct recursive_mutex
+    struct recursive_mutex_t
     {
         private:
         mutable lib::spinlock _lock;
@@ -152,12 +152,12 @@ export namespace sched
         static thread_base_t *current_thread();
 
         public:
-        recursive_mutex() : _lock { }, _owner { nullptr }, _depth { 0 }, _waiters { } { }
+        recursive_mutex_t() : _lock { }, _owner { nullptr }, _depth { 0 }, _waiters { } { }
 
-        recursive_mutex(const recursive_mutex &) = delete;
-        recursive_mutex(recursive_mutex &&) = delete;
-        recursive_mutex &operator=(const recursive_mutex &) = delete;
-        recursive_mutex &operator=(recursive_mutex &&) = delete;
+        recursive_mutex_t(const recursive_mutex_t &) = delete;
+        recursive_mutex_t(recursive_mutex_t &&) = delete;
+        recursive_mutex_t &operator=(const recursive_mutex_t &) = delete;
+        recursive_mutex_t &operator=(recursive_mutex_t &&) = delete;
 
         void lock()
         {
