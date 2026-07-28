@@ -275,7 +275,11 @@ export namespace vfs
 
         virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file_t> file);
 
-        virtual lib::expect<void> sync() { return { }; }
+        virtual lib::expect<void> sync(std::shared_ptr<file_t> file, bool data)
+        {
+            lib::unused(file, data);
+            return { };
+        }
 
         virtual ~ops_t() = default;
     };
@@ -324,7 +328,10 @@ export namespace vfs
                 std::string_view name, std::shared_ptr<inode_t> target
             ) -> lib::expect<std::shared_ptr<inode_t>> = 0;
 
-            virtual auto unlink(std::shared_ptr<inode_t> &inode) -> lib::expect<void> = 0;
+            virtual auto unlink(
+                std::shared_ptr<inode_t> &parent, std::string_view name,
+                std::shared_ptr<inode_t> &inode
+            ) -> lib::expect<void> = 0;
 
             virtual auto rename(
                 std::shared_ptr<inode_t> &old_parent, std::string_view old_name,
@@ -391,6 +398,12 @@ export namespace vfs
 
             virtual bool sync() = 0;
             virtual bool unmount(std::shared_ptr<mount_t> mnt) = 0;
+            virtual bool remount(std::uint64_t flags)
+            {
+                if (flags & ms_rdonly)
+                    return sync();
+                return true;
+            }
 
             virtual ~instance_t() = default;
 
@@ -681,13 +694,16 @@ export namespace vfs
             return ops->map(shared_from_this());
         }
 
-        lib::expect<void> sync()
+        lib::expect<void> sync(bool data = false)
         {
             if (!ops)
                 return std::unexpected { lib::err::invalid_device_or_address };
 
-            if (auto ret = ops->sync(); !ret.has_value())
+            if (auto ret = ops->sync(shared_from_this(), data); !ret.has_value())
                 return ret;
+
+            if (!path.mnt)
+                return { };
 
             auto &inode = path.dentry->inode;
             const std::unique_lock _ { inode->lock };
@@ -805,6 +821,8 @@ export namespace vfs
         std::optional<path_t> old_parent, lib::path old_path,
         std::optional<path_t> new_parent, lib::path new_path
     ) -> lib::expect<void>;
+
+    void sync_all();
 
     // called with path.dentry->inode->lock acquired
     auto dirty_inode(const path_t &path) -> lib::expect<void>;

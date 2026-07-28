@@ -75,8 +75,7 @@ namespace bin::elf::exec
             if (ehdr.e_type != ET_DYN)
                 addr = 0;
 
-            const auto psize = vmm::default_page_size();
-            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto npsize = vmm::default_npsize();
 
             std::shared_ptr<vfs::file_t> interp { };
 
@@ -417,8 +416,7 @@ namespace bin::elf::exec
                     write(type);
                 };
 
-                const auto psize = vmm::default_page_size();
-                const auto npsize = vmm::pagemap::from_page_size(psize);
+                const auto npsize = vmm::default_npsize();
 
                 write_auxv(AT_NULL, 0);
                 write_auxv(AT_PHDR, auxv.at_phdr);

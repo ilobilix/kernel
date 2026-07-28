@@ -9,6 +9,7 @@ import system.dev;
 import system.dev.block;
 import system.vfs.dev;
 import system.pci;
+import fmt;
 import lib;
 import std;
 
@@ -58,7 +59,8 @@ namespace nvme
                 {
                     // TODO: nvme specific disk attributes
                     auto dev = dev::device_t::create(
-                        "nvme0n" + std::to_string(nsid + 1), dev::block::get_ktype(), nvctrl
+                        fmt::format("nvme{}n{}", idx, nsid + 1),
+                        dev::block::get_ktype(), nvctrl
                     );
                     dev->cls = &dev::block::get_class();
                     dev->devt = makedev(259, dev::block::alloc_minor());

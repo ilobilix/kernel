@@ -96,8 +96,7 @@ namespace vmm
     {
         lib::bug_on(pages.size() > max_readahead);
 
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         const auto start_idx = offp;
@@ -257,8 +256,7 @@ namespace vmm
 
     lib::expect<void> object::write_back(std::uint64_t offp, std::size_t num_pages)
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         page *chunk[max_readahead];
@@ -377,8 +375,7 @@ namespace vmm
         if (shared_mapped.load(std::memory_order_acquire))
             return;
 
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         const auto end_idx = (offp > ~0ul - num_pages) ? ~0ul : offp + num_pages;
@@ -414,8 +411,7 @@ namespace vmm
 
     lib::expect<void> object::populate(std::size_t num_pages)
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         page *pages[max_readahead];
@@ -444,8 +440,7 @@ namespace vmm
 
     std::size_t object::apply_func(std::uint64_t offset, std::size_t size, auto func)
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         std::size_t progress = 0;
@@ -572,8 +567,7 @@ namespace vmm
 
     object::~object()
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         const auto num_alloc_pages = npsize / pmm::page_size;
 
         auto locked = cache.lock();
@@ -602,7 +596,7 @@ namespace vmm
         if ((max_prot & prot) != prot)
             return std::unexpected { lib::err::permission_denied };
 
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (obj && offset % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
@@ -757,7 +751,7 @@ namespace vmm
         if (length == 0)
             return std::unexpected { lib::err::invalid_length };
 
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
@@ -855,7 +849,7 @@ namespace vmm
         if (length == 0)
             return std::unexpected { lib::err::invalid_length };
 
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (address % npsize)
             return std::unexpected { lib::err::addr_not_aligned };
@@ -987,7 +981,7 @@ namespace vmm
         if (opts.old_len == 0 || opts.new_len == 0)
             return std::unexpected { lib::err::invalid_length };
 
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
 
         if (opts.old_addr % npsize)
@@ -1215,8 +1209,7 @@ namespace vmm
 
     lib::expect<std::uintptr_t> vmspace::find_free_region_internal(auto &locked, std::size_t length)
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
 
         const auto pages = lib::div_roundup(length, npsize);
         const auto pmin = mmap_min / npsize;
@@ -1240,7 +1233,7 @@ namespace vmm
 
     std::shared_ptr<vmspace> vmspace::fork(std::shared_ptr<vmm::pagemap> cpmap)
     {
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
 
         auto ret = std::make_shared<vmspace>();
@@ -1328,8 +1321,7 @@ namespace vmm
         lib::bug_on(!pg);
         if (pg->unref())
         {
-            const auto psize = default_page_size();
-            const auto npsize = pagemap::from_page_size(psize);
+            const auto npsize = default_npsize();
             const auto num_alloc_pages = npsize / pmm::page_size;
             pmm::free(paddr_from(pg), num_alloc_pages);
         }
@@ -1357,8 +1349,7 @@ namespace vmm
         if (!vmspace->pmap->fault_permitted(state.address, state.is_write, state.is_exec))
             return false;
 
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
         vmspace->pmap->invalidate(lib::align_down(state.address, npsize), npsize, true);
 
         return true;
@@ -1382,7 +1373,7 @@ namespace vmm
         const auto proc = thread->proc.get();
         const auto &vmspace = proc->vmspace;
 
-        const auto psize = default_page_size();
+        const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         const auto num_alloc_pages = npsize / pmm::page_size;
 

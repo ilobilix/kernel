@@ -73,6 +73,8 @@ namespace lib::detail
         [[nodiscard]] ret_type &operator*() const & { return *_ptr; }
         [[nodiscard]] ret_type *operator->() const & { return _ptr; }
 
+        operator bool() const { return _ptr != nullptr; }
+
         bool lock()
         {
             if (_locked)

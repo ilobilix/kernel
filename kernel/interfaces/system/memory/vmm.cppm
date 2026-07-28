@@ -40,9 +40,14 @@ export namespace vmm
     {
     };
 
-    constexpr page_size default_page_size()
+    constexpr page_size default_psize()
     {
         return page_size::small;
+    }
+
+    constexpr std::size_t default_npsize()
+    {
+        return vmm::pagemap::from_page_size(default_psize());
     }
 
     struct page;
@@ -197,7 +202,7 @@ export namespace vmm
         {
             if (offp >= num_pages)
                 return std::nullopt;
-            return base + offp * pagemap::from_page_size(default_page_size());
+            return base + offp * default_npsize();
         }
 
         caching cache_attr() const override { return cache; }

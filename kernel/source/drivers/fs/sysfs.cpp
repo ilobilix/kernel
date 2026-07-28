@@ -264,9 +264,12 @@ namespace fs::sysfs
                     return std::unexpected { lib::err::not_permitted };
                 }
 
-                auto unlink(std::shared_ptr<vfs::inode_t> &node) -> lib::expect<void> override
+                auto unlink(
+                    std::shared_ptr<vfs::inode_t> &parent, std::string_view name,
+                    std::shared_ptr<vfs::inode_t> &node
+                ) -> lib::expect<void> override
                 {
-                    lib::unused(node);
+                    lib::unused(parent, name, node);
                     return std::unexpected { lib::err::not_permitted };
                 }
 

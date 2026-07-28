@@ -139,10 +139,13 @@ export namespace syscall::vfs
     int utimensat(int dirfd, const char __user *pathname, const timespec __user *times, int flags);
 
     int fsync(int fd);
+    int fdatasync(int fd);
     int sync();
 
     int truncate(const char __user *pathname, off_t length);
     int ftruncate(int fd, off_t length);
+
+    int fallocate(int fd, int mode, off_t offset, off_t len);
 
     int ioctl(int fd, std::uint64_t request, void __user *argp);
     int fcntl(int fd, int cmd, std::uintptr_t arg);

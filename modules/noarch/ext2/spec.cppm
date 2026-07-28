@@ -25,6 +25,14 @@ export namespace ext2
     constexpr std::size_t undel_dir_ino = 6;
 
     constexpr std::size_t name_len = 255;
+    constexpr std::size_t fast_symlink_size = num_blocks * sizeof(std::uint32_t);
+    constexpr std::size_t dirent_align = 4;
+
+    enum states : std::uint16_t
+    {
+        state_clean = 0x0001,
+        state_error = 0x0002
+    };
 
     enum features : std::uint32_t
     {

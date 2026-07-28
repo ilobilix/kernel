@@ -211,7 +211,7 @@ namespace vmm
         auto addr = reinterpret_cast<std::uintptr_t>(_table) | asid;
         if (!flush)
             addr |= (1ul << 63);
-        asm volatile ("mov cr3, %0" :: "r"(addr) : "memory");
+        cpu::write_reg<"cr3">(addr);
     }
 
     pagemap::pagemap() : _table { new_table() }

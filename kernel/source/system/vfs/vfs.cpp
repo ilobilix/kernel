@@ -757,6 +757,9 @@ namespace vfs
 
             target.mnt->flags = flags & ~std::to_underlying(ms_remount);
 
+            if (auto fs = target.mnt->fs.lock())
+                fs->remount(target.mnt->flags);
+
             if (!(flags & ms_silent))
                 lib::info("vfs: remount('{}', 0x{:X})", target_path, flags);
 
@@ -1231,7 +1234,9 @@ namespace vfs
                 return std::unexpected { lib::err::dir_not_empty };
         }
 
-        const auto ret = res->target.mnt->fs.lock()->unlink(inode);
+        const auto ret = res->target.mnt->fs.lock()->unlink(
+            real_parent->inode, target_dentry->name, inode
+        );
         if (!ret)
             return std::unexpected { ret.error() };
 
@@ -1366,6 +1371,23 @@ namespace vfs
         if (result.has_value() && replaced_inode)
             replaced_inode->orphan_pcache();
         return result;
+    }
+
+    void sync_all()
+    {
+        std::vector<std::shared_ptr<mount_t>> snapshot;
+        {
+            const auto locked = mounts.lock();
+            snapshot.reserve(locked->size());
+            for (const auto &[id, mnt] : *locked)
+                snapshot.push_back(mnt);
+        }
+
+        for (const auto &mnt : snapshot)
+        {
+            if (auto fs = mnt->fs.lock())
+                fs->sync();
+        }
     }
 
     auto dirty_inode(const path_t &path) -> lib::expect<void>
