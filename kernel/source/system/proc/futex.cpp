@@ -165,8 +165,7 @@ namespace sched::futex
             };
         }
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
         const auto pgidx = vaddr / npsize;
         const auto in_page = vaddr & (npsize - 1);
 

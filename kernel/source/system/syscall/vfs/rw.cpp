@@ -698,6 +698,49 @@ namespace syscall::vfs
         return do_trunc(fdesc->file->path, length);
     }
 
+    int fallocate(int fd, int mode, off_t offset, off_t len)
+    {
+        // TODO: other modes
+        constexpr auto fl_keep_size = 0x01;
+
+        if (offset < 0 || len <= 0)
+            return -EINVAL;
+
+        if (mode & ~fl_keep_size)
+        {
+            lib::error("fallocate: unsupported mode 0x{:X}", mode);
+            return -EOPNOTSUPP;
+        }
+
+        const auto proc = sched::current_process();
+        const auto fdesc_res = detail::get_fd(proc, fd);
+        if (!fdesc_res)
+            return -lib::map_error(fdesc_res.error());
+        const auto &fdesc = *fdesc_res;
+
+        if (!is_write(fdesc->file->flags))
+            return -EBADF;
+
+        const auto &path = fdesc->file->path;
+        auto &inode = path.dentry->inode;
+        if (inode->stat.type() == stat::type::s_ifdir)
+            return -EISDIR;
+        if (inode->stat.type() != stat::type::s_ifreg)
+            return -ENODEV;
+
+        if (detail::readonly_mount(path))
+            return -EROFS;
+
+        const auto end = static_cast<std::uint64_t>(offset) + len;
+        if (!(mode & fl_keep_size) && end > static_cast<std::uint64_t>(inode->stat.st_size))
+        {
+            if (end > proc->rlimits->get(sched::rlimit_fsize).cur)
+                return -EFBIG;
+            return do_trunc(path, end);
+        }
+        return 0;
+    }
+
     int fadvise64(int fd, loff_t offset, std::size_t len, int advice)
     {
         // TODO

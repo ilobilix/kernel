@@ -61,7 +61,10 @@ export namespace fs::tmpfs
                 std::string_view name, std::shared_ptr<vfs::inode_t> target
             ) -> lib::expect<std::shared_ptr<vfs::inode_t>> override;
 
-            auto unlink(std::shared_ptr<vfs::inode_t> &node) -> lib::expect<void> override;
+            auto unlink(
+                std::shared_ptr<vfs::inode_t> &parent, std::string_view name,
+                std::shared_ptr<vfs::inode_t> &node
+            ) -> lib::expect<void> override;
 
             auto rename(
                 std::shared_ptr<vfs::inode_t> &old_parent, std::string_view old_name,

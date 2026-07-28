@@ -213,8 +213,12 @@ namespace fs::tmpfs
         return target;
     }
 
-    auto fs_t::instance::unlink(std::shared_ptr<vfs::inode_t> &node) -> lib::expect<void>
+    auto fs_t::instance::unlink(
+        std::shared_ptr<vfs::inode_t> &parent, std::string_view name,
+        std::shared_ptr<vfs::inode_t> &node
+    ) -> lib::expect<void>
     {
+        lib::unused(parent, name);
         node->stat.st_nlink--;
         return { };
     }

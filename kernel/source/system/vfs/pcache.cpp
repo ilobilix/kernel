@@ -33,8 +33,7 @@ namespace vfs
                 if (!file)
                     return std::unexpected { lib::err::not_found };
 
-                const auto psize = vmm::default_page_size();
-                const auto npsize = vmm::pagemap::from_page_size(psize);
+                const auto npsize = vmm::default_npsize();
 
                 for (std::size_t i = 0; i < pages.size(); i++)
                 {
@@ -57,8 +56,7 @@ namespace vfs
                 if (!file)
                     return std::unexpected { lib::err::not_found };
 
-                const auto psize = vmm::default_page_size();
-                const auto npsize = vmm::pagemap::from_page_size(psize);
+                const auto npsize = vmm::default_npsize();
 
                 const auto &inode = file->path.dentry->inode;
                 const std::size_t size = inode->stat.st_size;
@@ -122,8 +120,7 @@ namespace vfs
         if (!obj)
             return;
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
 
         const auto startp = offset / npsize;
         const auto endp = lib::div_roundup(offset + length, npsize);
@@ -141,8 +138,7 @@ namespace vfs
         if (!obj)
             return;
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
 
         obj->drop_cached(size / npsize, ~0ul);
     }
@@ -159,8 +155,7 @@ namespace vfs
 
         if (obj.use_count() > 1)
         {
-            const auto psize = vmm::default_page_size();
-            const auto npsize = vmm::pagemap::from_page_size(psize);
+            const auto npsize = vmm::default_npsize();
 
             const auto pages = lib::div_roundup(static_cast<std::size_t>(stat.st_size), npsize);
             if (const auto ret = obj->populate(pages); !ret.has_value())

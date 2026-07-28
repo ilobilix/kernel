@@ -631,8 +631,7 @@ namespace vmm
 
     void init_vspaces()
     {
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
+        const auto npsize = default_npsize();
 
         const auto base = lib::tohh(lib::align_up(pmm::info().free_start(), lib::gib(1)));
         const auto kvbase = boot::requests::kernel_address.response->virtual_base;
@@ -645,9 +644,7 @@ namespace vmm
         lib::bug_on(length == 0);
         lib::bug_on(!kernel_va.valid());
 
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
-
+        const auto npsize = default_npsize();
         const auto ret = kernel_va->allocate(lib::div_roundup(length, npsize));
         if (!ret.has_value())
             lib::panic("vmm: could not allocate 0x{:X} bytes of virtual address space", length);
@@ -658,9 +655,7 @@ namespace vmm
     {
         lib::bug_on(!kernel_va.valid());
 
-        const auto psize = default_page_size();
-        const auto npsize = pagemap::from_page_size(psize);
-
+        const auto npsize = default_npsize();
         const auto startp = addr / npsize;
         lib::bug_on(startp * npsize != addr);
 

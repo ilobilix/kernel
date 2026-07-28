@@ -431,8 +431,7 @@ namespace dev::block
         if (!drv)
             return std::unexpected { lib::err::invalid_device_or_address };
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
 
         auto range = pages | std::views::transform([npsize](vmm::page *pg) {
             return lib::maybe_uspan<std::byte>::create(
@@ -450,8 +449,7 @@ namespace dev::block
         if (!drv)
             return std::unexpected { lib::err::invalid_device_or_address };
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
 
         auto range = pages | std::views::transform([npsize](vmm::page *pg) {
             return lib::maybe_uspan<std::byte>::create(
@@ -486,7 +484,7 @@ namespace dev::block
                     std::views::single(buffer.subspan(0, real_size))); !ret)
                 return std::unexpected { ret.error() };
         }
-        else mem.read(offset, buffer);
+        else mem.read(offset, buffer.subspan(0, real_size));
 
         return real_size;
     }
@@ -515,7 +513,7 @@ namespace dev::block
                     std::views::single(buffer.subspan(0, real_size))); !ret)
                 return std::unexpected { ret.error() };
         }
-        else mem.write(offset, buffer); // TODO: sync
+        else mem.write(offset, buffer.subspan(0, real_size)); // TODO: sync
 
         return real_size;
     }
@@ -524,6 +522,25 @@ namespace dev::block
     {
         lib::unused(file);
         return memory;
+    }
+
+    lib::expect<void> ops_t::sync(std::shared_ptr<vfs::file_t> file, bool data)
+    {
+        lib::unused(file, data);
+
+        auto &mem = get_memory();
+        auto drv = mem.drive.lock();
+        if (!drv)
+            return std::unexpected { lib::err::invalid_device_or_address };
+
+        const auto npsize = vmm::default_npsize();
+        const auto bs = drv->block_size();
+        const auto first = mem.lba_start * bs / npsize;
+        const auto last = lib::div_roundup((mem.lba_start + mem.lba_count) * bs, npsize);
+
+        if (const auto ret = mem.write_back(first, last - first); !ret)
+            return ret;
+        return drv->flush();
     }
 
     lib::expect<void> register_drive(std::shared_ptr<drive_t> drive, std::string_view part_prefix)

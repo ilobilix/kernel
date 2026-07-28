@@ -25,8 +25,7 @@ namespace syscall::memory
         if (!(priv ^ shared) || (fd >= 0 && anon) || length == 0)
             return err_ptr(EINVAL);
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
         if (offset < 0 || offset % npsize != 0)
             return err_ptr(EINVAL);
 
@@ -160,8 +159,7 @@ namespace syscall::memory
         const auto proc = sched::current_process();
         const auto &vmspace = proc->vmspace;
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
 
         const auto address = reinterpret_cast<std::uintptr_t>(addr);
         const auto old = vmspace->current_brk;
@@ -237,8 +235,7 @@ namespace syscall::memory
         if ((flags & ms_async) && (flags & ms_sync))
             return -EINVAL;
 
-        const auto psize = vmm::default_page_size();
-        const auto npsize = vmm::pagemap::from_page_size(psize);
+        const auto npsize = vmm::default_npsize();
         if (reinterpret_cast<std::uintptr_t>(addr) & (npsize - 1))
             return -EINVAL;
 

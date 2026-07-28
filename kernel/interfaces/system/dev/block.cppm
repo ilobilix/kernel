@@ -118,6 +118,8 @@ export namespace dev::block
         ) override;
 
         lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
+
+        lib::expect<void> sync(std::shared_ptr<vfs::file_t> file, bool data) override;
     };
 
     namespace mbr

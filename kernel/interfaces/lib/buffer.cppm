@@ -9,6 +9,9 @@ import std;
 
 export namespace lib
 {
+    enum class zeroed_t { };
+    inline constexpr zeroed_t zeroed { };
+
     template<typename Type, typename Allocator = std::allocator<Type>>
     class buffer
     {
@@ -30,6 +33,11 @@ export namespace lib
             : _alloc { }, _ptr { nullptr }, _count { 0 } { }
         buffer(std::size_t count)
             : _alloc { }, _ptr { _alloc.allocate(count) }, _count { count } { }
+
+        buffer(std::size_t count, zeroed_t) : buffer { count }
+        {
+            std::memset(_ptr, 0, count * sizeof(Type));
+        }
 
         buffer(Type *ptr, std::size_t count) : buffer { count }
         {

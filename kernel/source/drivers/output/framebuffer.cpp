@@ -429,7 +429,7 @@ namespace output::frm
                     }
 
                     {
-                        const auto npsize = vmm::pagemap::from_page_size(vmm::default_page_size());
+                        const auto npsize = vmm::default_npsize();
                         const auto pages = lib::div_roundup<std::size_t>(fix.smem_len, npsize);
                         ops->mmap_obj = vmm::object::ptr {
                             new vmm::pmemobject {

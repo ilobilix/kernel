@@ -120,16 +120,35 @@ namespace syscall::vfs
         return 0;
     }
 
+    namespace
+    {
+        int do_fsync(int fd, bool data)
+        {
+            const auto proc = sched::current_process();
+
+            const auto fdesc_res = detail::get_fd(proc, fd);
+            if (!fdesc_res)
+                return -lib::map_error(fdesc_res.error());
+
+            if (const auto ret = (*fdesc_res)->file->sync(data); !ret)
+                return -lib::map_error(ret.error());
+            return 0;
+        }
+    } // namespace
+
     int fsync(int fd)
     {
-        // TODO
-        lib::unused(fd);
-        return 0;
+        return do_fsync(fd, false);
+    }
+
+    int fdatasync(int fd)
+    {
+        return do_fsync(fd, true);
     }
 
     int sync()
     {
-        // TODO
+        sync_all();
         return 0;
     }
 
