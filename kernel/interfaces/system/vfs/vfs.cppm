@@ -9,6 +9,7 @@ import system.sched.wait_queue;
 import system.sched.mutex;
 import system.sched.cred;
 import system.memory.virt;
+import system.rcu;
 import lib;
 import std;
 
@@ -744,26 +745,45 @@ export namespace vfs
 
     struct fdtable
     {
-        lib::locker<
-            lib::map::flat_hash<
-                int,
-                std::shared_ptr<vfs::filedesc>
-            >, lib::rwspinlock
-        > fds;
+        struct fdslot : rcu::obj_base<fdslot>
+        {
+            std::shared_ptr<vfs::filedesc> desc;
+        };
+
+        struct fdarray : rcu::obj_base<fdarray>
+        {
+            std::size_t size = 0;
+            rcu::pointer<fdslot> *slots = nullptr;
+
+            ~fdarray()
+            {
+                if (slots)
+                    delete[] slots;
+            }
+        };
+
+        private:
+        fdarray *reserve(std::size_t need);
+        bool clear(fdarray *arr, std::size_t fd);
+
+        public:
+        rcu::owner<fdarray> table;
+        sched::mutex_t write_lock;
         int next_fd = 0;
 
         std::shared_ptr<vfs::filedesc> get(int fd);
         bool close(int fd);
+        void close_range(std::size_t first, std::size_t last, bool cloexec);
+        void close_on_exec();
 
         lib::expect<int> alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
         lib::expect<int> dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
-
-        void close_on_exec();
 
         std::shared_ptr<fdtable> clone();
 
         fdtable() = default;
         fdtable(fdtable &other);
+        ~fdtable();
     };
 
     struct resolve_res

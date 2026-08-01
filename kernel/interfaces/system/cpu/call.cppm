@@ -71,10 +71,7 @@ export namespace cpu
               _recs { std::make_unique<record_t []>(_mask.size()) } { }
 
         batch_t(const batch_t &) = delete;
-        batch_t(batch_t &&) = delete;
-
         batch_t &operator=(const batch_t &) = delete;
-        batch_t &operator=(batch_t &&) = delete;
 
         bool empty() const { return _num == 0; }
         std::size_t size() const { return _num; }
@@ -103,6 +100,8 @@ export namespace cpu
                     continue;
 
                 auto &rec = _recs[_num];
+                lib::bug_on(rec.func != nullptr && !rec.done.load(std::memory_order_acquire));
+
                 if (!fill(i, rec.payload))
                     continue;
 

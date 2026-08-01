@@ -2,9 +2,12 @@
 
 export module system.bin.elf:mod;
 
-import :symbols;
+import system.sched.mutex;
+import system.rcu;
 import lib;
 import std;
+
+import :symbols;
 
 export namespace bin::elf::mod
 {
@@ -63,12 +66,15 @@ export namespace bin::elf::mod
         std::size_t dependents;
     };
 
-    lib::locker<
+    using modules_t = rcu::box<
         lib::map::flat_hash<
             std::string_view,
             std::shared_ptr<entry_t>
-        >, lib::rwspinlock
-    > modules;
+        >
+    >;
+
+    rcu::owner<modules_t> modules;
+    sched::mutex_t modules_lock;
 
     std::atomic<std::uint64_t> generation { 0 };
 

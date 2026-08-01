@@ -165,6 +165,7 @@ namespace arch
             x86_64::apic::init_cpu();
 
             cpu::init_cpu(ptr->idx);
+            rcu::init_cpu();
 
             ptr->online = true;
             sched::start();
@@ -184,6 +185,7 @@ namespace arch
             x86_64::apic::init_cpu();
 
             cpu::init_cpu(ptr->idx);
+            rcu::init_cpu();
 
             ptr->online = true;
         }

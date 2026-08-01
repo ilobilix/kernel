@@ -10,6 +10,8 @@ namespace cpu
 {
     namespace
     {
+        constexpr std::uint64_t spin_ns = 200'000;
+
         struct alignas(64) inbox_t
         {
             std::atomic<call_t *> head { nullptr };
@@ -54,6 +56,7 @@ namespace cpu
         const auto clock = chrono::main_timer();
         const auto start = clock->ns();
         auto next_retry = start + policy.retry_ns;
+        const auto spin_until = start + spin_ns;
 
         while (true)
         {
@@ -69,7 +72,7 @@ namespace cpu
             if (all_done)
                 return true;
 
-            if (policy.yield)
+            if (policy.yield && clock->ns() > spin_until)
                 sched::yield();
             else
                 arch::pause();
