@@ -4,29 +4,19 @@ module system.memory.tlb;
 
 import system.memory.phys;
 import system.cpu.local;
+import system.cpu.call;
 import system.cpu;
-import system.chrono;
 import system.sched;
-import magic_enum;
 import arch;
 
 namespace tlb
 {
     constexpr std::size_t max_pages = 32;
-    constexpr std::uint64_t retry_ns = 3'000'000'000ul;
-    constexpr std::uint64_t timeout_ns = 30'000'000'000ul;
-
-    namespace arch
-    {
-        using namespace ::arch;
-    } // namespace arch
 
     namespace
     {
-        struct alignas(64) record_t
+        struct payload_t
         {
-            record_t *next;
-            std::atomic<bool> done;
             scope sc;
             std::uintptr_t start;
             std::size_t pages;
@@ -35,24 +25,7 @@ namespace tlb
             vmm::asid_t asid;
         };
 
-        struct alignas(64) inbox_t
-        {
-            std::atomic<record_t *> head { nullptr };
-        };
-
-        struct cpu_state_t
-        {
-            struct data_t
-            {
-                record_t records;
-                std::size_t target_idx;
-            };
-            std::unique_ptr<data_t []> data;
-            lib::bitmap mask;
-        };
-
-        cpu_local(inbox_t, inbox);
-        cpu_local(cpu_state_t, cpu_state);
+        cpu_local(cpu::batch_t<payload_t>, batch);
 
         void do_flush(scope sc, vmm::asid_t asid, std::uintptr_t start, std::size_t pages)
         {
@@ -98,10 +71,10 @@ namespace tlb
             do_flush(req.sc, asid, req.start, req.pages);
         }
 
-        void apply(const record_t &rec, std::uint64_t gen)
+        void apply(const payload_t &pl, std::uint64_t gen)
         {
-            const bool is_user = rec.sc == scope::user_range || rec.sc == scope::user_full;
-            if (is_user && rec.asid_gen == 0)
+            const bool is_user = pl.sc == scope::user_range || pl.sc == scope::user_full;
+            if (is_user && pl.asid_gen == 0)
             {
                 cpu::tlb::flush_all();
                 return;
@@ -111,45 +84,16 @@ namespace tlb
 
             if (is_user)
             {
-                if (rec.asid_gen != gen)
+                if (pl.asid_gen != gen)
                     return;
 
                 if (cpu::tlb::has_asids())
-                    asid = rec.asid;
+                    asid = pl.asid;
             }
 
-            do_flush(rec.sc, asid, rec.start, rec.pages);
-        }
-
-        void publish(std::size_t target_idx, record_t *rec)
-        {
-            auto &ib = inbox.unsafe_get(cpu::local::nth_base(target_idx));
-            auto head = ib.head.load(std::memory_order_relaxed);
-
-            do {
-                rec->next = head;
-            } while (!ib.head.compare_exchange_weak(head, rec,
-                std::memory_order_release, std::memory_order_relaxed));
+            do_flush(pl.sc, asid, pl.start, pl.pages);
         }
     } // namespace
-
-    void handle_request()
-    {
-        auto batch = inbox.unsafe_get().head.exchange(nullptr, std::memory_order_acquire);
-        if (!batch)
-            return;
-
-        const auto &self = cpu::self().unsafe_get();
-        const auto gen = self.asid_gen.load(std::memory_order_acquire);
-
-        while (batch)
-        {
-            const auto next = batch->next;
-            apply(*batch, gen);
-            batch->done.store(true, std::memory_order_release);
-            batch = next;
-        }
-    }
 
     void local_flush(const request_t &req)
     {
@@ -163,147 +107,58 @@ namespace tlb
         sched::preempt_disable();
         flush_local(req);
 
-        if (!cpu::local::available())
+        if (!cpu::local::available() || cpu::count() <= 1)
         {
             sched::preempt_enable();
             return;
         }
-
-        const auto ncpus = cpu::count();
-        if (ncpus <= 1)
-        {
-            sched::preempt_enable();
-            return;
-        }
-
-        auto &state = cpu_state.unsafe_get();
-        lib::bug_on(!state.data);
 
         const bool kernel_broadcast =
             req.sc == scope::kernel_range || req.sc == scope::kernel_full ||
             req.pmap == nullptr || !req.pmap->has_asid_ctx();
 
-        auto &self = cpu::self().unsafe_get();
-        const auto self_idx = self.idx;
+        auto &bt = batch.unsafe_get();
 
         std::atomic_thread_fence(std::memory_order_seq_cst);
 
-        std::size_t nt = 0;
-        for (std::size_t i = 0; i < ncpus; i++)
-        {
-            if (i == self_idx)
-                continue;
+        bt.build([&](std::size_t i, payload_t &pl) {
+            pl.sc = req.sc;
+            pl.start = req.start;
+            pl.pages = req.pages;
 
-            auto proc = cpu::local::nth(i);
-            if (!proc->online.load(std::memory_order_acquire))
-                continue;
-
-            auto &rec = state.data[nt].records;
             if (kernel_broadcast)
             {
-                rec.asid_gen = 0;
-                rec.asid = 0;
-                state.data[nt++].target_idx = i;
-                continue;
+                pl.asid_gen = 0;
+                pl.asid = 0;
+                return true;
             }
 
             const auto ctx = req.pmap->cached_asid_ctx(i);
-            if (!ctx || ctx->gen != proc->asid_gen.load(std::memory_order_acquire))
-                continue;
+            if (!ctx || ctx->gen != cpu::local::nth(i)->asid_gen.load(std::memory_order_acquire))
+                return false;
 
-            rec.asid_gen = ctx->gen;
-            rec.asid = ctx->asid;
-            state.data[nt++].target_idx = i;
-        }
+            pl.asid_gen = ctx->gen;
+            pl.asid = ctx->asid;
+            return true;
+        });
 
-        if (nt == 0)
+        if (bt.empty())
         {
             sched::preempt_enable();
             return;
         }
 
-        state.mask.clear();
-        for (std::size_t i = 0; i < nt; i++)
-        {
-            auto &rec = state.data[i].records;
-            rec.next = nullptr;
-            rec.done.store(false, std::memory_order_relaxed);
-            rec.sc = req.sc;
-            rec.start = req.start;
-            rec.pages = req.pages;
-            state.mask.set(state.data[i].target_idx, true);
-        }
-
-        for (std::size_t i = 0; i < nt; i++)
-            publish(state.data[i].target_idx, &state.data[i].records);
-
-        arch::notify_mask(state.mask);
-
-        const auto clock = chrono::main_timer();
-        const auto start = clock->ns();
-        auto next_retry = start + retry_ns;
+        bt.dispatch([](cpu::call_t *call) {
+            const auto rec = static_cast<cpu::batch_t<payload_t>::record_t *>(call);
+            const auto gen = cpu::self().unsafe_get().asid_gen.load(std::memory_order_acquire);
+            apply(rec->payload, gen);
+            return true;
+        });
 
         const bool status = arch::int_switch_status(true);
-
-        while (true)
-        {
-            bool all_done = true;
-            for (std::size_t i = 0; i < nt; i++)
-            {
-                if (!state.data[i].records.done.load(std::memory_order_acquire))
-                {
-                    all_done = false;
-                    break;
-                }
-            }
-            if (all_done)
-                break;
-
-            arch::pause();
-
-            const auto now = clock->ns();
-            if (now > next_retry) [[unlikely]]
-            {
-                std::uint64_t pending = 0;
-                state.mask.clear();
-                for (std::size_t i = 0; i < nt; i++)
-                {
-                    if (!state.data[i].records.done.load(std::memory_order_acquire))
-                    {
-                        pending |= 1ul << state.data[i].target_idx;
-                        state.mask.set(state.data[i].target_idx, true);
-                    }
-                }
-
-                if (now - start > timeout_ns) [[unlikely]]
-                {
-                    lib::panic("tlb shootdown stuck! pending: 0x{:X}", pending);
-                    std::unreachable();
-                }
-
-                lib::warn(
-                    "tlb: shootdown slow after {} ms! pending: 0x{:X}, trying again",
-                    (now - start) / 1'000'000, pending
-                );
-                arch::notify_mask(state.mask);
-                next_retry = now + retry_ns;
-            }
-        }
-
+        bt.wait("tlb shootdown");
         arch::int_switch(status);
+
         sched::preempt_enable();
-    }
-
-    void init_cpu(std::size_t cpu_idx)
-    {
-        const auto ncpus = cpu::count();
-        auto &state = cpu_state.unsafe_get();
-        if (state.data)
-            return;
-
-        state.data = std::make_unique<cpu_state_t::data_t []>(ncpus);
-        state.mask.initialise(ncpus);
-
-        arch::install_handler(cpu_idx);
     }
 } // namespace tlb

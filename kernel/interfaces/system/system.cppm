@@ -8,6 +8,7 @@ export import system.bin;
 export import system.chrono;
 export import system.cmdline;
 export import system.cpu;
+export import system.cpu.call;
 export import system.cpu.local;
 export import system.dev;
 export import system.dev.block;

@@ -1,11 +1,8 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module system.memory.tlb;
+module system.cpu.call;
 
-import lib;
-import std;
-
-namespace tlb::arch
+namespace cpu
 {
     void install_handler(std::size_t cpu_idx)
     {
@@ -20,4 +17,4 @@ namespace tlb::arch
 
         // TODO
     }
-} // namespace tlb::arch
+} // namespace cpu
