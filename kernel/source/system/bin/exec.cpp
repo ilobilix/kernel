@@ -2,31 +2,48 @@
 
 module system.bin.exec;
 
+import system.sched.mutex;
+import system.rcu;
+
 namespace bin::exec
 {
     namespace
     {
-        lib::locker<
+        using formats_t = rcu::box<
             lib::map::flat_hash<
                 std::string_view,
                 std::shared_ptr<format>
-            >, lib::rwspinlock
-        > formats;
+            >
+        >;
+        rcu::pointer<formats_t> formats;
+        sched::mutex_t write_lock;
     } // namespace
 
     bool register_format(std::shared_ptr<format> fmt)
     {
-        auto [_, inserted] = formats.write_lock()->emplace(fmt->name(), fmt);
-        if (inserted)
-            lib::info("exec: registered format '{}'", fmt->name());
-        return inserted;
+        const std::unique_lock _ { write_lock };
+
+        const auto name = fmt->name();
+
+        rcu::updater next { formats };
+        if (!next->emplace(name, std::move(fmt)).second)
+            return false;
+        next.commit();
+
+        lib::info("exec: registered format '{}'", name);
+        return true;
     }
 
     std::shared_ptr<format> get_format(std::string_view name)
     {
-        const auto rlocked = formats.read_lock();
-        auto it = rlocked->find(name);
-        if (it == rlocked->end())
+        const rcu::read_guard _ { };
+
+        const auto table = formats.dereference();
+        if (!table)
+            return nullptr;
+
+        auto it = table->find(name);
+        if (it == table->end())
             return nullptr;
         return it->second;
     }
@@ -38,8 +55,18 @@ namespace bin::exec
         if (depth >= max_depth)
             return std::unexpected { lib::err::binfmt_recursion };
 
-        const auto rlocked = formats.read_lock();
-        for (const auto &[name, fmt] : *rlocked)
+        std::vector<std::shared_ptr<format>> candidates;
+        {
+            const rcu::read_guard _ { };
+            if (const auto table = formats.dereference())
+            {
+                candidates.reserve(table->size());
+                for (const auto &[_, fmt] : *table)
+                    candidates.push_back(fmt);
+            }
+        }
+
+        for (const auto &fmt : candidates)
         {
             auto ret = fmt->probe(file, depth + 1);
             if (ret.has_value())

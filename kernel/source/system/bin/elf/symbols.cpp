@@ -8,6 +8,7 @@ module system.bin.elf;
 
 import drivers.fs.procfs;
 import system.memory;
+import system.rcu;
 import boot;
 import lib;
 import fmt;
@@ -188,12 +189,27 @@ namespace bin::elf::sym
                 {
                     locked->modsyms.clear();
 
-                    auto mlocked = mod::modules.read_lock();
+                    std::vector<
+                        std::pair<
+                            std::string_view,
+                            std::shared_ptr<mod::entry_t>
+                        >
+                    > snapshot;
+                    {
+                        const rcu::read_guard _ { };
+                        if (const auto table = mod::modules.dereference())
+                        {
+                            snapshot.reserve(table->size());
+                            for (const auto &entry : *table)
+                                snapshot.emplace_back(entry);
+                        }
+                    }
+
                     locked->mod_gen = mod::generation.load(std::memory_order_acquire);
 
                     auto it = std::back_inserter(locked->modsyms);
                     std::vector<const mod::image_t *> checked;
-                    for (const auto &[modname, modent] : *mlocked)
+                    for (const auto &[modname, modent] : snapshot)
                     {
                         const auto image = modent->image.get();
                         if (image == nullptr || std::ranges::find(checked, image) != checked.end())
@@ -312,21 +328,25 @@ namespace bin::elf::sym
         auto ret = kallsyms::lookup(addr, namebuf);
         if (!ret.has_value())
         {
-            for (const auto &[name, mod] : mod::modules.read_lock().value())
+            const rcu::read_guard _ { };
+            if (const auto table = mod::modules.dereference())
             {
-                if (!mod->image)
-                    continue;
-
-                auto [sym, offset] = search_in(mod->image->symbols);
-                if (sym != empty)
+                for (const auto &[name, mod] : *table)
                 {
-                    if (namebuf.size() > 1)
+                    if (!mod->image)
+                        continue;
+
+                    auto [sym, offset] = search_in(mod->image->symbols);
+                    if (sym != empty)
                     {
-                        const auto length = std::min(namebuf.size() - 1, sym.name.size());
-                        std::strncpy(namebuf.data(), sym.name.data(), length);
-                        namebuf[length] = 0;
+                        if (namebuf.size() > 1)
+                        {
+                            const auto length = std::min(namebuf.size() - 1, sym.name.size());
+                            std::strncpy(namebuf.data(), sym.name.data(), length);
+                            namebuf[length] = 0;
+                        }
+                        return lookup_result { offset, name };
                     }
-                    return lookup_result { offset, name };
                 }
             }
         }

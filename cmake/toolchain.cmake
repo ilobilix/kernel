@@ -54,12 +54,13 @@ set(_CXX_FLAGS
 if(ILOBILIX_ARCH STREQUAL "x86_64")
     list(APPEND _C_CXX_ASM_FLAGS
         "-march=x86-64"
-        "-mno-red-zone"
+        "-mcmodel=kernel"
         "-mno-mmx"
         "-mno-sse"
         "-mno-sse2"
         "-mno-80387"
-        "-mcmodel=kernel"
+        "-mskip-rax-setup"
+        "-mno-red-zone"
         "-mstack-alignment=8"
     )
 elseif(ILOBILIX_ARCH STREQUAL "aarch64")

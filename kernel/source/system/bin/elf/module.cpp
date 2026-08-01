@@ -26,7 +26,7 @@ namespace bin::elf::mod
         bool activate(entry_t &entry)
         {
             {
-                auto locked = modules.write_lock();
+                const std::unique_lock _ { modules_lock };
                 switch (entry.status)
                 {
                     case status::active:
@@ -52,9 +52,12 @@ namespace bin::elf::mod
             {
                 std::shared_ptr<entry_t> dep;
                 {
-                    const auto rlocked = modules.read_lock();
-                    if (auto it = rlocked->find(name); it != rlocked->end())
-                        dep = it->second;
+                    const rcu::read_guard _ { };
+                    if (const auto table = modules.dereference())
+                    {
+                        if (auto it = table->find(name); it != table->end())
+                            dep = it->second;
+                    }
                 }
 
                 if (dep == nullptr)
@@ -88,17 +91,20 @@ namespace bin::elf::mod
                     lib::error("elf: failed to activate module '{}'", entry.header->name());
             }
 
-            auto locked = modules.write_lock();
+            const std::unique_lock _ { modules_lock };
             if (!success)
             {
                 entry.status = status::failed;
                 return false;
             }
 
-            for (const auto name : deps)
+            if (const auto table = modules.unsafe_load())
             {
-                if (auto it = locked->find(name); it != locked->end())
-                    it->second->dependents++;
+                for (const auto name : deps)
+                {
+                    if (auto it = table->find(name); it != table->end())
+                        it->second->dependents++;
+                }
             }
 
             entry.status = status::active;
@@ -108,18 +114,22 @@ namespace bin::elf::mod
         bool deactivate(entry_t &entry)
         {
             {
-                const auto locked = modules.write_lock();
+                const std::unique_lock _ { modules_lock };
                 if (entry.status != status::active)
                     return true;
             }
 
             const bool success = entry.header->fini ? entry.header->fini() : true;
 
-            auto locked = modules.write_lock();
-            for (const auto name : entry.header->dependencies())
+            const std::unique_lock _ { modules_lock };
+            if (const auto table = modules.unsafe_load())
             {
-                if (auto it = locked->find(name); it != locked->end() && it->second->dependents)
-                    it->second->dependents--;
+                for (const auto name : entry.header->dependencies())
+                {
+                    if (auto it = table->find(name);
+                        it != table->end() && it->second->dependents)
+                        it->second->dependents--;
+                }
             }
 
             entry.status = status::loaded;
@@ -183,8 +193,10 @@ namespace bin::elf::mod
                     continue;
                 }
 
-                auto locked = modules.write_lock();
-                if (locked->contains(ptr->name()))
+                const std::unique_lock _ { modules_lock };
+
+                rcu::updater next { modules };
+                if (next->contains(ptr->name()))
                 {
                     if (!internal)
                         return std::unexpected { lib::err::already_exists };
@@ -231,7 +243,9 @@ namespace bin::elf::mod
 
                 mods.push_back(entry);
 
-                locked.value()[ptr->name()] = std::move(entry);
+                (*next)[ptr->name()] = std::move(entry);
+                next.commit();
+
                 generation.fetch_add(1, std::memory_order_release);
 
                 if (!internal)
@@ -322,12 +336,18 @@ namespace bin::elf::mod
     bool request_alias(std::string_view modalias)
     {
         std::vector<std::shared_ptr<entry_t>> entries;
-        for (const auto rlocked = modules.read_lock(); const auto &[_, entry] : *rlocked)
         {
-            for (const auto &alias : entry->aliases)
+            const rcu::read_guard _ { };
+            if (const auto table = modules.dereference())
             {
-                if (alias.match(modalias))
-                    entries.push_back(entry);
+                for (const auto &[_, entry] : *table)
+                {
+                    for (const auto &alias : entry->aliases)
+                    {
+                        if (alias.match(modalias))
+                            entries.push_back(entry);
+                    }
+                }
             }
         }
         if (entries.empty())
@@ -345,14 +365,18 @@ namespace bin::elf::mod
     {
         std::shared_ptr<entry_t> entry;
         {
-            const auto rlocked = modules.read_lock();
-            const auto it = rlocked->find(name);
-            if (it == rlocked->end())
+            const rcu::read_guard _ { };
+            if (const auto table = modules.dereference())
+            {
+                if (const auto it = table->find(name); it != table->end())
+                    entry = it->second;
+            }
+
+            if (!entry)
             {
                 lib::error("elf: cannot unload unknown module '{}'", name);
                 return false;
             }
-            entry = it->second;
 
             if (entry->internal)
             {
@@ -372,7 +396,12 @@ namespace bin::elf::mod
         if (!deactivate(*entry))
             lib::warn("elf: module '{}' reported failure on fini", name);
 
-        modules.write_lock()->erase(name);
+        {
+            const std::unique_lock _ { modules_lock };
+            rcu::updater next { modules };
+            next->erase(name);
+            next.commit();
+        }
         generation.fetch_add(1, std::memory_order_release);
 
         lib::info("elf: unloaded module '{}'", name);
@@ -708,11 +737,17 @@ namespace bin::elf::mod
         },
         [] {
             std::vector<std::shared_ptr<entry_t>> entries;
-            for (const auto rlocked = modules.read_lock(); const auto &[name, entry] : *rlocked)
             {
-                if (entry->header->type == ::mod::type::generic &&
-                    entry->status == status::loaded)
-                    entries.push_back(entry);
+                const rcu::read_guard _ { };
+                if (const auto table = modules.dereference())
+                {
+                    for (const auto &[name, entry] : *table)
+                    {
+                        if (entry->header->type == ::mod::type::generic &&
+                            entry->status == status::loaded)
+                            entries.push_back(entry);
+                    }
+                }
             }
 
             for (const auto &entry : entries)
@@ -733,9 +768,13 @@ namespace bin::elf::mod
                     // TODO: deps
                     std::string out;
 
-                    const auto rlocked = modules.read_lock();
+                    const rcu::read_guard _ { };
+                    const auto table = modules.dereference();
+                    if (!table)
+                        return out;
+
                     auto it = std::back_inserter(out);
-                    for (const auto &[name, entry] : *rlocked)
+                    for (const auto &[name, entry] : *table)
                     {
                         if (entry->internal || !entry->header)
                             continue;

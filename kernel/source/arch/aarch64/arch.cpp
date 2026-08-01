@@ -5,6 +5,7 @@ module arch;
 import system.cpu.call;
 import system.cpu.local;
 import system.sched;
+import system.rcu;
 import drivers.timers;
 import drivers.output;
 
@@ -80,6 +81,7 @@ namespace arch
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
             cpu::init_cpu(ptr->idx);
+            rcu::init_cpu();
             ptr->online = true;
             sched::start();
         }
@@ -89,6 +91,7 @@ namespace arch
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
             cpu::init_cpu(ptr->idx);
+            rcu::init_cpu();
             ptr->online = true;
         }
     } // namespace core

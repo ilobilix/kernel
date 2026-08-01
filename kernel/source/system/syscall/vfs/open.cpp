@@ -275,28 +275,7 @@ namespace syscall::vfs
 
         auto &fdt = proc->fdt;
 
-        if (flags & cloexec)
-        {
-            for (const auto &[fd, fdesc] : *fdt->fds.read_lock())
-            {
-                if (fd >= static_cast<int>(first) && fd <= static_cast<int>(last))
-                    fdesc->closexec.store(true, std::memory_order_relaxed);
-            }
-            return 0;
-        }
-
-        auto wlocked = fdt->fds.write_lock();
-        for (auto it = wlocked->begin(); it != wlocked->end(); )
-        {
-            if (it->first >= static_cast<int>(first) && it->first <= static_cast<int>(last))
-            {
-                const auto closed_fd = it->first;
-                it = wlocked->erase(it);
-                if (closed_fd < fdt->next_fd)
-                    fdt->next_fd = closed_fd;
-            }
-            else it++;
-        }
+        fdt->close_range(first, last, flags & cloexec);
         return 0;
     }
 } // namespace syscall::vfs

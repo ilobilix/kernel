@@ -16,9 +16,6 @@ namespace lib
 
     namespace lock
     {
-        void acquire_preempt();
-        void release_preempt();
-
         void pause();
     } // namespace lock
 } // namespace lib
@@ -27,6 +24,9 @@ export namespace lib
 {
     namespace lock
     {
+        void acquire_preempt();
+        void release_preempt();
+
         void acquire_irq();
         void release_irq();
     } // namespace lock

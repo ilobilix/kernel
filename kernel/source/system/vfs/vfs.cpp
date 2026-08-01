@@ -1579,44 +1579,152 @@ namespace vfs
         );
     }
 
-    bool fdtable::close(int fd)
+    fdtable::fdarray *fdtable::reserve(std::size_t need)
     {
-        auto wlocked = fds.write_lock();
-        if (!wlocked->erase(fd))
+        const auto old = table.unsafe_load();
+        if (old && need <= old->size)
+            return old;
+
+        auto size = old ? old->size : 0uz;
+        if (size == 0)
+            size = 64;
+        while (size < need)
+            size *= 2;
+
+        const auto next = new fdarray;
+        next->size = size;
+        next->slots = new rcu::pointer<fdslot>[size];
+
+        if (old)
+        {
+            for (std::size_t i = 0; i < old->size; i++)
+                next->slots[i].assign(old->slots[i].unsafe_load());
+        }
+
+        table.assign(next);
+        if (old)
+            old->retire();
+        return next;
+    }
+
+    bool fdtable::clear(fdarray *arr, std::size_t fd)
+    {
+        const auto old = arr->slots[fd].exchange(nullptr);
+        if (!old)
             return false;
-        if (fd < next_fd)
+        old->retire();
+
+        if (static_cast<int>(fd) < next_fd)
             next_fd = fd;
         return true;
     }
 
+    bool fdtable::close(int fd)
+    {
+        if (fd < 0)
+            return false;
+
+        const std::unique_lock _ { write_lock };
+
+        const auto arr = table.unsafe_load();
+        if (!arr || static_cast<std::size_t>(fd) >= arr->size)
+            return false;
+
+        return clear(arr, fd);
+    }
+
+    void fdtable::close_range(std::size_t first, std::size_t last, bool cloexec)
+    {
+        if (cloexec)
+        {
+            const rcu::read_guard _ { };
+
+            const auto arr = table.dereference();
+            if (!arr)
+                return;
+
+            for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
+            {
+                const auto slot = arr->slots[fd].dereference();
+                if (slot && slot->desc)
+                    slot->desc->closexec.store(true, std::memory_order_relaxed);
+            }
+            return;
+        }
+
+        const std::unique_lock _ { write_lock };
+
+        const auto arr = table.unsafe_load();
+        if (!arr)
+            return;
+
+        for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
+            clear(arr, fd);
+    }
+
+    void fdtable::close_on_exec()
+    {
+        const std::unique_lock _ { write_lock };
+
+        const auto arr = table.unsafe_load();
+        if (!arr)
+            return;
+
+        for (std::size_t i = 0; i < arr->size; i++)
+        {
+            const auto slot = arr->slots[i].unsafe_load();
+            if (!slot || !slot->desc || !slot->desc->closexec.load(std::memory_order_relaxed))
+                continue;
+
+            clear(arr, i);
+        }
+    }
+
     std::shared_ptr<vfs::filedesc> fdtable::get(int fd)
     {
-        const auto rlocked = fds.read_lock();
-        auto it = rlocked->find(fd);
-        if (it == rlocked->end())
+        if (fd < 0)
             return nullptr;
-        return it->second;
+
+        const rcu::read_guard _ { };
+
+        const auto arr = table.dereference();
+        if (!arr || static_cast<std::size_t>(fd) >= arr->size)
+            return nullptr;
+
+        const auto slot = arr->slots[fd].dereference();
+        return slot ? slot->desc : nullptr;
     }
 
     lib::expect<int> fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
     {
-        auto wlocked = fds.write_lock();
-        if (wlocked->contains(fd))
+        if (fd < 0)
+            return std::unexpected { lib::err::invalid_fd };
+
+        const std::unique_lock _ { write_lock };
+
+        const auto arr = table.unsafe_load();
+        const auto taken = [&](std::size_t i) {
+            return arr && i < arr->size && arr->slots[i].unsafe_load() != nullptr;
+        };
+
+        if (taken(fd) && !force)
         {
-            if (!force)
-            {
-                fd = next_fd;
-                while (wlocked->contains(fd))
-                    fd++;
-                next_fd = fd + 1;
-            }
-            else lib::bug_on(!wlocked->erase(fd));
+            fd = next_fd;
+            while (taken(fd))
+                fd++;
+            next_fd = fd + 1;
         }
 
         if (static_cast<rlim_t>(fd) >= max_fd)
             return std::unexpected { lib::err::too_many_files };
 
-        wlocked.value()[fd] = std::move(desc);
+        const auto slot = new fdslot;
+        slot->desc = std::move(desc);
+
+        const auto old = reserve(static_cast<std::size_t>(fd) + 1)->slots[fd].exchange(slot);
+        if (old)
+            old->retire();
+
         return fd;
     }
 
@@ -1632,43 +1740,51 @@ namespace vfs
         return alloc(std::move(newfdesc), newfd, force, max_fd);
     }
 
-    void fdtable::close_on_exec()
-    {
-        auto wlocked = fds.write_lock();
-        for (auto it = wlocked->begin(); it != wlocked->end(); )
-        {
-            if (it->second && it->second->closexec.load(std::memory_order_relaxed))
-            {
-                const auto closed_fd = it->first;
-                it = wlocked->erase(it);
-                if (closed_fd < next_fd)
-                    next_fd = closed_fd;
-            }
-            else it++;
-        }
-    }
-
     std::shared_ptr<fdtable> fdtable::clone()
     {
         return std::make_shared<fdtable>(*this);
     }
 
+    fdtable::~fdtable()
+    {
+        if (const auto arr = table.unsafe_load())
+        {
+            for (std::size_t i = 0; i < arr->size; i++)
+            {
+                if (const auto slot = arr->slots[i].unsafe_load())
+                    slot->retire();
+            }
+        }
+    }
+
     fdtable::fdtable(fdtable &other)
     {
-        const auto orlocked = other.fds.read_lock();
-        next_fd = other.next_fd;
+        const std::unique_lock _ { other.write_lock };
 
-        auto wlocked = fds.write_lock();
-        for (const auto &[fd, old_desc] : *orlocked)
+        const auto src = other.table.unsafe_load();
+        next_fd = other.next_fd;
+        if (!src)
+            return;
+
+        const auto arr = new fdarray;
+        arr->size = src->size;
+        arr->slots = new rcu::pointer<fdslot> [src->size];
+
+        for (std::size_t i = 0; i < src->size; i++)
         {
-            if (!old_desc)
+            const auto slot = src->slots[i].unsafe_load();
+            if (!slot || !slot->desc)
                 continue;
 
-            wlocked.value()[fd] = std::make_shared<vfs::filedesc>(
-                old_desc->file,
-                old_desc->closexec.load(std::memory_order_relaxed)
+            const auto copy = new fdslot;
+            copy->desc = std::make_shared<vfs::filedesc>(
+                slot->desc->file,
+                slot->desc->closexec.load(std::memory_order_relaxed)
             );
+            arr->slots[i].assign(copy);
         }
+
+        table.assign(arr);
     }
 
     auto create_anon_fd(const anon_fd_args &args)
@@ -1914,8 +2030,17 @@ namespace vfs
                                 return std::unexpected { lib::err::not_found };
 
                             lib::list<node_t> result;
-                            for (const auto &[fd, _] : *proc->fdt->fds.read_lock())
+                            const rcu::read_guard _ { };
+
+                            const auto arr = proc->fdt->table.dereference();
+                            if (!arr)
+                                return result;
+
+                            for (std::size_t fd = 0; fd < arr->size; fd++)
                             {
+                                if (!arr->slots[fd].dereference())
+                                    continue;
+
                                 result.push_back(node_t {
                                     .name = std::to_string(fd),
                                     .mode = 0777,

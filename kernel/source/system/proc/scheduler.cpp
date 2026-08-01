@@ -7,6 +7,7 @@ import drivers.timers;
 import system.bin.exec;
 import system.chrono;
 import system.cpu;
+import system.rcu;
 import system.vfs;
 import arch;
 import fmt;
@@ -405,6 +406,9 @@ namespace sched
     {
         lib::bug_on(!!in_hard_irq());
         lib::bug_on(current_thread()->irq_depth != 0);
+        lib::bug_on(rcu::nesting() != 0);
+
+        rcu::note_context_switch();
 
         preempt_disable();
         auto &self = cpu::self().unsafe_get();

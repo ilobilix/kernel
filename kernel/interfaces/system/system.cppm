@@ -16,6 +16,7 @@ export import system.irq;
 export import system.memory;
 export import system.pci;
 export import system.random;
+export import system.rcu;
 export import system.sched;
 export import system.syscall;
 export import system.vfs;
