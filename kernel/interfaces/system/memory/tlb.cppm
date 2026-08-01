@@ -7,12 +7,6 @@ import system.cpu.regs;
 import lib;
 import std;
 
-namespace tlb::arch
-{
-    void install_handler(std::size_t cpu_idx);
-    void notify_mask(const lib::bitmap &mask);
-} // namespace tlb::arch
-
 export namespace tlb
 {
     enum class scope : std::uint8_t
@@ -33,5 +27,4 @@ export namespace tlb
 
     void shootdown(const request_t &req);
     void local_flush(const request_t &req);
-    void init_cpu(std::size_t cpu_idx);
 } // export namespace tlb

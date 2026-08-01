@@ -1,36 +1,31 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module system.memory.tlb;
+module system.cpu.call;
 
 import x86_64.system.lapic;
 import x86_64.system.idt;
 import system.cpu.local;
 
-namespace tlb
-{
-    void handle_request();
-} // namespace tlb
-
-namespace tlb::arch
+namespace cpu
 {
     using namespace x86_64;
 
     void install_handler(std::size_t cpu_idx)
     {
-        auto slot = idt::handler_at(cpu_idx, idt::vec_tlb_shootdown);
+        auto slot = idt::handler_at(cpu_idx, idt::vec_cpu_call);
         lib::bug_on(!slot.has_value() || slot->used());
-        slot->set([](auto) { handle_request(); });
+        slot->set([](auto) { handle_ipi(); });
     }
 
     void notify_mask(const lib::bitmap &mask)
     {
-        const auto self_idx = cpu::self().unsafe_get().idx;
+        const auto self_idx = self().unsafe_get().idx;
         for (std::size_t i = 0; i < mask.length(); i++)
         {
             if (i == self_idx || !mask.get(i))
                 continue;
 
-            auto proc = cpu::local::nth(i);
+            auto proc = local::nth(i);
             if (!proc->online.load(std::memory_order_acquire))
                 continue;
 
@@ -38,8 +33,8 @@ namespace tlb::arch
                 proc->arch_id,
                 apic::destination::physical,
                 apic::delivery::fixed,
-                idt::vec_tlb_shootdown
+                idt::vec_cpu_call
             );
         }
     }
-} // namespace tlb::arch
+} // namespace cpu

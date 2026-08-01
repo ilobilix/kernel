@@ -2,7 +2,7 @@
 
 module arch;
 
-import system.memory.tlb;
+import system.cpu.call;
 import system.cpu.local;
 import system.sched;
 import drivers.timers;
@@ -79,7 +79,7 @@ namespace arch
         {
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
-            tlb::init_cpu(ptr->idx);
+            cpu::init_cpu(ptr->idx);
             ptr->online = true;
             sched::start();
         }
@@ -88,7 +88,7 @@ namespace arch
         {
             auto ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::write_el1_base(addr);
-            tlb::init_cpu(ptr->idx);
+            cpu::init_cpu(ptr->idx);
             ptr->online = true;
         }
     } // namespace core
