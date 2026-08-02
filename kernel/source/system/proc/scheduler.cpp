@@ -1843,7 +1843,8 @@ namespace sched
         else
             target_proc->sigactions = caller_proc->sigactions->clone();
 
-        target_proc->exit_signal = args.exit_signal;
+        if (created_proc)
+            target_proc->exit_signal = args.exit_signal;
 
         // TODO: cgroups
         // TODO: namespaces

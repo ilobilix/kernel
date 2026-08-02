@@ -117,11 +117,6 @@ export namespace lib
         return 1ull << val;
     }
 
-    inline constexpr bool is_pow2(std::unsigned_integral auto num)
-    {
-        return !(num & (num - 1));
-    }
-
     class freqfrac
     {
         private:
