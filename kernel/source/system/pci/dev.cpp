@@ -492,7 +492,7 @@ namespace pci
                 auto host = dev::kobject_t::create(
                     "pci0000:00",
                     dev::empty_ktype(),
-                    dev::devices_root()
+                    dev::root("/devices")
                 );
                 lib::bug_on(!dev::register_kobject(host));
 

@@ -1,11 +1,8 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module;
-
-#include <version.h>
-
 module drivers.fs.procfs;
 
+import drivers.fs.cgroupfs;
 import system.sched.mutex;
 import system.vfs.dev;
 import system.vfs;
@@ -792,8 +789,8 @@ namespace fs::procfs
             lib::bug_on(!register_global("version",
                 make_file_ops([](auto) {
                     return fmt::format(
-                        "Ilobilix version {} (built " __DATE__ " " __TIME__ ")\n",
-                        ILOBILIX_RELEASE
+                        "{} version {} (ilobilix) {}\n",
+                        lib::uts::sysname, lib::uts::release, lib::uts::version
                     );
                 }), node_type::file, 0444
             ));
@@ -804,10 +801,16 @@ namespace fs::procfs
                 }), node_type::symlink, 0777
             ));
 
-            // TODO: stub
+            // TODO
             lib::bug_on(!register_per_pid("cgroup",
                 make_file_ops([](auto) {
-                    return "0::/\n";
+                    return cgroupfs::proc_lines();
+                }), node_type::file, 0444
+            ));
+
+            lib::bug_on(!register_global("cgroups",
+                make_file_ops([](auto) {
+                    return std::string { "#subsys_name\thierarchy\tnum_cgroups\tenabled\n" };
                 }), node_type::file, 0444
             ));
 

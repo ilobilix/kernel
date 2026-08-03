@@ -230,17 +230,21 @@ namespace x86_64::apic
         {
             const auto val = timers::tsc::rdtsc();
             const auto ticks = timers::tsc::frequency().ticks(ns);
+
+            constexpr auto max = std::numeric_limits<std::uint64_t>::max();
+            const auto deadline = (ticks > max - val) ? max : val + ticks;
+
             write(reg::lvt_timer, (0b10 << 17) | vector);
             asm volatile ("mfence" ::: "memory");
-            cpu::msr::write(reg::deadline, val + ticks);
+            cpu::msr::write(reg::deadline, deadline);
         }
         else
         {
             write(reg::tic, 0);
             write(reg::lvt_timer, vector);
-            const auto ticks = freq.ticks(ns);
-            if (ticks > 0xFFFFFFFF)
-                lib::panic("lapic: timer ticks exceed limit: {} ns = {} ticks", ns, ticks);
+
+            constexpr auto max = std::numeric_limits<std::uint32_t>::max();
+            const auto ticks = std::min<std::uint64_t>(freq.ticks(ns), max);
             write(reg::tic, ticks);
         }
     }

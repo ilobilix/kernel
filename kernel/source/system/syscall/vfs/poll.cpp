@@ -46,31 +46,17 @@ namespace syscall::vfs
 
         struct poll_table_t : ::vfs::poll_table_t
         {
-            struct entry
-            {
-                sched::wait_queue_t *wq;
-                sched::wait_queue_entry_t wq_entry;
-
-                entry(sched::wait_queue_t *wq, std::function<void ()> cb)
-                    : wq { wq }, wq_entry { std::move(cb) } { }
-            };
-
-            lib::list<entry> entries;
+            lib::list<sched::wait_queue_entry_t> entries;
             std::shared_ptr<sched::wait_queue_t> poll_wq;
 
             poll_table_t()
                 : entries { }, poll_wq { std::make_shared<sched::wait_queue_t>() } { }
 
-            ~poll_table_t()
-            {
-                for (auto &entry : entries)
-                    entry.wq->remove_entry(entry.wq_entry);
-            }
-
             void add(sched::wait_queue_t &wq) override
             {
-                entries.emplace_back(&wq, [poll_wq = poll_wq] { poll_wq->wake_one(); });
-                wq.add_entry(entries.back().wq_entry);
+                wq.add_entry(entries.emplace_back(
+                    [poll_wq = poll_wq] { poll_wq->wake_one(); }
+                ));
             }
         };
 

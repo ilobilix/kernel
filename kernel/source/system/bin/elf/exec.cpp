@@ -345,7 +345,7 @@ namespace bin::elf::exec
                 const auto addr_bottom = addr_top - stack_size;
 
                 const std::string_view execfn_path = ctx->execfn;
-                const std::string_view plaform_name { ILOBILIX_SYSNAME };
+                const std::string_view platform_name = lib::uts::machine;
 
                 auto offset = stack_size;
                 const auto curr = [&] {
@@ -385,8 +385,8 @@ namespace bin::elf::exec
 
                 std::uintptr_t platform_offset = 0;
                 {
-                    offset -= plaform_name.length() + 1;
-                    copy_to_user(curr(), plaform_name.data(), plaform_name.length() + 1);
+                    offset -= platform_name.length() + 1;
+                    copy_to_user(curr(), platform_name.data(), platform_name.length() + 1);
                     platform_offset = addr_bottom + offset;
                 }
 

@@ -2005,7 +2005,7 @@ namespace vfs
                 lib::bug_on(!register_per_pid("fd",
                     make_dir_ops(
                         [](sched::process_t *proc, std::string_view name) -> lib::expect<node_t> {
-                            if (!proc)
+                            if (!proc || !proc->fdt)
                                 return std::unexpected { lib::err::not_found };
 
                             char *end;
@@ -2026,7 +2026,7 @@ namespace vfs
                             };
                         },
                         [](sched::process_t *proc) -> lib::expect<lib::list<node_t>> {
-                            if (!proc)
+                            if (!proc || !proc->fdt)
                                 return std::unexpected { lib::err::not_found };
 
                             lib::list<node_t> result;

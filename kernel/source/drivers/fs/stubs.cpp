@@ -54,9 +54,8 @@ namespace fs::stubs
             frg::manual_box<stub_fs> fs;
         };
 
-        constinit std::array<entry, 5> stubs {{
+        constinit std::array<entry, 3> stubs {{
             { "bpf"sv, 0xCAFE4A11, { } },
-            { "cgroup2"sv, 0x63677270, { } },
             { "pstore"sv, 0x6165676C, { } },
             { "securityfs"sv, 0x73636673, { } }
         }};

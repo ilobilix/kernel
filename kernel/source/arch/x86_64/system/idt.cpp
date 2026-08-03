@@ -57,12 +57,9 @@ namespace x86_64::idt
 
             const auto thread = sched::current_thread();
             lib::error(
-                "exception {}: '{}' on cpu {} on [{}:{}]",
+                "exception {}: '{}' on cpu {} on [{}:{}] '{}'",
                 regs->vector, exception_messages[regs->vector], idx,
-                thread->proc->pid, thread->tid,
-                thread->proc->comm.empty()
-                    ? thread->proc->pathname.basename().str()
-                    : thread->proc->comm
+                thread->proc->pid, thread->tid, sched::comm_of(thread)
             );
 
             int signo = 0;

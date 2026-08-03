@@ -1,9 +1,5 @@
 // Copyright (C) 2024-2026  ilobilo
 
-module;
-
-#include <version.h>
-
 module system.sysctl;
 
 import drivers.fs.procfs;
@@ -107,13 +103,13 @@ namespace sysctl
             );
 
             lib::bug_on(!register_ro("kernel/ostype",
-                [] { return "Ilobilix\n"; }
+                [] { return fmt::format("{}\n", lib::uts::sysname); }
             ));
             lib::bug_on(!register_ro("kernel/osrelease",
-                [] { return ILOBILIX_RELEASE "\n"; }
+                [] { return fmt::format("{}\n", lib::uts::release); }
             ));
             lib::bug_on(!register_ro("kernel/version",
-                [] { return __DATE__ " " __TIME__ "\n"; }
+                [] { return fmt::format("{}\n", lib::uts::version); }
             ));
 
             // TODO

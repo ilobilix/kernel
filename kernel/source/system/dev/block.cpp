@@ -546,10 +546,10 @@ namespace dev::block
     lib::expect<void> register_drive(std::shared_ptr<drive_t> drive, std::string_view part_prefix)
     {
         drive->dev->add_ref_fn = [](auto &ref, auto &dev) {
-            ref.add_link(block_root(), dev.name, dev.path());
+            ref.add_link(root("/block"), dev.name, dev.path());
         };
         drive->dev->rem_ref_fn = [](auto &ref, auto &dev) {
-            ref.remove_link(block_root(), dev.name);
+            ref.remove_link(root("/block"), dev.name);
         };
         drive->dev->private_data = std::make_shared<drive_data_t>(drive);
 

@@ -121,7 +121,7 @@ namespace dev
             if (dev->devt != 0)
             {
                 const auto node = (dev->cls != nullptr && dev->cls->is_block)
-                    ? dev_block_root() : dev_char_root();
+                    ? root("/dev/block") : root("/dev/char");
                 const auto maj = major(dev->devt);
                 const auto min = minor(dev->devt);
                 ref->add_link(node, fmt::format("{}:{}", maj, min), devpath);
@@ -157,7 +157,7 @@ namespace dev
             if (dev->devt != 0)
             {
                 const auto node = (dev->cls != nullptr && dev->cls->is_block)
-                    ? dev_block_root() : dev_char_root();
+                    ? root("/dev/block") : root("/dev/char");
                 const auto maj = major(dev->devt);
                 const auto min = minor(dev->devt);
                 ref->remove_link(node, fmt::format("{}:{}", maj, min));
@@ -571,7 +571,7 @@ namespace dev
 
     lib::expect<void> register_bus(bus_t &bus)
     {
-        auto kobj = bus_kobject_t::create(bus.name, bus.type, bus_root(), bus);
+        auto kobj = bus_kobject_t::create(bus.name, bus.type, root("/bus"), bus);
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -621,7 +621,7 @@ namespace dev
         if (locked->contains(cls.name))
             return std::unexpected { lib::err::already_exists };
 
-        auto kobj = kobject_t::create(cls.name, cls.type, class_root());
+        auto kobj = kobject_t::create(cls.name, cls.type, root("/class"));
         if (auto res = register_kobject(kobj); !res)
             return res;
 
@@ -1012,39 +1012,42 @@ namespace dev
         return instance;
     }
 
+    std::shared_ptr<kobject_t> root(const lib::path &path)
+    {
+        const auto locked = kobjects.read_lock();
+        if (const auto it = locked->find(path.str()); it != locked->end())
+            return it->second;
+
+        lib::panic("dev: no kobject registered at '{}'", path.str());
+        std::unreachable();
+    }
+
     namespace
     {
-        std::shared_ptr<kobject_t> devices_kobj;
-        std::shared_ptr<kobject_t> bus_kobj;
-        std::shared_ptr<kobject_t> class_kobj;
-        std::shared_ptr<kobject_t> dev_kobj;
-        std::shared_ptr<kobject_t> block_kobj;
-        std::shared_ptr<kobject_t> dev_char_kobj;
-        std::shared_ptr<kobject_t> dev_block_kobj;
-        std::shared_ptr<kobject_t> virtual_kobj;
-
         lib::initgraph::task init_task
         {
             "dev.init",
             lib::initgraph::postsched_init_engine,
             lib::initgraph::entail { core_registered_stage() },
             [] {
-                const auto install_root = [&](
-                    std::shared_ptr<kobject_t> &slot, std::string_view name,
-                    std::shared_ptr<kobject_t> parent = { }
+                const auto install = [](
+                    std::string_view name, const std::shared_ptr<kobject_t> &parent = { }
                 ) {
-                    slot = kobject_t::create(name, empty_ktype(), parent);
-                    lib::bug_on(!register_kobject(slot));
+                    auto kobj = kobject_t::create(name, empty_ktype(), parent);
+                    lib::bug_on(!register_kobject(kobj));
+                    return kobj;
                 };
 
-                install_root(devices_kobj, "devices");
-                install_root(bus_kobj, "bus");
-                install_root(class_kobj, "class");
-                install_root(dev_kobj, "dev");
-                install_root(block_kobj, "block");
-                install_root(dev_char_kobj, "char", dev_kobj);
-                install_root(dev_block_kobj, "block", dev_kobj);
-                install_root(virtual_kobj, "virtual", devices_kobj);
+                const auto devices = install("devices");
+                const auto dev = install("dev");
+
+                install("bus");
+                install("class");
+                install("block");
+                install("char", dev);
+                install("block", dev);
+                install("virtual", devices);
+                install("fs");
             }
         };
 
@@ -1061,46 +1064,4 @@ namespace dev
             [] { }
         };
     } // namespace
-
-    std::shared_ptr<kobject_t> devices_root()
-    {
-        lib::bug_on(!devices_kobj);
-        return devices_kobj;
-    }
-
-    std::shared_ptr<kobject_t> bus_root()
-    {
-        lib::bug_on(!bus_kobj);
-        return bus_kobj;
-    }
-
-    std::shared_ptr<kobject_t> class_root()
-    {
-        lib::bug_on(!class_kobj);
-        return class_kobj;
-    }
-
-    std::shared_ptr<kobject_t> block_root()
-    {
-        lib::bug_on(!block_kobj);
-        return block_kobj;
-    }
-
-    std::shared_ptr<kobject_t> dev_char_root()
-    {
-        lib::bug_on(!dev_char_kobj);
-        return dev_char_kobj;
-    }
-
-    std::shared_ptr<kobject_t> dev_block_root()
-    {
-        lib::bug_on(!dev_block_kobj);
-        return dev_block_kobj;
-    }
-
-    std::shared_ptr<kobject_t> virtual_root()
-    {
-        lib::bug_on(!virtual_kobj);
-        return virtual_kobj;
-    }
 } // namespace dev

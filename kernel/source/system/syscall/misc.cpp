@@ -3,7 +3,6 @@
 module;
 
 #include <uacpi/sleep.h>
-#include <version.h>
 
 module system.syscall.misc;
 
@@ -17,19 +16,21 @@ import magic_enum;
 
 namespace syscall::misc
 {
+    constexpr std::size_t uts_len = 65;
+    constexpr std::size_t hostname_max = uts_len - 1;
+
     struct utsname
     {
-        char sysname[65];
-        char nodename[65];
-        char release[65];
-        char version[65];
-        char machine[65];
-        char domainname[65];
+        char sysname[uts_len];
+        char nodename[uts_len];
+        char release[uts_len];
+        char version[uts_len];
+        char machine[uts_len];
+        char domainname[uts_len];
     };
 
     namespace
     {
-        constexpr std::size_t hostname_max = 64;
         lib::spinlock hostname_lock;
         char hostname_buf[hostname_max + 1] = "ilobilix";
 
@@ -60,19 +61,22 @@ namespace syscall::misc
 
     int uname(struct utsname __user *buf)
     {
-        utsname kbuf
-        {
-            .sysname = "Ilobilix",
-            .nodename = { },
-            .release = ILOBILIX_RELEASE,
-            .version = __DATE__ " " __TIME__,
-            .machine = ILOBILIX_ARCH,
-            .domainname = "(none)"
+        utsname kbuf { };
+
+        const auto set = [](char (&field)[uts_len], std::string_view value) {
+            std::memcpy(field, value.data(), std::min(value.size(), uts_len - 1));
         };
+
+        set(kbuf.sysname, lib::uts::sysname);
+        set(kbuf.release, lib::uts::release);
+        set(kbuf.version, lib::uts::version);
+        set(kbuf.machine, lib::uts::machine);
+        set(kbuf.domainname, "(none)");
         {
             const std::unique_lock _ { hostname_lock };
-            std::memcpy(kbuf.nodename, hostname_buf, sizeof(kbuf.nodename));
+            set(kbuf.nodename, hostname_buf);
         }
+
         if (!lib::copy_to_user(buf, &kbuf, sizeof(utsname)))
             return -EFAULT;
         return 0;
@@ -262,18 +266,22 @@ namespace syscall::misc
                     return -EFAULT;
                 tmp[sched::comm_max] = '\0';
 
-                const auto proc = sched::current_process();
+                const auto thread = sched::current_thread();
+                const auto proc = thread->proc.get();
                 const std::unique_lock _ { proc->lock };
-                proc->comm = lib::trim(tmp);
+
+                thread->comm = lib::trim(tmp);
+                if (thread->tid == proc->pid)
+                    proc->comm = thread->comm;
                 return 0;
             }
             case 16: // PR_GET_NAME
             {
                 char tmp[sched::comm_max + 1] { };
                 {
-                    const auto proc = sched::current_process();
-                    const std::unique_lock _ { proc->lock };
-                    const auto src = proc->comm;
+                    const auto thread = sched::current_thread();
+                    const std::unique_lock _ { thread->proc->lock };
+                    const auto src = sched::comm_of(thread);
                     std::memcpy(tmp, src.data(), std::min(src.size(), sched::comm_max));
                 }
 

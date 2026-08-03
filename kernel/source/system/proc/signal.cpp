@@ -318,7 +318,7 @@ namespace sched
     bool send_signal(thread_t *thread, const siginfo_t &info)
     {
         const int sig = info.signo;
-        if (sig < 1 || sig > static_cast<int>(nsig))
+        if (sig < 1 || sig > nsig)
             return false;
 
         auto proc = thread->proc.get();
@@ -351,7 +351,7 @@ namespace sched
     bool force_signal(thread_t *thread, const siginfo_t &info)
     {
         const int sig = info.signo;
-        if (sig < 1 || sig > static_cast<int>(nsig))
+        if (sig < 1 || sig > nsig)
             return false;
 
         auto proc = thread->proc.get();
@@ -368,7 +368,7 @@ namespace sched
 
     void flush_signal(process_t *proc, int sig)
     {
-        if (sig < 1 || sig > static_cast<int>(nsig))
+        if (sig < 1 || sig > nsig)
             return;
 
         drop_queued_all(proc, [sig](int s) { return s == sig; });
@@ -377,7 +377,7 @@ namespace sched
     bool send_signal(process_t *process, const siginfo_t &info)
     {
         const int sig = info.signo;
-        if (sig < 1 || sig > static_cast<int>(nsig))
+        if (sig < 1 || sig > nsig)
             return false;
 
         std::shared_ptr<thread_t> target;

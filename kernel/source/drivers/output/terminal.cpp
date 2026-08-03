@@ -2,6 +2,7 @@
 
 module;
 
+#define FLANTERM_IN_FLANTERM
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 
@@ -35,26 +36,66 @@ namespace output::term
 
         lib::spinlock_irq lock;
 
+        void write_locked(flanterm_context *ctx, std::string_view str)
+        {
+            if (!ctx)
+                return;
+            flanterm_write(ctx, str.data(), str.length());
+        }
+
         constinit lib::logger log {
             [](std::string_view str) {
                 auto ctx = main();
                 if (!ctx)
                     return;
-                write(ctx, str);
+                write_locked(ctx, str);
             },
             [] { lock.lock(); },
             [] { lock.unlock(); }
         };
+
+        flanterm_context *make_context(const frm::framebuffer &frm, std::uint32_t *target)
+        {
+            return flanterm_fb_init(
+                lib::alloc, [](void *ptr, std::size_t) { lib::free(ptr); },
+                target,
+                frm.width, frm.height, frm.pitch,
+                frm.red_mask_size, frm.red_mask_shift,
+                frm.green_mask_size, frm.green_mask_shift,
+                frm.blue_mask_size, frm.blue_mask_shift,
+                nullptr, ansi_colours, ansi_bright_colours,
+                nullptr, nullptr, nullptr, &default_fg,
+                font, 8, 16, 1,
+                0, 0, 0, FLANTERM_FB_ROTATE_0
+            );
+        }
     } // namespace
 
     void write(flanterm_context *ctx, std::string_view str)
     {
-        flanterm_write(ctx, str.data(), str.length());
+        const std::unique_lock _ { lock };
+        write_locked(ctx, str);
     }
 
-    void write(flanterm_context *ctx, char chr)
+    void set_visible(flanterm_context *ctx, bool on)
     {
-        flanterm_write(ctx, &chr, 1);
+        if (!ctx)
+            return;
+
+        const std::unique_lock _ { lock };
+        flanterm_set_autoflush(ctx, on);
+        if (!on)
+            return;
+
+        flanterm_flush(ctx);
+        flanterm_full_refresh(ctx);
+    }
+
+    void dimensions(flanterm_context *ctx, std::size_t &cols, std::size_t &rows)
+    {
+        cols = rows = 0;
+        if (ctx)
+            flanterm_get_dimensions(ctx, &cols, &rows);
     }
 
     flanterm_context *main()
@@ -89,6 +130,34 @@ namespace output::term
         lib::info("initialised the graphical terminal");
     }
 
+    flanterm_context *create()
+    {
+        if (frm::framebuffers.empty())
+            return nullptr;
+
+        // this ugly hack makes flanterm not refresh the framebuffer on context creation
+        const auto &frm = frm::framebuffers.back();
+        auto buffer = lib::alloc<std::uint32_t *>(frm.pitch * frm.height);
+        auto ctx = make_context(frm, buffer);
+        if (ctx)
+        {
+            reinterpret_cast<flanterm_fb_context *>(ctx)->framebuffer =
+                static_cast<std::uint32_t *>(frm.address);
+        }
+
+        lib::free(buffer);
+        return ctx;
+    }
+
+    void destroy(flanterm_context *ctx)
+    {
+        if (!ctx)
+            return;
+
+        const std::unique_lock _ { lock };
+        flanterm_deinit(ctx, [](void *ptr, std::size_t) { lib::free(ptr); });
+    }
+
     void init()
     {
         for (const auto &frm : frm::framebuffers)
@@ -99,18 +168,7 @@ namespace output::term
                 continue;
             }
 
-            auto ctx = flanterm_fb_init(
-                lib::alloc, [](void *ptr, std::size_t) { lib::free(ptr); },
-                reinterpret_cast<std::uint32_t *>(frm.address),
-                frm.width, frm.height, frm.pitch,
-                frm.red_mask_size, frm.red_mask_shift,
-                frm.green_mask_size, frm.green_mask_shift,
-                frm.blue_mask_size, frm.blue_mask_shift,
-                nullptr, ansi_colours, ansi_bright_colours,
-                nullptr, nullptr, nullptr, nullptr,
-                font, 8, 16, 1,
-                0, 0, 0, FLANTERM_FB_ROTATE_0
-            );
+            auto ctx = make_context(frm, static_cast<std::uint32_t *>(frm.address));
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");
 

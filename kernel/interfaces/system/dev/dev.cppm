@@ -450,11 +450,5 @@ export namespace dev
     ktype_t &bus_ktype();
     ktype_t &empty_ktype();
 
-    std::shared_ptr<kobject_t> devices_root();
-    std::shared_ptr<kobject_t> bus_root();
-    std::shared_ptr<kobject_t> class_root();
-    std::shared_ptr<kobject_t> block_root();
-    std::shared_ptr<kobject_t> dev_char_root();
-    std::shared_ptr<kobject_t> dev_block_root();
-    std::shared_ptr<kobject_t> virtual_root();
+    std::shared_ptr<kobject_t> root(const lib::path &path);
 } // export namespace dev
