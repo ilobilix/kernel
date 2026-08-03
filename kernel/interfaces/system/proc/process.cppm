@@ -149,6 +149,9 @@ export namespace sched
         int signal_all(int sig);
     };
 
+    std::string comm_of(process_t *proc);
+    std::string comm_of(thread_t *thread);
+
     struct session_t
     {
         pid_t sid;

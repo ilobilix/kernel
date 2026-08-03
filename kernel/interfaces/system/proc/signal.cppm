@@ -8,7 +8,7 @@ import std;
 
 export namespace sched
 {
-    constexpr std::size_t nsig = 64;
+    constexpr int nsig = 64;
 
     enum signo : int
     {
@@ -47,7 +47,7 @@ export namespace sched
         sigrtmax  = 64
     };
 
-    constexpr std::size_t sigset_words = lib::div_roundup(nsig, 64);
+    constexpr auto sigset_words = lib::div_roundup<std::size_t>(nsig, 64uz);
     struct sigset_t
     {
         std::uint64_t bits[sigset_words] { };

@@ -518,7 +518,7 @@ namespace syscall::proc
     {
         using namespace sched;
 
-        if (sig < 0 || sig > static_cast<int>(nsig))
+        if (sig < 0 || sig > nsig)
             return -EINVAL;
 
         if (tgid <= 0 || tid <= 0)
@@ -568,7 +568,7 @@ namespace syscall::proc
         if (sigsetsize != sizeof(sigset_t))
             return -EINVAL;
 
-        if (signum < 1 || signum > static_cast<int>(nsig))
+        if (signum < 1 || signum > nsig)
             return -EINVAL;
 
         if (signum == sigkill || signum == sigstop)
@@ -1300,37 +1300,55 @@ namespace syscall::proc
         if (!target.has_value())
             return -lib::map_error(target.error());
 
-        const auto get_array = [](auto &vec, auto uarray) {
+        const auto stack_limit = proc->rlimits->get(sched::rlimit_stack).cur;
+        constexpr std::size_t max_arg_len = 32 * 4096;
+        const std::size_t max_arg_total = std::max(
+            max_arg_len,
+            std::min(stack_limit, sched::ustack_size) / 4
+        );
+
+        std::size_t total = 0;
+        const auto get_array = [&](auto &vec, auto uarray) {
             if (!uarray)
-                return true;
+                return 0;
 
             std::size_t idx = 0;
             while (true)
             {
                 std::uintptr_t addr;
                 if (!lib::copy_from_user(&addr, uarray + idx, sizeof(addr)))
-                    return false;
+                    return -EFAULT;
 
                 if (addr == 0)
                     break;
 
                 const auto ptr = reinterpret_cast<const char __user *>(addr);
-                auto str = lib::user_string::get(ptr);
+                auto str = lib::user_string::get(ptr, max_arg_len);
                 if (!str.has_value())
-                    return false;
+                {
+                    const auto len = lib::strnlen_user(ptr, max_arg_len);
+                    if (len >= 0 && static_cast<std::size_t>(len) == max_arg_len)
+                        return -E2BIG;
+                    return -EFAULT;
+                }
+
+                total += str->size() + 1 + sizeof(std::uintptr_t);
+                if (total > max_arg_total)
+                    return -E2BIG;
+
                 vec.emplace_back(std::move(*str));
                 idx++;
             }
-            return true;
+            return 0;
         };
 
         std::vector<std::string> kargv;
-        if (!get_array(kargv, argv))
-            return -EFAULT;
+        if (const auto err = get_array(kargv, argv); err != 0)
+            return err;
 
         std::vector<std::string> kenvp;
-        if (!get_array(kenvp, envp))
-            return -EFAULT;
+        if (const auto err = get_array(kenvp, envp); err != 0)
+            return err;
 
         std::string kpathname;
         if (pathname && lib::strnlen_user(pathname, 1) != 0)

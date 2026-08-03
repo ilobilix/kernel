@@ -428,6 +428,7 @@ namespace syscall::vfs
     // std::ssize_t preadv2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
     // std::ssize_t pwritev2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
 
+    // not really the correct implementation but it's good enough
     std::ssize_t splice(
         int fd_in, off_t __user *off_in,
         int fd_out, off_t __user *off_out,

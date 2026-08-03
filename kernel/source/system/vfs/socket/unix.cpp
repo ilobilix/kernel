@@ -82,9 +82,12 @@ namespace vfs::socket
                     return std::make_shared<private_t>(std::move(sock));
                 }
 
-                static auto get(const std::shared_ptr<vfs::inode_t> &inode)
+                static std::shared_ptr<unix_sock> bound_to(
+                    const std::shared_ptr<vfs::inode_t> &inode
+                )
                 {
-                    return std::static_pointer_cast<private_t>(inode->private_data);
+                    const auto priv = std::static_pointer_cast<private_t>(inode->private_data);
+                    return priv ? priv->sock.lock() : nullptr;
                 }
             };
 
@@ -502,7 +505,7 @@ namespace vfs::socket
                     if (inode->stat.type() != stat::s_ifsock)
                         return std::unexpected { lib::err::connection_refused };
 
-                    target = private_t::get(inode)->sock.lock();
+                    target = private_t::bound_to(inode);
                 }
                 if (!target)
                     return std::unexpected { lib::err::connection_refused };
@@ -575,7 +578,7 @@ namespace vfs::socket
                                 }
 
                                 tlocked->accept_queue.push_back(server);
-                                target->accept_wait.wake_one();
+                                target->accept_wait.wake_all();
                                 return { };
                             }
                             else gen = target->conn_wait.snapshot_gen();
@@ -915,7 +918,7 @@ namespace vfs::socket
                             if (inode->stat.type() != stat::s_ifsock)
                                 return std::unexpected { lib::err::connection_refused };
 
-                            dest = private_t::get(inode)->sock.lock();
+                            dest = private_t::bound_to(inode);
                         }
 
                         if (!dest)
@@ -1296,18 +1299,23 @@ namespace vfs::socket
                 bool is_listener = false;
                 bool is_connected = false;
                 bool peer_gone = false;
+                bool shut_write = false;
+                bool can_accept = false;
                 {
                     auto slocked = state.lock();
                     peer_ptr = slocked->peer.lock();
                     is_listener = (slocked->state == listening);
                     is_connected = (slocked->state == connected);
-                    if (is_connected)
-                    {
-                        peer_gone = !peer_ptr || [&] {
-                            const auto pslocked = peer_ptr->state.lock();
-                            return pslocked->state == disconnecting || pslocked->shut_write;
-                        } ();
-                    }
+                    shut_write = slocked->shut_write;
+                    can_accept = !slocked->accept_queue.empty();
+                }
+
+                if (is_connected)
+                {
+                    peer_gone = !peer_ptr || [&] {
+                        const auto pslocked = peer_ptr->state.lock();
+                        return pslocked->state == disconnecting || pslocked->shut_write;
+                    } ();
                 }
 
                 bool has_data;
@@ -1320,20 +1328,13 @@ namespace vfs::socket
 
                 if (is_listener)
                 {
-                    auto slocked = state.lock();
-                    if (!slocked->accept_queue.empty())
+                    if (can_accept)
                         mask |= pollin | pollrdnorm;
                 }
                 else
                 {
                     if (has_data || peer_gone)
                         mask |= pollin | pollrdnorm;
-
-                    bool shut_write;
-                    {
-                        const auto slocked = state.lock();
-                        shut_write = slocked->shut_write;
-                    }
 
                     if (peer_gone)
                         mask |= pollrdhup;

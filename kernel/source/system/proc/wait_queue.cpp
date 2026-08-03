@@ -6,21 +6,6 @@ import system.sched;
 
 namespace sched
 {
-    namespace
-    {
-        void visit(auto &type, bool preempt)
-        {
-            std::visit(lib::overloaded {
-                [preempt](thread_base_t *thread) {
-                    wake_up(static_cast<thread_t *>(thread), preempt);
-                },
-                [](wait_queue_entry_t::callback_t &func) {
-                    func();
-                }
-            }, type);
-        }
-    } // namespace
-
     thread_base_t *wait_queue_entry_t::current_thread()
     {
         return sched::current_thread();
@@ -40,17 +25,59 @@ namespace sched
         return false;
     }
 
+    wait_queue_t::~wait_queue_t()
+    {
+        if (!anchor)
+            return;
+
+        const std::unique_lock _ { anchor->lock };
+        anchor->queue = nullptr;
+
+        const std::unique_lock _ { lock };
+        while (!entries.empty())
+            entries.pop_front()->linked.store(false, std::memory_order_release);
+    }
+
+    void wait_queue_t::link_locked(wait_queue_entry_t &entry)
+    {
+        if (!anchor)
+            anchor = std::make_shared<wait_queue_anchor_t>(this);
+
+        entries.push_back(&entry);
+        entry.anchor = anchor;
+        entry.linked.store(true, std::memory_order_release);
+    }
+
+    void wait_queue_t::unlink_locked(wait_queue_entry_t &entry)
+    {
+        if (entries.find(&entry) != entries.end())
+            entries.remove(&entry);
+        entry.linked.store(false, std::memory_order_release);
+    }
+
     void wait_queue_t::add_entry(wait_queue_entry_t &entry)
     {
         const std::unique_lock _ { lock };
-        entries.push_back(&entry);
+        link_locked(entry);
     }
 
-    void wait_queue_t::remove_entry(wait_queue_entry_t &entry)
+    void detach_entry(wait_queue_entry_t &entry)
     {
-        const std::unique_lock _ { lock };
-        if (entries.find(&entry) != entries.end())
-            entries.remove(&entry);
+        if (!entry.linked.load(std::memory_order_acquire))
+        {
+            entry.anchor.reset();
+            return;
+        }
+
+        {
+            const std::unique_lock _ { entry.anchor->lock };
+            if (auto wq = entry.anchor->queue)
+            {
+                const std::unique_lock _ { wq->lock };
+                wq->unlink_locked(entry);
+            }
+        }
+        entry.anchor.reset();
     }
 
     void wait_queue_t::unlink_atomic(
@@ -63,10 +90,7 @@ namespace sched
             return;
 
         if (auto entry = entry_ref.load(std::memory_order_relaxed))
-        {
-            if (entries.find(entry) != entries.end())
-                entries.remove(entry);
-        }
+            unlink_locked(*entry);
 
         on_queue_ref.store(nullptr, std::memory_order_relaxed);
         entry_ref.store(nullptr, std::memory_order_relaxed);
@@ -110,7 +134,7 @@ namespace sched
             ? thread_state::sleeping
             : thread_state::blocked;
 
-        entries.push_back(&entry);
+        link_locked(entry);
         thread->on_wait_queue.store(this, std::memory_order_relaxed);
         thread->wait_entry.store(&entry, std::memory_order_relaxed);
         thread->state.store(sleep_state, std::memory_order_seq_cst);
@@ -131,8 +155,7 @@ namespace sched
             {
                 thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
                 thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-                if (entries.find(&entry) != entries.end())
-                    entries.remove(&entry);
+                unlink_locked(entry);
 
                 lock.unlock();
                 if (killed_now)
@@ -164,8 +187,7 @@ namespace sched
         lock.lock();
         thread->on_wait_queue.store(nullptr, std::memory_order_relaxed);
         thread->wait_entry.store(nullptr, std::memory_order_relaxed);
-        if (entries.find(&entry) != entries.end())
-            entries.remove(&entry);
+        unlink_locked(entry);
         lock.unlock();
 
         return { interrupted, ns != 0 && timeout.expired, killed };
@@ -214,6 +236,7 @@ namespace sched
 
         auto entry = entries.pop_front();
         auto type = entry->type;
+        entry->linked.store(false, std::memory_order_release);
 
         if (std::holds_alternative<thread_base_t *>(type))
         {
@@ -248,10 +271,13 @@ namespace sched
 
                 entries.remove(entry);
 
-                if (std::holds_alternative<thread_base_t *>(entry->type))
-                    wake_up(static_cast<thread_t *>(std::get<thread_base_t *>(entry->type)), false);
+                auto type = entry->type;
+                entry->linked.store(false, std::memory_order_release);
+
+                if (std::holds_alternative<thread_base_t *>(type))
+                    wake_up(static_cast<thread_t *>(std::get<thread_base_t *>(type)), false);
                 else
-                    callbacks.push_back(entry->type);
+                    callbacks.push_back(std::move(type));
             }
         }
         for (auto &cb : callbacks)

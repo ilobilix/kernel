@@ -14,6 +14,7 @@ namespace syscall::vfs
         struct instance_t
         {
             std::atomic<std::int32_t> next_wd { 1 };
+            sched::wait_queue_t queue;
         };
 
         struct ops_t : ::vfs::ops_t
@@ -56,7 +57,9 @@ namespace syscall::vfs
             ) override
             {
                 // TODO
-                lib::unused(file, pt);
+                auto data = std::static_pointer_cast<instance_t>(file->private_data);
+                if (pt && data)
+                    pt->add(data->queue);
                 return 0;
             }
 

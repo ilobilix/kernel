@@ -215,7 +215,7 @@ namespace fs::dev::pty
             }
             case tiocgptpeer:
             {
-                const int open_flags = static_cast<int>(argp.address());
+                const int open_flags = argp.value();
                 const auto proc = sched::current_process();
                 if (!proc || !proc->fdt)
                     return std::unexpected { lib::err::io_error };

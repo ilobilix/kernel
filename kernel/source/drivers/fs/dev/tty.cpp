@@ -2,6 +2,7 @@
 
 module drivers.fs.dev.tty;
 
+import drivers.output.terminal;
 import drivers.fs.devtmpfs;
 import system.memory.virt;
 import system.vfs.dev;
@@ -1021,7 +1022,7 @@ namespace fs::dev::tty
             case kdskbmode:
             {
                 // TODO
-                const auto mode = static_cast<int>(argp.address());
+                const int mode = argp.value();
                 switch (mode)
                 {
                     case 0x00: // K_RAW
@@ -1036,12 +1037,25 @@ namespace fs::dev::tty
                 inst->kbmode.store(mode, std::memory_order_relaxed);
                 return 0;
             }
+            // handled in vt
+            case kdsetmode:
+            case kdgetmode:
             case kdgkbtype:
+            case vt_openqry:
+            case vt_getmode:
+            case vt_setmode:
+            case vt_getstate:
+            case vt_reldisp:
+            case vt_activate:
+            case vt_waitactive:
+            case vt_disallocate:
+                break;
+            case kdsigaccept:
             {
-                // TODO: keyboard type
-                constexpr std::uint8_t kb_101 = 0x02;
-                if (!argp.write(kb_101))
-                    return std::unexpected { lib::err::invalid_address };
+                // TODO: magic keys
+                const int sig = argp.value();
+                if (sig < 1 || sig > sched::nsig || sig == sched::sigkill || sig == sched::sigstop)
+                    return std::unexpected { lib::err::invalid_argument };
                 return 0;
             }
             case kdgkbled:
@@ -1055,18 +1069,6 @@ namespace fs::dev::tty
             case kdskbled:
                 // TODO
                 return 0;
-            case kdsigaccept:
-            {
-                // TODO: magic keys
-                const auto sig = static_cast<int>(argp.address());
-                if (sig < 1 || sig > static_cast<int>(sched::nsig) ||
-                    sig == sched::sigkill || sig == sched::sigstop)
-                    return std::unexpected { lib::err::invalid_argument };
-                return 0;
-            }
-            case vt_getstate:
-                // TODO
-                return std::unexpected { lib::err::inappropriate_ioctl };
             case tiocgpgrp:
             {
                 const auto proc = sched::current_process();
@@ -1139,7 +1141,7 @@ namespace fs::dev::tty
                 return 0;
             case tiocsctty:
             {
-                const int force = static_cast<int>(argp.address());
+                const int force = argp.value();
 
                 const auto proc = sched::current_process();
                 if (proc->pid != proc->session->sid)
@@ -1208,7 +1210,7 @@ namespace fs::dev::tty
             {
                 while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
                     sched::yield();
-                if (argp.address() == 0)
+                if (argp.value() == 0)
                 {
                     inst->break_ctl(true);
                     sched::sleep_for_ns(250'000'000);
@@ -1219,7 +1221,7 @@ namespace fs::dev::tty
             case tcxonc:
             {
                 const auto termios = inst->termios.lock().value();
-                switch (argp.address())
+                switch (argp.value())
                 {
                     case tcooff:
                         stopped.store(true, std::memory_order_relaxed);
@@ -1344,7 +1346,7 @@ namespace fs::dev::tty
             }
             case tcflsh:
             {
-                switch (argp.address())
+                switch (argp.value())
                 {
                     case tciflush:
                     {
@@ -1631,6 +1633,33 @@ namespace fs::dev::tty
             return { };
         }
     };
+
+    struct redirect_ops : alias_ops
+    {
+        driver *drv;
+        redirect_fn resolve;
+
+        lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+        {
+            lib::bug_on(!file || file->private_data != nullptr);
+            lib::bug_on(!drv || !resolve);
+
+            auto res = open_or_create(file, drv, resolve(), flags, pid);
+            if (!res)
+                return std::unexpected { res.error() };
+            file->private_data = std::move(*res);
+            return { };
+        }
+
+        redirect_ops(driver *drv, redirect_fn resolve)
+            : drv { drv }, resolve { resolve } { }
+    };
+
+    void register_redirect(dev_t rdev, driver *drv, redirect_fn fn)
+    {
+        lib::bug_on(!drv || !fn);
+        register_ops(rdev, std::make_shared<redirect_ops>(drv, fn));
+    }
 
     void set_console(driver *drv, std::uint32_t minor)
     {

@@ -246,7 +246,7 @@ namespace output::frm
                     }
                     case 0x4611: // FBIOBLANK
                     {
-                        switch (argp.address())
+                        switch (argp.value())
                         {
                             case fb_blank_unblank:
                             case fb_blank_normal:
@@ -465,7 +465,7 @@ namespace output::frm
                         );
                         lib::bug_on(!dev::register_kobject(root));
                     }
-                    else root = dev::virtual_root();
+                    else root = dev::root("/devices/virtual");
 
                     auto device = dev::device_t::create(
                         "fb" + std::to_string(i), ktype, root

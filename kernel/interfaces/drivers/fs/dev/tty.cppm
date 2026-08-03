@@ -281,6 +281,8 @@ export namespace fs::dev::tty
     enum ioctl
     {
         kdgkbtype = 0x4B33,
+        kdsetmode = 0x4B3A,
+        kdgetmode = 0x4B3B,
         kdgkbmode = 0x4B44,
         kdskbmode = 0x4B45,
         kdsigaccept = 0x4B4E,
@@ -302,7 +304,14 @@ export namespace fs::dev::tty
         tiocgsid = 0x5429,
         tiocglcktrmios = 0x5456,
         tiocslcktrmios = 0x5457,
+        vt_openqry = 0x5600,
+        vt_getmode = 0x5601,
+        vt_setmode = 0x5602,
         vt_getstate = 0x5603,
+        vt_reldisp = 0x5605,
+        vt_activate = 0x5606,
+        vt_waitactive = 0x5607,
+        vt_disallocate = 0x5608,
         tcgets2 = 0x802C542A,
         tcsets2 = 0x402C542B,
         tcsetsw2 = 0x402C542C,
@@ -628,6 +637,9 @@ export namespace fs::dev::tty
 
     void register_driver(driver *drv);
     void register_chrdev(dev_t rdev);
+
+    using redirect_fn = std::uint32_t (*)();
+    void register_redirect(dev_t rdev, driver *drv, redirect_fn fn);
 
     void set_console(driver *drv, std::uint32_t minor);
     void set_console(dev_t rdev);

@@ -16,6 +16,20 @@ export namespace sched
         unkillable     // uninterruptible
     };
 
+    struct wait_queue_entry_t;
+    struct wait_queue_t;
+
+    void detach_entry(wait_queue_entry_t &entry);
+
+    struct wait_queue_anchor_t
+    {
+        lib::spinlock_irq lock;
+        wait_queue_t *queue;
+
+        wait_queue_anchor_t(wait_queue_t *queue)
+            : lock { }, queue { queue } { }
+    };
+
     struct wait_queue_entry_t
     {
         private:
@@ -31,11 +45,18 @@ export namespace sched
         bool exclusive;
         lib::intrusive_list_hook<wait_queue_entry_t> hook;
 
-        wait_queue_entry_t(bool exclusive = false)
-            : type { current_thread() }, exclusive { exclusive }, hook { } { }
+        std::atomic_bool linked;
+        std::shared_ptr<wait_queue_anchor_t> anchor;
 
-        explicit wait_queue_entry_t(callback_t func, bool exclusive = false)
-            : type { std::move(func) }, exclusive { exclusive }, hook { } { }
+        wait_queue_entry_t(bool exclusive = false)
+            : type { current_thread() }, exclusive { exclusive }, hook { },
+              linked { false }, anchor { } { }
+
+        wait_queue_entry_t(callback_t func, bool exclusive = false)
+            : type { std::move(func) }, exclusive { exclusive }, hook { },
+              linked { false }, anchor { } { }
+
+        ~wait_queue_entry_t() { detach_entry(*this); }
     };
 
     struct wait_queue_t
@@ -50,13 +71,21 @@ export namespace sched
         std::atomic_size_t pending;
         std::atomic_size_t generation;
 
+        std::shared_ptr<wait_queue_anchor_t> anchor;
+
         bool try_dec_pending();
 
+        void link_locked(wait_queue_entry_t &entry);
+        void unlink_locked(wait_queue_entry_t &entry);
+
+        friend void detach_entry(wait_queue_entry_t &entry);
+
         public:
-        wait_queue_t() : entries { }, lock { }, pending { 0 }, generation { 0 } { }
+        wait_queue_t()
+            : entries { }, lock { }, pending { 0 }, generation { 0 }, anchor { } { }
+        ~wait_queue_t();
 
         void add_entry(wait_queue_entry_t &entry);
-        void remove_entry(wait_queue_entry_t &entry);
 
         void unlink_atomic(
             std::atomic<wait_queue_t *> &on_queue_ref,

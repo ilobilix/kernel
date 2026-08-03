@@ -1459,7 +1459,7 @@ namespace sched
 
     int group_t::signal_all(int sig)
     {
-        if (sig < 0 || sig > static_cast<int>(nsig))
+        if (sig < 0 || sig > nsig)
             return -EINVAL;
 
         const auto caller = current_process();
@@ -2045,6 +2045,7 @@ namespace sched
                 }
             }
 
+            process->comm.clear();
             process->has_execved = true;
 
             if (auto parent = process->parent.lock(); parent && process->vfork_pending)
@@ -2234,11 +2235,31 @@ namespace sched
         }
     }
 
+    std::string comm_of(process_t *proc)
+    {
+        if (!proc)
+            return "<unknown comm>";
+        if (!proc->comm.empty())
+            return proc->comm;
+        if (proc->pathname.empty())
+            return fmt::format("pid_{}", proc->pid);
+        return proc->pathname.basename();
+    }
+
+    std::string comm_of(thread_t *thread)
+    {
+        if (!thread)
+            return "<unknown comm>";
+        if (!thread->comm.empty())
+            return thread->comm;
+        return comm_of(thread->proc.get());
+    }
+
     int kill(pid_t pid, int sig)
     {
         using namespace sched;
 
-        if (sig < 0 || sig > static_cast<int>(nsig))
+        if (sig < 0 || sig > nsig)
             return -EINVAL;
 
         if (pid < -1)
@@ -2330,15 +2351,6 @@ namespace sched
             return 'S';
         }
 
-        std::string proc_comm(process_t *proc)
-        {
-            if (!proc->comm.empty())
-                return proc->comm;
-            if (proc->pathname.empty())
-                return fmt::format("pid_{}", proc->pid);
-            return proc->pathname.basename();
-        }
-
         lib::initgraph::task procfs_register_task
         {
             "sched.procfs.register",
@@ -2366,7 +2378,7 @@ namespace sched
                             "Gid:\t{} {} {} {}\n"
                             "Threads:\t{}\n"
                             "NoNewPrivs:\t{}\n",
-                            proc_comm(proc), state_letter(proc),
+                            comm_of(proc), state_letter(proc),
                             proc->pid, proc->pid, ppid,
                             cred.ruid, cred.euid, cred.suid, cred.fsuid,
                             cred.rgid, cred.egid, cred.sgid, cred.fsgid,
@@ -2385,7 +2397,7 @@ namespace sched
                         const pid_t pgid = proc->group ? proc->group->pgid : 0;
                         const pid_t sid = proc->session ? proc->session->sid : 0;
                         const auto state = state_letter(proc);
-                        const auto comm = proc_comm(proc);
+                        const auto comm = comm_of(proc);
                         const auto threads = proc->alive_threads.load(std::memory_order_relaxed);
 
                         std::uint64_t vsize = 0;
@@ -2464,7 +2476,7 @@ namespace sched
                     make_file_ops(
                         [](process_t *proc) {
                             const std::unique_lock _ { proc->lock };
-                            return proc_comm(proc) + '\n';
+                            return comm_of(proc) + '\n';
                         },
                         [](process_t *proc, std::string_view data) -> lib::expect<void> {
                             const std::unique_lock _ { proc->lock };

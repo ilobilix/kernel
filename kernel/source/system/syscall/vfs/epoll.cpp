@@ -50,7 +50,7 @@ namespace syscall::vfs
 
         struct epoll_entry_t : std::enable_shared_from_this<epoll_entry_t>
         {
-            epoll_instance_t *epi;
+            std::weak_ptr<epoll_instance_t> wepi;
             int fd;
             std::weak_ptr<file_t> wfile;
             std::uint32_t events;
@@ -60,21 +60,7 @@ namespace syscall::vfs
             bool on_ready;
             lib::intrusive_list_hook<epoll_entry_t> hook;
 
-            struct reg
-            {
-                sched::wait_queue_t *wq;
-                sched::wait_queue_entry_t entry;
-
-                reg(epoll_entry_t *ent, sched::wait_queue_t *wq)
-                    : wq { wq }, entry {
-                        [went = ent->weak_from_this()] {
-                            if (const auto ent = went.lock())
-                                do_signal(ent.get());
-                        },
-                        (ent->events & epollexclusive) != 0
-                    } { }
-            };
-            lib::list<reg> regs;
+            lib::list<sched::wait_queue_entry_t> regs;
         };
 
         struct epoll_instance_t
@@ -92,20 +78,14 @@ namespace syscall::vfs
                 epoll_entry_t,
                 &epoll_entry_t::hook
             > ready;
-
-            ~epoll_instance_t()
-            {
-                for (auto &[fd, ent] : watched)
-                {
-                    for (auto &reg : ent->regs)
-                        reg.wq->remove_entry(reg.entry);
-                }
-            }
         };
 
         void do_signal(epoll_entry_t *ent)
         {
-            auto epi = ent->epi;
+            const auto epi = ent->wepi.lock();
+            if (!epi)
+                return;
+
             {
                 const std::unique_lock _ { epi->ready_lock };
                 if (!ent->active)
@@ -129,8 +109,12 @@ namespace syscall::vfs
 
             void add(sched::wait_queue_t &wq) override
             {
-                auto &reg = ent->regs.emplace_back(ent, &wq);
-                wq.add_entry(reg.entry);
+                wq.add_entry(ent->regs.emplace_back(
+                    [went = ent->weak_from_this()] {
+                        if (const auto ent = went.lock())
+                            do_signal(ent.get());
+                    }, (ent->events & epollexclusive) != 0
+                ));
             }
         };
 
@@ -141,8 +125,6 @@ namespace syscall::vfs
 
         std::optional<std::uint32_t> rearm(epoll_entry_t *ent)
         {
-            for (auto &reg : ent->regs)
-                reg.wq->remove_entry(reg.entry);
             ent->regs.clear();
 
             auto file = ent->wfile.lock();
@@ -466,7 +448,7 @@ namespace syscall::vfs
                     return -EEXIST;
 
                 auto ent = std::make_shared<epoll_entry_t>();
-                ent->epi = epi.get();
+                ent->wepi = epi;
                 ent->fd = fd;
                 ent->wfile = desc->file;
                 ent->events = ev.events;
@@ -496,8 +478,6 @@ namespace syscall::vfs
                     return -ENOENT;
 
                 auto &ent = it->second;
-                for (auto &reg : ent->regs)
-                    reg.wq->remove_entry(reg.entry);
                 ent->regs.clear();
                 drop_ready(epi.get(), ent.get());
                 epi->watched.erase(it);

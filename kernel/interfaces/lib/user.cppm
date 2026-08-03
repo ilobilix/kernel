@@ -194,7 +194,7 @@ export namespace lib
         uptr_or_addr &operator=(const uptr_or_addr &) = default;
         uptr_or_addr &operator=(uptr_or_addr &&) = default;
 
-        std::uintptr_t address() const
+        std::uintptr_t value() const
         {
             return reinterpret_cast<std::uintptr_t>(ptr);
         }

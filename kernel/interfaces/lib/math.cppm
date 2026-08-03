@@ -148,9 +148,9 @@ export namespace lib
             return *this = init(freq);
         }
 
-        constexpr std::uint64_t nanos(uint128_t ticks) const
+        constexpr std::uint64_t nanos(std::uint64_t ticks) const
         {
-            const auto res = (ticks * n) >> p;
+            const auto res = (static_cast<uint128_t>(ticks) * n) >> p;
             if (res >> 64)
                 return std::numeric_limits<std::uint64_t>::max();
             return res;
@@ -158,7 +158,10 @@ export namespace lib
 
         constexpr std::uint64_t ticks(std::uint64_t nanos) const
         {
-            return (nanos << p) / n;
+            const auto res = (static_cast<uint128_t>(nanos) << p) / n;
+            if (res >> 64)
+                return std::numeric_limits<std::uint64_t>::max();
+            return res;
         }
 
         constexpr std::uint64_t frequency() const { return freq; }

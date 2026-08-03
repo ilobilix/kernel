@@ -4,7 +4,7 @@ module x86_64.drivers.output.uart8250;
 
 import x86_64.system.ioapic;
 import drivers.output.serial;
-import drivers.output.terminal;
+import drivers.output.vt;
 import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
 import system.irq;
@@ -69,6 +69,12 @@ namespace x86_64::output::uart8250
                 while (lib::io::in<8>(port + 5) & 1)
                 {
                     auto chr = lib::io::in<8>(port);
+
+                    //! TODO: TEMPORARY
+                    auto byte = static_cast<std::byte>(chr);
+                    if (::output::vt::receive_input({ &byte, 1 }))
+                        continue;
+
                     if (hooks[idx])
                         hooks[idx](chr);
                 }
@@ -162,15 +168,7 @@ namespace x86_64::output::uart8250
                 lock();
                 const auto com = ports[idx];
                 for (const auto byte : buffer)
-                {
-                    const auto chr = static_cast<char>(byte);
-                    printc(chr, com);
-
-                    //! TODO: TEMPORARY - FOR TESTING
-                    namespace term = ::output::term;
-                    const auto ctx = term::main();
-                    term::write(ctx, chr);
-                }
+                    printc(static_cast<char>(byte), com);
                 unlock();
                 return buffer.size_bytes();
             }
