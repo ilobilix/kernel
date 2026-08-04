@@ -29,6 +29,9 @@ export namespace acpi
 
     acpi_fadt *fadt = nullptr;
 
+    void shutdown();
+    void reboot();
+
     std::uintptr_t get_rsdp();
 
     lib::initgraph::stage *tables_stage();

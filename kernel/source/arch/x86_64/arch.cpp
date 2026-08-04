@@ -41,6 +41,26 @@ namespace arch
         return ret;
     }
 
+    void shutdown()
+    {
+        acpi::shutdown();
+
+        // bochs and old qemu
+        lib::io::out<16>(0xB004, 0x2000);
+        // new qemu
+        lib::io::out<16>(0x0604, 0x2000);
+        // vbox
+        lib::io::out<16>(0x4004, 0x3400);
+    }
+
+    void reboot()
+    {
+        acpi::reboot();
+
+        x86_64::idt::invalid.load();
+        asm volatile ("int3");
+    }
+
     std::uint64_t cycle_count()
     {
         return x86_64::timers::tsc::rdtsc();

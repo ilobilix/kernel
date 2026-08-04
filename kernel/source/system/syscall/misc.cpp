@@ -13,6 +13,7 @@ import system.chrono;
 import system.sched;
 import system.sysctl;
 import magic_enum;
+import arch;
 
 namespace syscall::misc
 {
@@ -122,12 +123,12 @@ namespace syscall::misc
             case 0x00000000: // LINUX_REBOOT_CMD_CAD_OFF
                 break;
             case 0x4321FEDC: // LINUX_REBOOT_CMD_POWER_OFF
-                uacpi_enter_sleep_state_simple(UACPI_SLEEP_STATE_S5);
+                arch::shutdown();
                 lib::panic("power off failed");
                 break;
             case 0x01234567: // LINUX_REBOOT_CMD_RESTART
             case 0xA1B2C3D4: // LINUX_REBOOT_CMD_RESTART2
-                uacpi_reboot();
+                arch::reboot();
                 lib::panic("reboot failed");
                 break;
             case 0xD000FCE2: // LINUX_REBOOT_CMD_SW_SUSPEND

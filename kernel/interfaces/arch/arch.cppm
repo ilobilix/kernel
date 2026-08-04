@@ -30,6 +30,9 @@ export namespace arch
         return ret;
     }
 
+    void shutdown();
+    void reboot();
+
     void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs);
 
     std::size_t hardware_random(std::span<std::byte> out);
