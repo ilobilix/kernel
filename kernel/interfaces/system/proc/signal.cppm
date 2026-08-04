@@ -156,14 +156,18 @@ export namespace sched
     {
         si_user = 0,
         si_kernel = 0x80,
-        // si_queue = -1,
+        si_queue = -1,
+        si_timer = -2,
         si_tkill = -6,
         cld_exited = 1,
         cld_killed = 2,
         cld_dumped = 3,
         // cld_trapped = 4,
         cld_stopped = 5,
-        cld_continued = 6
+        cld_continued = 6,
+
+        segv_maperr = 1,
+        segv_accerr = 2
     };
 
     struct siginfo_t
@@ -176,7 +180,53 @@ export namespace sched
         int status;
         std::uintptr_t addr;
         std::uintptr_t value;
+        int timerid = 0;
+        int overrun = 0;
     };
+
+    struct user_siginfo_t
+    {
+        int signo;
+        int err;
+        int code;
+        int _pad;
+
+        union {
+            struct {
+                pid_t pid;
+                uid_t uid;
+            } kill;
+
+            struct {
+                int timerid;
+                int overrun;
+                std::uintptr_t value;
+                int sys_private;
+            } timer;
+
+            struct {
+                pid_t pid;
+                uid_t uid;
+                std::uintptr_t value;
+            } rt;
+
+            struct {
+                pid_t pid;
+                uid_t uid;
+                int status;
+                std::int64_t utime;
+                std::int64_t stime;
+            } sigchld;
+
+            struct {
+                std::uintptr_t addr;
+            } sigfault;
+            char _sifields[112];
+        };
+    };
+    static_assert(sizeof(user_siginfo_t) == 128);
+    static_assert(__builtin_offsetof(user_siginfo_t, code) == 8);
+    static_assert(__builtin_offsetof(user_siginfo_t, kill) == 16);
 
     enum ss_flags
     {
@@ -307,6 +357,8 @@ export namespace sched
         void apply(const sigset_t *mask);
         void disarm() { armed = false; }
     };
+
+    user_siginfo_t to_user(const siginfo_t &info);
 
     bool signal_pending_for(thread_t *thread);
 

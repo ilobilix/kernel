@@ -4,6 +4,7 @@ export module drivers.fs.dev.tty;
 
 import system.sched;
 import system.vfs;
+import system.dev;
 import lib;
 import std;
 
@@ -637,6 +638,10 @@ export namespace fs::dev::tty
 
     void register_driver(driver *drv);
     void register_chrdev(dev_t rdev);
+
+    void register_device(std::string_view name, dev_t rdev, std::shared_ptr<vfs::ops_t> fops);
+
+    ::dev::class_t &get_class();
 
     using redirect_fn = std::uint32_t (*)();
     void register_redirect(dev_t rdev, driver *drv, redirect_fn fn);

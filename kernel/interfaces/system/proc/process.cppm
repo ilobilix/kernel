@@ -12,6 +12,7 @@ import std;
 
 import :signal;
 import :rlimit;
+import :timer;
 import :sleep;
 import :thread;
 
@@ -90,6 +91,14 @@ export namespace sched
                 std::shared_ptr<thread_t>
             >, mutex_t
         > threads;
+
+        lib::locker<
+            lib::map::flat_hash<
+                int,
+                std::shared_ptr<ptimer_t>
+            >, mutex_t
+        > ptimers;
+        std::atomic<int> next_ptimer_id = 0;
 
         std::atomic<std::size_t> alive_threads = 0;
 

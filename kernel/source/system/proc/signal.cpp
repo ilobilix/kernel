@@ -259,6 +259,59 @@ namespace sched
         }
     } // namespace
 
+    user_siginfo_t to_user(const siginfo_t &info)
+    {
+        user_siginfo_t out { };
+        out.signo = info.signo;
+        out.err = info.err;
+        out.code = info.code;
+
+        switch (info.code)
+        {
+            case si_timer:
+                out.timer.timerid = info.timerid;
+                out.timer.overrun = info.overrun;
+                out.timer.value = info.value;
+                return out;
+            case si_queue:
+                out.rt.pid = info.pid;
+                out.rt.uid = info.uid;
+                out.rt.value = info.value;
+                return out;
+            default:
+                break;
+        }
+
+        if (info.code > si_user && info.code <= si_kernel)
+        {
+            switch (info.signo)
+            {
+                case sigill:
+                case sigtrap:
+                case sigbus:
+                case sigfpe:
+                case sigsegv:
+                    out.sigfault.addr = info.addr;
+                    return out;
+                case sigchld:
+                    if (info.code >= cld_exited && info.code <= cld_continued)
+                    {
+                        out.sigchld.pid = info.pid;
+                        out.sigchld.uid = info.uid;
+                        out.sigchld.status = info.status;
+                        return out;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        out.kill.pid = info.pid;
+        out.kill.uid = info.uid;
+        return out;
+    }
+
     bool signal_pending_for(thread_t *thread)
     {
         {

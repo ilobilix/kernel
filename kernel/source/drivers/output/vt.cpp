@@ -11,6 +11,7 @@ import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
 import system.sched;
 import system.vfs;
+import system.dev;
 import frigg;
 
 namespace output::vt
@@ -514,7 +515,10 @@ namespace output::vt
     {
         "output.vt.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::devtmpfs::mounted_stage() },
+        lib::initgraph::require {
+            fs::devtmpfs::mounted_stage(),
+            ::dev::available_stage()
+        },
         lib::initgraph::entail { registered_stage() },
         [] {
             driver.initialize();
@@ -524,14 +528,6 @@ namespace output::vt
                 makedev(4, 0), driver.get(),
                 [] -> std::uint32_t { return active(); }
             );
-
-            if (const auto ret = fs::devtmpfs::create("tty0", stat::s_ifchr | 0666, makedev(4, 0)); !ret)
-            {
-                lib::panic(
-                    "vt: failed to create '/dev/tty0': {}",
-                    lib::error_name(ret.error())
-                );
-            }
         }
     };
 } // namespace output::vt

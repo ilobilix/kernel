@@ -6,6 +6,7 @@ import drivers.output.terminal;
 import drivers.fs.devtmpfs;
 import system.memory.virt;
 import system.vfs.dev;
+import system.dev;
 import arch;
 import fmt;
 
@@ -239,6 +240,123 @@ namespace fs::dev::tty
             proc->group->signal_all(sig);
             sched::consume_pending_stops();
             return { };
+        }
+
+        std::string device_name(const driver &drv, std::size_t idx)
+        {
+            if (drv.typ == type::pty)
+            {
+                static const char ptychar[] = "pqrstuvwxyzabcde";
+                const auto i = idx + drv.name_base;
+                return fmt::format("{}{}{}",
+                    drv.subtyp == subtype::pty_slave ? "tty" : drv.name,
+                    ptychar[i >> 4 & 0xF], i & 0xF
+                );
+            }
+            if (drv.flags & unnumbered)
+                return drv.name;
+            return fmt::format("{}{}", drv.name, idx + drv.name_base);
+        }
+
+        struct tty_class_t final : ::dev::class_t
+        {
+            tty_class_t() : ::dev::class_t { "tty", ::dev::empty_ktype(), false } { }
+
+            std::string devnode(const ::dev::device_t &device, mode_t &mode) const override
+            {
+                mode = (mode & ~static_cast<mode_t>(0777)) | 0666;
+                return device.name;
+            }
+        };
+
+        struct tty_ktype_t : ::dev::ktype_t
+        {
+            std::span<::dev::attribute_t *const> attributes() const override
+            {
+                static ::dev::attribute_t *list[] {
+                    ::dev::dev_attribute()
+                };
+                return list;
+            }
+        };
+
+        struct redirect_t
+        {
+            driver *drv;
+            redirect_fn resolve;
+        };
+
+        struct redirect_ktype_t final : tty_ktype_t
+        {
+            std::span<::dev::attribute_t *const> attributes() const override
+            {
+                static ::dev::make_attribute_t active {
+                    [](::dev::device_t &device) -> lib::expect<std::string> {
+                        const auto red = std::static_pointer_cast<redirect_t>(device.private_data);
+                        if (!red || !red->drv || !red->resolve)
+                            return std::unexpected { lib::err::io_error };
+
+                        const auto minor = red->resolve();
+                        if (minor < red->drv->minor_start)
+                            return std::unexpected { lib::err::io_error };
+
+                        return device_name(*red->drv, minor - red->drv->minor_start) + '\n';
+                    }, nullptr, "active", 0444
+                };
+
+                static ::dev::attribute_t *list[] {
+                    &active,
+                    ::dev::dev_attribute()
+                };
+                return list;
+            }
+        };
+
+        std::shared_ptr<::dev::kobject_t> tty_parent()
+        {
+            static const auto parent = [] {
+                lib::panic_if(
+                    !::dev::register_class(get_class()),
+                    "tty: could not register class 'tty'"
+                );
+
+                auto kobj = ::dev::kobject_t::create(
+                    "tty", ::dev::empty_ktype(), ::dev::root("/devices/virtual")
+                );
+                lib::panic_if(
+                    !::dev::register_kobject(kobj),
+                    "tty: could not register '/devices/virtual/tty'"
+                );
+                return kobj;
+            } ();
+            return parent;
+        }
+
+        void add_device(
+            std::string name, dev_t rdev, std::shared_ptr<vfs::ops_t> fops,
+            std::shared_ptr<redirect_t> redirect = nullptr
+        )
+        {
+            static tty_ktype_t def { };
+            static redirect_ktype_t redir { };
+
+            auto &type = redirect
+                ? static_cast<::dev::ktype_t &>(redir)
+                : static_cast<::dev::ktype_t &>(def);
+
+            auto device = ::dev::device_t::create(name, type, tty_parent());
+            device->cls = &get_class();
+            device->devt = rdev;
+            device->fops = std::move(fops);
+            device->private_data = std::move(redirect);
+
+            if (const auto ret = ::dev::register_device(std::move(device)); !ret)
+            {
+                lib::error(
+                    "tty: could not register '{}': {}",
+                    name, lib::error_name(ret.error())
+                );
+            }
         }
     } // namespace
 
@@ -1658,7 +1776,12 @@ namespace fs::dev::tty
     void register_redirect(dev_t rdev, driver *drv, redirect_fn fn)
     {
         lib::bug_on(!drv || !fn);
-        register_ops(rdev, std::make_shared<redirect_ops>(drv, fn));
+
+        add_device(
+            fmt::format("{}{}", drv->name, minor(rdev)), rdev,
+            std::make_shared<redirect_ops>(drv, fn),
+            std::make_shared<redirect_t>(drv, fn)
+        );
     }
 
     void set_console(driver *drv, std::uint32_t minor)
@@ -1697,38 +1820,9 @@ namespace fs::dev::tty
         if (drv->flags & dynamic)
             return;
 
-        const auto add_one = [&](std::size_t idx, std::uint32_t minor)
-        {
-            register_ops(makedev(drv->major, minor), ops::singleton());
-
-            std::string name;
-            if (drv->typ == type::pty)
-            {
-                lib::bug_on(drv->name_base < 0);
-                static const char ptychar[] = "pqrstuvwxyzabcde";
-                const auto i = idx + drv->name_base;
-                name = fmt::format("{}{}{}",
-                    drv->subtyp == subtype::pty_slave ? "tty" : drv->name,
-                    ptychar[i >> 4 & 0xF], i & 0xF
-                );
-            }
-            else if (!(drv->flags & unnumbered))
-                name = fmt::format("{}{}", drv->name, idx + drv->name_base);
-            else
-                name = drv->name;
-
-            auto ret = vfs::create(
-                std::nullopt, "/dev/" + name, stat::s_ifchr | 0666,
-                makedev(drv->major, minor)
-            );
-
-            if (!ret.has_value())
-            {
-                lib::error(
-                    "tty: could not create '{}': {}",
-                    name, lib::error_name(ret.error())
-                );
-            }
+        const auto add_one = [&](std::size_t idx, std::uint32_t minor) {
+            const auto name = device_name(*drv, idx);
+            add_device(name, makedev(drv->major, minor), ops::singleton());
 
             if constexpr (debug)
                 lib::debug("tty: created ({}, {}) as '{}'", drv->major, minor, name);
@@ -1739,29 +1833,28 @@ namespace fs::dev::tty
             add_one(i, drv->minor_start + i);
     }
 
+    void register_device(std::string_view name, dev_t rdev, std::shared_ptr<vfs::ops_t> fops)
+    {
+        add_device(std::string { name }, rdev, std::move(fops));
+    }
+
+    ::dev::class_t &get_class()
+    {
+        static tty_class_t cls { };
+        return cls;
+    }
+
     lib::initgraph::task tty_task
     {
         "vfs.dev.tty.current.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { devtmpfs::registered_stage() },
+        lib::initgraph::require {
+            devtmpfs::mounted_stage(),
+            ::dev::available_stage()
+        },
         [] {
-            register_ops(makedev(5, 0), current_ops::singleton());
-            if (const auto ret = fs::devtmpfs::create("tty", stat::s_ifchr | 0666, makedev(5, 0)); !ret)
-            {
-                lib::panic(
-                    "tty: failed to create '/dev/tty': {}",
-                    lib::error_name(ret.error())
-                );
-            }
-
-            register_ops(makedev(5, 1), console_ops::singleton());
-            if (const auto ret = fs::devtmpfs::create("console", stat::s_ifchr | 0666, makedev(5, 1)); !ret)
-            {
-                lib::panic(
-                    "tty: failed to create '/dev/console': {}",
-                    lib::error_name(ret.error())
-                );
-            }
+            add_device("tty", makedev(5, 0), current_ops::singleton());
+            add_device("console", makedev(5, 1), console_ops::singleton());
         }
     };
 } // namespace fs::dev::tty

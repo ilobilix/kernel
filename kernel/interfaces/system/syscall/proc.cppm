@@ -69,7 +69,7 @@ export namespace syscall::proc
     );
     int rt_sigpending(sched::sigset_t __user *set, std::size_t sigsetsize);
     int rt_sigtimedwait(
-        const sched::sigset_t __user *uthese, sched::siginfo_t __user *uinfo,
+        const sched::sigset_t __user *uthese, sched::user_siginfo_t __user *uinfo,
         const timespec __user *uts, std::size_t sigsetsize
     );
     int rt_sigsuspend(const sched::sigset_t __user *set, std::size_t sigsetsize);
@@ -122,7 +122,7 @@ export namespace syscall::proc
 
     pid_t wait4(pid_t pid, int __user *wstatus, int options, struct rusage __user *rusage);
     int waitid(
-        int idtype, pid_t id, sched::siginfo_t __user *infop,
+        int idtype, pid_t id, sched::user_siginfo_t __user *infop,
         int options, struct rusage __user *rusage
     );
 

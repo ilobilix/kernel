@@ -11,7 +11,8 @@ export namespace chrono
     enum type : clockid_t
     {
         realtime,
-        monotonic
+        monotonic,
+        boottime = 7
     };
 
     struct timer
@@ -50,4 +51,14 @@ export namespace chrono
     void register_rtc(rtc &rtc);
 
     timespec now(type clockid);
+    bool set_now(type clockid, const timespec &ts);
+
+    std::uint64_t delay_until(type clockid, const timespec &deadline);
+
+    struct clock_set_hook
+    {
+        void (*func)();
+        clock_set_hook *next;
+    };
+    void on_clock_set(clock_set_hook &hook);
 } // export namespace chrono
