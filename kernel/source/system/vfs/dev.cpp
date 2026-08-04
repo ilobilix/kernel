@@ -30,8 +30,8 @@ namespace vfs::dev
     bool register_ops(dev_t rdev, std::shared_ptr<vfs::ops_t> ops)
     {
         auto [it, inserted] = registry.write_lock()->emplace(rdev, ops);
-        if (inserted)
-            lib::debug("dev: registered ops for device ({}, {})", major(rdev), minor(rdev));
+        // if (inserted)
+        //     lib::debug("dev: registered ops for device ({}, {})", major(rdev), minor(rdev));
         return inserted;
     }
 
@@ -43,7 +43,7 @@ namespace vfs::dev
             return false;
 
         lock->erase(it);
-        lib::debug("dev: unregistered ops for device ({}, {})", major(rdev), minor(rdev));
+        // lib::debug("dev: unregistered ops for device ({}, {})", major(rdev), minor(rdev));
         return true;
     }
 

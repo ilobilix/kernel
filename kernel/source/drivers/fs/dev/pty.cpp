@@ -15,9 +15,9 @@ namespace fs::dev::pty
 {
     namespace
     {
-        constexpr std::size_t master_count = 8;
+        constexpr std::size_t master_count = 4096;
         constexpr std::uint32_t master_major = 128;
-        constexpr std::uint32_t slave_major = master_major + master_count;
+        constexpr std::uint32_t slave_major = 136;
 
         constexpr std::uint64_t tiocgptn = 0x80045430;
         constexpr std::uint64_t tiocsptlck = 0x40045431;
@@ -26,14 +26,13 @@ namespace fs::dev::pty
 
         constexpr mode_t slave_mode = stat::s_ifchr | 0620;
         constexpr tty::ktermios slave_termios = tty::ktermios::standard();
-        constexpr tty::ktermios master_termios = []
-        {
+        constexpr tty::ktermios master_termios = [] {
             auto tios = tty::ktermios::standard();
             tios.c_iflag = 0;
             tios.c_oflag = 0;
             tios.c_lflag = 0;
             return tios;
-        }();
+        } ();
     } // namespace
 
     struct ptm_instance;
@@ -136,6 +135,8 @@ namespace fs::dev::pty
     struct pts_instance : pty_instance_base
     {
         using pty_instance_base::pty_instance_base;
+
+        ~pts_instance() { allocator.lock()->minor_used[minor] = false; }
 
         lib::expect<void> permit_open(std::shared_ptr<vfs::file_t>) override;
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
@@ -326,7 +327,6 @@ namespace fs::dev::pty
         {
             ptm->instances.lock()->erase(pty_minor);
             pts->instances.lock()->erase(pty_minor);
-            allocator.lock()->minor_used[pty_minor] = false;
             return std::unexpected { attach.error() };
         }
 
@@ -367,8 +367,6 @@ namespace fs::dev::pty
             if (pty_pair->slave->ref.load(std::memory_order_acquire) == 0)
                 pts_locked->erase(pty_minor);
         }
-
-        allocator.lock()->minor_used[pty_minor] = false;
     }
 
     namespace

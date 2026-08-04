@@ -1794,6 +1794,12 @@ namespace sched
 
             target_proc->pathname = caller_proc->pathname;
             target_proc->argv = caller_proc->argv;
+
+            {
+                const auto from = caller_proc->cgroup.lock();
+                auto to = target_proc->cgroup.lock();
+                to.value() = from.value();
+            }
         }
         else target_proc = caller_proc->shared_from_this();
 

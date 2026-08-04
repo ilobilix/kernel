@@ -266,9 +266,7 @@ namespace x86_64::output::uart8250
 
         serial_driver()
             : driver { "serial", "ttyS", 0, 4, 64, num_ports, tty::flag::none } { }
-    };
-
-    serial_driver driver { };
+    } driver { };
 
     lib::initgraph::task com_task
     {

@@ -183,7 +183,7 @@ namespace syscall::vfs
         if (needs_write && (mflags & ms_rdonly))
             return -EROFS;
 
-        if (stat.type() == stat::s_ifdir && (write || trunc))
+        if (stat.type() == stat::s_ifdir && (write || trunc || (flags & o_creat)))
             return -EISDIR;
 
         if (stat.type() != stat::s_ifdir && (flags & o_directory))

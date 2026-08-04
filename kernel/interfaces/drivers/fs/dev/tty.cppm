@@ -490,6 +490,19 @@ export namespace fs::dev::tty
         {
             std::weak_ptr<sched::group_t> group;
             std::weak_ptr<sched::session_t> session;
+            pid_t pgid = 0;
+
+            void set_group(std::shared_ptr<sched::group_t> grp)
+            {
+                pgid = grp ? grp->pgid : 0;
+                group = std::move(grp);
+            }
+
+            void reset_group()
+            {
+                group.reset();
+                pgid = 0;
+            }
         };
         lib::locker<ctrl_t, sched::mutex_t> ctrl;
 

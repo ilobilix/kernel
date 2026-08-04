@@ -747,7 +747,10 @@ export namespace vfs
     {
         struct fdslot : rcu::obj_base<fdslot>
         {
-            std::shared_ptr<vfs::filedesc> desc;
+            lib::locker<
+                std::shared_ptr<vfs::filedesc>,
+                lib::spinlock
+            > desc;
         };
 
         struct fdarray : rcu::obj_base<fdarray>
@@ -764,7 +767,7 @@ export namespace vfs
 
         private:
         fdarray *reserve(std::size_t need);
-        bool clear(fdarray *arr, std::size_t fd);
+        std::shared_ptr<vfs::filedesc> clear(fdarray *arr, std::size_t fd);
 
         public:
         rcu::owner<fdarray> table;

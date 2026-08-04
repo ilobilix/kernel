@@ -19,6 +19,7 @@ namespace output::vt
     namespace tty = fs::dev::tty;
     namespace
     {
+        constexpr std::size_t num_vts = 63;
         constexpr bool debug = false;
 
         enum vtmode
@@ -458,9 +459,7 @@ namespace output::vt
                 tty::flag::none, tty::type::console, tty::subtype::syscons,
                 tty::ktermios::standard()
             } { }
-        };
-
-        constinit frg::manual_box<driver_t> driver;
+        } driver { };
     } // namespace
 
     std::size_t active()
@@ -521,11 +520,9 @@ namespace output::vt
         },
         lib::initgraph::entail { registered_stage() },
         [] {
-            driver.initialize();
-
-            tty::register_driver(driver.get());
+            tty::register_driver(&driver);
             tty::register_redirect(
-                makedev(4, 0), driver.get(),
+                makedev(4, 0), &driver,
                 [] -> std::uint32_t { return active(); }
             );
         }

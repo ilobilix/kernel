@@ -129,6 +129,8 @@ export namespace sched
         std::vector<std::string> argv;
         std::string comm;
 
+        lib::locker<std::string, mutex_t> cgroup { "/" };
+
         wait_queue_t wait_child;
         wait_queue_t vfork_done;
 

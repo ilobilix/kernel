@@ -72,7 +72,7 @@ namespace fs::dev::tty
                     {
                         ctty_locked.value() = inst;
 
-                        locked->group = proc->group;
+                        locked->set_group(proc->group);
                         locked->session = proc->session;
                     }
                 }
@@ -369,7 +369,7 @@ namespace fs::dev::tty
             {
                 fg_group = locked->group.lock();
                 locked->session.reset();
-                locked->group.reset();
+                locked->reset_group();
             }
         }
 
@@ -528,6 +528,13 @@ namespace fs::dev::tty
             }
         };
 
+        bool wake_readers = false;
+        const auto flush_wakeup = [&] {
+            if (!std::exchange(wake_readers, false))
+                return;
+            self->in_wq.wake_all();
+        };
+
         bool next_is_verbatim = false;
         while (true)
         {
@@ -541,6 +548,7 @@ namespace fs::dev::tty
                     );
                 }
 
+                flush_wakeup();
                 self->should_work.store(true, std::memory_order_relaxed);
                 sched::thread_exit(0);
             }
@@ -550,6 +558,7 @@ namespace fs::dev::tty
             auto ret = self->raw_buffer.pop();
             if (!ret.has_value())
             {
+                flush_wakeup();
                 self->output_flush();
 
                 if (self->inst->hung_up.load(std::memory_order_relaxed))
@@ -756,7 +765,7 @@ namespace fs::dev::tty
                         // }
 
                         in_locked->commit();
-                        self->in_wq.wake_all();
+                        wake_readers = true;
                         continue;
                     }
 
@@ -769,7 +778,7 @@ namespace fs::dev::tty
                     if (is_eol)
                     {
                         in_locked->commit();
-                        self->in_wq.wake_all();
+                        wake_readers = true;
                     }
                 }
 
@@ -796,7 +805,7 @@ namespace fs::dev::tty
                 if (!in_locked->full())
                 {
                     in_locked->push(chr);
-                    self->in_wq.wake_all();
+                    wake_readers = true;
 
                     if (termios.c_lflag & echo)
                     {
@@ -1195,10 +1204,9 @@ namespace fs::dev::tty
                 if (locked->session.lock() != proc->session)
                     return std::unexpected { lib::err::inappropriate_ioctl };
 
-                auto glocked = locked->group.lock();
-                if (!glocked)
+                if (locked->pgid == 0)
                     return std::unexpected { lib::err::inappropriate_ioctl };
-                if (!argp.write(glocked->pgid))
+                if (!argp.write(locked->pgid))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             }
@@ -1246,7 +1254,7 @@ namespace fs::dev::tty
                     if (!new_group)
                         return std::unexpected { lib::err::not_permitted };
                 }
-                inst->ctrl.lock()->group = std::move(new_group);
+                inst->ctrl.lock()->set_group(std::move(new_group));
                 return 0;
             }
             case tiocgwinsz:
@@ -1279,7 +1287,7 @@ namespace fs::dev::tty
                         old_ctty.value().reset();
 
                     locked->session.reset();
-                    locked->group.reset();
+                    locked->reset_group();
                 }
 
                 {
@@ -1290,7 +1298,7 @@ namespace fs::dev::tty
                 }
 
                 locked->session = proc->session;
-                locked->group = proc->group;
+                locked->set_group(proc->group);
                 return 0;
             }
             case tiocnotty:
@@ -1308,7 +1316,7 @@ namespace fs::dev::tty
 
                     fg_group = locked->group.lock();
                     locked->session.reset();
-                    locked->group.reset();
+                    locked->reset_group();
                 }
 
                 {
@@ -1639,7 +1647,7 @@ namespace fs::dev::tty
             session = locked->session.lock();
             fg_group = locked->group.lock();
             locked->session.reset();
-            locked->group.reset();
+            locked->reset_group();
         }
 
         if (session)
