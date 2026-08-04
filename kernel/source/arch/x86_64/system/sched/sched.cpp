@@ -226,7 +226,7 @@ namespace sched::arch
 
         sigframe_t kf { };
         kf.pretcode = action.restorer;
-        kf.info = info;
+        kf.info = to_user(info);
 
         const auto mask = thread->saved_sigmask.has_value()
             ? *thread->saved_sigmask

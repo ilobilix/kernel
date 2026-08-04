@@ -39,7 +39,7 @@ export namespace sched::arch
     {
         std::uintptr_t pretcode;
         ucontext_t uc;
-        siginfo_t info;
+        user_siginfo_t info;
     };
 
     thread_t *current_thread();

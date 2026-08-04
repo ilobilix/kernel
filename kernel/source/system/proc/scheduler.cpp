@@ -1055,9 +1055,10 @@ namespace sched
                 }
             }
 
-            proc->fdt.reset();
-
             // clean up early
+            proc->fdt.reset();
+            ptimer_clear(proc);
+
             proc->vfs.reset();
             proc->cred.reset();
             proc->rlimits.reset();
@@ -1931,6 +1932,8 @@ namespace sched
                 return -lib::map_error(image.error());
 
             lib::bug_on(!image.value());
+
+            auto exe_pathname = vfs::pathname_from(path);
             path = { };
 
             const std::unique_lock _ { process->lock };
@@ -1973,7 +1976,7 @@ namespace sched
 
             auto saved_pathname = std::move(process->pathname);
             auto saved_argv = std::move(process->argv);
-            process->pathname = pathname;
+            process->pathname = std::move(exe_pathname);
             process->argv = argv;
 
             auto new_thread = (*image)->load({
@@ -2033,6 +2036,8 @@ namespace sched
             if (process->fdt.use_count() > 1)
                 process->fdt = process->fdt->clone();
             process->fdt->close_on_exec();
+
+            ptimer_clear(process);
 
             if (process->sigactions.use_count() > 1)
                 process->sigactions = process->sigactions->clone();
@@ -2530,11 +2535,7 @@ namespace sched
                 lib::bug_on(!register_per_pid("exe",
                     make_symlink_ops([](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        // TODO
-                        const auto res = vfs::resolve(proc->vfs->root, proc->pathname);
-                        if (!res)
-                            return proc->pathname.str();
-                        return vfs::pathname_from(res->target);
+                        return proc->pathname.str();
                     }), node_type::symlink, 0777
                 ));
 

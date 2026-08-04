@@ -105,10 +105,14 @@ namespace x86_64::idt
                     return false;
             }
 
+            const auto code = regs->vector == 14
+                ? ((regs->error_code & 1) ? sched::segv_accerr : sched::segv_maperr)
+                : sched::si_kernel;
+
             const sched::siginfo_t info {
                 .signo = signo,
-                .code = sched::si_kernel,
-                .err = static_cast<int>(regs->error_code),
+                .code = code,
+                .err = 0,
                 .pid = 0,
                 .uid = 0,
                 .status = 0,

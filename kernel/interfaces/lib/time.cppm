@@ -13,6 +13,12 @@ export
         time_t tv_sec;
         suseconds_t tv_usec;
 
+        constexpr bool valid() const
+        {
+            constexpr time_t max_sec = std::numeric_limits<std::int64_t>::max() / 1'000'000'000l / 2;
+            return tv_sec >= 0 && tv_sec <= max_sec && tv_usec >= 0 && tv_usec < 1'000'000l;
+        }
+
         constexpr std::uint64_t to_ns() const
         {
             return tv_sec * 1'000'000'000ul + tv_usec * 1'000;
@@ -106,6 +112,12 @@ export
             return tv_nsec <=> other.tv_nsec;
         }
 
+        constexpr bool valid() const
+        {
+            constexpr time_t max_sec = std::numeric_limits<std::int64_t>::max() / 1'000'000'000l / 2;
+            return tv_sec >= 0 && tv_sec <= max_sec && tv_nsec >= 0 && tv_nsec < 1'000'000'000l;
+        }
+
         constexpr std::uint64_t to_ns() const
         {
             return tv_sec * 1'000'000'000ul + tv_nsec;
@@ -126,6 +138,17 @@ export
                     )
                 )
             };
+        }
+    };
+
+    struct itimerspec
+    {
+        timespec interval; // period
+        timespec value;    // expiration
+
+        constexpr bool valid() const
+        {
+            return value.valid() && interval.valid();
         }
     };
 } // export

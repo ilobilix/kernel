@@ -676,7 +676,7 @@ namespace syscall::proc
     }
 
     int rt_sigtimedwait(
-        const sched::sigset_t __user *uthese, sched::siginfo_t __user *uinfo,
+        const sched::sigset_t __user *uthese, sched::user_siginfo_t __user *uinfo,
         const timespec __user *uts, std::size_t sigsetsize
     )
     {
@@ -713,7 +713,8 @@ namespace syscall::proc
             deadline_ns = timer->ns() + timeout_ns;
 
         const auto deliver = [&](const siginfo_t &info) {
-            if (uinfo && !lib::copy_to_user(uinfo, &info, sizeof(info)))
+            const auto uout = to_user(info);
+            if (uinfo && !lib::copy_to_user(uinfo, &uout, sizeof(uout)))
                 return -EFAULT;
             return info.signo;
         };
@@ -1400,7 +1401,7 @@ namespace syscall::proc
     }
 
     int waitid(
-        int idtype, pid_t id, sched::siginfo_t __user *infop,
+        int idtype, pid_t id, sched::user_siginfo_t __user *infop,
         int options, struct rusage __user *rusage
     )
     {
@@ -1461,7 +1462,8 @@ namespace syscall::proc
             }
         }
 
-        if (infop && !lib::copy_to_user(infop, &info, sizeof(info)))
+        const auto uinfo = sched::to_user(info);
+        if (infop && !lib::copy_to_user(infop, &uinfo, sizeof(uinfo)))
             return -EFAULT;
 
         if (rusage)

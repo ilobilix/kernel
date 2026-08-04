@@ -8,6 +8,7 @@ import drivers.fs.dev.tty;
 import system.sched.mutex;
 import system.sched;
 import system.vfs.dev;
+import system.dev;
 import fmt;
 
 namespace fs::dev::pty
@@ -482,7 +483,10 @@ namespace fs::dev::pty
     {
         "vfs.dev.pty.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { devtmpfs::registered_stage() },
+        lib::initgraph::require {
+            devtmpfs::mounted_stage(),
+            ::dev::available_stage()
+        },
         lib::initgraph::entail { registered_stage() },
         [] {
             ptm = new ptm_driver;
@@ -498,15 +502,7 @@ namespace fs::dev::pty
                 tty::register_chrdev(makedev(slave_major, idx));
             }
 
-            constexpr auto ptmx_rdev = makedev(5, 2);
-            vfs::dev::register_ops(ptmx_rdev, ptmx_ops::singleton());
-            if (const auto ret = devtmpfs::create("ptmx", stat::s_ifchr | 0666, ptmx_rdev); !ret)
-            {
-                lib::panic(
-                    "pty: failed to create '/dev/ptmx': {}",
-                    lib::error_name(ret.error())
-                );
-            }
+            tty::register_device("ptmx", makedev(5, 2), ptmx_ops::singleton());
         }
     };
 } // namespace fs::dev::pty

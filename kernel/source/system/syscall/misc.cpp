@@ -327,6 +327,28 @@ namespace syscall::misc
                     return -lib::map_error(ret.error());
                 return 0;
             }
+            case 35: // PR_SET_MM
+                if (!sched::capable(sched::cap_t::sys_resource))
+                    return -EPERM;
+
+                // TODO
+                switch (arg2)
+                {
+                    case 1:  // PR_SET_MM_START_CODE
+                    case 2:  // PR_SET_MM_END_CODE
+                    case 3:  // PR_SET_MM_START_DATA
+                    case 4:  // PR_SET_MM_END_DATA
+                    case 5:  // PR_SET_MM_START_STACK
+                    case 6:  // PR_SET_MM_START_BRK
+                    case 7:  // PR_SET_MM_BRK
+                    case 8:  // PR_SET_MM_ARG_START
+                    case 9:  // PR_SET_MM_ARG_END
+                    case 10: // PR_SET_MM_ENV_START
+                    case 11: // PR_SET_MM_ENV_END
+                        return 0;
+                    default:
+                        return -EINVAL;
+                }
             case 38: // PR_SET_NO_NEW_PRIVS
                 if (arg2 != 1)
                     return -EINVAL;

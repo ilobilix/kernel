@@ -81,6 +81,7 @@ export namespace lib
         corrupted_data = EBADMSG,
 
         timed_out = ETIMEDOUT,
+        cancelled = ECANCELED,
 
         address_family_unsupported = EAFNOSUPPORT,
         protocol_unsupported = EPROTONOSUPPORT,

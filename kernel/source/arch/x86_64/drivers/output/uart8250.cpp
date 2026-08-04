@@ -10,6 +10,7 @@ import drivers.fs.dev.tty;
 import system.irq;
 import system.cpu;
 import system.vfs;
+import system.dev;
 import arch;
 import lib;
 import std;
@@ -273,7 +274,10 @@ namespace x86_64::output::uart8250
     {
         "output.arch.uart8250.tty.register",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { fs::devtmpfs::mounted_stage() },
+        lib::initgraph::require {
+            fs::devtmpfs::mounted_stage(),
+            ::dev::available_stage()
+        },
         [] {
             for (std::size_t i = 0; i < num_ports; i++)
             {

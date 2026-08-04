@@ -17,6 +17,7 @@ export import :sleep;
 export import :process;
 export import :run_queue;
 export import :work_queue;
+export import :timer;
 
 import system.cpu.local;
 import boot;

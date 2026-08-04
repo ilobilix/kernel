@@ -241,6 +241,14 @@ export namespace syscall::vfs
     int inotify_add_watch(int fd, const char __user *pathname, std::uint32_t mask);
     int inotify_rm_watch(int fd, std::int32_t wd);
 
+    int timerfd_create(int clockid, int flags);
+    int timerfd_settime(
+        int fd, int flags,
+        const itimerspec __user *ntmr,
+        itimerspec __user *otmr
+    );
+    int timerfd_gettime(int fd, itimerspec __user *otmr);
+
     int init_module(void __user *umod, unsigned long len, const char __user *uargs);
     int finit_module(int fd, const char __user *uargs, int flags);
 } // export namespace syscall::vfs

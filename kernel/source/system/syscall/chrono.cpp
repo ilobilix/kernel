@@ -11,12 +11,41 @@ namespace syscall::chrono
 {
     using namespace ::chrono;
 
+    namespace
+    {
+        int set_clock(chrono::type clockid, const timespec &ts)
+        {
+            if (!sched::capable(sched::cap_t::sys_time))
+                return -EPERM;
+
+            if (ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1'000'000'000l)
+                return -EINVAL;
+
+            if (!chrono::set_now(clockid, ts))
+                return -EINVAL;
+            return 0;
+        }
+    } // namespace
+
     int clock_gettime(clockid_t clockid, timespec __user *tp)
     {
         const auto cur = now(static_cast<chrono::type>(clockid));
         if (!lib::copy_to_user(tp, &cur, sizeof(timespec)))
             return -EFAULT;
         return 0;
+    }
+
+    int clock_settime(clockid_t clockid, const timespec __user *tp)
+    {
+        const auto id = static_cast<chrono::type>(clockid);
+        if (!magic_enum::enum_contains(id))
+            return -EINVAL;
+
+        timespec kts;
+        if (!lib::copy_from_user(&kts, tp, sizeof(timespec)))
+            return -EFAULT;
+
+        return set_clock(id, kts);
     }
 
     int clock_getres(clockid_t clockid, timespec __user *res)
@@ -115,11 +144,7 @@ namespace syscall::chrono
 
         if (tz != nullptr)
         {
-            timezone ktz
-            {
-                .tz_minuteswest = 0,
-                .tz_dsttime = 0
-            };
+            timezone ktz { };
             if (!lib::copy_to_user(tz, &ktz, sizeof(timezone)))
                 return -EFAULT;
         }
@@ -128,9 +153,18 @@ namespace syscall::chrono
 
     int settimeofday(const timeval __user *tv, const timezone __user *tz)
     {
-        // TODO
-        lib::unused(tv, tz);
-        return 0;
+        lib::unused(tz);
+        if (tv == nullptr)
+            return 0;
+
+        timeval ktv;
+        if (!lib::copy_from_user(&ktv, tv, sizeof(timeval)))
+            return -EFAULT;
+
+        if (ktv.tv_usec < 0 || ktv.tv_usec >= 1'000'000l)
+            return -EINVAL;
+
+        return set_clock(chrono::realtime, timespec::from_timeval(ktv));
     }
 
     time_t time(time_t __user *tloc)

@@ -31,7 +31,9 @@ namespace chrono
         timer *main = nullptr;
         rtc *main_rtc = nullptr;
 
-        std::uint64_t realtime_base_ns = 0;
+        std::atomic<std::uint64_t> realtime_base_ns = 0;
+        std::atomic_bool realtime_base_set = false;
+        std::atomic<clock_set_hook *> clock_set_hooks = nullptr;
     } // namespace
 
     timer::timer(std::string_view name, std::size_t priority, std::uint64_t (*time_ns)())
@@ -89,7 +91,10 @@ namespace chrono
             unix_secs = main_rtc->unix();
         } while (unix_secs == prev);
 
-        realtime_base_ns = unix_secs * 1'000'000'000ul - ns_before;
+        realtime_base_ns.store(
+            unix_secs * 1'000'000'000ul - ns_before, std::memory_order_relaxed
+        );
+        realtime_base_set.store(true, std::memory_order_release);
     }
 
     // TODO: realtime is ~1 second behind
@@ -98,16 +103,48 @@ namespace chrono
         if (main == nullptr)
             return { };
 
-        if (clockid == type::monotonic)
+        if (clockid == type::monotonic || clockid == type::boottime)
             return main->ns();
 
         if (clockid != type::realtime)
             return { };
 
-        if (realtime_base_ns != 0)
-            return realtime_base_ns + main->ns();
+        if (realtime_base_set.load(std::memory_order_acquire))
+            return realtime_base_ns.load(std::memory_order_relaxed) + main->ns();
 
         return boot::time() * 1'000'000'000ul + main->ns();
+    }
+
+    bool set_now(type clockid, const timespec &ts)
+    {
+        if (clockid != type::realtime || main == nullptr)
+            return false;
+
+        realtime_base_ns.store(ts.to_ns() - main->ns(), std::memory_order_relaxed);
+        realtime_base_set.store(true, std::memory_order_release);
+
+        for (auto hook = clock_set_hooks.load(std::memory_order_acquire); hook; hook = hook->next)
+            hook->func();
+
+        return true;
+    }
+
+    std::uint64_t delay_until(type clockid, const timespec &deadline)
+    {
+        const auto cur = now(clockid);
+        return deadline > cur ? (deadline - cur).to_ns() : 0;
+    }
+
+    void on_clock_set(clock_set_hook &hook)
+    {
+        if (hook.func == nullptr)
+            return;
+
+        auto head = clock_set_hooks.load(std::memory_order_relaxed);
+        do {
+            hook.next = head;
+        } while (!clock_set_hooks.compare_exchange_weak(
+            head, &hook, std::memory_order_release, std::memory_order_relaxed));
     }
 
     lib::initgraph::task procfs_register_task
