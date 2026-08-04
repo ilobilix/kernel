@@ -5,6 +5,7 @@ module arch;
 import system.cpu.call;
 import system.cpu.local;
 import system.sched;
+import system.acpi;
 import system.rcu;
 import drivers.timers;
 import drivers.output;
@@ -30,6 +31,18 @@ namespace arch
     // TODO
     void nmi_others() { }
 
+    // TODO
+    void shutdown()
+    {
+        acpi::shutdown();
+    }
+
+    void reboot()
+    {
+        acpi::reboot();
+    }
+
+    // TODO
     void dump_regs(std::size_t idx, cpu::registers *regs, cpu::extra_regs eregs)
     {
         lib::unused(idx, regs, eregs);

@@ -77,15 +77,19 @@ namespace acpi
             }
         }
 #endif
-
-        // TODO
-        void shutdown()
-        {
-            lib::info("acpi: trying to enter s5...");
-
-            uacpi_enter_sleep_state_simple(UACPI_SLEEP_STATE_S5);
-        }
     } // namespace
+
+    void shutdown()
+    {
+        lib::info("acpi: trying to enter s5...");
+        uacpi_enter_sleep_state_simple(UACPI_SLEEP_STATE_S5);
+    }
+
+    void reboot()
+    {
+        lib::info("acpi: trying to reboot...");
+        uacpi_reboot();
+    }
 
     std::uintptr_t get_rsdp()
     {
