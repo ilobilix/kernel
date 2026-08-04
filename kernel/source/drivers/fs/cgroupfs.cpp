@@ -96,6 +96,117 @@ namespace fs::cgroupfs
             return out;
         }
 
+        std::string path_of(const std::shared_ptr<vfs::dentry_t> &dentry)
+        {
+            std::vector<std::string> parts;
+            for (auto cur = dentry; cur; )
+            {
+                auto parent = cur->parent.lock();
+                if (!parent || parent == cur)
+                    break;
+
+                parts.push_back(cur->name);
+                cur = std::move(parent);
+            }
+
+            std::string out;
+            while (!parts.empty())
+            {
+                out.push_back('/');
+                out.append(parts.back());
+                parts.pop_back();
+            }
+
+            if (out.empty())
+                out.push_back('/');
+            return out;
+        }
+
+        struct procs_ops_t : vfs::ops_t
+        {
+            static std::shared_ptr<procs_ops_t> singleton()
+            {
+                static auto instance = std::make_shared<procs_ops_t>();
+                return instance;
+            }
+
+            static std::string contents(const std::shared_ptr<vfs::file_t> &file)
+            {
+                const auto path = path_of(file->path.dentry->parent.lock());
+
+                std::string out;
+                sched::for_each_process(
+                    [&](const std::shared_ptr<sched::process_t> &proc)
+                    {
+                        const auto locked = proc->cgroup.lock();
+                        if (std::string_view { locked.value() } == path)
+                            out.append(fmt::format("{}\n", proc->pid));
+                        return true;
+                    }
+                );
+                return out;
+            }
+
+            lib::expect<std::size_t> read(
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
+            {
+                const auto out = contents(file);
+                if (offset >= out.size())
+                    return 0uz;
+
+                const auto count = std::min(buffer.size(), out.size() - offset);
+                if (!buffer.subspan(0, count)
+                    .copy_from(std::as_bytes(std::span { out.data() + offset, count })))
+                    return std::unexpected { lib::err::invalid_address };
+
+                return count;
+            }
+
+            lib::expect<std::size_t> write(
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
+            {
+                lib::unused(offset);
+
+                const auto size = std::min(buffer.size(), 32uz);
+                std::string str;
+                str.resize(size);
+                if (!buffer.subspan(0, size)
+                    .copy_to(reinterpret_cast<std::byte *>(str.data())))
+                    return std::unexpected { lib::err::invalid_address };
+
+                if (const auto end = str.find('\0'); end != std::string::npos)
+                    str.resize(end);
+
+                const auto token = lib::trim(str);
+                if (token.empty())
+                    return std::unexpected { lib::err::invalid_argument };
+
+                char *end = nullptr;
+                const auto pid = lib::str2int<pid_t>(token.data(), &end, 10);
+                if (!pid || end != token.data() + token.size())
+                    return std::unexpected { lib::err::invalid_argument };
+
+                auto proc = *pid == 0
+                    ? sched::current_process()->shared_from_this()
+                    : sched::get_process(*pid);
+                if (!proc)
+                    return std::unexpected { lib::err::not_found };
+
+                auto locked = proc->cgroup.lock();
+                locked.value() = path_of(file->path.dentry->parent.lock());
+                return buffer.size();
+            }
+        };
+
+        bool is_membership_file(std::string_view name)
+        {
+            return name == "cgroup.procs"sv || name == "cgroup.threads"sv ||name == "tasks"sv;
+        }
+
         struct instance_t : tmpfs::fs_t::instance
         {
             std::span<const std::string_view> files;
@@ -113,8 +224,11 @@ namespace fs::cgroupfs
 
                     auto inode = create(
                         dir->inode, name,
-                        static_cast<mode_t>(stat::type::s_ifreg) | 0644,
-                        0, std::nullopt
+                        static_cast<mode_t>(stat::type::s_ifreg) | 0644, 0,
+                        is_membership_file(name)
+                            ? std::optional {
+                                std::static_pointer_cast<vfs::ops_t>(procs_ops_t::singleton())
+                            } : std::nullopt
                     );
                     if (!inode)
                         continue;
@@ -192,16 +306,23 @@ namespace fs::cgroupfs
         std::shared_ptr<dev::kobject_t> cgroup_kobj;
     } // namespace
 
-    std::string proc_lines()
+    std::string proc_lines(sched::process_t *proc)
     {
+        std::string path { "/" };
+        if (proc)
+        {
+            const auto locked = proc->cgroup.lock();
+            path = locked.value();
+        }
+
         std::string out;
         {
             const auto locked = hierarchies.lock();
             for (const auto &entry : locked.value())
-                out.append(fmt::format("{}:{}:/\n", entry.id, entry.controllers));
+                out.append(fmt::format("{}:{}:{}\n", entry.id, entry.controllers, path));
         }
 
-        out.append("0::/\n");
+        out.append(fmt::format("0::{}\n", path));
         return out;
     }
 

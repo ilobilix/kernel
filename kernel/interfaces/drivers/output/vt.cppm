@@ -7,8 +7,6 @@ import std;
 
 export namespace output::vt
 {
-    constexpr std::size_t num_vts = 8;
-
     std::size_t active();
     lib::expect<void> activate(std::size_t index);
 

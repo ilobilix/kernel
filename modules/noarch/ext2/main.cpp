@@ -163,6 +163,9 @@ namespace ext2
             lib::map::flat_hash<ino_t, std::weak_ptr<fs_inode_t>> icache;
             std::uint64_t flags;
 
+            std::vector<std::uint32_t> block_hints;
+            std::vector<std::uint32_t> inode_hints;
+
             sched::mutex_t io_lock;
 
             instance_t(
@@ -170,7 +173,8 @@ namespace ext2
                 lib::buffer<superblock_t> sb, lib::buffer<group_desc_t> gds,
                 std::uint32_t block_size, std::uint16_t inode_size, std::uint64_t flags
             ) : src { std::move(src) }, sb_buf { std::move(sb) }, gds { std::move(gds) },
-                block_size { block_size }, inode_size { inode_size }, flags { flags } { }
+                block_size { block_size }, inode_size { inode_size }, flags { flags },
+                block_hints (this->gds.size(), 0), inode_hints (this->gds.size(), 0) { }
 
             auto superblock(this auto &&self) { return self.sb_buf.data(); }
 
@@ -322,21 +326,17 @@ namespace ext2
                 return std::unexpected { lib::err::invalid_argument };
             }
 
-            auto read_data(
-                ext2::inode_t *inode, std::uint64_t offset,
-                lib::maybe_uspan<std::byte> dst
-            ) -> lib::expect<std::size_t>
+            auto for_each_run(
+                ext2::inode_t *inode, std::uint64_t offset, std::uint64_t total, auto &&fn
+            ) -> lib::expect<void>
             {
-                const auto total = dst.size_bytes();
-                std::size_t progress = 0;
-
+                std::uint64_t progress = 0;
                 while (progress < total)
                 {
-                    const auto pos  = offset + progress;
-                    const auto lblk = pos / block_size;
+                    const auto pos = offset + progress;
                     const auto boff = pos % block_size;
 
-                    auto res = bmap(inode, lblk);
+                    auto res = bmap(inode, pos / block_size);
                     if (!res.has_value())
                         return std::unexpected { res.error() };
                     const auto [phys, run] = *res;
@@ -344,25 +344,48 @@ namespace ext2
                     const auto run_bytes = static_cast<std::uint64_t>(run) * block_size - boff;
                     const auto chunk = std::min(run_bytes, total - progress);
 
-                    auto out = dst.subspan(progress, chunk);
-                    if (phys == 0)
+                    const auto ret = fn(
+                        progress,
+                        phys ? static_cast<std::uint64_t>(phys) * block_size + boff : 0,
+                        chunk
+                    );
+                    if (!ret.has_value())
+                        return std::unexpected { ret.error() };
+
+                    progress += chunk;
+                }
+                return { };
+            }
+
+            auto read_data(
+                ext2::inode_t *inode, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> dst
+            ) -> lib::expect<std::size_t>
+            {
+                const auto total = dst.size_bytes();
+                const auto ret = for_each_run(inode, offset, total,
+                    [&](std::uint64_t at, std::uint64_t src, std::uint64_t len)
+                        -> lib::expect<void>
                     {
-                        if (!out.fill(0, chunk))
-                            return std::unexpected { lib::err::invalid_address };
-                    }
-                    else
-                    {
-                        auto blk = read_at<std::byte>(
-                            static_cast<std::uint64_t>(phys) * block_size + boff, chunk
-                        );
+                        auto out = dst.subspan(at, len);
+                        if (src == 0)
+                        {
+                            if (!out.fill(0, len))
+                                return std::unexpected { lib::err::invalid_address };
+                            return { };
+                        }
+
+                        auto blk = read_at<std::byte>(src, len);
                         if (!blk.has_value())
                             return std::unexpected { blk.error() };
                         if (!out.copy_from(blk->span()))
                             return std::unexpected { lib::err::invalid_address };
+                        return { };
                     }
-                    progress += chunk;
-                }
-                return progress;
+                );
+                if (!ret.has_value())
+                    return std::unexpected { ret.error() };
+                return total;
             }
 
             auto for_each_dir_block(fs_inode_t *dir, auto &&fn) -> lib::expect<void>;
@@ -391,7 +414,7 @@ namespace ext2
                 return write_bytes(static_cast<std::uint64_t>(blk) * block_size, buf.span());
             }
 
-            auto bitmap_alloc(std::uint32_t bitmap_blk, std::uint32_t count)
+            auto bitmap_alloc(std::uint32_t bitmap_blk, std::uint32_t count, std::uint32_t &hint)
                 -> lib::expect<std::optional<std::uint32_t>>
             {
                 const auto off = static_cast<std::uint64_t>(bitmap_blk) * block_size;
@@ -400,17 +423,41 @@ namespace ext2
                     return std::unexpected { bm.error() };
 
                 auto bits = reinterpret_cast<std::uint8_t *>(bm->data());
-                for (std::uint32_t bit = 0; bit < count; bit++)
-                {
-                    if (bits[bit >> 3] & (1u << (bit & 7)))
-                        continue;
-                    bits[bit >> 3] |= (1u << (bit & 7));
 
-                    if (const auto ret = write_bytes(off, bm->span()); !ret.has_value())
-                        return std::unexpected { ret.error() };
-                    return bit;
-                }
-                return std::nullopt;
+                const auto scan = [&](std::uint32_t from, std::uint32_t to) -> std::optional<std::uint32_t>
+                {
+                    for (std::uint32_t bit = from; bit < to; )
+                    {
+                        if ((bit & 7) == 0 && bits[bit >> 3] == 0xFF)
+                        {
+                            bit += 8;
+                            continue;
+                        }
+
+                        if (!(bits[bit >> 3] & (1u << (bit & 7))))
+                            return bit;
+                        bit++;
+                    }
+                    return std::nullopt;
+                };
+
+                if (hint >= count)
+                    hint = 0;
+
+                auto found = scan(hint, count);
+                if (!found)
+                    found = scan(0, hint);
+                if (!found)
+                    return std::nullopt;
+
+                const auto bit = *found;
+                bits[bit >> 3] |= (1u << (bit & 7));
+
+                if (const auto ret = write_bytes(off, bm->span()); !ret.has_value())
+                    return std::unexpected { ret.error() };
+
+                hint = bit + 1;
+                return bit;
             }
 
             auto bitmap_free(std::uint32_t bitmap_blk, std::uint32_t bit) -> lib::expect<bool>
@@ -433,10 +480,7 @@ namespace ext2
             auto commit_group(std::uint32_t group) -> lib::expect<void>
             {
                 const auto off = gdt_offset() + group * sizeof(group_desc_t);
-                if (const auto ret = write_bytes(off, std::as_bytes(gds.span().subspan(group, 1)));
-                    !ret.has_value())
-                    return ret;
-                return write_bytes(superblock_start, std::as_bytes(sb_buf.span()));
+                return write_bytes(off, std::as_bytes(gds.span().subspan(group, 1)));
             }
 
             auto alloc_block(std::uint32_t target_group) -> lib::expect<std::uint32_t>
@@ -454,7 +498,11 @@ namespace ext2
                     if (gds.at(group).free_blocks_count == 0)
                         continue;
 
-                    auto bit = bitmap_alloc(gds.at(group).block_bitmap, blocks_in_group(group));
+                    auto bit = bitmap_alloc(
+                        gds.at(group).block_bitmap,
+                        blocks_in_group(group),
+                        block_hints.at(group)
+                    );
                     if (!bit.has_value())
                         return std::unexpected { bit.error() };
                     if (!bit->has_value())
@@ -481,7 +529,8 @@ namespace ext2
                 if (group >= group_count())
                     return std::unexpected { lib::err::corrupted_data };
 
-                auto freed = bitmap_free(gds.at(group).block_bitmap, rel % sb->blocks_per_group);
+                const auto bit = rel % sb->blocks_per_group;
+                auto freed = bitmap_free(gds.at(group).block_bitmap, bit);
                 if (!freed.has_value())
                     return std::unexpected { freed.error() };
 
@@ -489,6 +538,7 @@ namespace ext2
                 {
                     gds.at(group).free_blocks_count++;
                     sb->free_blocks_count++;
+                    block_hints.at(group) = std::min(block_hints.at(group), bit);
                     return commit_group(group);
                 }
                 return { };
@@ -506,7 +556,11 @@ namespace ext2
                     if (gds.at(group).free_inodes_count == 0)
                         continue;
 
-                    auto bit = bitmap_alloc(gds.at(group).inode_bitmap, inodes_in_group(group));
+                    auto bit = bitmap_alloc(
+                        gds.at(group).inode_bitmap,
+                        inodes_in_group(group),
+                        inode_hints.at(group)
+                    );
                     if (!bit.has_value())
                         return std::unexpected { bit.error() };
                     if (!bit->has_value())
@@ -534,9 +588,8 @@ namespace ext2
                 if (group >= group_count())
                     return std::unexpected { lib::err::corrupted_data };
 
-                auto freed = bitmap_free(
-                    gds.at(group).inode_bitmap, (ino - 1) % sb->inodes_per_group
-                );
+                const auto bit = (ino - 1) % sb->inodes_per_group;
+                auto freed = bitmap_free(gds.at(group).inode_bitmap, bit);
                 if (!freed.has_value())
                     return std::unexpected { freed.error() };
 
@@ -546,6 +599,7 @@ namespace ext2
                     sb->free_inodes_count++;
                     if (was_dir && gds.at(group).used_dirs_count > 0)
                         gds.at(group).used_dirs_count--;
+                    inode_hints.at(group) = std::min(inode_hints.at(group), bit);
                     return commit_group(group);
                 }
                 return { };
@@ -883,38 +937,56 @@ namespace ext2
 
                 const auto npsize = vmm::default_npsize();
 
-                const std::unique_lock _ { inode->owner->io_lock };
+                auto fs = inode->owner;
+                const std::unique_lock _ { fs->io_lock };
 
                 const std::uint64_t file_size = inode->stat.st_size;
-                for (std::size_t i = 0; i < pages.size(); i++)
-                {
-                    auto span = lib::maybe_uspan<std::byte>::create(
-                        reinterpret_cast<std::byte *>(lib::tohh(vmm::paddr_from(pages[i]))),
-                        npsize
-                    );
-                    lib::bug_on(!span.has_value());
+                const std::uint64_t base = static_cast<std::uint64_t>(idx) * npsize;
+                const std::uint64_t total = static_cast<std::uint64_t>(pages.size()) * npsize;
 
-                    const auto offset = (idx + i) * npsize;
-                    const auto len = offset < file_size
-                        ? std::min(npsize, file_size - offset) : 0ul;
-
-                    if (len != 0)
+                const auto fill = [&](std::uint64_t at, std::uint64_t len, const std::byte *src) {
+                    while (len != 0)
                     {
-                        const auto ret = inode->owner->read_data(
-                            inode->inode(), offset, span->subspan(0, len)
-                        );
-                        if (!ret.has_value())
-                            return std::unexpected { ret.error() };
-                    }
+                        const auto poff = at % npsize;
+                        const auto take = std::min<std::uint64_t>(npsize - poff, len);
+                        auto dst = reinterpret_cast<std::byte *>(
+                            lib::tohh(vmm::paddr_from(pages[at / npsize]))
+                        ) + poff;
 
-                    if (len < npsize)
-                    {
-                        auto tail = span->subspan(len, npsize - len);
-                        if (!tail.fill(0, npsize - len))
-                            return std::unexpected { lib::err::invalid_address };
+                        if (src)
+                        {
+                            std::memcpy(dst, src, take);
+                            src += take;
+                        }
+                        else std::memset(dst, 0, take);
+
+                        at += take;
+                        len -= take;
                     }
-                }
-                return { };
+                };
+
+                const auto valid = base < file_size
+                    ? std::min(total, file_size - base) : 0ul;
+                if (valid != total)
+                    fill(valid, total - valid, nullptr);
+
+                return fs->for_each_run(inode->inode(), base, valid,
+                    [&](std::uint64_t at, std::uint64_t src, std::uint64_t len) -> lib::expect<void>
+                    {
+                        if (src == 0)
+                        {
+                            fill(at, len, nullptr);
+                            return { };
+                        }
+
+                        auto blk = fs->read_at<std::byte>(src, len);
+                        if (!blk.has_value())
+                            return std::unexpected { blk.error() };
+
+                        fill(at, len, blk->data());
+                        return { };
+                    }
+                );
             }
 
             lib::expect<void> write_pages(std::size_t idx, std::span<vmm::page *> pages) override
@@ -2249,7 +2321,6 @@ namespace ext2
                 );
             }
             lib::unused(owner->flush_metadata());
-            lib::unused(owner->src->sync());
         }
     } // namespace
 

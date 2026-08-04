@@ -801,10 +801,9 @@ namespace fs::procfs
                 }), node_type::symlink, 0777
             ));
 
-            // TODO
             lib::bug_on(!register_per_pid("cgroup",
-                make_file_ops([](auto) {
-                    return cgroupfs::proc_lines();
+                make_file_ops([](auto proc) {
+                    return cgroupfs::proc_lines(proc);
                 }), node_type::file, 0444
             ));
 

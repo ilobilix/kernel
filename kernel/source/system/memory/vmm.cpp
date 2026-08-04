@@ -210,7 +210,7 @@ namespace vmm
                     auto pg = pages[j];
                     if (!needs_fetch[j])
                     {
-                        if (pg->unref())
+                        if (pg && pg->unref())
                             pmm::free(paddr_from(pg), num_alloc_pages);
                         continue;
                     }
@@ -270,13 +270,18 @@ namespace vmm
 
                 while (i + chunk_size < end_idx && chunk_size < max_readahead)
                 {
-                    auto it = locked->find(i + chunk_size);
-                    if (it == locked->end())
+                    auto it = locked->lower_bound(i + chunk_size);
+                    if (it == locked->end() || it->first != i + chunk_size)
                     {
                         if (chunk_size > 0)
                             break;
 
-                        i++;
+                        if (it == locked->end())
+                        {
+                            i = end_idx;
+                            break;
+                        }
+                        i = it->first;
                         continue;
                     }
 
@@ -1385,6 +1390,7 @@ namespace vmm
         prot_t prot;
         flag_t flags;
         std::uintptr_t startp;
+        std::uintptr_t endp;
         std::uint64_t obj_offp;
         std::uint64_t anon_idx;
 
@@ -1399,6 +1405,7 @@ namespace vmm
             prot = entry.prot;
             flags = entry.flags;
             startp = entry.startp;
+            endp = entry.endp;
 
             if (entry.obj)
             {
@@ -1445,6 +1452,31 @@ namespace vmm
         const auto check_pinned = [&] {
             if (pinned && pinned->unref())
                 pmm::free(paddr_from(pinned), num_alloc_pages);
+        };
+
+        const auto fetch = [&](std::uint64_t want) -> page * {
+            page *chunk[object::max_readahead] { };
+
+            auto start = want;
+            auto end = start + 1;
+
+            if (obj->type == object_type::file)
+            {
+                start = std::max(lib::align_down(want, object::max_readahead), obj_offp);
+                end = std::min(start + object::max_readahead, obj_offp + (endp - startp));
+            }
+
+            std::span<page *> pages { chunk, end - start };
+            if (!obj->read_pages(start, pages, want - start).has_value())
+                return nullptr;
+
+            const auto wanted = chunk[want - start];
+            for (const auto pg : pages)
+            {
+                if (pg && pg != wanted && pg->unref())
+                    pmm::free(paddr_from(pg), num_alloc_pages);
+            }
+            return wanted;
         };
 
         const auto copy_old = [&](page *opg, anon::ptr &slot, bool is_file) {
@@ -1518,10 +1550,9 @@ namespace vmm
                 lib::bug_on(!(flags & flag::shared));
                 lib::bug_on(!obj);
 
-                page *fetched = nullptr;
                 // memobject
-                const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
-                if (!ret || !fetched)
+                auto fetched = fetch(obj_offp + offp);
+                if (!fetched)
                     return false;
 
                 pinned = fetched;
@@ -1541,8 +1572,8 @@ namespace vmm
                     if (!amap->slots[anon_idx + offp])
                     {
                         lib::bug_on(!obj);
-                        const auto ret = obj->read_pages(obj_offp + offp, { &opg, 1 }, 0);
-                        if (!ret || !opg)
+                        opg = fetch(obj_offp + offp);
+                        if (!opg)
                             return false;
                     }
                     else
@@ -1585,8 +1616,8 @@ namespace vmm
                     else
                     {
                         lib::bug_on(!obj);
-                        const auto ret = obj->read_pages(obj_offp + offp, { &opg, 1 }, 0);
-                        if (!ret || !opg)
+                        opg = fetch(obj_offp + offp);
+                        if (!opg)
                             return false;
                     }
 
@@ -1603,9 +1634,8 @@ namespace vmm
             {
                 lib::bug_on(!obj);
 
-                page *fetched = nullptr;
-                const auto ret = obj->read_pages(obj_offp + offp, { &fetched, 1 }, 0);
-                if (!ret || !fetched)
+                auto fetched = fetch(obj_offp + offp);
+                if (!fetched)
                     return false;
 
                 pinned = fetched;

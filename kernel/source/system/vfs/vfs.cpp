@@ -1607,16 +1607,18 @@ namespace vfs
         return next;
     }
 
-    bool fdtable::clear(fdarray *arr, std::size_t fd)
+    std::shared_ptr<vfs::filedesc> fdtable::clear(fdarray *arr, std::size_t fd)
     {
         const auto old = arr->slots[fd].exchange(nullptr);
         if (!old)
-            return false;
+            return nullptr;
+
+        auto desc = std::move(old->desc.lock().value());
         old->retire();
 
         if (static_cast<int>(fd) < next_fd)
             next_fd = fd;
-        return true;
+        return desc;
     }
 
     bool fdtable::close(int fd)
@@ -1624,13 +1626,17 @@ namespace vfs
         if (fd < 0)
             return false;
 
-        const std::unique_lock _ { write_lock };
+        std::shared_ptr<vfs::filedesc> dying;
+        {
+            const std::unique_lock _ { write_lock };
 
-        const auto arr = table.unsafe_load();
-        if (!arr || static_cast<std::size_t>(fd) >= arr->size)
-            return false;
+            const auto arr = table.unsafe_load();
+            if (!arr || static_cast<std::size_t>(fd) >= arr->size)
+                return false;
 
-        return clear(arr, fd);
+            dying = clear(arr, fd);
+        }
+        return dying != nullptr;
     }
 
     void fdtable::close_range(std::size_t first, std::size_t last, bool cloexec)
@@ -1646,37 +1652,56 @@ namespace vfs
             for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
             {
                 const auto slot = arr->slots[fd].dereference();
-                if (slot && slot->desc)
-                    slot->desc->closexec.store(true, std::memory_order_relaxed);
+                if (!slot)
+                    continue;
+
+                auto locked = slot->desc.lock();
+                if (locked.value())
+                    locked.value()->closexec.store(true, std::memory_order_relaxed);
             }
             return;
         }
 
-        const std::unique_lock _ { write_lock };
+        std::vector<std::shared_ptr<vfs::filedesc>> dying;
+        {
+            const std::unique_lock _ { write_lock };
 
-        const auto arr = table.unsafe_load();
-        if (!arr)
-            return;
+            const auto arr = table.unsafe_load();
+            if (!arr)
+                return;
 
-        for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
-            clear(arr, fd);
+            for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
+            {
+                if (auto desc = clear(arr, fd))
+                    dying.push_back(std::move(desc));
+            }
+        }
     }
 
     void fdtable::close_on_exec()
     {
-        const std::unique_lock _ { write_lock };
-
-        const auto arr = table.unsafe_load();
-        if (!arr)
-            return;
-
-        for (std::size_t i = 0; i < arr->size; i++)
+        std::vector<std::shared_ptr<vfs::filedesc>> dying;
         {
-            const auto slot = arr->slots[i].unsafe_load();
-            if (!slot || !slot->desc || !slot->desc->closexec.load(std::memory_order_relaxed))
-                continue;
+            const std::unique_lock _ { write_lock };
 
-            clear(arr, i);
+            const auto arr = table.unsafe_load();
+            if (!arr)
+                return;
+
+            const auto is_cloexec = [](fdslot *slot) {
+                auto locked = slot->desc.lock();
+                return locked.value() && locked.value()->closexec.load(std::memory_order_relaxed);
+            };
+
+            for (std::size_t i = 0; i < arr->size; i++)
+            {
+                const auto slot = arr->slots[i].unsafe_load();
+                if (!slot || !is_cloexec(slot))
+                    continue;
+
+                if (auto desc = clear(arr, i))
+                    dying.push_back(std::move(desc));
+            }
         }
     }
 
@@ -1692,7 +1717,7 @@ namespace vfs
             return nullptr;
 
         const auto slot = arr->slots[fd].dereference();
-        return slot ? slot->desc : nullptr;
+        return slot ? slot->desc.lock().value() : nullptr;
     }
 
     lib::expect<int> fdtable::alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd)
@@ -1700,30 +1725,36 @@ namespace vfs
         if (fd < 0)
             return std::unexpected { lib::err::invalid_fd };
 
-        const std::unique_lock _ { write_lock };
-
-        const auto arr = table.unsafe_load();
-        const auto taken = [&](std::size_t i) {
-            return arr && i < arr->size && arr->slots[i].unsafe_load() != nullptr;
-        };
-
-        if (taken(fd) && !force)
+        std::shared_ptr<vfs::filedesc> dying;
         {
-            fd = next_fd;
-            while (taken(fd))
-                fd++;
-            next_fd = fd + 1;
+            const std::unique_lock _ { write_lock };
+
+            const auto arr = table.unsafe_load();
+            const auto taken = [&](std::size_t i) {
+                return arr && i < arr->size && arr->slots[i].unsafe_load() != nullptr;
+            };
+
+            if (taken(fd) && !force)
+            {
+                fd = next_fd;
+                while (taken(fd))
+                    fd++;
+                next_fd = fd + 1;
+            }
+
+            if (static_cast<rlim_t>(fd) >= max_fd)
+                return std::unexpected { lib::err::too_many_files };
+
+            const auto slot = new fdslot;
+            slot->desc.lock().value() = std::move(desc);
+
+            const auto old = reserve(static_cast<std::size_t>(fd) + 1)->slots[fd].exchange(slot);
+            if (old)
+            {
+                dying = std::move(old->desc.lock().value());
+                old->retire();
+            }
         }
-
-        if (static_cast<rlim_t>(fd) >= max_fd)
-            return std::unexpected { lib::err::too_many_files };
-
-        const auto slot = new fdslot;
-        slot->desc = std::move(desc);
-
-        const auto old = reserve(static_cast<std::size_t>(fd) + 1)->slots[fd].exchange(slot);
-        if (old)
-            old->retire();
 
         return fd;
     }
@@ -1752,7 +1783,10 @@ namespace vfs
             for (std::size_t i = 0; i < arr->size; i++)
             {
                 if (const auto slot = arr->slots[i].unsafe_load())
+                {
+                    const auto dying = std::move(slot->desc.lock().value());
                     slot->retire();
+                }
             }
         }
     }
@@ -1773,13 +1807,14 @@ namespace vfs
         for (std::size_t i = 0; i < src->size; i++)
         {
             const auto slot = src->slots[i].unsafe_load();
-            if (!slot || !slot->desc)
+            const auto desc = slot ? slot->desc.lock().value() : nullptr;
+            if (!desc)
                 continue;
 
             const auto copy = new fdslot;
-            copy->desc = std::make_shared<vfs::filedesc>(
-                slot->desc->file,
-                slot->desc->closexec.load(std::memory_order_relaxed)
+            copy->desc.lock().value() = std::make_shared<vfs::filedesc>(
+                desc->file,
+                desc->closexec.load(std::memory_order_relaxed)
             );
             arr->slots[i].assign(copy);
         }
