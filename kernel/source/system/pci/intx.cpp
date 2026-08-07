@@ -13,6 +13,6 @@ namespace pci::intx
         if (!route)
             return std::unexpected { lib::err::not_supported };
 
-        return irq::request_gsi(route->gsi, route->trig, cpu_idx, std::move(fn), name);
+        return irq::request_gsi(route->gsi, route->trig, cpu_idx, std::move(fn), name, &dev);
     }
 } // namespace pci::intx

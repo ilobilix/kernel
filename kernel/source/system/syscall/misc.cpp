@@ -111,8 +111,11 @@ namespace syscall::misc
             umagic2 != 0x16041998 && umagic2 != 0x20112000))
             return -EINVAL;
 
-        // TODO: only root can call reboot
-        // TODO: actual reboot and shutdown
+        if (!sched::capable(sched::current_process()->cred, sched::cap_t::sys_boot))
+            return -EPERM;
+
+        // TODO: sync and device shutdown
+
         switch (static_cast<std::uint32_t>(op))
         {
             case 0xCDEF0123: // LINUX_REBOOT_CMD_HALT

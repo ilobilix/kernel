@@ -10,58 +10,25 @@ import arch;
 
 namespace nvme
 {
-    void controller_t::worker_t::worker(worker_t *self)
+    void controller_t::drain(worker_t &worker)
     {
-        while (true)
+        for (const auto &qid : worker.qids)
         {
-            if (self->_bell.wait().killed)
-            {
-                self->_ack.store(true, std::memory_order_release);
-                sched::thread_exit(0);
-            }
-
-            for (const auto &qid : self->_qids)
-            {
-                lib::bug_on(self->_ctrl->_queues.size() <= qid);
-                self->_ctrl->_queues[qid]->process();
-            }
-
-            if (self->_mask)
-                self->_ctrl->_regs.store(regs::intmc, self->_mask);
+            lib::bug_on(_queues.size() <= qid);
+            _queues[qid]->process();
         }
+
+        if (worker.mask)
+            _regs.store(regs::intmc, worker.mask);
     }
 
-    void controller_t::worker_t::irq_handler()
+    void controller_t::irq_handler(worker_t &worker)
     {
-        if (_mask)
-            _ctrl->_regs.store(regs::intms, _mask);
-        _bell.wake_one();
-    }
+        if (worker.mask)
+            _regs.store(regs::intms, worker.mask);
 
-    void controller_t::worker_t::start()
-    {
-        lib::bug_on(!_thread.expired());
-
-        auto thread = sched::create_kthread(
-            reinterpret_cast<std::uintptr_t>(worker),
-            reinterpret_cast<std::uintptr_t>(this),
-            worker_t::nice
-        );
-        thread->affinity.clear();
-        thread->affinity.set(_cpu, true);
-
-        sched::enqueue_new(thread.get());
-        _thread = std::move(thread);
-    }
-
-    controller_t::worker_t::~worker_t()
-    {
-        if (auto thread = _thread.lock())
-        {
-            sched::request_kill(thread.get(), 0);
-            while (!_ack.load(std::memory_order_acquire))
-                ::arch::pause();
-        }
+        if (worker.thread)
+            worker.thread->wake();
     }
 
     bool controller_t::toggle(bool enable)
@@ -226,114 +193,73 @@ namespace nvme
         const auto bsp_idx = cpu::bsp_idx();
         const auto num_queues = io_queues + 1;
 
-        const auto try_alloc = [&](auto for_device, auto alloc, pci::irq_type type) {
-            auto domain = for_device(*_dev);
-            if (!domain)
-                return false;
-
-            for (auto count = std::min(num_queues, domain->vec_count()); count >= 1; count /= 2)
-            {
-                if (auto res = alloc(*_dev, count, bsp_idx))
+        auto alloc = _dev->request_irqs(
+            num_queues, bsp_idx,
+            [this](std::size_t vector, std::size_t count) {
+                if (vector == 0)
                 {
-                    _irq_handles = std::move(*res);
-                    lib::bug_on(_irq_handles.size() != count);
-                    _irq_type = type;
-                    return true;
+                    _workers.clear();
+                    _workers.reserve(count);
                 }
-            }
-            return false;
+
+                lib::bug_on(_workers.size() != vector);
+                auto worker = _workers.emplace_back(std::make_unique<worker_t>()).get();
+                return [this, worker](auto) { irq_handler(*worker); };
+            }, "nvme"
+        );
+
+        if (!alloc)
+        {
+            lib::error("nvme: failed to allocate irqs: {}", lib::error_name(alloc.error()));
+            return std::unexpected { lib::err::target_is_busy };
+        }
+
+        _irqs = std::move(*alloc);
+
+        const auto num_irqs = _irqs.handles.size();
+
+        const auto vector_of = [&](std::size_t qid) {
+            if (qid == 0 || num_irqs == 1)
+                return 0uz;
+            return 1 + (qid - 1) % (num_irqs - 1);
         };
 
-        if (try_alloc(pci::msix::for_device, pci::msix::alloc, pci::irq_type::msix) ||
-            try_alloc(pci::msi::for_device, pci::msi::alloc, pci::irq_type::msi))
+        const auto cpu_of = [&](std::size_t vector) {
+            return vector == 0 ? bsp_idx : vector - 1;
+        };
+
+        lib::bug_on(_workers.size() != num_irqs);
+
+        for (std::size_t qid = 0; qid < num_queues; qid++)
+            _workers[vector_of(qid)]->qids.push_back(qid);
+
+        lib::bitmap affinity { num_cpus };
+        for (std::size_t vector = 0; vector < num_irqs; vector++)
         {
-            const auto num_irqs = _irq_handles.size();
+            auto &worker = *_workers[vector];
+            const auto cpu = cpu_of(vector);
 
-            const auto vector_of = [&](std::size_t qid) {
-                if (qid == 0 || num_irqs == 1)
-                    return 0uz;
-                return 1 + (qid - 1) % (num_irqs - 1);
-            };
+            worker.mask = (_irqs.type != pci::irq_type::msix) ? (1u << vector) : 0;
 
-            const auto cpu_of = [&](std::size_t vector) {
-                return vector == 0 ? bsp_idx : vector - 1;
-            };
-
-            for (std::size_t qid = 0; qid < num_queues; qid++)
+            if (vector != 0 && _irqs.type != pci::irq_type::intx)
             {
-                const auto vector = vector_of(qid);
-
-                auto it = _workers.find(vector);
-                if (it == _workers.end())
+                affinity[cpu] = true;
+                if (!irq::set_affinity(_irqs.handles[vector], affinity))
                 {
-                    auto worker = std::make_unique<worker_t>();
-                    worker->_ctrl = this;
-                    worker->_cpu = cpu_of(vector);
-                    worker->_mask = (_irq_type != pci::irq_type::msix) ? (1u << vector) : 0;
-                    worker->_ack = false;
-                    it = _workers.emplace(vector, std::move(worker)).first;
-                }
-
-                it->second->_qids.push_back(qid);
-            }
-
-            lib::bitmap affinity { num_cpus };
-            for (const auto &[vector, worker] : _workers)
-            {
-                const auto handle = _irq_handles[vector];
-
-                if (vector != 0)
-                {
-                    affinity[worker->_cpu] = true;
-                    if (!irq::set_affinity(handle, affinity))
-                    {
-                        lib::error("nvme: failed to set irq affinity");
-                        return std::unexpected { lib::err::target_is_busy };
-                    }
-                    affinity[worker->_cpu] = false;
-                }
-
-                if (!irq::request(handle, [ptr = worker.get()](auto) {
-                    ptr->irq_handler();
-                }, "nvme"))
-                {
-                    lib::error("nvme: failed to request irq");
+                    lib::error("nvme: failed to set irq affinity");
                     return std::unexpected { lib::err::target_is_busy };
                 }
-            }
-        }
-        else
-        {
-            auto worker = std::make_unique<worker_t>();
-            worker->_ctrl = this;
-            worker->_cpu = bsp_idx;
-            worker->_ack = false;
-            worker->_qids.reserve(num_queues);
-            for (std::size_t qid = 0; qid < num_queues; qid++)
-                worker->_qids.push_back(qid);
-
-            auto res = _dev->request_irq([ptr = worker.get()](auto) {
-                ptr->irq_handler();
-            }, bsp_idx, "nvme");
-
-            if (!res)
-            {
-                lib::error("nvme: failed to allocate irq");
-                return std::unexpected { lib::err::target_is_busy };
+                affinity[cpu] = false;
             }
 
-            auto [handle, type] = std::move(*res);
-            _irq_handles.push_back(handle);
-            _irq_type = type;
-
-            worker->_mask = _irq_type != pci::irq_type::msix;
-
-            _workers.emplace(0uz, std::move(worker));
+            worker.thread = std::make_unique<sched::irq_worker_t>(
+                "nvme", cpu, [this, ptr = &worker] { drain(*ptr); }
+            );
         }
 
         lib::info(
             "nvme: allocated {} irq(s) of type '{}'",
-            _irq_handles.size(), magic_enum::enum_name(_irq_type)
+            _irqs.handles.size(), magic_enum::enum_name(_irqs.type)
         );
 
         const auto create_io_queue = [&](std::uint32_t qid, std::size_t vector) {
@@ -370,9 +296,9 @@ namespace nvme
 
         lib::info("nvme: creating {} io queues", num_queues - 1);
         _queues.resize(num_queues);
-        for (const auto &[vector, worker] : _workers)
+        for (const auto &[vector, worker] : _workers | std::views::enumerate)
         {
-            for (const auto qid : worker->_qids)
+            for (const auto qid : worker->qids)
             {
                 if (qid == 0)
                     continue;
@@ -448,13 +374,19 @@ namespace nvme
             }
         }
 
-        for (const auto &[_, worker] : _workers)
-            worker->start();
+        for (const auto &worker : _workers)
+        {
+            if (const auto ret = worker->thread->start(); !ret)
+            {
+                lib::error("nvme: failed to start irq worker: {}", lib::error_name(ret.error()));
+                return std::unexpected { ret.error() };
+            }
+        }
 
-        for (const auto &handle : _irq_handles)
+        for (const auto &handle : _irqs.handles)
             irq::unmask(handle);
 
-        if (_irq_type == pci::irq_type::intx)
+        if (_irqs.type == pci::irq_type::intx)
             _dev->write<16>(pci::reg::cmd, _dev->read<16>(pci::reg::cmd) & ~pci::cmd::int_dis);
 
         return { };
@@ -480,8 +412,8 @@ namespace nvme
             toggle(false);
         }
 
-        if (!_irq_handles.empty())
-            _dev->release_irqs(_irq_handles, _irq_type);
+        _irqs.release(*_dev);
+        _workers.clear();
     }
 
     lib::expect<std::shared_ptr<controller_t>> controller_t::create(

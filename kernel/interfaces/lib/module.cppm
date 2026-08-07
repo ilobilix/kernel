@@ -12,14 +12,6 @@ import std;
 
 export namespace mod
 {
-    enum class type : std::uint32_t
-    {
-        generic,
-        filesystem,
-        pci,
-        acpi
-    };
-
     template<std::size_t NDeps>
     struct deps
     {
@@ -98,7 +90,6 @@ export namespace mod
 
         bool (*init)();
         bool (*fini)();
-        type type;
 
         std::uint16_t match_count;
         std::uint16_t match_stride;
@@ -125,11 +116,11 @@ export namespace mod
         }
 
         consteval declare(
-            const char *name, const char *description, enum type type,
+            const char *name, const char *description,
             bool (*init)(), bool (*fini)(),
             const match_bytes<MatchBytes> &_match, deps<NDeps> deps = { }
         ) : _name { name }, description { description },
-            init { init }, fini { fini }, type { type },
+            init { init }, fini { fini },
             match_count { _match.count }, match_stride { _match.stride },
             _deps { deps }, match { }
         {
@@ -139,13 +130,13 @@ export namespace mod
 
     template<std::size_t Matches, std::size_t Deps>
     declare(
-        const char *, const char *, type, bool (*)(), bool (*)(),
+        const char *, const char *, bool (*)(), bool (*)(),
         match_bytes<Matches>, deps<Deps>
     ) -> declare<Deps, Matches>;
 
     template<std::size_t Matches>
     declare(
-        const char *, const char *, type, bool (*)(), bool (*)(),
+        const char *, const char *, bool (*)(), bool (*)(),
         match_bytes<Matches>
     ) -> declare<0, Matches>;
 

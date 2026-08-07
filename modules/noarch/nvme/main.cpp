@@ -100,7 +100,7 @@ namespace nvme
     } driver;
 } // namespace nvme
 
-pci_module(
+device_module(
     "nvme", "NVMe block device",
     nvme::driver, nvme::ids
 );

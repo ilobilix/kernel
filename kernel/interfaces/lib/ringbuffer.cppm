@@ -19,7 +19,7 @@ export namespace lib
     class ringbuffer
     {
         static_assert(Mode == rb_mode::overwrite || Mode == rb_mode::discard, "invalid rb_mode");
-        static_assert((Cap != 0) && ((Cap & (Cap - 1)) == 0), "capacity must be a power of 2");
+        static_assert(std::has_single_bit(Cap), "capacity must be a power of 2");
 
         public:
         static constexpr std::size_t capacity = Cap;

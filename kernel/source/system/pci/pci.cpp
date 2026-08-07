@@ -148,8 +148,7 @@ namespace pci
 
         const auto paddr = lib::align_down(phys, npsize);
         const auto alsize = lib::align_up(size + (phys - paddr), npsize);
-
-        const auto vaddr = vmm::alloc_vspace(lib::align_up(size, npsize));
+        const auto vaddr = vmm::alloc_vspace(alsize);
 
         const auto flags = vmm::pflag::rwg;
         const auto cache = vmm::caching::mmio;
@@ -272,10 +271,10 @@ namespace pci
         irq::handler_fn fn, std::size_t cpu_idx, std::string_view name
     ) -> lib::expect<std::pair<irq::handle_t, irq_type>>
     {
-        if (auto handle = msix::request(*this, cpu_idx, fn, name))
+        if (auto handle = msix::request(*this, cpu_idx, fn, name, this))
             return std::make_pair(*handle, irq_type::msix);
 
-        if (auto handle = msi::request(*this, cpu_idx, fn, name))
+        if (auto handle = msi::request(*this, cpu_idx, fn, name, this))
             return std::make_pair(*handle, irq_type::msi);
 
         auto handle = intx::request(*this, cpu_idx, std::move(fn), name);
@@ -297,10 +296,71 @@ namespace pci
         return std::unexpected { lib::err::not_supported };
     }
 
+    auto device::request_irqs(
+        std::size_t desired, std::size_t cpu_idx,
+        const handler_maker_t &make_handler,
+        std::string_view name
+    ) -> lib::expect<irq_alloc_t>
+    {
+        if (desired == 0 || !make_handler)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto request = [&](irq_alloc_t alloc) -> std::optional<irq_alloc_t> {
+            const auto count = alloc.handles.size();
+            for (std::size_t i = 0; i < count; i++)
+            {
+                if (!irq::request(alloc.handles[i], make_handler(i, count), name, false, this))
+                {
+                    alloc.release(*this);
+                    return std::nullopt;
+                }
+            }
+            return alloc;
+        };
+
+        const auto try_domain = [&](auto *domain, auto allocfn, irq_type type)
+            -> std::optional<irq_alloc_t>
+        {
+            if (domain == nullptr)
+                return std::nullopt;
+
+            for (auto count = std::min(desired, domain->vec_count()); count >= 1; count /= 2)
+            {
+                auto res = allocfn(*this, count, cpu_idx);
+                if (!res)
+                    continue;
+
+                if (auto alloc = request({ std::move(*res), type }))
+                    return alloc;
+            }
+            return std::nullopt;
+        };
+
+        if (auto alloc = try_domain(msix::for_device(*this), msix::alloc, irq_type::msix))
+            return *alloc;
+
+        if (auto alloc = try_domain(msi::for_device(*this), msi::alloc, irq_type::msi))
+            return *alloc;
+
+        return intx::request(*this, cpu_idx, make_handler(0, 1), name)
+            .transform([](irq::handle_t handle) {
+                return irq_alloc_t { { handle }, irq_type::intx };
+            });
+    }
+
+    void irq_alloc_t::release(device &dev)
+    {
+        if (handles.empty())
+            return;
+
+        dev.release_irqs(handles, type);
+        handles.clear();
+    }
+
     void device::release_irqs(std::span<irq::handle_t> handles, irq_type type)
     {
         for (const auto &handle : handles)
-            irq::free(handle);
+            irq::free(handle, this);
 
         switch (type)
         {
