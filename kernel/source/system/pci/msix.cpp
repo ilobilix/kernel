@@ -256,6 +256,8 @@ namespace pci::msix
         const auto idx = data.hwirq;
         const auto ea = entry_addr(_table, idx);
 
+        const auto old_cpu = data.parent->aux;
+
         lib::mmio::out<32>(ea + entry::vec_control, vec_control_mask);
 
         if (auto ret = parent->set_affinity(*data.parent, cpus, force); !ret)
@@ -264,16 +266,28 @@ namespace pci::msix
             return ret;
         }
 
-        const auto msg = parent->compose_msi(*data.parent);
-        if (!msg)
-            return std::unexpected { msg.error() };
+        const auto program = [&] -> lib::expect<void> {
+            const auto msg = parent->compose_msi(*data.parent);
+            if (!msg)
+                return std::unexpected { msg.error() };
 
-        lib::mmio::out<32>(ea + entry::msg_addr_low, msg->address);
-        lib::mmio::out<32>(ea + entry::msg_addr_high, msg->address >> 32);
-        lib::mmio::out<32>(ea + entry::msg_data, msg->data);
-        lib::mmio::out<32>(ea + entry::vec_control, 0);
+            lib::mmio::out<32>(ea + entry::msg_addr_low, msg->address);
+            lib::mmio::out<32>(ea + entry::msg_addr_high, msg->address >> 32);
+            lib::mmio::out<32>(ea + entry::msg_data, msg->data);
+            lib::mmio::out<32>(ea + entry::vec_control, 0);
+            return { };
+        };
 
-        return { };
+        auto ret = program();
+        if (!ret)
+        {
+            lib::bitmap back { std::max(cpus.length(), old_cpu + 1) };
+            back.set(old_cpu, true);
+
+            if (!parent->set_affinity(*data.parent, back, true) || !program())
+                lib::warn("pci-msix: hwirq {} left masked", idx);
+        }
+        return ret;
     }
 
     void release(pci::device &dev)
@@ -289,6 +303,20 @@ namespace pci::msix
             dom = std::move(it->second);
             locked->erase(it);
         }
+    }
+
+    lib::expect<std::uint16_t> vector_of(pci::device &dev, irq::handle_t handle)
+    {
+        msix_domain *dom = nullptr;
+        {
+            auto locked = domains.lock();
+            if (const auto it = locked->find(&dev); it != locked->end())
+                dom = it->second.get();
+        }
+
+        if (!dom)
+            return std::unexpected { lib::err::not_supported };
+        return irq::hwirq_of(handle, dom);
     }
 
     msix_domain *for_device(pci::device &dev)
@@ -316,7 +344,7 @@ namespace pci::msix
 
     lib::expect<irq::handle_t> request(
         pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        irq::handler_fn fn, std::string_view name, const void *owner
     )
     {
         auto dom = for_device(dev);
@@ -329,7 +357,7 @@ namespace pci::msix
                 [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
             }
         };
-        return irq::alloc_and_request(*dom, spec, std::move(fn), name);
+        return irq::alloc_and_request(*dom, spec, std::move(fn), name, owner);
     }
 
     lib::expect<std::vector<irq::handle_t>> alloc(

@@ -62,7 +62,7 @@ export namespace pci::msi
 
     lib::expect<irq::handle_t> request(
         pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        irq::handler_fn fn, std::string_view name = { }, const void *owner = nullptr
     );
 
     lib::expect<std::vector<irq::handle_t>> alloc(

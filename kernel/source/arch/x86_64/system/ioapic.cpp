@@ -180,6 +180,18 @@ namespace x86_64::apic::io
         {
             return trig == irq::trigger::level_high || trig == irq::trigger::level_low;
         }
+
+        struct live_gsi_t
+        {
+            irq::handle_t handle;
+            irq::trigger trig;
+        };
+        lib::locker<
+            lib::map::flat_hash<
+                std::uint32_t,
+                live_gsi_t
+            >, lib::spinlock
+        > live_gsis;
     } // namespace
 
     bool is_initialised() { return initialised; }
@@ -237,6 +249,7 @@ namespace x86_64::apic::io
         for (auto entry : data)
         {
             mask_gsi(entry->hwirq);
+            live_gsis.lock()->erase(entry->hwirq);
 
             std::unique_ptr<irq::irq_data> pd { entry->parent };
             entry->parent = nullptr;
@@ -319,9 +332,38 @@ namespace x86_64::apic::io
 
     lib::expect<irq::handle_t> request_gsi(
         std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name
+        irq::handler_fn fn, std::string_view name, const void *owner
     )
     {
+        auto existing = irq::invalid_handle;
+        {
+            auto locked = live_gsis.lock();
+
+            if (const auto it = locked->find(gsi); it != locked->end())
+            {
+                if (it->second.trig != trig)
+                {
+                    lib::error(
+                        "ioapic: gsi {} is {} triggered, cannot share it as {}",
+                        gsi, magic_enum::enum_name(it->second.trig), magic_enum::enum_name(trig)
+                    );
+                    return std::unexpected { lib::err::target_is_busy };
+                }
+
+                existing = it->second.handle;
+                if (existing == irq::invalid_handle)
+                    return std::unexpected { lib::err::try_again };
+            }
+            else locked->emplace(gsi, live_gsi_t { irq::invalid_handle, trig });
+        }
+
+        if (existing != irq::invalid_handle)
+        {
+            if (auto ret = irq::request(existing, std::move(fn), name, true, owner); !ret)
+                return std::unexpected { ret.error() };
+            return existing;
+        }
+
         const irq::fwspec spec {
             .param_count = ioapic_domain::param_count,
             .params = {
@@ -330,7 +372,23 @@ namespace x86_64::apic::io
                 [ioapic_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
             }
         };
-        return irq::alloc_and_request(*get_ioapic_domain(), spec, std::move(fn), name);
+
+        auto handle = irq::alloc_and_request(
+            *get_ioapic_domain(), spec, std::move(fn), name, owner
+        );
+
+        auto locked = live_gsis.lock();
+        if (!handle)
+        {
+            locked->erase(gsi);
+            return handle;
+        }
+
+        if (const auto it = locked->find(gsi); it != locked->end())
+            it->second.handle = *handle;
+        else
+            locked->emplace(gsi, live_gsi_t { *handle, trig });
+        return handle;
     }
 
     void init()

@@ -183,16 +183,6 @@ namespace bin::elf::mod
                     return { };
                 }
 
-                if (!magic_enum::enum_contains(ptr->type))
-                {
-                    lib::error("elf: unsupported module type: {}", std::to_underlying(ptr->type));
-                    current += ptr->struct_size;
-
-                    if (!internal)
-                        return std::unexpected { lib::err::invalid_exec };
-                    continue;
-                }
-
                 const std::unique_lock _ { modules_lock };
 
                 rcu::updater next { modules };
@@ -225,7 +215,6 @@ namespace bin::elf::mod
                 }
 
                 lib::info("elf: - description: '{}'", std::string_view { ptr->description });
-                lib::info("elf: - type: {}", magic_enum::enum_name(ptr->type));
 
                 if (!entry->aliases.empty())
                 {
@@ -724,34 +713,6 @@ namespace bin::elf::mod
             lib::bug_on(!ret.has_value());
             const auto icount = ret->size();
             lib::info("elf: loaded {} internal module{}", icount, icount == 1 ? "" : "s");
-        }
-    };
-
-    lib::initgraph::task activate_task
-    {
-        "bin.elf.activate-modules",
-        lib::initgraph::postsched_init_engine,
-        lib::initgraph::require {
-            modules_loaded_stage(),
-            pci::enumerated_stage()
-        },
-        [] {
-            std::vector<std::shared_ptr<entry_t>> entries;
-            {
-                const rcu::read_guard _ { };
-                if (const auto table = modules.dereference())
-                {
-                    for (const auto &[name, entry] : *table)
-                    {
-                        if (entry->header->type == ::mod::type::generic &&
-                            entry->status == status::loaded)
-                            entries.push_back(entry);
-                    }
-                }
-            }
-
-            for (const auto &entry : entries)
-                activate(*entry);
         }
     };
 

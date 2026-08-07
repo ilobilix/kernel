@@ -33,13 +33,15 @@ namespace pci
     } driver;
 } // namespace pci
 
-pci_module(
+// can be pci, acpi, virtio, etc depending on the type of ids
+device_module(
     "pci-driver", "a pci driver description",
     pci::driver, pci::drv_ids,
-    "generic-driver", "nvme" // deps
+    "nvme", "ext2" // deps
 );
 
 // other types:
-//   generic_module(name, desc, init, fini, ...)
 //   filesystem_module(name, desc, fs, ...)
-//   acpi_module(name, desc, drv, hids, ...)
+//   generic_module(name, desc, init, fini, ...)
+
+// generic modules are only loaded if requested as dependencies

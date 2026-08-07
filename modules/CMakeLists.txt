@@ -27,6 +27,8 @@ foreach(_arch IN LISTS _module_arches)
             continue()
         endif()
 
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _mod_ident "${_mod}")
+
         file(GLOB_RECURSE _sources CONFIGURE_DEPENDS
             ${_mod_dir}/*.cpp
             ${_mod_dir}/*.cppm
@@ -46,7 +48,7 @@ foreach(_arch IN LISTS _module_arches)
         if(NOT _external_marker)
             set_source_files_properties(${_sources}
                 PROPERTIES
-                    COMPILE_DEFINITIONS "__ILOBILIX_MODULE__=${_mod}"
+                    COMPILE_DEFINITIONS "__ILOBILIX_MODULE__=${_mod_ident}"
             )
 
             string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _internal_target "intmod_${_arch}_${_mod}")
@@ -86,7 +88,7 @@ foreach(_arch IN LISTS _module_arches)
         endif()
 
         add_dependencies(${_target} generate_git_version)
-        target_compile_definitions(${_target} PRIVATE "__ILOBILIX_MODULE__=${_mod}")
+        target_compile_definitions(${_target} PRIVATE "__ILOBILIX_MODULE__=${_mod_ident}")
         target_compile_definitions(${_target} PRIVATE "__ILOBILIX_EXTERNAL_MODULE__=1")
         target_link_libraries(${_target} PRIVATE $<BUILD_INTERFACE:cxx_modules>)
         target_include_directories(${_target} PRIVATE ${DEPENDENCY_INCLUDES})
