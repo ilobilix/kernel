@@ -34,6 +34,8 @@
     __mod_define_modinfo_name(name)                                    \
     __mod_define_modinfo(name, "description", desc)
 
+#define __mod_driver_ids(drv) decltype(drv)::ids
+
 #define generic_module(name, desc, init, fini, ...)                    \
     __mod_define_module(                                               \
         name, desc, (init), (fini), ::mod::no_match                    \
@@ -56,15 +58,17 @@
         ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__) \
     ))
 
-#define device_module(name, desc, drv, ids, ...)                                      \
-    __mod_define_module(                                                              \
-        name, desc,                                                                   \
-        +[] { return bool(::dev::register_driver(drv)); },                            \
-        +[] { return bool(::dev::unregister_driver(drv)); },                          \
-        ::mod::ids_match(::mod::get_modaliases_array<ids>())                          \
-        __VA_OPT__(, ::mod::deps { __VA_ARGS__ })                                     \
-    );                                                                                \
-    __mod_define_modinfo_((::mod::get_modaliases<__mod_modinfo_prefix(name), ids>())) \
-    __VA_OPT__(;__mod_define_modinfo_(                                                \
-        ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__)                \
+#define device_module(name, desc, drv, ...)                                    \
+    __mod_define_module(                                                       \
+        name, desc,                                                            \
+        +[] { return bool(::dev::register_driver(drv)); },                     \
+        +[] { return bool(::dev::unregister_driver(drv)); },                   \
+        ::mod::ids_match(::mod::get_modaliases_array<__mod_driver_ids(drv)>()) \
+        __VA_OPT__(, ::mod::deps { __VA_ARGS__ })                              \
+    );                                                                         \
+    __mod_define_modinfo_((::mod::get_modaliases<                              \
+        __mod_modinfo_prefix(name), __mod_driver_ids(drv)                      \
+    >()))                                                                      \
+    __VA_OPT__(;__mod_define_modinfo_(                                         \
+        ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__)         \
     ))

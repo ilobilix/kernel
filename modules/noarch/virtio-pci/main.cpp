@@ -917,18 +917,18 @@ namespace virtio::pci
             return std::unexpected { lib::err::no_such_device };
         }
 
-        constexpr ::pci::id_t match_ids[] {
-            ::pci::id_t::from_id(ids::vendor, ::pci::id_t::any)
-        };
-
         struct driver_t final : ::pci::driver_t
         {
+            static constexpr ::pci::id_t ids[] {
+                ::pci::id_t::from_id(virtio::pci::ids::vendor, ::pci::id_t::any)
+            };
+
             lib::map::flat_hash<
                 std::size_t,
                 std::shared_ptr<device_t>
             > devs;
 
-            driver_t() : ::pci::driver_t { "virtio-pci", match_ids } { }
+            driver_t() : ::pci::driver_t { "virtio-pci", ids } { }
 
             lib::expect<void> probe(::pci::device_t &pdev) override
             {
@@ -985,5 +985,5 @@ namespace virtio::pci
 
 device_module(
     "virtio-pci", "Virtio Over PCI Bus",
-    virtio::pci::drv, virtio::pci::match_ids
+    virtio::pci::drv
 );
