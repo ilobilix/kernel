@@ -2,7 +2,7 @@
 
 module system.virtio;
 
-import system.pci;
+import system.cpu;
 
 namespace virtio
 {
@@ -101,29 +101,164 @@ namespace virtio
         return ktype;
     }
 
-    // TODO
-    // lib::expect<queue_t *> device_t::setup_queue(
-    //     std::uint16_t qid, used_fn on_used, std::uint16_t size
-    // );
-    // lib::expect<std::vector<queue_t *>> device_t::setup_queues(std::span<const used_fn> fns);
-    // queue_t &device_t::queue(std::uint16_t qid);
+    lib::expect<void> device_t::setup_irqs(std::size_t cpu)
+    {
+        const auto nqueues = _transport->num_queues();
+
+        auto layout = _transport->setup_irqs(
+            nqueues, cpu, [this](std::uint16_t vector, bool config) {
+                if (vector >= _workers.size())
+                    return;
+
+                if (config)
+                    _config_pending.store(true, std::memory_order_release);
+
+                _workers[vector].thread->wake();
+            }
+        );
+        if (!layout)
+            return std::unexpected { layout.error() };
+
+        lib::bug_on(layout->count == 0);
+        lib::bug_on(layout->queues.size() != nqueues);
+        lib::bug_on(layout->cpus.size() != layout->count);
+        lib::bug_on(layout->config >= layout->count);
+
+        _layout = std::move(*layout);
+        _workers.reserve(_layout.count);
+        _queues.resize(nqueues);
+
+        for (std::uint16_t vector = 0; vector < _layout.count; vector++)
+        {
+            std::vector<std::uint16_t> qids;
+            for (const auto &[qid, owner] : _layout.queues | std::views::enumerate)
+            {
+                if (owner == vector)
+                    qids.push_back(qid);
+            }
+
+            auto &worker = _workers.emplace_back(
+                std::move(qids), std::make_unique<sched::irq_worker_t>(
+                    name, _layout.cpus[vector], [this, vector] { drain(vector); }
+                )
+            );
+
+            if (const auto ret = worker.thread->start(); !ret)
+            {
+                lib::error("virtio: {}: could not start irq {} worker", name, vector);
+                return ret;
+            }
+        }
+        return { };
+    }
+
+    void device_t::drain(std::uint16_t vector)
+    {
+        if (vector == _layout.config && _config_pending.exchange(false, std::memory_order_acquire))
+        {
+            if (_config_changed)
+                _config_changed();
+        }
+
+        for (const auto qid : _workers[vector].qids)
+        {
+            if (_queues[qid])
+                _queues[qid]->reap();
+        }
+    }
+
+    lib::expect<queue_t *> device_t::setup_queue(
+        std::uint16_t qid, used_fn on_used, std::uint16_t size
+    )
+    {
+        if (qid >= _queues.size())
+            return std::unexpected { lib::err::no_such_device };
+
+        if (_queues[qid])
+            return std::unexpected { lib::err::already_exists };
+
+        const auto max = _transport->queue_max_size(qid);
+        if (max == 0)
+            return std::unexpected { lib::err::no_such_device };
+
+        if (!std::has_single_bit(max))
+        {
+            lib::error("virtio: {}: queue {} has invalid size {}", name, qid, max);
+            return std::unexpected { lib::err::io_error };
+        }
+
+        const auto vector = _layout.queues.empty()
+            ? no_vector
+            : _layout.queues[qid];
+
+        const auto want = (size == 0 || _transport->legacy_layout())
+            ? max : std::min(size, max);
+
+        auto queue = queue_t::create(*_transport, qid, want, std::move(on_used));
+        if (!queue)
+            return std::unexpected { queue.error() };
+
+        if (auto ret = _transport->enable_queue(qid, (*queue)->addr(vector)); !ret)
+            return std::unexpected { ret.error() };
+
+        _queues[qid] = std::move(*queue);
+        return _queues[qid].get();
+    }
+
+    lib::expect<std::vector<queue_t *>> device_t::setup_queues(std::span<const used_fn> fns)
+    {
+        std::vector<queue_t *> queues;
+        queues.reserve(fns.size());
+
+        for (const auto &[qid, fn] : fns | std::views::enumerate)
+        {
+            auto queue = setup_queue(qid, fn);
+            if (!queue)
+            {
+                for (std::size_t i = 0; i < queues.size(); i++)
+                {
+                    _transport->disable_queue(i);
+                    _queues[i].reset();
+                }
+                return std::unexpected { queue.error() };
+            }
+            queues.push_back(*queue);
+        }
+
+        return queues;
+    }
+
+    queue_t &device_t::queue(std::uint16_t qid)
+    {
+        lib::bug_on(qid >= _queues.size() || !_queues[qid]);
+        return *_queues[qid];
+    }
 
     void device_t::set_ready()
     {
         if (_ready.exchange(true, std::memory_order_acq_rel))
             return;
 
+        _transport->enable_irqs();
         _transport->add_status(status::driver_ok);
+    }
+
+    void device_t::freeze()
+    {
+        _transport->reset();
+        _transport->release_irqs();
+        _workers.clear();
+
+        _config_pending.store(false, std::memory_order_relaxed);
+        _ready.store(false, std::memory_order_release);
     }
 
     void device_t::destroy()
     {
-        _transport->reset();
-        _transport->release_irqs();
+        freeze();
 
         _queues.clear();
-
-        _ready.store(false, std::memory_order_release);
+        _layout = { };
         _features = 0;
     }
 
@@ -136,12 +271,10 @@ namespace virtio
         const auto fail = [&](lib::err err) {
             tp.add_status(status::failed);
 
-            tp.reset();
+            dev.destroy();
+
             tp.add_status(status::acknowledge);
             tp.add_status(status::driver);
-
-            dev._queues.clear();
-            dev._features = 0;
 
             return std::unexpected { err };
         };
@@ -163,6 +296,9 @@ namespace virtio
         if (!(tp.status() & status::features_ok))
             return fail(lib::err::not_supported);
 
+        if (auto ret = dev.setup_irqs(cpu::bsp_idx()); !ret)
+            return fail(ret.error());
+
         if (auto ret = drv.probe(dev); !ret)
             return fail(ret.error());
 
@@ -173,6 +309,7 @@ namespace virtio
     bool bus_t::remove(dev::device_t &_dev, dev::driver_t &drv)
     {
         auto &dev = static_cast<device_t &>(_dev);
+        dev.freeze();
         const bool ret = static_cast<driver_t &>(drv).remove(dev);
         dev.destroy();
         return ret;
