@@ -25,36 +25,21 @@ export namespace nvme
         }
 
         std::shared_ptr<pci::device> _dev;
-        std::vector<irq::handle_t> _irq_handles;
-        pci::irq_type _irq_type;
+        pci::irq_alloc_t _irqs;
 
         std::vector<std::unique_ptr<queue_t>> _queues;
         std::vector<std::shared_ptr<namespace_t>> _namespaces;
 
         struct worker_t
         {
-            static constexpr sched::nice_t nice = -20;
-
-            controller_t *_ctrl;
-            std::size_t _cpu;
-            std::vector<std::uint32_t> _qids;
-            std::uint32_t _mask;
-
-            std::weak_ptr<sched::thread_t> _thread;
-            sched::wait_queue_t _bell;
-            std::atomic_bool _ack;
-
-            static void worker(worker_t *self);
-            void irq_handler();
-
-            void start();
-
-            ~worker_t();
+            std::vector<std::uint32_t> qids;
+            std::uint32_t mask;
+            std::unique_ptr<sched::irq_worker_t> thread;
         };
-        lib::btree::map<
-            std::size_t,
-            std::unique_ptr<worker_t>
-        > _workers;
+        std::vector<std::unique_ptr<worker_t>> _workers;
+
+        void drain(worker_t &worker);
+        void irq_handler(worker_t &worker);
 
         arch::contiguous_pool _pool;
 

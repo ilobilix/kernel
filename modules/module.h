@@ -34,11 +34,11 @@
     __mod_define_modinfo_name(name)                                    \
     __mod_define_modinfo(name, "description", desc)
 
+#define __mod_driver_ids(drv) decltype(drv)::ids
+
 #define generic_module(name, desc, init, fini, ...)                    \
     __mod_define_module(                                               \
-        name, desc,                                                    \
-        ::mod::type::generic, (init), (fini),                          \
-        ::mod::no_match                                                \
+        name, desc, (init), (fini), ::mod::no_match                    \
         __VA_OPT__(, ::mod::deps { __VA_ARGS__ })                      \
     )                                                                  \
     __VA_OPT__(;__mod_define_modinfo_(                                 \
@@ -47,7 +47,7 @@
 
 #define filesystem_module(name, desc, fs, ...)                         \
     __mod_define_module(                                               \
-        name, desc, ::mod::type::filesystem,                           \
+        name, desc,                                                    \
         +[] { return bool(::vfs::register_fs(fs)); },                  \
         +[] { return bool(::vfs::unregister_fs(fs)); },                \
         ::mod::string_match<"fs-" name>()                              \
@@ -58,21 +58,17 @@
         ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__) \
     ))
 
-#define device_module(type, name, desc, drv, ids, ...)                                \
-    __mod_define_module(                                                              \
-        name, desc, type,                                                             \
-        +[] { return bool(::dev::register_driver(drv)); },                            \
-        +[] { return bool(::dev::unregister_driver(drv)); },                          \
-        ::mod::ids_match(::mod::get_modaliases_array<ids>())                          \
-        __VA_OPT__(, ::mod::deps { __VA_ARGS__ })                                     \
-    );                                                                                \
-    __mod_define_modinfo_((::mod::get_modaliases<__mod_modinfo_prefix(name), ids>())) \
-    __VA_OPT__(;__mod_define_modinfo_(                                                \
-        ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__)                \
+#define device_module(name, desc, drv, ...)                                    \
+    __mod_define_module(                                                       \
+        name, desc,                                                            \
+        +[] { return bool(::dev::register_driver(drv)); },                     \
+        +[] { return bool(::dev::unregister_driver(drv)); },                   \
+        ::mod::ids_match(::mod::get_modaliases_array<__mod_driver_ids(drv)>()) \
+        __VA_OPT__(, ::mod::deps { __VA_ARGS__ })                              \
+    );                                                                         \
+    __mod_define_modinfo_((::mod::get_modaliases<                              \
+        __mod_modinfo_prefix(name), __mod_driver_ids(drv)                      \
+    >()))                                                                      \
+    __VA_OPT__(;__mod_define_modinfo_(                                         \
+        ::mod::format_depends<__mod_modinfo_prefix(name)>(__VA_ARGS__)         \
     ))
-
-#define pci_module(name, desc, drv, ids, ...)                          \
-    device_module(::mod::type::pci, name, desc, drv, ids, __VA_ARGS__)
-
-#define acpi_module(name, desc, drv, hids, ...)                          \
-    device_module(::mod::type::acpi, name, desc, drv, hids, __VA_ARGS__)

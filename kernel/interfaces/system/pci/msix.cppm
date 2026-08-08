@@ -51,11 +51,13 @@ export namespace pci::msix
     msix_domain *for_device(pci::device &dev);
     void release(pci::device &dev);
 
+    lib::expect<std::uint16_t> vector_of(pci::device &dev, irq::handle_t handle);
+
     bool is_enabled(const pci::device &dev);
 
     lib::expect<irq::handle_t> request(
         pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        irq::handler_fn fn, std::string_view name = { }, const void *owner = nullptr
     );
 
     lib::expect<std::vector<irq::handle_t>> alloc(

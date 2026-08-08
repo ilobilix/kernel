@@ -226,6 +226,16 @@ export namespace pci
     };
 
     enum class irq_type { msi, msix, intx };
+
+    struct device;
+    struct irq_alloc_t
+    {
+        std::vector<irq::handle_t> handles;
+        irq_type type = irq_type::intx;
+
+        void release(device &dev);
+    };
+
     struct device : entity
     {
         std::uint16_t venid, devid;
@@ -250,6 +260,13 @@ export namespace pci
 
         lib::expect<std::pair<std::vector<irq::handle_t>, irq_type>> alloc_irqs(
             std::size_t count, std::size_t cpu_idx
+        );
+
+        using handler_maker_t = std::function<irq::handler_fn (std::size_t vec, std::size_t num)>;
+        lib::expect<irq_alloc_t> request_irqs(
+            std::size_t desired, std::size_t cpu_idx,
+            const handler_maker_t &make_handler,
+            std::string_view name = { }
         );
 
         void release_irqs(std::span<irq::handle_t> handles, irq_type type);
