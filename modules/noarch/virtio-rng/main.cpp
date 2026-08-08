@@ -10,10 +10,6 @@ import std;
 
 namespace rng
 {
-    constexpr virtio::id_t ids[] {
-        virtio::id_t::from_type(virtio::device_type::entropy_source)
-    };
-
     constexpr std::size_t request_size = 64;
     constexpr std::uint64_t period_ms = 10'000;
 
@@ -87,6 +83,10 @@ namespace rng
 
     struct driver_t : virtio::driver_t
     {
+        static constexpr virtio::id_t ids[] {
+            virtio::id_t::from_type(virtio::device_type::entropy_source)
+        };
+
         driver_t() : virtio::driver_t { "virtio-rng", ids } { }
 
         lib::expect<void> probe(virtio::device_t &dev) override
@@ -145,5 +145,5 @@ namespace rng
 
 device_module(
     "virtio-rng", "High-quality randomness source",
-    rng::driver, rng::ids, "virtio-pci"
+    rng::driver, "virtio-pci"
 );

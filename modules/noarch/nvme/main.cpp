@@ -17,12 +17,12 @@ import nvme;
 
 namespace nvme
 {
-    constexpr pci::id_t ids[] {
-        pci::id_t::from_class(0x01, 0x08, 0x02)
-    };
-
     struct driver_t : pci::driver_t
     {
+        static constexpr pci::id_t ids[] {
+            pci::id_t::from_class(0x01, 0x08, 0x02)
+        };
+
         lib::map::flat_hash<
             std::size_t,
             std::shared_ptr<controller_t>
@@ -102,5 +102,5 @@ namespace nvme
 
 device_module(
     "nvme", "NVMe block device",
-    nvme::driver, nvme::ids
+    nvme::driver
 );

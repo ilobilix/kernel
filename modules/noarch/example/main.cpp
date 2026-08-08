@@ -7,15 +7,16 @@ import lib;
 
 namespace pci
 {
-    constexpr pci::id_t drv_ids[] {
-        id_t::from_id(0xDEAD, 0xBEEF),
-        id_t::from_id(0xB16B, 0x00B5),
-        id_t::from_class(0x69, 0x42, 0x00) // 4th arg class_mask is id_t::any by default
-    };
-
     struct pci_drv : pci::driver_t
     {
-        pci_drv() : pci::driver_t { "pci-driver", drv_ids } { }
+        // device_module needs this member
+        static constexpr pci::id_t ids[] {
+            id_t::from_id(0xDEAD, 0xBEEF),
+            id_t::from_id(0xB16B, 0x00B5),
+            id_t::from_class(0x69, 0x42, 0x00) // 4th arg class_mask is id_t::any by default
+        };
+
+        pci_drv() : pci::driver_t { "pci-driver", ids } { }
 
         lib::expect<void> probe(pci::device_t &dev) override
         {
@@ -33,10 +34,10 @@ namespace pci
     } driver;
 } // namespace pci
 
-// can be pci, acpi, virtio, etc depending on the type of ids
+// can be pci, acpi, virtio, etc. type depends on driver ids member
 device_module(
     "pci-driver", "a pci driver description",
-    pci::driver, pci::drv_ids,
+    pci::driver,
     "nvme", "ext2" // deps
 );
 
