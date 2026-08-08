@@ -359,8 +359,7 @@ namespace pci
 
     void device::release_irqs(std::span<irq::handle_t> handles, irq_type type)
     {
-        for (const auto &handle : handles)
-            irq::free(handle, this);
+        irq::free(handles, this);
 
         switch (type)
         {

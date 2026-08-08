@@ -13,13 +13,22 @@ namespace arch
         const auto pages = lib::div_roundup(size * count, pmm::page_size);
         const auto type = _opts.sub4gib ? pmm::type::sub4gib : pmm::type::normal;
         const auto addr = pmm::alloc(pages, true, type);
+        if (addr == 0)
+            return { };
         return { new region { this, lib::tohh(addr) }, 0 };
     }
 
     void contiguous_pool::deallocate(dma_ptr ptr, size_t size, size_t count, size_t align)
     {
         lib::unused(align);
+
+        auto reg = ptr.region();
+        if (!reg->is_valid())
+            return;
+
         const auto pages = lib::div_roundup(size * count, pmm::page_size);
-        pmm::free(lib::fromhh(ptr.region()->get_base_va()), pages);
+        pmm::free(lib::fromhh(reg->get_base_va()), pages);
+
+        delete static_cast<region *>(reg);
     }
 } // namespace arch

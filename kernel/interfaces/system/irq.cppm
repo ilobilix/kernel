@@ -96,10 +96,10 @@ export namespace irq
     };
 
     lib::expect<handle_t> alloc(domain &leaf, const fwspec &spec);
-    lib::expect<std::vector<handle_t>> alloc_num(
-        domain &leaf, const fwspec &spec, std::size_t count
-    );
+    lib::expect<std::vector<handle_t>> alloc(domain &leaf, const fwspec &spec, std::size_t count);
+
     void free(handle_t handle, const void *owner = nullptr);
+    void free(std::span<const handle_t> handles, const void *owner = nullptr);
 
     lib::expect<void> request(
         handle_t handle, handler_fn fn, std::string_view name = { },

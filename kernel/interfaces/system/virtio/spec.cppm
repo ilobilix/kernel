@@ -2,6 +2,7 @@
 
 export module system.virtio:spec;
 
+import lib;
 import std;
 
 export namespace virtio
@@ -84,5 +85,71 @@ export namespace virtio
     constexpr std::uint64_t feature_bit(feature feat)
     {
         return 1ul << std::to_underlying(feat);
+    }
+
+    enum flag : std::uint16_t
+    {
+        used_no_notify = 1,
+        avail_no_interrupt = 1,
+
+        desc_next = 1,
+        desc_write = 2,
+        desc_indirect = 4,
+    };
+
+    struct virtq_desc
+    {
+        std::uint64_t addr;
+        std::uint32_t len;
+        std::uint16_t flags;
+        std::uint16_t next;
+    };
+    static_assert(sizeof(virtq_desc) == 16);
+
+    struct virtq_avail
+    {
+        std::uint16_t flags;
+        std::uint16_t idx;
+        std::uint16_t ring[];
+        // if f_event_idx
+        // std::uint16_t used_event;
+    };
+
+    struct virtq_used_elem
+    {
+        std::uint32_t id;
+        std::uint32_t len;
+    };
+
+    struct virtq_used
+    {
+        std::uint16_t flags;
+        std::uint16_t idx;
+        virtq_used_elem ring[];
+        // if f_event_idx
+        // std::uint16_t avail_event;
+    };
+
+    constexpr std::size_t vring_align = 0x1000;
+
+    struct vring_layout
+    {
+        std::size_t avail_off;
+        std::size_t used_off;
+        std::size_t size;
+    };
+
+    constexpr vring_layout get_layout(std::uint16_t size, bool legacy)
+    {
+        const auto desc = sizeof(virtq_desc) * size;
+        const auto avail = sizeof(std::uint16_t) * (3 + size);
+        const auto used_off = lib::align_up(
+            desc + avail, legacy ? vring_align : alignof(virtq_used_elem)
+        );
+
+        return {
+            desc, used_off,
+            used_off + (sizeof(std::uint16_t) * 3) + (sizeof(virtq_used_elem) * size)
+        };
     }
 } // export namespace virtio

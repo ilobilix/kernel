@@ -374,6 +374,6 @@ namespace pci::msix
                 [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
             }
         };
-        return irq::alloc_num(*dom, spec, count);
+        return irq::alloc(*dom, spec, count);
     }
 } // namespace pci::msix

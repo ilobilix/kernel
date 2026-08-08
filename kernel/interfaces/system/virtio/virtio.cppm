@@ -2,9 +2,11 @@
 
 export module system.virtio;
 
-export import :spec;
 export import :queue;
+export import :spec;
+export import :transport;
 
+import system.sched;
 import system.dev;
 import fmt;
 import lib;
@@ -77,48 +79,6 @@ export namespace virtio
         get_modalias<id_t::from_type(device_type::gpu)>()
     );
 
-    // TODO
-    struct queue_t { };
-    using used_fn = void (*)();
-
-    struct queue_addr_t
-    {
-        std::uintptr_t desc, avail, used;
-        std::uint16_t size;
-    };
-
-    class transport_t
-    {
-        public:
-        virtual std::string_view type() const = 0;
-
-        virtual std::uint64_t device_features() = 0;
-        virtual void driver_features(std::uint64_t feat) = 0;
-
-        virtual std::uint64_t mandatory_features() const = 0;
-
-        virtual std::uint8_t status() = 0;
-        virtual void add_status(std::uint8_t bits) = 0;
-        virtual void reset() = 0;
-
-        virtual std::uint16_t num_queues() = 0;
-        virtual std::uint16_t queue_max_size(std::uint16_t qid) = 0;
-        virtual lib::expect<void> enable_queue(std::uint16_t qid, const queue_addr_t &addr) = 0;
-        virtual void disable_queue(std::uint16_t qid) = 0;
-        virtual void notify(std::uint16_t qid) = 0;
-
-        virtual void read_config(std::size_t off, std::span<std::byte> buffer) = 0;
-        virtual void write_config(std::size_t off, std::span<const std::byte> buffer) = 0;
-        virtual std::uint8_t config_generation() = 0;
-
-        // TODO
-        // virtual lib::expect<irq_alloc_t> setup_irqs(std::uint16_t nqueues, std::size_t cpu) = 0;
-        virtual void release_irqs() = 0;
-        virtual std::uint8_t isr_status() { return 0; }
-
-        virtual ~transport_t() = default;
-    };
-
     class device_t final : public dev::device_t
     {
         friend struct bus_t;
@@ -129,6 +89,19 @@ export namespace virtio
         std::vector<std::unique_ptr<queue_t>> _queues;
         std::function<void ()> _config_changed;
         std::atomic_bool _ready = false;
+
+        irq_layout_t _layout;
+        std::atomic_bool _config_pending = false;
+
+        struct worker_t
+        {
+            std::vector<std::uint16_t> qids;
+            std::unique_ptr<sched::irq_worker_t> thread;
+        };
+        std::vector<worker_t> _workers;
+
+        lib::expect<void> setup_irqs(std::size_t cpu);
+        void drain(std::uint16_t vector);
 
         static inline std::atomic_size_t next_index = 0;
         static std::string alloc_name()
@@ -212,6 +185,8 @@ export namespace virtio
         }
 
         void set_ready();
+
+        void freeze();
         void destroy();
     };
 
