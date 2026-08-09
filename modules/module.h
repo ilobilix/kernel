@@ -34,7 +34,7 @@
     __mod_define_modinfo_name(name)                                    \
     __mod_define_modinfo(name, "description", desc)
 
-#define __mod_driver_ids(drv) decltype(drv)::ids
+#define __mod_driver_ids(drv) decltype(drv)::match_ids
 
 #define generic_module(name, desc, init, fini, ...)                    \
     __mod_define_module(                                               \
