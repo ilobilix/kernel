@@ -231,7 +231,7 @@ namespace syscall::vfs
 
         auto data = std::make_shared<data_t>(kmask);
         auto ret = create_anon_fd({
-            .name = "<[SIGNALFD]>",
+            .name = "[signalfd]",
             .ops = ops_t::singleton(),
             .file_private_data = data,
             .inode_private_data = nullptr,

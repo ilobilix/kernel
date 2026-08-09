@@ -247,7 +247,7 @@ namespace syscall::vfs
             clockid = chrono::monotonic;
 
         auto ret = create_anon_fd({
-            .name = "<[TIMERFD]>",
+            .name = "[timerfd]",
             .ops = ops_t::singleton(),
             .file_private_data = std::make_shared<instance_t>(clockid),
             .inode_private_data = nullptr,

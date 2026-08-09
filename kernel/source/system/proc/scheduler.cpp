@@ -2545,17 +2545,24 @@ namespace sched
                     }), node_type::symlink, 0777
                 ));
 
+                const auto pathname_of = [](const vfs::path_t &path) -> lib::expect<lib::path> {
+                    auto ret = vfs::pathname_from(path);
+                    if (ret.empty())
+                        return std::unexpected { lib::err::not_found };
+                    return ret;
+                };
+
                 lib::bug_on(!register_per_pid("cwd",
-                    make_symlink_ops([](process_t *proc) {
+                    make_symlink_ops([pathname_of](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        return vfs::pathname_from(proc->vfs->cwd);
+                        return pathname_of(proc->vfs->cwd);
                     }), node_type::symlink, 0777
                 ));
 
                 lib::bug_on(!register_per_pid("root",
-                    make_symlink_ops([](process_t *proc) {
+                    make_symlink_ops([pathname_of](process_t *proc) {
                         const std::unique_lock _ { proc->lock };
-                        return vfs::pathname_from(proc->vfs->root);
+                        return pathname_of(proc->vfs->root);
                     }), node_type::symlink, 0777
                 ));
             }

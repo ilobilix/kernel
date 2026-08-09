@@ -175,7 +175,7 @@ namespace syscall::vfs
             return -EINVAL;
 
         auto ret = create_anon_fd({
-            .name = "<[EVENTFD]>",
+            .name = "[eventfd]",
             .ops = ops_t::singleton(),
             .file_private_data = std::make_shared<data_t>(count, flags & efd_semaphore),
             .inode_private_data = nullptr,
