@@ -180,7 +180,7 @@ namespace vfs::socket
     auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>
     {
         auto ret = create_anon_fd({
-            .name = "<[SOCKET]>",
+            .name = "socket",
             .ops = ops_t::singleton(),
             .file_private_data = std::move(sock),
             .inode_private_data = nullptr,

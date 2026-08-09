@@ -452,7 +452,7 @@ namespace vfs::pipe
     lib::expect<std::pair<int, int>> create_pair(int flags)
     {
         auto rfd = create_anon_fd({
-            .name = "<[PIPE READ]>",
+            .name = "pipe",
             .ops = ops::singleton(),
             .file_private_data = nullptr,
             .inode_private_data = std::make_shared<data>(true),
@@ -465,7 +465,7 @@ namespace vfs::pipe
             return std::unexpected { rfd.error() };
 
         auto wfd = create_anon_fd({
-            .name = "<[PIPE WRITE]>",
+            .name = "pipe",
             .ops = ops::singleton(),
             .file_private_data = nullptr,
             .inode_private_data = nullptr,

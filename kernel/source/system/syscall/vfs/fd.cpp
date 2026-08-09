@@ -219,6 +219,9 @@ namespace syscall::vfs
         const auto proc = sched::current_process();
 
         const auto path_str = pathname_from(proc->vfs->cwd, proc->vfs->root.dentry);
+        if (path_str.empty())
+            return -ENOENT;
+
         const auto len = path_str.size() + 1;
         if (len > size)
             return -ERANGE;

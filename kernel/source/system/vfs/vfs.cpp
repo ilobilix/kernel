@@ -493,23 +493,39 @@ namespace vfs
         std::size_t len = 0;
         std::vector<std::string_view> segments;
 
-        while (true)
+        bool connected = false;
+        while (path.dentry != nullptr)
         {
             if (path.dentry == boundary)
+            {
+                connected = true;
                 break;
+            }
 
             path = resolve_mounts(path);
-            if (path.dentry == nullptr || path.dentry == vfs::root || path.dentry == boundary)
+            if (path.dentry == nullptr)
                 break;
+
+            if (path.dentry == vfs::root || path.dentry == boundary)
+            {
+                connected = true;
+                break;
+            }
 
             auto parent = path.dentry->parent.lock();
             if (path.dentry == parent)
+            {
+                connected = true;
                 break;
+            }
 
             segments.push_back(path.dentry->name);
             len += path.dentry->name.size();
             path.dentry = parent;
         }
+
+        if (!connected)
+            return { };
 
         std::string result;
         result.reserve(len + segments.size());
@@ -1935,7 +1951,7 @@ namespace vfs
                     if (!target.empty())
                         return target;
 
-                    return fmt::format("anon_inode:[{}]", target_ino);
+                    return fmt::format("anon_inode:{}", fdesc->file->path.dentry->name);
                 },
                 [fd](sched::process_t *proc) {
                     return proc->fdt->get(fd) != nullptr;

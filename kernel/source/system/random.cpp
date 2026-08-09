@@ -356,7 +356,7 @@ namespace random
         if (data.empty())
             return;
 
-        lib::info("random: adding entropy to pool");
+        // lib::info("random: adding entropy to pool");
 
         const std::unique_lock _ { _base_lock };
         if (!_base.initialised)
