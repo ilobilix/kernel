@@ -105,14 +105,14 @@ namespace syscall::misc
     {
         lib::unused(arg);
 
+        if (!sched::capable(sched::current_process()->cred, sched::cap_t::sys_boot))
+            return -EPERM;
+
         const auto umagic = static_cast<std::uint32_t>(magic);
         const auto umagic2 = static_cast<std::uint32_t>(magic2);
         if (umagic != 0xFEE1DEAD || (umagic2 != 0x28121969 && umagic2 != 0x05121996 &&
             umagic2 != 0x16041998 && umagic2 != 0x20112000))
             return -EINVAL;
-
-        if (!sched::capable(sched::current_process()->cred, sched::cap_t::sys_boot))
-            return -EPERM;
 
         // TODO: sync and device shutdown
 
