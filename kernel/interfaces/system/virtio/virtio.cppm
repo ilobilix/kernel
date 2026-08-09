@@ -101,7 +101,7 @@ export namespace virtio
         std::vector<worker_t> _workers;
 
         lib::expect<void> setup_irqs(std::size_t cpu);
-        void drain(std::uint16_t vector);
+        void drain(std::size_t vector);
 
         static inline std::atomic_size_t next_index = 0;
         static std::string alloc_name()

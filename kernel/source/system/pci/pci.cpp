@@ -342,7 +342,7 @@ namespace pci
         if (auto alloc = try_domain(msi::for_device(*this), msi::alloc, irq_type::msi))
             return *alloc;
 
-        return intx::request(*this, cpu_idx, make_handler(0, 1), name)
+        return intx::request(*this, cpu_idx, make_handler(0, 1), name, false)
             .transform([](irq::handle_t handle) {
                 return irq_alloc_t { { handle }, irq_type::intx };
             });

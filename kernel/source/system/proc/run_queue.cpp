@@ -32,6 +32,19 @@ namespace sched
         return first;
     }
 
+    void run_queue_t::set_vruntime(thread_t *thread, std::uint64_t vruntime)
+    {
+        if (thread->vruntime == vruntime)
+            return;
+
+        const bool linked = (thread->on_rq == this);
+        if (linked)
+            queue.remove(thread);
+        thread->vruntime = vruntime;
+        if (linked)
+            queue.insert(thread);
+    }
+
     std::uint64_t run_queue_t::update_current(std::uint64_t now)
     {
         if (current == nullptr)
@@ -45,7 +58,10 @@ namespace sched
         current->sched_time = now;
         current->total_runtime += delta;
 
-        current->vruntime += calc_vruntime(delta, current->weight, current->inv_weight);
+        set_vruntime(
+            current,
+            current->vruntime + calc_vruntime(delta, current->weight, current->inv_weight)
+        );
         update_min_vruntime();
         return delta;
     }

@@ -18,14 +18,14 @@ export namespace virtio
         std::uint16_t vector = no_vector;
     };
 
-    using vector_fn = std::function<void (std::uint16_t vector, bool config)>;
+    using vector_fn = std::function<void (std::size_t vector, bool config)>;
 
     struct irq_layout_t
     {
         std::vector<std::uint16_t> queues;
         std::vector<std::size_t> cpus;
-        std::uint16_t config = 0;
-        std::uint16_t count = 0;
+        std::size_t config = 0;
+        std::size_t count = 0;
     };
 
     class transport_t

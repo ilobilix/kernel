@@ -95,6 +95,30 @@ export namespace irq
         virtual ~domain() = default;
     };
 
+    // shared by msi and and mis-x
+    lib::expect<void> retarget(
+        domain &parent, irq_data &data, const lib::bitmap &cpus,
+        bool force, std::string_view name, auto &&program
+    )
+    {
+        lib::bug_on(data.parent == nullptr);
+        const auto old_cpu = data.parent->aux;
+
+        auto ret = parent.set_affinity(*data.parent, cpus, force);
+        if (ret)
+            ret = program();
+
+        if (!ret)
+        {
+            lib::bitmap back { old_cpu + 1 };
+            back.set(old_cpu, true);
+
+            if (!parent.set_affinity(*data.parent, back, true) || !program())
+                lib::warn("{}: hwirq {} left masked", name, data.hwirq);
+        }
+        return ret;
+    }
+
     lib::expect<handle_t> alloc(domain &leaf, const fwspec &spec);
     lib::expect<std::vector<handle_t>> alloc(domain &leaf, const fwspec &spec, std::size_t count);
 
@@ -108,7 +132,8 @@ export namespace irq
 
     lib::expect<handle_t> alloc_and_request(
         domain &leaf, const fwspec &spec,
-        handler_fn fn, std::string_view name = { }, const void *owner = nullptr
+        handler_fn fn, std::string_view name = { },
+        bool unmask = true, const void *owner = nullptr
     );
 
     lib::expect<std::uintptr_t> hwirq_of(handle_t handle, const domain *expected = nullptr);
@@ -125,12 +150,13 @@ export namespace irq
 
     using gsi_requester_fn = lib::expect<handle_t> (*)(
         std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name, const void *owner
+        handler_fn fn, std::string_view name, bool unmask, const void *owner
     );
     void set_gsi_requester(gsi_requester_fn fn);
 
     lib::expect<handle_t> request_gsi(
         std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name = { }, const void *owner = nullptr
+        handler_fn fn, std::string_view name = { },
+        bool unmask = true, const void *owner = nullptr
     );
 } // export namespace irq

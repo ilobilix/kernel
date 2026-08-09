@@ -30,8 +30,6 @@ namespace irq
 
             bool requested = false;
             bool dead = false;
-
-            ~desc_t() { delete actions.load(std::memory_order_relaxed); }
         };
 
         lib::locker<
@@ -200,14 +198,17 @@ namespace irq
         if (!ret.changed)
             return;
 
-        if ((ret.teardown && unhook(*desc, handle)) || ret.old != nullptr)
+        if (!ret.teardown)
         {
-            wait_for_handlers();
-            delete ret.old;
+            ret.old->retire();
+            return;
         }
 
-        if (!ret.teardown)
-            return;
+        if (unhook(*desc, handle))
+            wait_for_handlers();
+
+        if (ret.old != nullptr)
+            ret.old->retire();
 
         auto node = &desc->leaf;
         desc->leaf.dom->free({ &node, 1 });
@@ -224,7 +225,7 @@ namespace irq
         dying.reserve(handles.size());
         stale.reserve(handles.size());
 
-        bool wait = false;
+        bool detached = false;
         for (const auto handle : handles)
         {
             auto desc = lookup(handle);
@@ -236,25 +237,20 @@ namespace irq
                 continue;
 
             if (ret.old != nullptr)
-            {
                 stale.push_back(ret.old);
-                wait = true;
-            }
 
             if (!ret.teardown)
                 continue;
 
-            wait |= unhook(*desc, handle);
+            detached |= unhook(*desc, handle);
             dying.push_back(std::move(desc));
         }
 
-        if (!wait)
-            return;
-
-        wait_for_handlers();
+        if (detached)
+            wait_for_handlers();
 
         for (auto old : stale)
-            delete old;
+            old->retire();
 
         if (dying.empty())
             return;
@@ -348,14 +344,14 @@ namespace irq
 
     lib::expect<handle_t> alloc_and_request(
         domain &leaf, const fwspec &spec,
-        handler_fn fn, std::string_view name, const void *owner
+        handler_fn fn, std::string_view name, bool unmask, const void *owner
     )
     {
         auto handle = alloc(leaf, spec);
         if (!handle)
             return std::unexpected { handle.error() };
 
-        if (auto ret = request(*handle, std::move(fn), name, true, owner); !ret)
+        if (auto ret = request(*handle, std::move(fn), name, unmask, owner); !ret)
         {
             free(*handle, owner);
             return std::unexpected { ret.error() };
@@ -410,12 +406,12 @@ namespace irq
 
     lib::expect<handle_t> request_gsi(
         std::uint32_t gsi, trigger trig, std::size_t cpu_idx,
-        handler_fn fn, std::string_view name, const void *owner
+        handler_fn fn, std::string_view name, bool unmask, const void *owner
     )
     {
         const auto requester = _gsi_requester.load(std::memory_order_acquire);
         if (!requester)
             return std::unexpected { lib::err::not_supported };
-        return requester(gsi, trig, cpu_idx, std::move(fn), name, owner);
+        return requester(gsi, trig, cpu_idx, std::move(fn), name, unmask, owner);
     }
 } // namespace irq

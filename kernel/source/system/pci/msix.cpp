@@ -256,17 +256,9 @@ namespace pci::msix
         const auto idx = data.hwirq;
         const auto ea = entry_addr(_table, idx);
 
-        const auto old_cpu = data.parent->aux;
-
         lib::mmio::out<32>(ea + entry::vec_control, vec_control_mask);
 
-        if (auto ret = parent->set_affinity(*data.parent, cpus, force); !ret)
-        {
-            lib::mmio::out<32>(ea + entry::vec_control, 0);
-            return ret;
-        }
-
-        const auto program = [&] -> lib::expect<void> {
+        return irq::retarget(*parent, data, cpus, force, "pci-msix", [&] -> lib::expect<void> {
             const auto msg = parent->compose_msi(*data.parent);
             if (!msg)
                 return std::unexpected { msg.error() };
@@ -276,18 +268,7 @@ namespace pci::msix
             lib::mmio::out<32>(ea + entry::msg_data, msg->data);
             lib::mmio::out<32>(ea + entry::vec_control, 0);
             return { };
-        };
-
-        auto ret = program();
-        if (!ret)
-        {
-            lib::bitmap back { std::max(cpus.length(), old_cpu + 1) };
-            back.set(old_cpu, true);
-
-            if (!parent->set_affinity(*data.parent, back, true) || !program())
-                lib::warn("pci-msix: hwirq {} left masked", idx);
-        }
-        return ret;
+        });
     }
 
     void release(pci::device &dev)
@@ -357,7 +338,7 @@ namespace pci::msix
                 [msix_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
             }
         };
-        return irq::alloc_and_request(*dom, spec, std::move(fn), name, owner);
+        return irq::alloc_and_request(*dom, spec, std::move(fn), name, true, owner);
     }
 
     lib::expect<std::vector<irq::handle_t>> alloc(

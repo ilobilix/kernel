@@ -62,6 +62,8 @@ export namespace sched
         // nullptr if empty
         thread_t *pick_next();
 
+        void set_vruntime(thread_t *thread, std::uint64_t vruntime);
+
         // update current thread vruntime
         // returns the runtime delta
         std::uint64_t update_current(std::uint64_t now);

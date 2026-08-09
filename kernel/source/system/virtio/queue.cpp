@@ -124,10 +124,13 @@ namespace virtio
                     const auto &elem = _used->ring[_last_used % _size];
                     const std::uint16_t head = elem.id;
 
-                    if (head >= _size)
-                        _broken = true;
-                    else
-                        batch[count++] = { detach(head), elem.len };
+                    if (head < _size)
+                    {
+                        const auto cookie = detach(head);
+                        if (!_broken)
+                            batch[count++] = { cookie, elem.len };
+                    }
+                    else _broken = true;
 
                     if (_broken)
                     {

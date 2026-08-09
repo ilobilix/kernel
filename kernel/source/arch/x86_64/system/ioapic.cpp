@@ -332,7 +332,7 @@ namespace x86_64::apic::io
 
     lib::expect<irq::handle_t> request_gsi(
         std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name, const void *owner
+        irq::handler_fn fn, std::string_view name, bool unmask, const void *owner
     )
     {
         auto existing = irq::invalid_handle;
@@ -359,7 +359,7 @@ namespace x86_64::apic::io
 
         if (existing != irq::invalid_handle)
         {
-            if (auto ret = irq::request(existing, std::move(fn), name, true, owner); !ret)
+            if (auto ret = irq::request(existing, std::move(fn), name, unmask, owner); !ret)
                 return std::unexpected { ret.error() };
             return existing;
         }
@@ -374,7 +374,7 @@ namespace x86_64::apic::io
         };
 
         auto handle = irq::alloc_and_request(
-            *get_ioapic_domain(), spec, std::move(fn), name, owner
+            *get_ioapic_domain(), spec, std::move(fn), name, unmask, owner
         );
 
         auto locked = live_gsis.lock();
