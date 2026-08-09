@@ -83,11 +83,11 @@ namespace rng
 
     struct driver_t : virtio::driver_t
     {
-        static constexpr virtio::id_t ids[] {
+        static constexpr virtio::id_t match_ids[] {
             virtio::id_t::from_type(virtio::device_type::entropy_source)
         };
 
-        driver_t() : virtio::driver_t { "virtio-rng", ids } { }
+        driver_t() : virtio::driver_t { "virtio-rng", match_ids } { }
 
         lib::expect<void> probe(virtio::device_t &dev) override
         {

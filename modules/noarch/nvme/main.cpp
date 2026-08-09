@@ -19,7 +19,7 @@ namespace nvme
 {
     struct driver_t : pci::driver_t
     {
-        static constexpr pci::id_t ids[] {
+        static constexpr pci::id_t match_ids[] {
             pci::id_t::from_class(0x01, 0x08, 0x02)
         };
 
@@ -29,7 +29,7 @@ namespace nvme
         > ctrls;
         std::size_t idx = 0;
 
-        driver_t() : pci::driver_t { "nvme", ids } { }
+        driver_t() : pci::driver_t { "nvme", match_ids } { }
 
         ~driver_t()
         {

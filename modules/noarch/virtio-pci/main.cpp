@@ -919,7 +919,7 @@ namespace virtio::pci
 
         struct driver_t final : ::pci::driver_t
         {
-            static constexpr ::pci::id_t ids[] {
+            static constexpr ::pci::id_t match_ids[] {
                 ::pci::id_t::from_id(virtio::pci::ids::vendor, ::pci::id_t::any)
             };
 
@@ -928,7 +928,7 @@ namespace virtio::pci
                 std::shared_ptr<device_t>
             > devs;
 
-            driver_t() : ::pci::driver_t { "virtio-pci", ids } { }
+            driver_t() : ::pci::driver_t { "virtio-pci", match_ids } { }
 
             lib::expect<void> probe(::pci::device_t &pdev) override
             {
