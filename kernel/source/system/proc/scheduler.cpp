@@ -2420,21 +2420,26 @@ namespace sched
 
                         if (proc->vmspace)
                         {
+                            const auto npsize = vmm::default_npsize();
+
                             const auto locked = proc->vmspace->tree.lock();
                             for (auto it = locked->begin(); it != locked->end(); it++)
                             {
                                 const auto &entry = *it;
-                                vsize += entry.endp - entry.startp;
+                                const auto start = entry.startp * npsize;
+                                const auto end = entry.endp * npsize;
+
+                                vsize += end - start;
 
                                 if (entry.flags & vmm::stack)
-                                    startstack = entry.startp;
+                                    startstack = start;
 
                                 if (entry.prot & vmm::exec)
                                 {
-                                    if (startcode == 0 || entry.startp < startcode)
-                                        startcode = entry.startp;
-                                    if (entry.endp > endcode)
-                                        endcode = entry.endp;
+                                    if (startcode == 0 || start < startcode)
+                                        startcode = start;
+                                    if (end > endcode)
+                                        endcode = end;
                                 }
                             }
                             startbrk = proc->vmspace->brk_start;
@@ -2519,6 +2524,8 @@ namespace sched
                         if (!vmspace)
                             return out;
 
+                        const auto npsize = vmm::default_npsize();
+
                         const auto locked = vmspace->tree.lock();
                         out.reserve(locked->size() * 64);
                         auto out_it = std::back_inserter(out);
@@ -2530,8 +2537,9 @@ namespace sched
                             const char x = (entry.prot & vmm::exec)  ? 'x' : '-';
                             const char p = (entry.flags & vmm::shared) ? 's' : 'p';
                             fmt::format_to(out_it,
-                                "{:016x}-{:016x} {}{}{}{} {:08x} 00:00 0\n",
-                                entry.startp, entry.endp, r, w, x, p, entry.offp
+                                "{:08x}-{:08x} {}{}{}{} {:08x} 00:00 0\n",
+                                entry.startp * npsize, entry.endp * npsize,
+                                r, w, x, p, entry.offp * npsize
                             );
                         }
                         return out;
