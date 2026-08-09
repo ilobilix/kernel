@@ -63,7 +63,8 @@ export namespace x86_64::apic::io
 
     lib::expect<irq::handle_t> request_gsi(
         std::uint32_t gsi, irq::trigger trig, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }, const void *owner = nullptr
+        irq::handler_fn fn, std::string_view name = { },
+        bool unmask = true, const void *owner = nullptr
     );
 
     bool is_initialised();

@@ -913,7 +913,7 @@ namespace sched
             lib::bug_on(curr != current_thread());
 
             if (!rq.queue.empty())
-                curr->vruntime = std::max(curr->vruntime, rq.queue.last()->vruntime);
+                rq.set_vruntime(curr, std::max(curr->vruntime, rq.queue.last()->vruntime));
             curr->set_flag(thread_flags::needs_resched);
         }
         preempt_enable();

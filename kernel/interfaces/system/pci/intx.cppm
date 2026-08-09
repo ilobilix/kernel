@@ -12,6 +12,6 @@ export namespace pci::intx
 {
     lib::expect<irq::handle_t> request(
         pci::device &dev, std::size_t cpu_idx,
-        irq::handler_fn fn, std::string_view name = { }
+        irq::handler_fn fn, std::string_view name = { }, bool unmask = true
     );
 } // export namespace pci::intx

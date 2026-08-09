@@ -296,21 +296,12 @@ namespace pci::msi
         if (!data.parent)
             return std::unexpected { lib::err::invalid_argument };
 
-        const auto old_cpu = data.parent->aux;
-
         {
             const std::unique_lock _ { _lock };
             _mask(data.hwirq);
         }
 
-        if (auto ret = parent->set_affinity(*data.parent, cpus, force); !ret)
-        {
-            const std::unique_lock _ { _lock };
-            _unmask(data.hwirq);
-            return ret;
-        }
-
-        const auto program = [&] -> lib::expect<void> {
+        return irq::retarget(*parent, data, cpus, force, "pci-msi", [&] -> lib::expect<void> {
             const auto msg = parent->compose_msi(*data.parent);
             if (!msg)
                 return std::unexpected { msg.error() };
@@ -325,18 +316,7 @@ namespace pci::msi
 
             _unmask(data.hwirq);
             return { };
-        };
-
-        auto ret = program();
-        if (!ret)
-        {
-            lib::bitmap back { std::max(cpus.length(), old_cpu + 1) };
-            back.set(old_cpu, true);
-
-            if (!parent->set_affinity(*data.parent, back, true) || !program())
-                lib::warn("pci-msi: hwirq {} left masked", data.hwirq);
-        }
-        return ret;
+        });
     }
 
     void release(pci::device &dev)
@@ -392,7 +372,7 @@ namespace pci::msi
                 [msi_domain::param_cpu] = static_cast<std::uint32_t>(cpu_idx)
             }
         };
-        return irq::alloc_and_request(*dom, spec, std::move(fn), name, owner);
+        return irq::alloc_and_request(*dom, spec, std::move(fn), name, true, owner);
     }
 
     lib::expect<std::vector<irq::handle_t>> alloc(

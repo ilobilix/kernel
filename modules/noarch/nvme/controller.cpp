@@ -195,16 +195,10 @@ namespace nvme
 
         auto alloc = _dev->request_irqs(
             num_queues, bsp_idx,
-            [this](std::size_t vector, std::size_t count) {
-                if (vector == 0)
-                {
-                    _workers.clear();
-                    _workers.reserve(count);
-                }
-
-                lib::bug_on(_workers.size() != vector);
-                auto worker = _workers.emplace_back(std::make_unique<worker_t>()).get();
-                return [this, worker](auto) { irq_handler(*worker); };
+            [this](std::size_t vector, std::size_t) {
+                return [this, vector](auto) {
+                    irq_handler(*_workers[vector]);
+                };
             }, "nvme"
         );
 
@@ -228,7 +222,10 @@ namespace nvme
             return vector == 0 ? bsp_idx : vector - 1;
         };
 
-        lib::bug_on(_workers.size() != num_irqs);
+        _workers.clear();
+        _workers.reserve(num_irqs);
+        for (std::size_t vector = 0; vector < num_irqs; vector++)
+            _workers.push_back(std::make_unique<worker_t>());
 
         for (std::size_t qid = 0; qid < num_queues; qid++)
             _workers[vector_of(qid)]->qids.push_back(qid);

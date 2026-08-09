@@ -106,7 +106,7 @@ namespace virtio
         const auto nqueues = _transport->num_queues();
 
         auto layout = _transport->setup_irqs(
-            nqueues, cpu, [this](std::uint16_t vector, bool config) {
+            nqueues, cpu, [this](std::size_t vector, bool config) {
                 if (vector >= _workers.size())
                     return;
 
@@ -128,7 +128,7 @@ namespace virtio
         _workers.reserve(_layout.count);
         _queues.resize(nqueues);
 
-        for (std::uint16_t vector = 0; vector < _layout.count; vector++)
+        for (std::size_t vector = 0; vector < _layout.count; vector++)
         {
             std::vector<std::uint16_t> qids;
             for (const auto &[qid, owner] : _layout.queues | std::views::enumerate)
@@ -152,7 +152,7 @@ namespace virtio
         return { };
     }
 
-    void device_t::drain(std::uint16_t vector)
+    void device_t::drain(std::size_t vector)
     {
         if (vector == _layout.config && _config_pending.exchange(false, std::memory_order_acquire))
         {
