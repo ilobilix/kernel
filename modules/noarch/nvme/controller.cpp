@@ -242,10 +242,7 @@ namespace nvme
             {
                 affinity[cpu] = true;
                 if (!irq::set_affinity(_irqs.handles[vector], affinity))
-                {
-                    lib::error("nvme: failed to set irq affinity");
-                    return std::unexpected { lib::err::target_is_busy };
-                }
+                    lib::warn("nvme: failed to set irq {} affinity to cpu {}", vector, cpu);
                 affinity[cpu] = false;
             }
 

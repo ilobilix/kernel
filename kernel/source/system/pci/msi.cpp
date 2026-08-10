@@ -9,6 +9,7 @@ namespace pci::msi
     namespace
     {
         constexpr std::uint8_t cap_id = 0x05;
+        constexpr std::uint8_t max_vectors = 32;
 
         enum reg : std::uint16_t
         {
@@ -76,6 +77,11 @@ namespace pci::msi
         {
             return addr64 ? reg::data_64 : reg::data_32;
         }
+
+        std::uint32_t block_mask(std::uint8_t block)
+        {
+            return block >= max_vectors ? ~0u : (1u << block) - 1;
+        }
     } // namespace
 
     bool is_enabled(const pci::device &dev)
@@ -88,13 +94,13 @@ namespace pci::msi
     }
 
     msi_domain::msi_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent)
-        : domain { "pci-msi", parent }, _dev { &dev },
-          _cap_offset { cap_offset }, _allocated_vecs { 0 }
+        : domain { "pci-msi", parent }, _dev { &dev }, _cap_offset { cap_offset },
+          _intx_dis { false }, _allocated_vecs { 0 }, _block { 0 }, _mask_state { 0 }
     {
         const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
         _addr64 = (mc_val & mc_addr64) != 0;
         _per_vector_mask = (mc_val & mc_per_vec_mask) != 0;
-        _nvec = lib::pow2((mc_val & mc_mmc_mask) >> mc_mmc_shift);
+        _nvec = std::min<std::uint64_t>(lib::pow2((mc_val & mc_mmc_mask) >> mc_mmc_shift), max_vectors);
     }
 
     msi_domain::~msi_domain()
@@ -166,6 +172,9 @@ namespace pci::msi
         {
             const std::unique_lock _ { _lock };
 
+            _block = count;
+            _mask_state = block_mask(_block);
+
             cap.write<std::uint32_t>(reg::msg_addr_low, msg->address);
             if (_addr64)
                 cap.write<std::uint32_t>(reg::addr_high_64, msg->address >> 32);
@@ -175,13 +184,19 @@ namespace pci::msi
                 cap.write<std::uint32_t>(mask_reg_off(_addr64), ~0u);
 
             auto cmd = _dev->read<std::uint16_t>(pci::reg::cmd);
+            if (!(cmd & pci::cmd::bus_master))
+                lib::warn("pci-msi: bus mastering is disabled");
+            _intx_dis = (cmd & pci::cmd::int_dis) != 0;
             cmd |= static_cast<std::uint16_t>(pci::cmd::int_dis);
             _dev->write<std::uint16_t>(pci::reg::cmd, cmd);
 
             auto mc_val = cap.read<std::uint16_t>(reg::msg_control);
             mc_val &= ~mc_mme_mask;
             mc_val |= static_cast<std::uint16_t>(lib::log2(count) << mc_mme_shift);
-            mc_val |= mc_enable;
+            if (_per_vector_mask)
+                mc_val |= mc_enable;
+            else
+                mc_val &= ~mc_enable;
             cap.write<std::uint16_t>(reg::msg_control, mc_val);
         }
 
@@ -206,12 +221,7 @@ namespace pci::msi
             {
                 const std::unique_lock _ { _lock };
 
-                if (_per_vector_mask)
-                {
-                    auto mask = cap.read<std::uint32_t>(mask_reg_off(_addr64));
-                    mask |= (1u << entry->hwirq);
-                    cap.write<std::uint32_t>(mask_reg_off(_addr64), mask);
-                }
+                _mask(entry->hwirq);
 
                 if (_allocated_vecs > 0)
                     _allocated_vecs--;
@@ -222,6 +232,16 @@ namespace pci::msi
                     mc_val &= ~mc_enable;
                     mc_val &= ~mc_mme_mask;
                     cap.write<std::uint16_t>(reg::msg_control, mc_val);
+
+                    _block = 0;
+                    _mask_state = 0;
+
+                    if (!_intx_dis)
+                    {
+                        auto cmd = _dev->read<std::uint16_t>(pci::reg::cmd);
+                        cmd &= ~static_cast<std::uint16_t>(pci::cmd::int_dis);
+                        _dev->write<std::uint16_t>(pci::reg::cmd, cmd);
+                    }
 
                     if (!_spare_parents.empty())
                     {
@@ -243,38 +263,41 @@ namespace pci::msi
         }
     }
 
-    void msi_domain::_mask(std::uintptr_t hwirq)
+    bool msi_domain::_is_masked(std::uintptr_t hwirq) const
     {
+        return (_mask_state & (1u << hwirq)) != 0;
+    }
+
+    void msi_domain::_apply_mask()
+    {
+        const auto live = block_mask(_block);
+
         const cap_access cap { *_dev, _cap_offset };
         if (_per_vector_mask)
         {
-            auto mask = cap.read<std::uint32_t>(mask_reg_off(_addr64));
-            mask |= (1u << hwirq);
-            cap.write<std::uint32_t>(mask_reg_off(_addr64), mask);
+            cap.write<std::uint32_t>(mask_reg_off(_addr64), _mask_state | ~live);
+            return;
         }
-        else
-        {
-            auto mc_val = cap.read<std::uint16_t>(reg::msg_control);
+
+        const bool all_masked = (_mask_state & live) == live;
+        auto mc_val = cap.read<std::uint16_t>(reg::msg_control);
+        if (all_masked)
             mc_val &= ~mc_enable;
-            cap.write<std::uint16_t>(reg::msg_control, mc_val);
-        }
+        else
+            mc_val |= mc_enable;
+        cap.write<std::uint16_t>(reg::msg_control, mc_val);
+    }
+
+    void msi_domain::_mask(std::uintptr_t hwirq)
+    {
+        _mask_state |= (1u << hwirq);
+        _apply_mask();
     }
 
     void msi_domain::_unmask(std::uintptr_t hwirq)
     {
-        const cap_access cap { *_dev, _cap_offset };
-        if (_per_vector_mask)
-        {
-            auto mask = cap.read<std::uint32_t>(mask_reg_off(_addr64));
-            mask &= ~(1u << hwirq);
-            cap.write<std::uint32_t>(mask_reg_off(_addr64), mask);
-        }
-        else
-        {
-            auto mc_val = cap.read<std::uint16_t>(reg::msg_control);
-            mc_val |= mc_enable;
-            cap.write<std::uint16_t>(reg::msg_control, mc_val);
-        }
+        _mask_state &= ~(1u << hwirq);
+        _apply_mask();
     }
 
     void msi_domain::mask(irq::irq_data &data)
@@ -296,8 +319,15 @@ namespace pci::msi
         if (!data.parent)
             return std::unexpected { lib::err::invalid_argument };
 
+        bool was_masked;
         {
             const std::unique_lock _ { _lock };
+
+            // TODO
+            if (_block > 1)
+                return std::unexpected { lib::err::not_supported };
+
+            was_masked = _is_masked(data.hwirq);
             _mask(data.hwirq);
         }
 
@@ -314,7 +344,8 @@ namespace pci::msi
                 cap.write<std::uint32_t>(reg::addr_high_64, msg->address >> 32);
             cap.write<std::uint16_t>(data_reg_off(_addr64), msg->data);
 
-            _unmask(data.hwirq);
+            if (!was_masked)
+                _unmask(data.hwirq);
             return { };
         });
     }

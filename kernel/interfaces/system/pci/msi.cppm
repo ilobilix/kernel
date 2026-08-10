@@ -18,15 +18,23 @@ export namespace pci::msi
 
         bool _addr64;
         bool _per_vector_mask;
+        bool _intx_dis;
 
         std::uint8_t _nvec;
         std::uint8_t _allocated_vecs;
+
+        std::uint8_t _block;
+        std::uint32_t _mask_state;
+
         std::vector<irq::irq_data *> _spare_parents;
 
         lib::spinlock _lock;
 
         void _mask(std::uintptr_t hwirq);
         void _unmask(std::uintptr_t hwirq);
+
+        bool _is_masked(std::uintptr_t hwirq) const;
+        void _apply_mask();
 
         public:
         enum fwparam : std::uint32_t
