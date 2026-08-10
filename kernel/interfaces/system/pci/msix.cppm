@@ -18,6 +18,8 @@ export namespace pci::msix
         std::uint16_t _nvec;
         std::uintptr_t _table;
 
+        bool _intx_dis;
+
         lib::bitmap _allocated;
         std::size_t _live_count;
         lib::spinlock _lock;
@@ -29,7 +31,17 @@ export namespace pci::msix
             param_count = 1
         };
 
-        msix_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent);
+        struct table_info
+        {
+            std::uintptr_t base;
+            std::uint16_t nvec;
+        };
+        static lib::expect<table_info> resolve_table(pci::device &dev, std::uint16_t cap_offset);
+
+        msix_domain(
+            pci::device &dev, std::uint16_t cap_offset,
+            const table_info &table, irq::domain *parent
+        );
 
         lib::expect<void> alloc(
             std::span<irq::irq_data *> data, const irq::fwspec &spec

@@ -71,22 +71,56 @@ namespace pci::msix
         return (dev.read<std::uint16_t>(off + reg::msg_control) & mc_enable) != 0;
     }
 
-    msix_domain::msix_domain(pci::device &dev, std::uint16_t cap_offset, irq::domain *parent)
-        : domain { "pci-msix", parent },
-          _dev { &dev }, _cap_offset { cap_offset }, _live_count { 0 }
+    auto msix_domain::resolve_table(pci::device &dev, std::uint16_t cap_offset)
+        -> lib::expect<table_info>
     {
-        const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
-        _nvec = (mc_val & mc_table_size_mask) + 1;
-        _allocated = lib::bitmap { _nvec };
-
         const auto tbl_desc = dev.read<std::uint32_t>(cap_offset + reg::table);
         const auto bir = tbl_desc & tbl::bir_mask;
         const auto offset = tbl_desc & tbl::offset_mask;
 
-        lib::bug_on(bir >= dev.bars.size());
-        lib::bug_on(dev.bars[bir].type != pci::bar::type::mem);
-        _table = dev.bars[bir].map() + offset;
+        if (bir >= dev.bars.size())
+        {
+            lib::warn("pci-msix: table bir {} is out of range", bir);
+            return std::unexpected { lib::err::not_supported };
+        }
+
+        auto &bar = dev.bars[bir];
+        if (bar.type != pci::bar::type::mem)
+        {
+            lib::warn("pci-msix: table bar {} is not mmio", bir);
+            return std::unexpected { lib::err::not_supported };
+        }
+
+        if (offset + entry::stride > bar.size)
+        {
+            lib::warn("pci-msix: table offset 0x{:X} is outside bar {}", offset, bir);
+            return std::unexpected { lib::err::not_supported };
+        }
+
+        if (!(dev.read<std::uint16_t>(pci::reg::cmd) & pci::cmd::mem_space))
+        {
+            lib::warn("pci-msix: memory space is disabled");
+            return std::unexpected { lib::err::not_supported };
+        }
+
+        const auto mc_val = dev.read<std::uint16_t>(cap_offset + reg::msg_control);
+        const std::uint16_t nvec = (mc_val & mc_table_size_mask) + 1;
+
+        if (offset + static_cast<std::size_t>(nvec) * entry::stride > bar.size)
+        {
+            lib::warn("pci-msix: {} entry table does not fit in bar {}", nvec, bir);
+            return std::unexpected { lib::err::not_supported };
+        }
+
+        return table_info { bar.map() + offset, nvec };
     }
+
+    msix_domain::msix_domain(
+        pci::device &dev, std::uint16_t cap_offset,
+        const table_info &table, irq::domain *parent
+    ) : domain { "pci-msix", parent }, _dev { &dev }, _cap_offset { cap_offset },
+        _nvec { table.nvec }, _table { table.base }, _intx_dis { false }, _allocated { _nvec },
+        _live_count { 0 } { }
 
     lib::expect<void> msix_domain::alloc(
         std::span<irq::irq_data *> data, const irq::fwspec &spec
@@ -183,6 +217,9 @@ namespace pci::msix
                 _dev->write<std::uint16_t>(_cap_offset + reg::msg_control, mc_val);
 
                 auto cmd = _dev->read<std::uint16_t>(pci::reg::cmd);
+                if (!(cmd & pci::cmd::bus_master))
+                    lib::warn("pci-msix: bus mastering is disabled");
+                _intx_dis = (cmd & pci::cmd::int_dis) != 0;
                 cmd |= static_cast<std::uint16_t>(pci::cmd::int_dis);
                 _dev->write<std::uint16_t>(pci::reg::cmd, cmd);
             }
@@ -223,6 +260,13 @@ namespace pci::msix
                     auto mc_val = _dev->read<std::uint16_t>(_cap_offset + reg::msg_control);
                     mc_val &= ~mc_enable;
                     _dev->write<std::uint16_t>(_cap_offset + reg::msg_control, mc_val);
+
+                    if (!_intx_dis)
+                    {
+                        auto cmd = _dev->read<std::uint16_t>(pci::reg::cmd);
+                        cmd &= ~static_cast<std::uint16_t>(pci::cmd::int_dis);
+                        _dev->write<std::uint16_t>(pci::reg::cmd, cmd);
+                    }
                 }
             }
 
@@ -238,12 +282,14 @@ namespace pci::msix
 
     void msix_domain::mask(irq::irq_data &data)
     {
-        lib::mmio::out<32>(entry_addr(_table, data.hwirq) + entry::vec_control, vec_control_mask);
+        const auto addr = entry_addr(_table, data.hwirq) + entry::vec_control;
+        lib::mmio::out<32>(addr, lib::mmio::in<32>(addr) | vec_control_mask);
     }
 
     void msix_domain::unmask(irq::irq_data &data)
     {
-        lib::mmio::out<32>(entry_addr(_table, data.hwirq) + entry::vec_control, 0);
+        const auto addr = entry_addr(_table, data.hwirq) + entry::vec_control;
+        lib::mmio::out<32>(addr, lib::mmio::in<32>(addr) & ~vec_control_mask);
     }
 
     lib::expect<void> msix_domain::set_affinity(
@@ -256,7 +302,10 @@ namespace pci::msix
         const auto idx = data.hwirq;
         const auto ea = entry_addr(_table, idx);
 
-        lib::mmio::out<32>(ea + entry::vec_control, vec_control_mask);
+        const auto old_control = lib::mmio::in<32>(ea + entry::vec_control);
+        const bool was_masked = (old_control & vec_control_mask) != 0;
+
+        lib::mmio::out<32>(ea + entry::vec_control, old_control | vec_control_mask);
 
         return irq::retarget(*parent, data, cpus, force, "pci-msix", [&] -> lib::expect<void> {
             const auto msg = parent->compose_msi(*data.parent);
@@ -266,7 +315,8 @@ namespace pci::msix
             lib::mmio::out<32>(ea + entry::msg_addr_low, msg->address);
             lib::mmio::out<32>(ea + entry::msg_addr_high, msg->address >> 32);
             lib::mmio::out<32>(ea + entry::msg_data, msg->data);
-            lib::mmio::out<32>(ea + entry::vec_control, 0);
+            if (!was_masked)
+                lib::mmio::out<32>(ea + entry::vec_control, old_control & ~vec_control_mask);
             return { };
         });
     }
@@ -313,11 +363,22 @@ namespace pci::msix
         if (!parent)
             return nullptr;
 
+        {
+            auto locked = domains.lock();
+            if (const auto it = locked->find(&dev); it != locked->end())
+                return it->second.get();
+        }
+
+        const auto table = msix_domain::resolve_table(dev, cap_offset);
+        if (!table)
+            return nullptr;
+
+        auto dom = std::make_unique<msix_domain>(dev, cap_offset, *table, parent);
+
         auto locked = domains.lock();
         if (const auto it = locked->find(&dev); it != locked->end())
             return it->second.get();
 
-        auto dom = std::make_unique<msix_domain>(dev, cap_offset, parent);
         auto raw = dom.get();
         locked->emplace(&dev, std::move(dom));
         return raw;
