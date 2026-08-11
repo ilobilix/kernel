@@ -96,7 +96,9 @@ namespace rng
                 return std::unexpected { lib::err::out_of_memory };
 
             auto queue = dev.setup_queue(
-                0, [weak = std::weak_ptr { state }](virtio::cookie_t, std::uint32_t len) {
+                0, [weak = std::weak_ptr { state }](virtio::cookie_t cookie, std::uint32_t len) {
+                    lib::unused(cookie);
+
                     const auto state = weak.lock();
                     if (!state)
                         return;

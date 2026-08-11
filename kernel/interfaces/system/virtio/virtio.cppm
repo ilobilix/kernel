@@ -103,6 +103,9 @@ export namespace virtio
         lib::expect<void> setup_irqs(std::size_t cpu);
         void drain(std::size_t vector);
 
+        lib::expect<std::uint16_t> prepare_queue(std::uint16_t qid, std::uint16_t size);
+        lib::expect<queue_t *> install_queue(std::uint16_t qid, std::unique_ptr<queue_t> queue);
+
         static inline std::atomic_size_t next_index = 0;
         static std::string alloc_name()
         {
@@ -152,6 +155,12 @@ export namespace virtio
         lib::expect<queue_t *> setup_queue(
             std::uint16_t qid, used_fn on_used, std::uint16_t size = 0
         );
+
+        lib::expect<queue_t *> setup_rx_queue(
+            std::uint16_t qid, std::size_t nbufs, std::size_t bufsize,
+            receive_fn on_receive, std::uint16_t size = 0
+        );
+
         lib::expect<std::vector<queue_t *>> setup_queues(std::span<const used_fn> fns);
         queue_t &queue(std::uint16_t qid);
 

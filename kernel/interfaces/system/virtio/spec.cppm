@@ -130,7 +130,7 @@ export namespace virtio
         // std::uint16_t avail_event;
     };
 
-    constexpr std::size_t vring_align = 0x1000;
+    constexpr std::size_t alignment = 0x1000;
 
     struct vring_layout
     {
@@ -144,7 +144,7 @@ export namespace virtio
         const auto desc = sizeof(virtq_desc) * size;
         const auto avail = sizeof(std::uint16_t) * (3 + size);
         const auto used_off = lib::align_up(
-            desc + avail, legacy ? vring_align : alignof(virtq_used_elem)
+            desc + avail, legacy ? alignment : alignof(virtq_used_elem)
         );
 
         return {

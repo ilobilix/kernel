@@ -694,7 +694,7 @@ namespace virtio::pci
                     }
 
                     const auto layout = get_layout(addr.size, true);
-                    if ((addr.desc % vring_align) != 0 ||
+                    if ((addr.desc % alignment) != 0 ||
                         addr.avail != addr.desc + layout.avail_off ||
                         addr.used != addr.desc + layout.used_off)
                     {
@@ -702,7 +702,7 @@ namespace virtio::pci
                         return std::unexpected { lib::err::invalid_argument };
                     }
 
-                    const auto pfn = addr.desc / vring_align;
+                    const auto pfn = addr.desc / alignment;
                     if (pfn > std::numeric_limits<std::uint32_t>::max())
                     {
                         lib::error("virtio-pci: queue {} is out of bounds of the pfn", qid);

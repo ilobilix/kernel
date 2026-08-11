@@ -167,9 +167,7 @@ namespace virtio
         }
     }
 
-    lib::expect<queue_t *> device_t::setup_queue(
-        std::uint16_t qid, used_fn on_used, std::uint16_t size
-    )
+    lib::expect<std::uint16_t> device_t::prepare_queue(std::uint16_t qid, std::uint16_t size)
     {
         if (qid >= _queues.size())
             return std::unexpected { lib::err::no_such_device };
@@ -187,22 +185,55 @@ namespace virtio
             return std::unexpected { lib::err::io_error };
         }
 
+        return (size == 0 || _transport->legacy_layout()) ? max : std::min(size, max);
+    }
+
+    lib::expect<queue_t *> device_t::install_queue(std::uint16_t qid, std::unique_ptr<queue_t> queue)
+    {
         const auto vector = _layout.queues.empty()
             ? no_vector
             : _layout.queues[qid];
 
-        const auto want = (size == 0 || _transport->legacy_layout())
-            ? max : std::min(size, max);
+        if (auto ret = _transport->enable_queue(qid, queue->addr(vector)); !ret)
+            return std::unexpected { ret.error() };
 
-        auto queue = queue_t::create(*_transport, qid, want, std::move(on_used));
+        _queues[qid] = std::move(queue);
+        return _queues[qid].get();
+    }
+
+    lib::expect<queue_t *> device_t::setup_queue(
+        std::uint16_t qid, used_fn on_used, std::uint16_t size
+    )
+    {
+        const auto want = prepare_queue(qid, size);
+        if (!want)
+            return std::unexpected { want.error() };
+
+        auto queue = queue_t::create(*_transport, qid, *want, std::move(on_used));
         if (!queue)
             return std::unexpected { queue.error() };
 
-        if (auto ret = _transport->enable_queue(qid, (*queue)->addr(vector)); !ret)
-            return std::unexpected { ret.error() };
+        return install_queue(qid, std::move(*queue));
+    }
 
-        _queues[qid] = std::move(*queue);
-        return _queues[qid].get();
+    lib::expect<queue_t *> device_t::setup_rx_queue(
+        std::uint16_t qid, std::size_t nbufs, std::size_t bufsize,
+        receive_fn on_receive, std::uint16_t size
+    )
+    {
+        const auto want = prepare_queue(qid, size);
+        if (!want)
+            return std::unexpected { want.error() };
+
+        const auto count = nbufs == 0 ? *want : std::min<std::size_t>(nbufs, *want);
+
+        auto queue = queue_t::create_buf(
+            *_transport, qid, *want, count, bufsize, std::move(on_receive)
+        );
+        if (!queue)
+            return std::unexpected { queue.error() };
+
+        return install_queue(qid, std::move(*queue));
     }
 
     lib::expect<std::vector<queue_t *>> device_t::setup_queues(std::span<const used_fn> fns)
@@ -241,6 +272,12 @@ namespace virtio
 
         _transport->enable_irqs();
         _transport->add_status(status::driver_ok);
+
+        for (const auto &queue : _queues)
+        {
+            if (queue && queue->buffered())
+                queue->submit();
+        }
     }
 
     void device_t::freeze()

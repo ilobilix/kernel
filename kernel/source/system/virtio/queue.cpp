@@ -33,26 +33,55 @@ namespace virtio
 
     queue_t::queue_t(
         transport_t &tp, std::uint16_t qid, std::uint16_t size,
-        arch::dma_buffer_view dma, used_fn on_used
-    ) : _tp { std::addressof(tp) }, _dma { dma }, _on_used { std::move(on_used) },
-        _cookies (size, 0), _qid { qid }, _size { size }, _free_head { 0 }, _num_free { size },
+        arch::dma_buffer_view dma, used_fn on_used,
+        arch::dma_buffer_view buf, receive_fn on_receive,
+        std::size_t nbufs, std::size_t bufsize
+    ) : _tp { std::addressof(tp) }, _dma { dma }, _buffer { buf },
+        _on_used { std::move(on_used) }, _cookies { },
+        _nbufs { nbufs }, _bufsize { bufsize }, _on_rx { std::move(on_receive) },
+        _posted { }, _qid { qid }, _size { size }, _free_head { 0 }, _num_free { size },
         _last_used { 0 }, _broken { false }, _lock { }
     {
         const auto layout = get_layout(size, tp.legacy_layout());
         auto base = static_cast<std::byte *>(_dma.data());
 
-        _desc = reinterpret_cast<virtq_desc *>(base);
-        _avail = reinterpret_cast<virtq_avail *>(base + layout.avail_off);
-        _used = reinterpret_cast<virtq_used *>(base + layout.used_off);
+        _desc = std::start_lifetime_as<virtq_desc>(base);
+        _avail = std::start_lifetime_as<virtq_avail>(base + layout.avail_off);
+        _used = std::start_lifetime_as<virtq_used>(base + layout.used_off);
 
         for (std::uint16_t i = 0; i < size; i++)
             _desc[i].next = i + 1;
+
+        if (!buffered())
+        {
+            _cookies.resize(size);
+            return;
+        }
+
+        _posted.initialise(_nbufs);
+
+        for (std::uint16_t i = 0; i < _nbufs; i++)
+        {
+            _desc[i].addr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buffer_at(i)));
+            _desc[i].len = _bufsize;
+            _desc[i].flags = flag::desc_write;
+            _desc[i].next = 0;
+
+            _avail->ring[i] = i;
+            _posted.set(i, true);
+        }
+
+        _num_free = 0;
+        std::atomic_ref { _avail->idx } .store(_nbufs, std::memory_order_release);
     }
 
     queue_t::~queue_t()
     {
         if (_dma.size() != 0)
-            pool.deallocate(_dma.get_dma_ptr(), _dma.size(), 1, vring_align);
+            pool.deallocate(_dma.get_dma_ptr(), _dma.size(), 1, alignment);
+
+        if (_buffer.size() != 0)
+            pool.deallocate(_buffer.get_dma_ptr(), _buffer.size(), 1, alignment);
     }
 
     lib::expect<std::unique_ptr<queue_t>> queue_t::create(
@@ -63,8 +92,7 @@ namespace virtio
             return std::unexpected { lib::err::invalid_argument };
 
         const auto layout = get_layout(size, tp.legacy_layout());
-
-        auto dma = pool.allocate(layout.size, 1, vring_align);
+        auto dma = pool.allocate(layout.size, 1, alignment);
         if (!dma)
             return std::unexpected { lib::err::out_of_memory };
 
@@ -72,7 +100,50 @@ namespace virtio
             new queue_t {
                 tp, qid, size,
                 arch::dma_buffer_view { dma, layout.size },
-                std::move(on_used)
+                std::move(on_used), { }, { }, 0, 0
+            }
+        };
+    }
+
+    lib::expect<std::unique_ptr<queue_t>> queue_t::create_buf(
+        transport_t &tp, std::uint16_t qid, std::uint16_t size,
+        std::size_t nbufs, std::size_t bufsize, receive_fn on_receive
+    )
+    {
+        if (size == 0 || !std::has_single_bit(size))
+            return std::unexpected { lib::err::invalid_argument };
+
+        if (nbufs == 0 || nbufs > size)
+            return std::unexpected { lib::err::invalid_argument };
+
+        if (bufsize == 0 || bufsize > std::numeric_limits<std::uint32_t>::max())
+            return std::unexpected { lib::err::invalid_argument };
+
+        if (!on_receive)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto total = nbufs * bufsize;
+        if (total / nbufs != bufsize)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto layout = get_layout(size, tp.legacy_layout());
+        auto dma = pool.allocate(layout.size, 1, alignment);
+        if (!dma)
+            return std::unexpected { lib::err::out_of_memory };
+
+        auto buf = pool.allocate(total, 1, alignment);
+        if (!buf)
+        {
+            pool.deallocate(dma, layout.size, 1, alignment);
+            return std::unexpected { lib::err::out_of_memory };
+        }
+
+        return std::unique_ptr<queue_t> {
+            new queue_t {
+                tp, qid, size,
+                arch::dma_buffer_view { dma, layout.size }, { },
+                arch::dma_buffer_view { buf, total }, std::move(on_receive),
+                nbufs, bufsize
             }
         };
     }
@@ -105,8 +176,28 @@ namespace virtio
         return std::exchange(_cookies[head], 0);
     }
 
+    void queue_t::repost(std::span<const std::pair<cookie_t, std::uint32_t>> done)
+    {
+        const std::unique_lock _ { _lock };
+        if (_broken)
+            return;
+
+        auto idx_ref = std::atomic_ref { _avail->idx };
+        auto idx = idx_ref.load(std::memory_order_relaxed);
+
+        for (const auto &[index, _] : done)
+        {
+            _avail->ring[idx++ % _size] = index;
+            _posted.set(index, true);
+        }
+
+        idx_ref.store(idx, std::memory_order_release);
+    }
+
     std::size_t queue_t::reap()
     {
+        const bool is_buffered = buffered();
+
         std::array<std::pair<cookie_t, std::uint32_t>, reap_batch> batch;
         std::size_t total = 0;
 
@@ -116,21 +207,34 @@ namespace virtio
             {
                 const std::unique_lock _ { _lock };
                 if (_broken)
-                    return total;
+                    break;
 
+                const auto limit = is_buffered ? _nbufs : _size;
                 const auto idx = std::atomic_ref { _used->idx } .load(std::memory_order_acquire);
+
                 while (_last_used != idx && count < batch.size())
                 {
                     const auto &elem = _used->ring[_last_used % _size];
                     const std::uint16_t head = elem.id;
 
-                    if (head < _size)
+                    if (head >= limit)
+                        _broken = true;
+                    else if (is_buffered)
+                    {
+                        if (_posted.set(head, false))
+                        {
+                            batch[count++] = {
+                                head, std::min<std::uint32_t>(elem.len, _bufsize)
+                            };
+                        }
+                        else _broken = true;
+                    }
+                    else
                     {
                         const auto cookie = detach(head);
                         if (!_broken)
                             batch[count++] = { cookie, elem.len };
                     }
-                    else _broken = true;
 
                     if (_broken)
                     {
@@ -143,15 +247,25 @@ namespace virtio
             }
 
             if (count == 0)
-                return total;
+                break;
 
-            if (_on_used)
+            if (const auto done = std::span { batch } .first(count); is_buffered)
             {
-                for (const auto &[cookie, len] : std::span { batch } .first(count))
+                for (const auto &[index, len] : done)
+                    _on_rx({ buffer_at(index), len });
+                repost(done);
+            }
+            else if (_on_used)
+            {
+                for (const auto &[cookie, len] : done)
                     _on_used(cookie, len);
             }
             total += count;
         }
+
+        if (is_buffered && total != 0 && !_broken)
+            submit();
+        return total;
     }
 
     lib::expect<void> queue_t::add(
@@ -160,6 +274,9 @@ namespace virtio
         cookie_t cookie
     )
     {
+        if (buffered())
+            return std::unexpected { lib::err::not_supported };
+
         const auto needed = drv_buf.size() + dev_buf.size();
         if (needed == 0)
             return std::unexpected { lib::err::invalid_argument };

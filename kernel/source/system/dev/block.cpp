@@ -573,7 +573,7 @@ namespace dev::block
         if (!lba0.has_value())
             return std::unexpected { lba0.error() };
 
-        const auto *mbr = reinterpret_cast<mbr::table_t *>(lba0->data());
+        const auto *mbr = std::start_lifetime_as<mbr::table_t>(lba0->data());
         if (!mbr->is_valid())
             return { };
 
@@ -612,7 +612,7 @@ namespace dev::block
                 if (!buf.has_value())
                     return buf;
 
-                auto hdr = reinterpret_cast<gpt::table_t *>(buf->data());
+                auto hdr = std::start_lifetime_as<gpt::table_t>(buf->data());
                 if (!hdr->is_valid())
                     return std::unexpected { lib::err::corrupted_data };
                 return buf;
@@ -644,7 +644,7 @@ namespace dev::block
                 backup = true;
             }
 
-            auto hdr = reinterpret_cast<gpt::table_t *>(hdr_buf->data());
+            auto hdr = std::start_lifetime_as<gpt::table_t>(hdr_buf->data());
             auto entries_buf = read_entries(hdr);
             if (!entries_buf)
             {
@@ -654,7 +654,7 @@ namespace dev::block
                 {
                     if ((hdr_buf = read_header(drive->block_count() - 1)))
                     {
-                        hdr = reinterpret_cast<gpt::table_t *>(hdr_buf->data());
+                        hdr = std::start_lifetime_as<gpt::table_t>(hdr_buf->data());
                         if ((entries_buf = read_entries(hdr)))
                             lib::info("block: recovered partition entries from backup gpt");
                     }
@@ -688,7 +688,7 @@ namespace dev::block
 
             for (std::size_t i = 0; i < hdr->parts; i++)
             {
-                const auto *part = reinterpret_cast<gpt::partition_t *>(
+                const auto *part = std::start_lifetime_as<gpt::partition_t>(
                     entries_buf->data() + hdr->partentrysize * i
                 );
                 if (part->is_unused())
