@@ -210,5 +210,10 @@ export namespace lib
         {
             return lib::copy_to_user(ptr, &val, sizeof(Type));
         }
+
+        uptr_or_addr add(std::size_t offset) const
+        {
+            return reinterpret_cast<std::uint8_t __user *>(ptr) + offset;
+        }
     };
 } // export namespace lib

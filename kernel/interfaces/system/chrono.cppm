@@ -12,7 +12,7 @@ export namespace chrono
     {
         realtime,
         monotonic,
-        boottime = 7
+        boottime = 7 // TODO
     };
 
     struct timer
@@ -49,6 +49,8 @@ export namespace chrono
     bool stall_ns(std::size_t ns);
 
     void register_rtc(rtc &rtc);
+
+    std::uint64_t offset_ns(type clockid);
 
     timespec now(type clockid);
     bool set_now(type clockid, const timespec &ts);

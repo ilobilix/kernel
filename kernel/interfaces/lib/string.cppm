@@ -81,12 +81,12 @@ export namespace lib
 
     constexpr std::string_view trim(std::string_view str)
     {
-        const auto check = [](char chr) {
-            return chr == ' ' || chr == '\t' || chr == '\n' || chr == '\r';
+        const auto check = [](char chr, bool null) {
+            return chr == ' ' || chr == '\t' || chr == '\n' || chr == '\r' || (null && chr == '\0');
         };
-        while (!str.empty() && check(str.front()))
+        while (!str.empty() && check(str.front(), false))
             str.remove_prefix(1);
-        while (!str.empty() && check(str.back()))
+        while (!str.empty() && check(str.back(), true))
             str.remove_suffix(1);
         return str;
     }

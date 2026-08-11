@@ -162,7 +162,10 @@ namespace fs::dev::tty
                 return { };
             }
 
-            lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            lib::expect<std::size_t> read(
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -170,7 +173,10 @@ namespace fs::dev::tty
                 return inst->read(std::move(file), buffer);
             }
 
-            lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, std::uint64_t offset, lib::maybe_uspan<std::byte> buffer) override
+            lib::expect<std::size_t> write(
+                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                lib::maybe_uspan<std::byte> buffer
+            ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
@@ -178,14 +184,19 @@ namespace fs::dev::tty
                 return inst->write(std::move(file), buffer);
             }
 
-            lib::expect<int> ioctl(std::shared_ptr<vfs::file_t> file, std::uint64_t request, lib::uptr_or_addr argp) override
+            lib::expect<int> ioctl(
+                std::shared_ptr<vfs::file_t> file, std::uint64_t request,
+                lib::uptr_or_addr argp
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);
                 return inst->ioctl(request, argp);
             }
 
-            lib::expect<std::uint16_t> poll(std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt) override
+            lib::expect<std::uint16_t> poll(
+                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+            ) override
             {
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);

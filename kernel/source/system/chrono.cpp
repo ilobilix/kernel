@@ -97,22 +97,23 @@ namespace chrono
         realtime_base_set.store(true, std::memory_order_release);
     }
 
+    std::uint64_t offset_ns(type clockid)
+    {
+        if (clockid != type::realtime)
+            return 0;
+
+        if (realtime_base_set.load(std::memory_order_acquire))
+            return realtime_base_ns.load(std::memory_order_relaxed);
+        return boot::time() * 1'000'000'000ul;
+    }
+
     // TODO: realtime is ~1 second behind
     timespec now(type clockid)
     {
         if (main == nullptr)
             return { };
 
-        if (clockid == type::monotonic || clockid == type::boottime)
-            return main->ns();
-
-        if (clockid != type::realtime)
-            return { };
-
-        if (realtime_base_set.load(std::memory_order_acquire))
-            return realtime_base_ns.load(std::memory_order_relaxed) + main->ns();
-
-        return boot::time() * 1'000'000'000ul + main->ns();
+        return main->ns() + offset_ns(clockid);
     }
 
     bool set_now(type clockid, const timespec &ts)

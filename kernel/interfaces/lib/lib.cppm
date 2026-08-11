@@ -19,6 +19,7 @@ export import :interval;
 export import :intrusive_list;
 export import :intrusive_ptr;
 export import :io;
+export import :ioctl;
 export import :kvargs;
 export import :list;
 export import :locker;

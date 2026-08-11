@@ -473,7 +473,6 @@ namespace output::vt
         return request_switch(index);
     }
 
-    //! TODO: TEMPORARY
     bool receive_input(std::span<std::byte> buffer)
     {
         const auto vt = instance_of(current.load(std::memory_order_acquire));

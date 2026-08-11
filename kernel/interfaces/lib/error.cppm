@@ -14,6 +14,8 @@ export namespace lib
     enum class err
     {
         todo = ENOSYS,
+        not_implemented = ENOSYS,
+
         already_exists = EEXIST,
         does_not_exist = ENODATA,
 
