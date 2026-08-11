@@ -293,7 +293,7 @@ namespace pci::msix
     }
 
     lib::expect<void> msix_domain::set_affinity(
-        irq::irq_data &data, const lib::bitmap &cpus, bool force
+        irq::irq_data &data, const lib::bitmap_view cpus, bool force
     )
     {
         if (!data.parent)

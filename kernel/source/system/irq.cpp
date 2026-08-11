@@ -371,7 +371,7 @@ namespace irq
             desc->leaf.dom->unmask(desc->leaf);
     }
 
-    lib::expect<void> set_affinity(handle_t handle, const lib::bitmap &cpus, bool force)
+    lib::expect<void> set_affinity(handle_t handle, const lib::bitmap_view cpus, bool force)
     {
         auto desc = lookup(handle);
         if (!desc)

@@ -275,7 +275,7 @@ namespace x86_64::idt
     }
 
     lib::expect<void> vector_domain::set_affinity(
-        irq::irq_data &data, const lib::bitmap &cpus, bool force
+        irq::irq_data &data, const lib::bitmap_view cpus, bool force
     )
     {
         lib::unused(force);

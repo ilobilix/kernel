@@ -46,7 +46,7 @@ namespace cpu
         std::size_t num,
         std::function_ref<bool (std::size_t i)> done,
         std::function_ref<std::size_t (std::size_t i)> target,
-        lib::bitmap &buffer, std::string_view name,
+        lib::bitmap_view buffer, std::string_view name,
         const wait_policy_t &policy
     )
     {

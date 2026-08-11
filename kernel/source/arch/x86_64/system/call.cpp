@@ -17,7 +17,7 @@ namespace cpu
         slot->set([](auto) { handle_ipi(); });
     }
 
-    void notify_mask(const lib::bitmap &mask)
+    void notify_mask(const lib::bitmap_view mask)
     {
         const auto self_idx = self().unsafe_get().idx;
         for (std::size_t i = 0; i < mask.length(); i++)

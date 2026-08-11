@@ -56,7 +56,7 @@ export namespace pci::msi
         void unmask(irq::irq_data &data) override;
 
         lib::expect<void> set_affinity(
-            irq::irq_data &data, const lib::bitmap &cpus, bool force
+            irq::irq_data &data, const lib::bitmap_view cpus, bool force
         ) override;
 
         std::size_t vec_count() const { return _nvec; }

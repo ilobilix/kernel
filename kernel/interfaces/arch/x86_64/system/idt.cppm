@@ -135,7 +135,7 @@ export namespace x86_64::idt
         void detach(irq::irq_data &data) override;
 
         lib::expect<void> set_affinity(
-            irq::irq_data &data, const lib::bitmap &cpus, bool force
+            irq::irq_data &data, const lib::bitmap_view cpus, bool force
         ) override;
 
         lib::expect<irq::msi_msg> compose_msi(irq::irq_data &data) override;

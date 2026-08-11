@@ -55,7 +55,7 @@ export namespace x86_64::apic::io
         void unmask(irq::irq_data &data) override;
 
         lib::expect<void> set_affinity(
-            irq::irq_data &data, const lib::bitmap &cpus, bool force
+            irq::irq_data &data, const lib::bitmap_view cpus, bool force
         ) override;
     };
 

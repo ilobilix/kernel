@@ -78,7 +78,7 @@ export namespace irq
 
         virtual void eoi(irq_data &data) { lib::unused(data); }
         virtual lib::expect<void> set_affinity(
-            irq_data &data, const lib::bitmap &cpus, bool force
+            irq_data &data, const lib::bitmap_view cpus, bool force
         )
         {
             if (parent && data.parent)
@@ -97,7 +97,7 @@ export namespace irq
 
     // shared by msi and and mis-x
     lib::expect<void> retarget(
-        domain &parent, irq_data &data, const lib::bitmap &cpus,
+        domain &parent, irq_data &data, const lib::bitmap_view cpus,
         bool force, std::string_view name, auto &&program
     )
     {
@@ -141,7 +141,7 @@ export namespace irq
     void mask(handle_t handle);
     void unmask(handle_t handle);
 
-    lib::expect<void> set_affinity(handle_t handle, const lib::bitmap &cpus, bool force = false);
+    lib::expect<void> set_affinity(handle_t handle, const lib::bitmap_view cpus, bool force = false);
 
     lib::expect<msi_msg> compose_msi(handle_t handle);
 
