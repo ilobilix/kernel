@@ -12,6 +12,7 @@ export import system.cpu.call;
 export import system.cpu.local;
 export import system.dev;
 export import system.dev.block;
+export import system.input;
 export import system.irq;
 export import system.memory;
 export import system.pci;
