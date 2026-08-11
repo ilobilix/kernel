@@ -763,7 +763,7 @@ namespace dev
 
         reflect_device_links(dev);
 
-        if (dev->bus == nullptr || dev->bus->drivers_autoprobe)
+        if (dev->bus != nullptr && dev->bus->drivers_autoprobe)
         {
             probe_device(dev);
 
