@@ -136,6 +136,8 @@ set(_ILOBILIX_DEFINES
     "FMT_BUILTIN_TYPES=0"
     "FMT_FULLY_FREESTANDING=1"
 
+    "offsetof=__builtin_offsetof"
+
     "__user=__attribute__((address_space(1)))"
     "__force=__attribute__((force))"
 )

@@ -144,8 +144,8 @@ namespace lib::detail
             using Other = storage<Type1, Lock>;
             static_assert(std::is_base_of_v<Type, Type1>);
             static_assert(alignof(Type) == alignof(Type1));
-            static_assert(__builtin_offsetof(buffer, _lock) == __builtin_offsetof(Other::buffer, _lock));
-            static_assert(__builtin_offsetof(buffer, _buffer) == __builtin_offsetof(Other::buffer, _buffer));
+            static_assert(offsetof(buffer, _lock) == offsetof(Other::buffer, _lock));
+            static_assert(offsetof(buffer, _buffer) == offsetof(Other::buffer, _buffer));
             return true;
         }
 

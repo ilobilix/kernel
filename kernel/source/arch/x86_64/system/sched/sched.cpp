@@ -296,8 +296,8 @@ namespace sched::arch
         regs->rip = action.handler;
         regs->rsp = frame_addr;
         regs->rdi = sig;
-        regs->rsi = frame_addr + __builtin_offsetof(sigframe_t, info);
-        regs->rdx = frame_addr + __builtin_offsetof(sigframe_t, uc);
+        regs->rsi = frame_addr + offsetof(sigframe_t, info);
+        regs->rdx = frame_addr + offsetof(sigframe_t, uc);
         regs->rax = 0;
         regs->rcx = 0;
         regs->r11 = 0;

@@ -225,8 +225,8 @@ export namespace sched
         };
     };
     static_assert(sizeof(user_siginfo_t) == 128);
-    static_assert(__builtin_offsetof(user_siginfo_t, code) == 8);
-    static_assert(__builtin_offsetof(user_siginfo_t, kill) == 16);
+    static_assert(offsetof(user_siginfo_t, code) == 8);
+    static_assert(offsetof(user_siginfo_t, kill) == 16);
 
     enum ss_flags
     {
