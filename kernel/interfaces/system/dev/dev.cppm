@@ -99,6 +99,12 @@ export namespace dev
         virtual ~bin_attribute_t() = default;
     };
 
+    struct attribute_group_t
+    {
+        std::string_view name;
+        std::span<attribute_t *const> attributes;
+    };
+
     class ktype_t
     {
         private:
@@ -118,6 +124,11 @@ export namespace dev
         }
 
         virtual std::span<bin_attribute_t *const> bin_attributes() const
+        {
+            return { };
+        }
+
+        virtual std::span<const attribute_group_t> groups() const
         {
             return { };
         }

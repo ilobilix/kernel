@@ -419,6 +419,28 @@ namespace fs::sysfs
                         dentry->children.lock()->insert(std::move(child));
                     }
 
+                    for (const auto &group : kobj->type.groups())
+                    {
+                        if (group.name.empty())
+                            continue;
+
+                        auto dir = std::make_shared<vfs::dentry_t>();
+                        dir->name = group.name;
+                        dir->inode = mkdir(kobj);
+                        dir->parent = dentry;
+
+                        for (auto attr : group.attributes)
+                        {
+                            auto child = std::make_shared<vfs::dentry_t>();
+                            child->name = attr->name;
+                            child->inode = mkattr(kobj, attr);
+                            child->parent = dir;
+                            dir->children.lock()->insert(std::move(child));
+                        }
+
+                        dentry->children.lock()->insert(std::move(dir));
+                    }
+
                     if (kobj->as_device() || kobj->type != dev::empty_ktype())
                     {
                         auto child = std::make_shared<vfs::dentry_t>();
