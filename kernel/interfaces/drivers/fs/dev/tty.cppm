@@ -455,6 +455,9 @@ export namespace fs::dev::tty
         bool output_append(const ktermios &termios, char chr);
         void output_flush();
 
+        void set_stopped(bool value);
+        bool maybe_readable();
+
         [[noreturn]]
         static void worker(default_ldisc *self);
 
@@ -561,6 +564,17 @@ export namespace fs::dev::tty
         virtual void break_ctl(bool on)
         {
             lib::unused(on);
+        }
+
+        // for tiocpkt
+        virtual void flush_notify(int queue)
+        {
+            lib::unused(queue);
+        }
+
+        virtual void flow_notify(bool stop)
+        {
+            lib::unused(stop);
         }
 
         // called by hardware

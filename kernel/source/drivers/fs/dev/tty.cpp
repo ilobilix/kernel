@@ -463,6 +463,27 @@ namespace fs::dev::tty
         return out_buffer.push(chr).first;
     }
 
+    bool default_ldisc::maybe_readable()
+    {
+        lib::bug_on(!inst);
+
+        if (inst->hung_up.load(std::memory_order_relaxed))
+            return true;
+
+        if (!raw_buffer.empty() || !inst->raw_buffer.empty())
+            return true;
+
+        auto in_locked = in_buffer.lock();
+        return in_locked->read_head != in_locked->read_tail;
+    }
+
+    void default_ldisc::set_stopped(bool value)
+    {
+        lib::bug_on(!inst);
+        if (stopped.exchange(value, std::memory_order_relaxed) != value)
+            inst->flow_notify(value);
+    }
+
     void default_ldisc::output_flush()
     {
         if (stopped.load(std::memory_order_relaxed))
@@ -653,18 +674,18 @@ namespace fs::dev::tty
             {
                 if (chr == termios.c_cc[vstop])
                 {
-                    self->stopped.store(true, std::memory_order_relaxed);
+                    self->set_stopped(true);
                     continue;
                 }
                 else if (chr == termios.c_cc[vstart])
                 {
-                    self->stopped.store(false, std::memory_order_relaxed);
+                    self->set_stopped(false);
                     continue;
                 }
             }
 
-            if ((termios.c_lflag & ixany) && self->stopped.load(std::memory_order_relaxed))
-                self->stopped.store(false, std::memory_order_relaxed);
+            if ((termios.c_iflag & ixany) && self->stopped.load(std::memory_order_relaxed))
+                self->set_stopped(false);
 
             if (termios.c_iflag & istrip)
                 chr &= 0x7F;
@@ -1361,10 +1382,10 @@ namespace fs::dev::tty
                 switch (argp.value())
                 {
                     case tcooff:
-                        stopped.store(true, std::memory_order_relaxed);
+                        set_stopped(true);
                         break;
                     case tcoon:
-                        stopped.store(false, std::memory_order_relaxed);
+                        set_stopped(false);
                         output_flush();
                         out_wq.wake_all();
                         break;
@@ -1510,6 +1531,7 @@ namespace fs::dev::tty
                     default:
                         return std::unexpected { lib::err::invalid_flags };
                 }
+                inst->flush_notify(argp.value());
                 return 0;
             }
             case tiocglcktrmios:

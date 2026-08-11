@@ -22,7 +22,20 @@ namespace fs::dev::pty
         constexpr std::uint64_t tiocgptn = 0x80045430;
         constexpr std::uint64_t tiocsptlck = 0x40045431;
         constexpr std::uint64_t tiocgptlck = 0x80045439;
+        constexpr std::uint64_t tiocpkt = 0x5420;
         constexpr std::uint64_t tiocgptpeer = 0x5441;
+
+        enum pkt : std::uint8_t
+        {
+            pkt_data = 0,
+            pkt_flushread = 1,
+            pkt_flushwrite = 2,
+            pkt_stop = 4,
+            pkt_start = 8,
+            pkt_nostop = 16,
+            pkt_dostop = 32,
+            pkt_ioctl = 64
+        };
 
         constexpr mode_t slave_mode = stat::s_ifchr | 0620;
         constexpr tty::ktermios slave_termios = tty::ktermios::standard();
@@ -94,8 +107,12 @@ namespace fs::dev::pty
 
     struct pty_instance_base : tty::instance
     {
+        // TODO: stored in two places
+        std::shared_ptr<tty::default_ldisc> ld;
+
         pty_instance_base(tty::driver *drv, std::uint32_t pty_minor)
-            : instance { drv, pty_minor, std::make_shared<tty::default_ldisc>(this) } { }
+            : instance { drv, pty_minor, std::make_shared<tty::default_ldisc>(this) },
+              ld { std::static_pointer_cast<tty::default_ldisc>(ldisc.lock().value()) } { }
 
         std::size_t transmit(std::span<std::byte> buffer) override
         {
@@ -129,7 +146,14 @@ namespace fs::dev::pty
     {
         using pty_instance_base::pty_instance_base;
 
+        std::atomic_bool packet = false;
+
+        lib::expect<std::size_t> read(
+            std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer
+        ) override;
+
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
+        lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt) override;
     };
 
     struct pts_instance : pty_instance_base
@@ -137,6 +161,13 @@ namespace fs::dev::pty
         using pty_instance_base::pty_instance_base;
 
         ~pts_instance() { allocator.lock()->minor_used[minor] = false; }
+
+        std::atomic<std::uint8_t> pktstatus = 0;
+        void raise(std::uint8_t set, std::uint8_t clear = 0);
+
+        void flush_notify(int queue) override;
+        void flow_notify(bool stop) override;
+        void set_termios(tty::ktermios &current, const tty::ktermios &old) override;
 
         lib::expect<void> permit_open(std::shared_ptr<vfs::file_t>) override;
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
@@ -169,6 +200,50 @@ namespace fs::dev::pty
         } { }
     };
 
+    void pts_instance::raise(std::uint8_t set, std::uint8_t clear)
+    {
+        const auto master = std::static_pointer_cast<ptm_instance>(link.lock());
+        if (!master || !master->packet.load(std::memory_order_acquire))
+            return;
+
+        auto expected = pktstatus.load(std::memory_order_relaxed);
+        while (!pktstatus.compare_exchange_weak(
+            expected, static_cast<std::uint8_t>((expected & ~clear) | set),
+            std::memory_order_acq_rel, std::memory_order_relaxed)) { }
+
+        master->ld->in_wq.wake_all();
+    }
+
+    void pts_instance::flush_notify(int queue)
+    {
+        if (queue == tty::tciflush)
+            return;
+        raise(pkt_flushread | pkt_flushwrite);
+    }
+
+    void pts_instance::flow_notify(bool stop)
+    {
+        if (stop)
+            raise(pkt_stop, pkt_start);
+        else
+            raise(pkt_start, pkt_stop);
+    }
+
+    void pts_instance::set_termios(tty::ktermios &current, const tty::ktermios &old)
+    {
+        using enum tty::ktermios::iflag;
+        using enum tty::ktermios::cc;
+
+        const auto flow = [](const tty::ktermios &tios) {
+            return (tios.c_iflag & ixon) != 0 &&
+                tios.c_cc[vstop] == 0x13 && tios.c_cc[vstart] == 0x11;
+        };
+
+        if (flow(current) == flow(old))
+            return;
+        raise(flow(current) ? pkt_dostop : pkt_nostop, pkt_dostop | pkt_nostop);
+    }
+
     lib::expect<void> pts_instance::permit_open(std::shared_ptr<vfs::file_t>)
     {
         const auto pty_pair = find_pair(minor);
@@ -181,10 +256,84 @@ namespace fs::dev::pty
         return { };
     }
 
+    lib::expect<std::size_t> ptm_instance::read(
+        std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer
+    )
+    {
+        if (!packet.load(std::memory_order_acquire))
+            return tty::instance::read(std::move(file), buffer);
+
+        if (buffer.size() == 0)
+            return 0uz;
+
+        const auto slave = std::static_pointer_cast<pts_instance>(link.lock());
+        const bool nonblock = (file->flags & vfs::o_nonblock) != 0;
+
+        const auto put = [&](std::uint8_t value) {
+            const auto byte = static_cast<std::byte>(value);
+            return buffer.subspan(0, 1).copy_from(std::span { &byte, 1 });
+        };
+
+        while (true)
+        {
+            const auto gen = ld->in_wq.snapshot_gen();
+
+            if (slave)
+            {
+                if (const auto status = slave->pktstatus.exchange(0, std::memory_order_acq_rel))
+                {
+                    if (!put(status))
+                        return std::unexpected { lib::err::invalid_address };
+                    return 1uz;
+                }
+            }
+
+            if (ld->maybe_readable())
+                break;
+
+            if (nonblock)
+                return std::unexpected { lib::err::try_again };
+
+            const auto res = ld->in_wq.wait_prepared(gen);
+            if (res.interrupted || res.killed)
+                return std::unexpected { lib::err::interrupted };
+        }
+
+        if (buffer.size() == 1)
+        {
+            if (!put(pkt_data))
+                return std::unexpected { lib::err::invalid_address };
+            return 1uz;
+        }
+
+        const auto ret = tty::instance::read(std::move(file), buffer.subspan(1));
+        if (!ret || *ret == 0)
+            return ret;
+
+        if (!put(pkt_data))
+            return std::unexpected { lib::err::invalid_address };
+        return *ret + 1;
+    }
+
     lib::expect<int> ptm_instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
         switch (request)
         {
+            case tiocpkt:
+            {
+                int value = 0;
+                if (!argp.read(value))
+                    return std::unexpected { lib::err::invalid_address };
+
+                if (value == 0)
+                    packet.store(false, std::memory_order_release);
+                else if (!packet.exchange(true, std::memory_order_acq_rel))
+                {
+                    if (const auto slave = std::static_pointer_cast<pts_instance>(link.lock()))
+                        slave->pktstatus.store(0, std::memory_order_release);
+                }
+                return 0;
+            }
             case tiocgptn:
             {
                 const auto value = static_cast<unsigned int>(minor);
@@ -271,6 +420,19 @@ namespace fs::dev::pty
             default:
                 return tty::instance::ioctl(request, argp);
         }
+    }
+
+    lib::expect<std::uint16_t> ptm_instance::poll(vfs::poll_table_t *pt)
+    {
+        auto events = tty::instance::poll(pt);
+        if (!events || !packet.load(std::memory_order_acquire))
+            return events;
+
+        const auto slave = std::static_pointer_cast<pts_instance>(link.lock());
+        if (slave && slave->pktstatus.load(std::memory_order_acquire) != 0)
+            *events |= vfs::pollin | vfs::pollrdnorm;
+
+        return events;
     }
 
     lib::expect<int> pts_instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
