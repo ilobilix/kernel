@@ -7,7 +7,7 @@ import system.memory.phys;
 namespace nvme
 {
     queue_t::queue_t(std::uint16_t depth, arch::mem_space sq_db, arch::mem_space cq_db)
-        : _cids { static_cast<std::uint16_t>(depth - 1) }, _sq_db { sq_db }, _cq_db { cq_db },
+        : _cids { static_cast<std::size_t>(depth - 1) }, _sq_db { sq_db }, _cq_db { cq_db },
           _depth { depth }, _sq_tail { 0 }, _cq_head { 0 }, _cq_phase { true }
     {
         _cmds.resize(depth);
@@ -42,7 +42,7 @@ namespace nvme
 
             std::move(_cmds[slot])->complete(*cqe);
 
-            _cids.free(slot);
+            lib::bug_on(!_cids.atomic_view().set(slot, false, std::memory_order_release));
             freed = true;
 
             if (++_cq_head == _depth)
@@ -67,7 +67,7 @@ namespace nvme
         while (true)
         {
             const auto gen = _slot_free.snapshot_gen();
-            if (const auto res = _cids.alloc())
+            if (const auto res = _cids.atomic_view().allocate(0, std::memory_order_acquire))
             {
                 slot = *res;
                 break;

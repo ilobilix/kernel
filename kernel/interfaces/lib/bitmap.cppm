@@ -8,94 +8,222 @@ import std;
 
 export namespace lib
 {
-    class bitmap_view
+    template<bool Atomic, bool Const = false, typename Word = std::uint8_t>
+        requires (std::unsigned_integral<Word> && !(Atomic && Const))
+    class bitmap_view_base
     {
+        template<bool OtherAtomic, bool OtherConst, typename OtherWord>
+            requires (std::unsigned_integral<OtherWord> && !(OtherAtomic && OtherConst))
+        friend class bitmap_view_base;
+
         private:
-        std::uint8_t *_data;
+        static constexpr std::size_t word_bits = sizeof(Word) * 8;
+        using word_t = std::conditional_t<Const, const Word, Word>;
+
+        word_t *_data;
         std::size_t _count;
+
+        static constexpr Word get_bit(std::size_t index)
+        {
+            return static_cast<Word>(1) << (index % word_bits);
+        }
+
+        constexpr Word valid_bits(std::size_t idx) const
+        {
+            const auto rest = _count % word_bits;
+            if (rest == 0 || idx + 1 != size_words())
+                return ~static_cast<Word>(0);
+            return (static_cast<Word>(1) << rest) - 1;
+        }
+
+        constexpr Word load(std::size_t idx, std::memory_order order) const
+        {
+            if constexpr (Atomic)
+            {
+                if (!std::is_constant_evaluated())
+                    return std::atomic_ref { _data[idx] } .load(order);
+            }
+            return _data[idx];
+        }
+
+        constexpr void store(std::size_t idx, Word value, std::memory_order order)
+            requires (!Const)
+        {
+            if constexpr (Atomic)
+            {
+                if (!std::is_constant_evaluated())
+                {
+                    std::atomic_ref { _data[idx] } .store(value, order);
+                    return;
+                }
+            }
+            _data[idx] = value;
+        }
 
         public:
         struct bit;
 
-        constexpr bitmap_view() : _data { nullptr }, _count { 0 } { }
-        constexpr bitmap_view(std::uint8_t *data, std::size_t count)
+        constexpr bitmap_view_base() : _data { nullptr }, _count { 0 } { }
+        constexpr bitmap_view_base(word_t *data, std::size_t count)
             : _data { data }, _count { count } { }
 
-        constexpr void clear(int ch = 0)
+        template<bool OtherConst> requires (Const && !OtherConst)
+        constexpr bitmap_view_base(const bitmap_view_base<Atomic, OtherConst, Word> &other)
+            : _data { other._data }, _count { other._count } { }
+
+        template<bool OtherAtomic> requires (OtherAtomic != Atomic)
+        constexpr explicit bitmap_view_base(const bitmap_view_base<OtherAtomic, Const, Word> &other)
+            : _data { other._data }, _count { other._count } { }
+
+        constexpr void clear(int ch = 0, std::memory_order order = std::memory_order_seq_cst)
+            requires (!Const)
         {
             lib::bug_on(_data == nullptr);
-            std::memset(_data, ch, div_roundup(_count, 8u));
+
+            if constexpr (!Atomic)
+            {
+                if (!std::is_constant_evaluated())
+                {
+                    std::memset(_data, ch, size_bytes());
+                    return;
+                }
+            }
+
+            Word fill = 0;
+            for (std::size_t i = 0; i < sizeof(Word); i++)
+                fill |= static_cast<Word>(ch) << (i * 8);
+
+            for (std::size_t i = 0; i < size_words(); i++)
+                store(i, fill, order);
         }
 
-        constexpr bool get(std::size_t index) const
+        constexpr bool get(std::size_t index, std::memory_order order = std::memory_order_seq_cst) const
         {
             lib::bug_on(_data == nullptr);
-            return _data[index / 8] & (1 << (index % 8));
+            return load(index / word_bits, order) & get_bit(index);
         }
 
-        constexpr bool set(std::size_t index, bool value)
+        constexpr bool set(std::size_t index, bool value, std::memory_order order = std::memory_order_seq_cst)
+            requires (!Const)
         {
             lib::bug_on(_data == nullptr);
-            const auto ret = get(index);
 
-            if (value == true)
-                _data[index / 8] |= (1 << (index % 8));
-            else
-                _data[index / 8] &= ~(1 << (index % 8));
+            const auto idx = index / word_bits;
+            const auto mask = get_bit(index);
 
-            return ret;
+            if constexpr (Atomic)
+            {
+                if (!std::is_constant_evaluated())
+                {
+                    std::atomic_ref ref { _data[idx] };
+                    const auto old = value
+                        ? ref.fetch_or(mask, order)
+                        : ref.fetch_and(static_cast<Word>(~mask), order);
+                    return old & mask;
+                }
+            }
+
+            const auto old = _data[idx];
+            _data[idx] = value ? old | mask : old & ~mask;
+            return old & mask;
         }
 
-        constexpr bit operator[](std::size_t index);
+        bool flip(std::size_t index, std::memory_order order = std::memory_order_seq_cst)
+            requires (Atomic)
+        {
+            lib::bug_on(_data == nullptr);
+
+            const auto mask = get_bit(index);
+            std::atomic_ref ref { _data[index / word_bits] };
+            return ref.fetch_xor(mask, order) & mask;
+        }
+
+        std::optional<std::size_t> allocate(
+            std::size_t start = 0, std::memory_order order = std::memory_order_seq_cst
+        ) requires (Atomic)
+        {
+            if (start >= _count)
+                return std::nullopt;
+
+            lib::bug_on(_data == nullptr);
+            const auto first = start / word_bits;
+
+            for (std::size_t idx = first; idx < size_words(); idx++)
+            {
+                const Word before = idx == first
+                    ? (static_cast<Word>(1) << (start % word_bits)) - 1 : 0;
+                const Word usable = valid_bits(idx) & ~before;
+
+                std::atomic_ref ref { _data[idx] };
+                auto cur = ref.load(std::memory_order_relaxed);
+
+                while (const Word free = ~cur & usable)
+                {
+                    const auto pos = std::countr_zero(free);
+                    const Word mask = static_cast<Word>(1) << pos;
+
+                    const auto old = ref.fetch_or(mask, order);
+                    if ((old & mask) == 0)
+                        return idx * word_bits + pos;
+
+                    cur = old | mask;
+                }
+            }
+            return std::nullopt;
+        }
+
+        constexpr bit operator[](std::size_t index) requires (!Const);
         constexpr bool operator[](std::size_t index) const { return get(index); }
 
         constexpr std::size_t length() const { return _count; }
         constexpr std::size_t size() const { return _count; }
-        constexpr std::size_t size_bytes() const { return div_roundup(_count, 8u); }
 
-        constexpr bool empty() const
+        constexpr std::size_t size_words() const { return div_roundup(_count, word_bits); }
+        constexpr std::size_t size_bytes() const { return size_words() * sizeof(Word); }
+
+        constexpr bool empty(std::memory_order order = std::memory_order_relaxed) const
         {
-            for (std::size_t i = 0; i < div_roundup(_count, 8u); i++)
+            const auto words = size_words();
+            if (words == 0)
+                return true;
+
+            lib::bug_on(_data == nullptr);
+
+            for (std::size_t i = 0; i < words; i++)
             {
-                if (_data[i] != 0)
+                if (load(i, order) & valid_bits(i))
                     return false;
             }
             return true;
         }
 
-        constexpr std::size_t count() const
+        constexpr std::size_t count(std::memory_order order = std::memory_order_relaxed) const
         {
-            lib::bug_on(_data == nullptr);
-
-            const auto bytes = div_roundup(_count, 8u);
-            if (bytes == 0)
+            const auto words = size_words();
+            if (words == 0)
                 return 0;
 
-            std::size_t total = 0;
-            for (std::size_t i = 0; i + 1 < bytes; i++)
-                total += std::popcount(_data[i]);
-
-            const auto rest = _count % 8;
-            const std::uint8_t mask = rest == 0 ? 0xFF : (1u << rest) - 1;
-            return total + std::popcount(static_cast<std::uint8_t>(_data[bytes - 1] & mask));
-        }
-
-        constexpr std::uint8_t *data()
-        {
             lib::bug_on(_data == nullptr);
-            return _data;
+
+            std::size_t total = 0;
+            for (std::size_t i = 0; i < words; i++)
+                total += std::popcount(static_cast<Word>(load(i, order) & valid_bits(i)));
+
+            return total;
         }
 
-        constexpr const std::uint8_t *data() const
+        constexpr word_t *data() const
         {
             lib::bug_on(_data == nullptr);
             return _data;
         }
     };
 
-    struct bitmap_view::bit
+    template<bool Atomic, bool Const, typename Word>
+        requires (std::unsigned_integral<Word> && !(Atomic && Const))
+    struct bitmap_view_base<Atomic, Const, Word>::bit
     {
-        bitmap_view view;
+        bitmap_view_base<Atomic, Const, Word> view;
         std::size_t index;
 
         constexpr bit &operator=(bool value)
@@ -107,21 +235,43 @@ export namespace lib
         constexpr operator bool() const { return view.get(index); }
     };
 
-    constexpr bitmap_view::bit bitmap_view::operator[](std::size_t index)
+    template<bool Atomic, bool Const, typename Word>
+        requires (std::unsigned_integral<Word> && !(Atomic && Const))
+    constexpr auto bitmap_view_base<Atomic, Const, Word>::operator[](std::size_t index)
+        -> bit requires (!Const)
     {
         lib::bug_on(_data == nullptr);
-        return bit { *this, index };
+        return { *this, index };
     }
 
-    class bitmap
+    template<typename Word = std::uint8_t>
+    using word_bitmap_view = bitmap_view_base<false, false, Word>;
+    template<typename Word = std::uint8_t>
+    using const_word_bitmap_view = bitmap_view_base<false, true, Word>;
+    template<typename Word = std::uint8_t>
+    using atomic_word_bitmap_view = bitmap_view_base<true, false, Word>;
+
+    using bitmap_view = word_bitmap_view<>;
+    using const_bitmap_view = const_word_bitmap_view<>;
+    using atomic_bitmap_view = atomic_word_bitmap_view<>;
+
+    template<typename Word = std::uint8_t>
+        requires std::unsigned_integral<Word>
+    class basic_bitmap
     {
         private:
-        std::uint8_t *_data;
+        static constexpr std::size_t word_bits = sizeof(Word) * 8;
+
+        Word *_data;
         std::size_t _count;
         bool _allocated;
 
         public:
-        friend constexpr void swap(bitmap &lhs, bitmap &rhs)
+        using view_t = word_bitmap_view<Word>;
+        using const_view_t = const_word_bitmap_view<Word>;
+        using atomic_view_t = atomic_word_bitmap_view<Word>;
+
+        friend constexpr void swap(basic_bitmap &lhs, basic_bitmap &rhs)
         {
             using std::swap;
             swap(lhs._data, rhs._data);
@@ -129,51 +279,63 @@ export namespace lib
             swap(lhs._allocated, rhs._allocated);
         }
 
-        constexpr bitmap() : _data { nullptr }, _count { 0 }, _allocated { false } { }
-        constexpr bitmap(std::uint8_t *data, std::size_t count)
+        constexpr basic_bitmap()
+            : _data { nullptr }, _count { 0 }, _allocated { false } { }
+        constexpr basic_bitmap(Word *data, std::size_t count)
             : _data { data }, _count { count }, _allocated { false } { }
 
-        bitmap(std::size_t count)
-            : _data { new std::uint8_t[div_roundup(count, 8u)]() },
+        basic_bitmap(std::size_t count)
+            : _data { new Word[div_roundup(count, word_bits)] { } },
               _count { count }, _allocated { true } { }
 
-        bitmap(const bitmap &other) : bitmap { other._count }
+        basic_bitmap(const basic_bitmap &other) : basic_bitmap { other._count }
         {
             std::memcpy(_data, other._data, size_bytes());
         }
 
-        bitmap &operator=(const bitmap &other)
+        basic_bitmap &operator=(const basic_bitmap &other)
         {
             if (this != &other)
             {
-                bitmap copy { other };
+                basic_bitmap copy { other };
                 swap(*this, copy);
             }
             return *this;
         }
 
-        constexpr bitmap(bitmap &&other) : bitmap { }
+        constexpr basic_bitmap(basic_bitmap &&other) : basic_bitmap { }
         {
             swap(*this, other);
         }
 
-        constexpr bitmap &operator=(bitmap &&other)
+        constexpr basic_bitmap &operator=(basic_bitmap &&other)
         {
             if (this != &other)
                 swap(*this, other);
             return *this;
         }
 
-        constexpr ~bitmap()
+        constexpr ~basic_bitmap()
         {
             if (_allocated)
                 delete[] _data;
         }
 
-        constexpr operator bitmap_view() const { return view(); }
-        constexpr bitmap_view view() const { return { _data, _count }; }
+        template<typename Self>
+        constexpr auto view(this Self &self)
+        {
+            if constexpr (std::is_const_v<Self>)
+                return const_view_t { self._data, self._count };
+            else
+                return view_t { self._data, self._count };
+        }
 
-        constexpr void initialise(std::uint8_t *data, std::size_t count)
+        constexpr operator view_t() { return view(); }
+        constexpr operator const_view_t() const { return view(); }
+
+        constexpr atomic_view_t atomic_view() { return { _data, _count }; }
+
+        constexpr void initialise(Word *data, std::size_t count)
         {
             lib::bug_on(_data != nullptr);
             _data = data;
@@ -183,7 +345,7 @@ export namespace lib
         void initialise(std::size_t count)
         {
             lib::bug_on(_data != nullptr);
-            _data = new std::uint8_t[div_roundup(count, 8u)]();
+            _data = new Word[div_roundup(count, word_bits)] { };
             _count = count;
             _allocated = true;
         }
@@ -195,26 +357,42 @@ export namespace lib
 
         constexpr std::size_t length() const { return _count; }
         constexpr std::size_t size() const { return _count; }
-        constexpr std::size_t size_bytes() const { return div_roundup(_count, 8u); }
+        constexpr std::size_t size_words() const { return div_roundup(_count, word_bits); }
+        constexpr std::size_t size_bytes() const { return size_words() * sizeof(Word); }
         constexpr bool empty() const { return view().empty(); }
+        constexpr std::size_t count() const { return view().count(); }
 
-        constexpr std::uint8_t *data() { return view().data(); }
-        constexpr const std::uint8_t *data() const { return view().data(); }
+        constexpr auto data(this auto &self) { return self.view().data(); }
     };
 
-    template<std::size_t NBits>  requires (NBits != 0)
+    using bitmap = basic_bitmap<>;
+
+    template<std::size_t NBits, typename Word = std::uint8_t>
+        requires (NBits != 0 && std::unsigned_integral<Word>)
     class static_bitmap
     {
         private:
-        std::uint8_t _storage[div_roundup(NBits, 8u)] { };
+        static constexpr std::size_t word_bits = sizeof(Word) * 8;
+        Word _storage[div_roundup(NBits, word_bits)] { };
 
         public:
-        constexpr operator bitmap_view() const { return view(); }
+        using view_t = word_bitmap_view<Word>;
+        using const_view_t = const_word_bitmap_view<Word>;
+        using atomic_view_t = atomic_word_bitmap_view<Word>;
 
-        constexpr bitmap_view view() const
+        template<typename Self>
+        constexpr auto view(this Self &self)
         {
-            return { const_cast<std::uint8_t *>(_storage), NBits };
+            if constexpr (std::is_const_v<Self>)
+                return const_view_t { self._storage, NBits };
+            else
+                return view_t { self._storage, NBits };
         }
+
+        constexpr operator view_t() { return view(); }
+        constexpr operator const_view_t() const { return view(); }
+
+        constexpr atomic_view_t atomic_view() { return { _storage, NBits }; }
 
         constexpr void clear(int ch = 0) { view().clear(ch); }
         constexpr bool get(std::size_t index) const { return view().get(index); }
@@ -223,10 +401,11 @@ export namespace lib
 
         constexpr std::size_t length() const { return NBits; }
         constexpr std::size_t size() const { return NBits; }
+        constexpr std::size_t size_words() const { return std::size(_storage); }
         constexpr std::size_t size_bytes() const { return sizeof(_storage); }
         constexpr bool empty() const { return view().empty(); }
+        constexpr std::size_t count() const { return view().count(); }
 
-        constexpr std::uint8_t *data() { return _storage; }
-        constexpr const std::uint8_t *data() const { return _storage; }
+        constexpr auto data(this auto &self) { return self._storage; }
     };
 } // export namespace lib
