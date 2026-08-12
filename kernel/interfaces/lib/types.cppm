@@ -94,6 +94,24 @@ export namespace lib
 
     template<typename Type>
     inline constexpr bool has_address_space_v = has_address_space<Type>::value;
+
+    template<typename Type, typename Pred>
+    std::size_t erase_if(std::vector<Type> &vec, Pred pred)
+    {
+        const auto removed = std::ranges::remove_if(vec, pred);
+        const std::size_t count = std::ranges::distance(removed);
+        vec.erase(removed.begin(), removed.end());
+        return count;
+    }
+
+    template<typename Type>
+    std::size_t erase(std::vector<Type> &vec, const Type &val)
+    {
+        const auto removed = std::ranges::remove(vec, val);
+        const std::size_t count = std::ranges::distance(removed);
+        vec.erase(removed.begin(), removed.end());
+        return count;
+    }
 } // export namespace lib
 
 export
