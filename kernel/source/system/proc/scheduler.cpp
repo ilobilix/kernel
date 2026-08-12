@@ -966,8 +966,6 @@ namespace sched
 
     [[noreturn]] void thread_exit(int exit_code)
     {
-        preempt_disable();
-
         auto thread = current_thread();
         auto proc = thread->proc.get();
 
@@ -1098,6 +1096,7 @@ namespace sched
             }
         }
 
+        preempt_disable();
         thread->state.store(thread_state::dead, std::memory_order_release);
         if (self_ptr)
             push_dead(std::move(self_ptr));
@@ -2034,11 +2033,6 @@ namespace sched
 
             add_cputime(process, old_thread);
 
-            old_thread->state.store(thread_state::dead, std::memory_order_release);
-            old_thread->saved_vmspace = std::move(old_vmspace);
-            if (old_ptr)
-                push_dead(std::move(old_ptr));
-
             if (process->fdt.use_count() > 1)
                 process->fdt = process->fdt->clone();
             process->fdt->close_on_exec();
@@ -2064,6 +2058,11 @@ namespace sched
                 process->vfork_pending = false;
                 parent->vfork_done.wake_all();
             }
+
+            old_thread->state.store(thread_state::dead, std::memory_order_release);
+            old_thread->saved_vmspace = std::move(old_vmspace);
+            if (old_ptr)
+                push_dead(std::move(old_ptr));
 
             sched::enqueue_new(new_thread.get());
         }
