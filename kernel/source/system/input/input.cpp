@@ -300,35 +300,48 @@ namespace input
         return { };
     }
 
-    std::optional<absinfo_t> device_t::get_abs(std::uint16_t axis) const
+    std::optional<absinfo_t> device_t::get_abs_locked(
+        const locked_event_t &event, std::uint16_t axis
+    ) const
     {
         if (axis >= abs_cnt)
             return std::nullopt;
-
-        const auto event = _event.lock();
         if (!event->absinfo)
             return std::nullopt;
         return (*event->absinfo)[axis];
     }
 
-    std::size_t device_t::mt_slots() const
+    std::optional<absinfo_t> device_t::get_abs(std::uint16_t axis) const
     {
         const auto event = _event.lock();
+        return get_abs_locked(event, axis);
+    }
+
+    std::size_t device_t::mt_slots_locked(const locked_event_t &event) const
+    {
         return event->mt ? event->mt->size() : 0;
     }
 
-    std::size_t device_t::mt_values(std::uint16_t axis, std::span<std::int32_t> into) const
+    std::size_t device_t::mt_slots() const
+    {
+        const auto event = _event.lock();
+        return mt_slots_locked(event);
+    }
+
+    std::size_t device_t::mt_values(
+        std::uint16_t axis, std::span<std::int32_t> into, std::size_t first
+    ) const
     {
         if (!is_mt_value(axis))
             return 0;
 
         const auto event = _event.lock();
-        if (!event->mt)
+        if (!event->mt || first >= event->mt->size())
             return 0;
 
-        const auto count = std::min(event->mt->size(), into.size());
+        const auto count = std::min(event->mt->size() - first, into.size());
         for (std::size_t i = 0; i < count; i++)
-            into[i] = event->mt->value(i, axis);
+            into[i] = event->mt->value(first + i, axis);
         return count;
     }
 
@@ -443,12 +456,14 @@ namespace input
 
     std::size_t device_t::calc_ev_per_packet() const
     {
-        std::size_t slots = mt_slots();
+        const auto event = _event.lock();
+        std::size_t slots = mt_slots_locked(event);
+
         if (slots == 0)
         {
             if (supported.get(ev_abs, abs_mt_tracking_id))
             {
-                if (const auto info = get_abs(abs_mt_tracking_id))
+                if (const auto info = get_abs_locked(event, abs_mt_tracking_id))
                 {
                     slots = std::clamp<std::int64_t>(
                         static_cast<std::int64_t>(info->maximum) - info->minimum + 1, 2, 32

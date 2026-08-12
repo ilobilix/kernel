@@ -186,16 +186,17 @@ export namespace input
 
         timeval time(chrono::type clockid) const
         {
-            timespec ts;
-            switch (clockid)
-            {
-                case chrono::realtime:
-                    ts = mono.to_ns() + real_off;
-                case chrono::boottime:
-                    ts = mono.to_ns() + boot_off;
-                default:
-                    ts = mono;
-            }
+            const auto ts = [this, clockid] -> timespec {
+                switch (clockid)
+                {
+                    case chrono::realtime:
+                        return mono.to_ns() + real_off;
+                    case chrono::boottime:
+                        return mono.to_ns() + boot_off;
+                    default:
+                        return mono;
+                }
+            } ();
             return { ts.tv_sec, static_cast<suseconds_t>(ts.tv_nsec / 1'000) };
         }
     };
@@ -283,6 +284,11 @@ export namespace input
 
         void alloc_absinfo();
 
+        std::size_t mt_slots_locked(const locked_event_t &event) const;
+        std::optional<absinfo_t> get_abs_locked(
+            const locked_event_t &event, std::uint16_t axis
+        ) const;
+
         // called with _lock acquired
         void detach_handle(handle_t *handle);
         void unlink_handle(handle_t *handle);
@@ -340,7 +346,9 @@ export namespace input
         std::optional<absinfo_t> get_abs(std::uint16_t axis) const;
 
         std::size_t mt_slots() const;
-        std::size_t mt_values(std::uint16_t axis, std::span<std::int32_t> into) const;
+        std::size_t mt_values(
+            std::uint16_t axis, std::span<std::int32_t> into, std::size_t first = 0
+        ) const;
 
         std::array<std::int32_t, rep_cnt> get_repeat() const;
 
