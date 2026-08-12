@@ -2,7 +2,7 @@
 
 // the entire input subsystem is based on linux
 
-// TODO: autorepeat, force feedback, inhibit
+// TODO: force feedback
 
 export module system.input;
 
@@ -232,11 +232,39 @@ export namespace input
         private:
         mutable sched::mutex_t _lock;
 
+        struct repeat_timer_t : sched::timer_t
+        {
+            std::weak_ptr<device_t> dev;
+
+            void expired(std::uint64_t missed) override;
+            void notify() override;
+        };
+
+        enum class repeat_action : std::uint8_t
+        {
+            none,
+            start,
+            next,
+            stop
+        };
+
+        struct repeat_req_t
+        {
+            repeat_action action = repeat_action::none;
+            std::uint64_t seq = 0;
+            std::uint32_t delay_ms = 0;
+        };
+
         // TODO: move supported and repeat in here
         struct event_t
         {
             std::vector<value_t> vals;
             std::size_t nvals = 0;
+
+            std::uint16_t repeat_key = key_reserved;
+            bool repeat_active = false;
+            repeat_action repeat_pending = repeat_action::none;
+            std::uint64_t repeat_seq = 0;
 
             codeset_t state;
             bool emit_slot = false;
@@ -250,6 +278,12 @@ export namespace input
         };
         mutable lib::locker<event_t, lib::spinlock_irq> _event;
         using locked_event_t = decltype(_event.lock());
+
+        std::shared_ptr<repeat_timer_t> _repeat;
+        bool _softrepeat;
+
+        lib::spinlock _repeat_lock;
+        std::uint64_t _repeat_applied;
 
         rcu::owner<rcu::box<std::vector<handle_t *>>> _handles;
         rcu::pointer<handle_t> _grab;
@@ -281,6 +315,7 @@ export namespace input
         );
 
         void release_keys(locked_event_t &event);
+        void release_mt_slots(locked_event_t &event);
 
         void alloc_absinfo();
 
@@ -288,6 +323,13 @@ export namespace input
         std::optional<absinfo_t> get_abs_locked(
             const locked_event_t &event, std::uint16_t axis
         ) const;
+
+        void start_repeat(locked_event_t &event, std::uint16_t code);
+        void stop_repeat(locked_event_t &event);
+
+        repeat_req_t take_repeat(locked_event_t &event);
+        void apply_repeat(const repeat_req_t &req);
+        void repeat_tick();
 
         // called with _lock acquired
         void detach_handle(handle_t *handle);
@@ -311,7 +353,6 @@ export namespace input
         lib::static_bitmap<ev_cnt> events;
         codeset_t supported;
 
-        // TODO: repeat on key press
         // autorepeat delay and period in ms
         std::array<std::int32_t, rep_cnt> repeat;
 
@@ -377,8 +418,7 @@ export namespace input
         void snapshot(std::uint16_t type, lib::bitmap_view into) const;
 
         bool inhibited() const { return _inhibited.load(std::memory_order_relaxed); }
-        // TODO
-        void inhibit(bool value) { _inhibited.store(value, std::memory_order_relaxed); }
+        lib::expect<void> inhibit(bool value);
 
         lib::expect<void> add_handle(handle_t *handle);
         void remove_handle(handle_t *handle);

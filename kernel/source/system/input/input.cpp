@@ -8,6 +8,12 @@ namespace input
 {
     namespace
     {
+        constexpr std::int32_t default_repeat_delay = 250;
+        constexpr std::int32_t default_repeat_period = 33;
+
+        constexpr std::uint32_t min_repeat_ms = 4;
+        constexpr std::uint32_t max_repeat_ms = 60'000;
+
         std::atomic_size_t next_index = 0;
 
         sched::mutex_t registry_lock;
@@ -111,12 +117,29 @@ namespace input
                     }, nullptr, "modalias", 0444
                 };
 
+                static dev::make_attribute_t inhibited {
+                    [](dev::device_t &dev) -> lib::expect<std::string> {
+                        return fmt::format("{}\n", static_cast<device_t &>(dev).inhibited() ? 1 : 0);
+                    },
+                    [](dev::device_t &dev_, std::string_view value) -> lib::expect<void> {
+                        auto &dev = static_cast<device_t &>(dev_);
+                        value = lib::trim(value);
+
+                        if (value == "1")
+                            return dev.inhibit(true);
+                        if (value == "0")
+                            return dev.inhibit(false);
+                        return std::unexpected { lib::err::invalid_argument };
+                    }, "inhibited", 0644
+                };
+
                 static dev::attribute_t *list[] {
                     &name,
                     &phys,
                     &uniq,
                     &properties,
-                    &modalias
+                    &modalias,
+                    &inhibited
                 };
                 return list;
             }
@@ -128,7 +151,8 @@ namespace input
                     cap_attribute_t(std::uint16_t type, std::string_view name)
                         : dev::make_attribute_t {
                             [type](dev::device_t &dev) -> lib::expect<std::string> {
-                                return print_bitmap(static_cast<device_t &>(dev).supported.bits(type)
+                                return print_bitmap(
+                                    static_cast<device_t &>(dev).supported.bits(type)
                                 );
                             }, nullptr, name, 0444
                         } { }
@@ -212,13 +236,25 @@ namespace input
 
     device_t::device_t(std::string_view name, std::weak_ptr<dev::kobject_t> parent)
         : dev::device_t { name, get_ktype(), parent },
-          _lock { }, _event { }, _handles { }, _grab { }, _registered { false },
+          _lock { }, _event { }, _repeat { }, _softrepeat { false }, _repeat_lock { },
+          _repeat_applied { 0 }, _handles { }, _grab { }, _registered { false },
           _inhibited { false }, _open_files { 0 }, _index { 0 }, _ev_per_packet { 0 },
           desc { }, phys { }, uniq { }, ident { }, props { }, events { }, supported { }, repeat { },
           on_event { }, on_open { }, on_close { }, on_getkeycode { }, on_setkeycode { }
     {
         cls = std::addressof(get_class());
         events.set(ev_syn, true);
+    }
+
+    void device_t::repeat_timer_t::expired(std::uint64_t missed)
+    {
+        lib::unused(missed);
+    }
+
+    void device_t::repeat_timer_t::notify()
+    {
+        if (const auto device = dev.lock())
+            device->repeat_tick();
     }
 
     lib::expect<std::shared_ptr<device_t>> device_t::create(std::weak_ptr<dev::kobject_t> parent)
@@ -229,7 +265,46 @@ namespace input
             fmt::format("input{}", index), parent
         );
         ret->_index = index;
+        ret->_repeat = std::make_shared<repeat_timer_t>();
+        ret->_repeat->dev = ret;
         return ret;
+    }
+
+    std::size_t device_t::calc_ev_per_packet() const
+    {
+        const auto event = _event.lock();
+        std::size_t slots = mt_slots_locked(event);
+
+        if (slots == 0)
+        {
+            if (supported.get(ev_abs, abs_mt_tracking_id))
+            {
+                if (const auto info = get_abs_locked(event, abs_mt_tracking_id))
+                {
+                    slots = std::clamp<std::int64_t>(
+                        static_cast<std::int64_t>(info->maximum) - info->minimum + 1, 2, 32
+                    );
+                }
+                else slots = 2;
+            }
+            else if (supported.get(ev_abs, abs_mt_position_x))
+                slots = 2;
+        }
+
+        std::size_t count = slots + 1;
+        if (events.get(ev_abs))
+        {
+            const auto axes = supported.bits(ev_abs);
+            for (std::uint16_t axis = 0; axis < abs_cnt; axis++)
+            {
+                if (axes.get(axis))
+                    count += is_mt_axis(axis) ? slots : 1;
+            }
+        }
+
+        if (events.get(ev_rel))
+            count += supported.bits(ev_rel).count();
+        return count + 7;
     }
 
     void device_t::alloc_absinfo()
@@ -351,6 +426,88 @@ namespace input
         return repeat;
     }
 
+    void device_t::start_repeat(locked_event_t &event, std::uint16_t code)
+    {
+        if (!_softrepeat || !events.get(ev_rep) || !repeat[rep_delay] || !repeat[rep_period])
+            return;
+
+        event->repeat_key = code;
+        event->repeat_active = true;
+        event->repeat_pending = repeat_action::start;
+    }
+
+    void device_t::stop_repeat(locked_event_t &event)
+    {
+        if (!event->repeat_active)
+            return;
+
+        event->repeat_key = key_reserved;
+        event->repeat_active = false;
+        event->repeat_pending = repeat_action::stop;
+    }
+
+    auto device_t::take_repeat(locked_event_t &event) -> repeat_req_t
+    {
+        const auto action = std::exchange(event->repeat_pending, repeat_action::none);
+        if (action == repeat_action::none)
+            return { };
+
+        const auto seq = ++event->repeat_seq;
+        if (action == repeat_action::stop)
+            return { action, seq, 0 };
+
+        const std::uint32_t delay = action == repeat_action::start
+            ? repeat[rep_delay] : repeat[rep_period];
+
+        return { action, seq, delay };
+    }
+
+    void device_t::apply_repeat(const repeat_req_t &req)
+    {
+        if (!_repeat || req.action == repeat_action::none)
+            return;
+
+        const std::unique_lock _ { _repeat_lock };
+        if (req.seq <= _repeat_applied)
+            return;
+        _repeat_applied = req.seq;
+
+        if (req.action == repeat_action::stop)
+        {
+            _repeat->disarm();
+            return;
+        }
+
+        _repeat->arm(std::clamp(req.delay_ms, min_repeat_ms, max_repeat_ms) * 1'000'000ull, 0);
+    }
+
+    void device_t::repeat_tick()
+    {
+        repeat_req_t req;
+        {
+            auto event = _event.lock();
+
+            const auto code = event->repeat_key;
+            if (registered() && !inhibited() && event->repeat_active &&
+                supported.get(ev_key, code) && event->state.get(ev_key, code))
+            {
+                handle_event(event, ev_key, code, 2);
+                handle_event(event, ev_syn, syn_report, 1);
+
+                if (repeat[rep_period])
+                    event->repeat_pending = repeat_action::next;
+            }
+            else
+            {
+                stop_repeat(event);
+                event->repeat_pending = repeat_action::stop;
+            }
+
+            req = take_repeat(event);
+        }
+        apply_repeat(req);
+    }
+
     lib::expect<void> device_t::get_keycode(keymap_entry_t &entry) const
     {
         const auto event = _event.lock();
@@ -417,27 +574,33 @@ namespace input
         if (entry.keycode > key_max)
             return std::unexpected { lib::err::invalid_argument };
 
-        auto event = _event.lock();
-
-        std::uint32_t old = 0;
-        if (const auto ret = store_keycode(event, entry, old); !ret)
-            return ret;
-
-        supported.set(ev_key, key_reserved, false);
-
-        const auto code = static_cast<std::uint16_t>(old);
-        if (old <= key_max && events.get(ev_key) &&
-            !supported.get(ev_key, code) && event->state.get(ev_key, code))
+        repeat_req_t req;
         {
-            event->state.set(ev_key, code, false);
+            auto event = _event.lock();
 
-            const value_t release[] {
-                { ev_key, code, 0 },
-                { ev_syn, syn_report, 0 }
-            };
-            dispatch(event, release);
+            std::uint32_t old = 0;
+            if (const auto ret = store_keycode(event, entry, old); !ret)
+                return ret;
+
+            supported.set(ev_key, key_reserved, false);
+
+            const std::uint16_t code = old;
+            if (old <= key_max && events.get(ev_key) &&
+                !supported.get(ev_key, code) && event->state.get(ev_key, code))
+            {
+                event->state.set(ev_key, code, false);
+
+                const value_t release[] {
+                    { ev_key, code, 0 },
+                    { ev_syn, syn_report, 0 }
+                };
+                dispatch(event, release);
+
+                stop_repeat(event);
+                req = take_repeat(event);
+            }
         }
-
+        apply_repeat(req);
         return { };
     }
 
@@ -452,43 +615,6 @@ namespace input
             event->mt.swap(mt);
         }
         set_abs(abs_mt_slot, { 0, 0, static_cast<std::int32_t>(slots) - 1, 0, 0, 0 });
-    }
-
-    std::size_t device_t::calc_ev_per_packet() const
-    {
-        const auto event = _event.lock();
-        std::size_t slots = mt_slots_locked(event);
-
-        if (slots == 0)
-        {
-            if (supported.get(ev_abs, abs_mt_tracking_id))
-            {
-                if (const auto info = get_abs_locked(event, abs_mt_tracking_id))
-                {
-                    slots = std::clamp<std::int64_t>(
-                        static_cast<std::int64_t>(info->maximum) - info->minimum + 1, 2, 32
-                    );
-                }
-                else slots = 2;
-            }
-            else if (supported.get(ev_abs, abs_mt_position_x))
-                slots = 2;
-        }
-
-        std::size_t count = slots + 1;
-        if (events.get(ev_abs))
-        {
-            const auto axes = supported.bits(ev_abs);
-            for (std::uint16_t axis = 0; axis < abs_cnt; axis++)
-            {
-                if (axes.get(axis))
-                    count += is_mt_axis(axis) ? slots : 1;
-            }
-        }
-
-        if (events.get(ev_rel))
-            count += supported.bits(ev_rel).count();
-        return count + 7;
     }
 
     bool device_t::admit(locked_event_t &event, value_t &val)
@@ -530,6 +656,14 @@ namespace input
 
                 event->state.set(val.type, val.code, down);
 
+                if (val.type == ev_key)
+                {
+                    if (down)
+                        start_repeat(event, val.code);
+                    else
+                        stop_repeat(event);
+                }
+
                 if (val.type == ev_led && on_event)
                     on_event(*this, val);
                 break;
@@ -552,11 +686,11 @@ namespace input
             }
             case ev_rep:
             {
-                if (val.code >= repeat.size() || val.value < 0 ||
-                    repeat[val.code] == val.value)
+                if (val.code >= repeat.size() || val.value < 0 || repeat[val.code] == val.value)
                     return false;
 
                 repeat[val.code] = val.value;
+
                 if (on_event)
                     on_event(*this, val);
                 break;
@@ -652,8 +786,7 @@ namespace input
     }
 
     void device_t::handle_event(
-        locked_event_t &event,
-        std::uint16_t type, std::uint16_t code, std::int32_t value
+        locked_event_t &event, std::uint16_t type, std::uint16_t code, std::int32_t value
     )
     {
         const bool flush = (type == ev_syn && code == syn_report);
@@ -703,7 +836,27 @@ namespace input
             if (!keys.get(code))
                 continue;
 
-            handle_event(event, ev_key, static_cast<std::uint16_t>(code), 0);
+            handle_event(event, ev_key, code, 0);
+            sync = true;
+        }
+
+        if (sync)
+            handle_event(event, ev_syn, syn_report, 0);
+    }
+
+    void device_t::release_mt_slots(locked_event_t &event)
+    {
+        if (!event->mt || event->vals.empty() || !supported.get(ev_abs, abs_mt_tracking_id))
+            return;
+
+        bool sync = false;
+        for (std::size_t slot = 0; slot < event->mt->size(); slot++)
+        {
+            if (event->mt->value(slot, abs_mt_tracking_id) < 0)
+                continue;
+
+            handle_event(event, ev_abs, abs_mt_slot, slot);
+            handle_event(event, ev_abs, abs_mt_tracking_id, -1);
             sync = true;
         }
 
@@ -716,9 +869,14 @@ namespace input
         if (packet.empty() || !registered() || inhibited())
             return;
 
-        auto event = _event.lock();
-        for (const auto &val : packet)
-            handle_event(event, val.type, val.code, val.value);
+        repeat_req_t req;
+        {
+            auto event = _event.lock();
+            for (const auto &val : packet)
+                handle_event(event, val.type, val.code, val.value);
+            req = take_repeat(event);
+        }
+        apply_repeat(req);
     }
 
     void device_t::report(std::uint16_t type, std::uint16_t code, std::int32_t value)
@@ -726,8 +884,13 @@ namespace input
         if (!registered() || inhibited())
             return;
 
-        auto event = _event.lock();
-        handle_event(event, type, code, value);
+        repeat_req_t req;
+        {
+            auto event = _event.lock();
+            handle_event(event, type, code, value);
+            req = take_repeat(event);
+        }
+        apply_repeat(req);
     }
 
     void device_t::snapshot(std::uint16_t type, lib::bitmap_view into) const
@@ -744,6 +907,44 @@ namespace input
             into.data(), from.data(),
             std::min(into.size_bytes(), from.size_bytes())
         );
+    }
+
+    lib::expect<void> device_t::inhibit(bool value)
+    {
+        repeat_req_t req;
+        {
+            const std::unique_lock _ { _lock };
+
+            if (inhibited() == value)
+                return { };
+
+            if (!value)
+            {
+                if (_open_files && on_open)
+                {
+                    if (const auto ret = on_open(*this); !ret)
+                        return ret;
+                }
+
+                _inhibited.store(false, std::memory_order_relaxed);
+                return { };
+            }
+
+            _inhibited.store(true, std::memory_order_relaxed);
+
+            if (_open_files && on_close)
+                on_close(*this);
+
+            auto event = _event.lock();
+            release_mt_slots(event);
+            release_keys(event);
+
+            stop_repeat(event);
+            event->repeat_pending = repeat_action::stop;
+            req = take_repeat(event);
+        }
+        apply_repeat(req);
+        return { };
     }
 
     lib::expect<void> device_t::add_handle(handle_t *handle)
@@ -986,14 +1187,18 @@ namespace input
         if (type >= ev_cnt || !events.get(type) || !registered())
             return { };
 
-        auto event = _event.lock();
+        repeat_req_t req;
         {
-            const rcu::read_guard _ { };
-            if (const auto grab = _grab.dereference(); grab && grab != handle)
-                return { };
+            auto event = _event.lock();
+            {
+                const rcu::read_guard _ { };
+                if (const auto grab = _grab.dereference(); grab && grab != handle)
+                    return { };
+            }
+            handle_event(event, type, code, value);
+            req = take_repeat(event);
         }
-
-        handle_event(event, type, code, value);
+        apply_repeat(req);
         return { };
     }
 
@@ -1048,6 +1253,14 @@ namespace input
             event->nvals = 0;
         }
 
+        // if driver sets both then hardware repeats
+        if (!repeat[rep_delay] && !repeat[rep_period])
+        {
+            repeat[rep_delay] = default_repeat_delay;
+            repeat[rep_period] = default_repeat_period;
+            _softrepeat = true;
+        }
+
         auto self = std::static_pointer_cast<device_t>(as_shared());
 
         if (const auto ret = dev::register_device(self); !ret)
@@ -1073,10 +1286,18 @@ namespace input
         if (!_registered.exchange(false, std::memory_order_acq_rel))
             return;
 
+        repeat_req_t req;
         {
             auto event = _event.lock();
+            release_mt_slots(event);
             release_keys(event);
+
+            stop_repeat(event);
+            event->repeat_pending = repeat_action::stop;
+
+            req = take_repeat(event);
         }
+        apply_repeat(req);
 
         std::vector<std::shared_ptr<handle_t>> owned;
         {
