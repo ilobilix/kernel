@@ -164,24 +164,45 @@ export namespace virtio
         lib::expect<std::vector<queue_t *>> setup_queues(std::span<const used_fn> fns);
         queue_t &queue(std::uint16_t qid);
 
+        void read_config(std::size_t off, std::span<std::byte> buffer)
+        {
+            _transport->read_config(off, buffer);
+        }
+
+        void write_config(std::size_t off, std::span<const std::byte> buffer)
+        {
+            _transport->write_config(off, buffer);
+        }
+
+        void read_config_stable(std::size_t off, std::span<std::byte> buffer)
+        {
+            while (true)
+            {
+                const auto before = _transport->config_generation();
+                read_config(off, buffer);
+                if (before == _transport->config_generation())
+                    return;
+            }
+        }
+
         template<typename Type>
-            requires std::is_trivially_copyable_v<Type>
+            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
         Type read_config(std::size_t off)
         {
             Type value { };
-            _transport->read_config(off, std::as_writable_bytes(std::span { &value, 1 }));
+            read_config(off, std::as_writable_bytes(std::span { &value, 1 }));
             return value;
         }
 
         template<typename Type>
-            requires std::is_trivially_copyable_v<Type>
+            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
         void write_config(std::size_t off, Type value)
         {
-            _transport->write_config(off, std::as_bytes(std::span { &value, 1 }));
+            write_config(off, std::as_bytes(std::span { &value, 1 }));
         }
 
         template<typename Type>
-            requires std::is_trivially_copyable_v<Type>
+            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
         Type read_config_stable(std::size_t off)
         {
             while (true)

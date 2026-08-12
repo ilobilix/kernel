@@ -2,7 +2,7 @@
 
 // the entire input subsystem is based on linux
 
-// TODO: autorepeat, LEDs, force feedback, inhibit
+// TODO: autorepeat, force feedback, inhibit
 
 export module system.input;
 

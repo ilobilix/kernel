@@ -106,6 +106,7 @@ namespace sched
     ) -> wait_result_t
     {
         lib::bug_on(!!in_hard_irq());
+        lib::bug_on(!!is_preempt_disabled());
 
         auto thread = static_cast<thread_t *>(current_thread());
         const bool kill_aware = (mode != wait_mode::unkillable);

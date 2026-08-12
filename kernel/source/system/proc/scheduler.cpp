@@ -1968,8 +1968,6 @@ namespace sched
             auto new_pmap = std::make_shared<vmm::pagemap>();
             auto new_vmspace = std::make_shared<vmm::vmspace>(std::move(new_pmap));
 
-            preempt_disable();
-
             auto old_ptr = take_thread(old_thread);
             lib::bug_on(!old_ptr);
 
@@ -2002,6 +2000,7 @@ namespace sched
                 process->argv = std::move(saved_argv);
 
                 {
+                    preempt_disable();
                     auto &loaded = loaded_pmap.unsafe_get();
                     const auto pmap = process->vmspace->pmap.get();
                     if (loaded != pmap)
@@ -2011,9 +2010,9 @@ namespace sched
                         pmap->load();
                         loaded = pmap;
                     }
+                    preempt_enable();
                 }
 
-                preempt_enable();
                 return -ENOEXEC;
             }
             lib::bug_on(new_thread->tid != process->pid);
@@ -2059,6 +2058,9 @@ namespace sched
                 parent->vfork_done.wake_all();
             }
 
+            image->reset();
+
+            preempt_disable();
             old_thread->state.store(thread_state::dead, std::memory_order_release);
             old_thread->saved_vmspace = std::move(old_vmspace);
             if (old_ptr)

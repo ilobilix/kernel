@@ -1063,6 +1063,8 @@ namespace input
 
         for (const auto consumer : consumers)
             attach_consumer(*consumer);
+
+        lib::info("input: registered device: '{}'", name);
         return { };
     }
 
@@ -1110,6 +1112,7 @@ namespace input
         }
 
         dev::unregister_device(std::static_pointer_cast<dev::device_t>(as_shared()));
+        lib::info("input: unregistered device: '{}'", name);
     }
 
     lib::initgraph::stage *class_registered_stage()
