@@ -43,7 +43,7 @@ export namespace sched
         lib::expect<void> start();
         void stop();
 
-        void wake() { _bell.wake_one(); }
+        void wake() { _bell.wake_all(); }
 
         std::string_view name() const { return _name; }
         std::size_t cpu() const { return _cpu; }

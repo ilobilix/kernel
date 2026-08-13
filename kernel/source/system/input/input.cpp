@@ -1336,16 +1336,6 @@ namespace input
         lib::info("input: unregistered device: '{}'", name);
     }
 
-    lib::initgraph::stage *class_registered_stage()
-    {
-        static lib::initgraph::stage stage
-        {
-            "input.class-registered",
-            lib::initgraph::postsched_init_engine
-        };
-        return std::addressof(stage);
-    }
-
     namespace
     {
         lib::initgraph::task register_task
@@ -1353,7 +1343,6 @@ namespace input
             "input.register-class",
             lib::initgraph::postsched_init_engine,
             lib::initgraph::require { dev::core_registered_stage() },
-            lib::initgraph::entail { class_registered_stage() },
             [] {
                 lib::bug_on(!dev::register_class(get_class()));
             }

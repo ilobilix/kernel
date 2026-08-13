@@ -11,6 +11,7 @@ export namespace output::vt
     lib::expect<void> activate(std::size_t index);
 
     bool receive_input(std::span<std::byte> buffer);
+    bool is_decckm();
 
     lib::initgraph::stage *registered_stage();
 } // export namespace output::vt

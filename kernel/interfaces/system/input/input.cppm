@@ -449,6 +449,4 @@ export namespace input
 
     lib::expect<void> register_consumer(consumer_t &consumer);
     void unregister_consumer(consumer_t &consumer);
-
-    lib::initgraph::stage *class_registered_stage();
 } // export namespace input

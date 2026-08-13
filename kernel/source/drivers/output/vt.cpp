@@ -6,13 +6,14 @@ module;
 
 module drivers.output.vt;
 
-import drivers.output;
 import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
+import drivers.output;
 import system.sched;
 import system.vfs;
 import system.dev;
 import frigg;
+import fmt;
 
 namespace output::vt
 {
@@ -62,6 +63,7 @@ namespace output::vt
         {
             flanterm_context *ctx;
             std::weak_ptr<vt_t> inst;
+            std::atomic_bool decckm;
         };
 
         // + 1 cuz tty0
@@ -126,11 +128,78 @@ namespace output::vt
             }
         };
 
-        std::shared_ptr<vt_t> instance_of(std::size_t index)
+        std::shared_ptr<vt_t> get_instance(std::size_t index)
         {
             if (index == 0 || index > num_vts)
                 return nullptr;
             return slots[index].inst.lock();
+        }
+
+        std::size_t get_slot(const flanterm_context *ctx)
+        {
+            for (const auto &[index, slot] : slots | std::views::enumerate)
+            {
+                if (slot.ctx == ctx)
+                    return index;
+            }
+            return 0;
+        }
+
+        void reply(std::size_t index, std::string_view str)
+        {
+            const auto vt = get_instance(index);
+            if (!vt)
+                return;
+
+            vt->receive({
+                const_cast<std::byte *>(reinterpret_cast<const std::byte *>(str.data())),
+                str.size()
+            });
+        }
+
+        void callback(
+            flanterm_context *ctx, std::uint64_t type,
+            std::uint64_t count, std::uint64_t values, std::uint64_t final
+        )
+        {
+            const auto index = get_slot(ctx);
+            if (index == 0)
+                return;
+
+            switch (type)
+            {
+                case FLANTERM_CB_DEC:
+                {
+                    if (final != 'h' && final != 'l')
+                        break;
+
+                    const std::span vals {
+                        reinterpret_cast<const std::uint32_t *>(values),
+                        count
+                    };
+
+                    if (std::ranges::contains(vals, 1u))
+                        slots[index].decckm.store(final == 'h', std::memory_order_release);
+                    break;
+                }
+                case FLANTERM_CB_PRIVATE_ID:
+                    reply(index, "\e[?1;2c");
+                    break;
+                case FLANTERM_CB_STATUS_REPORT:
+                    reply(index, "\e[0n");
+                    break;
+                case FLANTERM_CB_POS_REPORT:
+                    reply(index, fmt::format("\e[{};{}R", values, count));
+                    break;
+                case FLANTERM_CB_KBD_LEDS:
+                case FLANTERM_CB_OSC:
+                case FLANTERM_CB_BELL:
+                case FLANTERM_CB_LINUX:
+                case FLANTERM_CB_MODE:
+                    // TODO
+                default:
+                    break;
+            }
         }
 
         void signal_owner(const std::shared_ptr<vt_t> &vt, int sig)
@@ -168,7 +237,7 @@ namespace output::vt
             auto ctx = slots[index].ctx;
             current.store(index, std::memory_order_release);
 
-            const auto vt = instance_of(index);
+            const auto vt = get_instance(index);
             term::set_visible(ctx, !(vt && vt->graphics()));
 
             if (vt)
@@ -194,7 +263,7 @@ namespace output::vt
                 return { };
             }
 
-            const auto vt = instance_of(current.load(std::memory_order_acquire));
+            const auto vt = get_instance(current.load(std::memory_order_acquire));
             if (!vt)
             {
                 commit(index);
@@ -225,6 +294,7 @@ namespace output::vt
 
             *vtmode.lock() = { vt_auto, 0, 0, 0, 0 };
             owner.store(0, std::memory_order_release);
+            slots[minor].decckm.store(false, std::memory_order_release);
 
             if (mode.exchange(kd_text, std::memory_order_acq_rel) == kd_graphics &&
                 minor == current.load(std::memory_order_acquire))
@@ -270,7 +340,7 @@ namespace output::vt
                         if (mode != kd_text && mode != kd_graphics)
                             return std::unexpected { lib::err::invalid_argument };
 
-                        const auto vt = instance_of(index);
+                        const auto vt = get_instance(index);
                         if (!vt)
                             return std::unexpected { lib::err::no_such_device };
 
@@ -286,7 +356,7 @@ namespace output::vt
                     }
                     case tty::kdgetmode:
                     {
-                        const auto vt = instance_of(index);
+                        const auto vt = get_instance(index);
                         const auto mode = vt ? vt->mode.load(std::memory_order_acquire) : kd_text;
                         if (!argp.write(mode))
                             return std::unexpected { lib::err::invalid_address };
@@ -332,7 +402,7 @@ namespace output::vt
                     }
                     case tty::vt_getmode:
                     {
-                        const auto vt = instance_of(index);
+                        const auto vt = get_instance(index);
                         if (!vt)
                             return std::unexpected { lib::err::no_such_device };
                         if (!argp.write(*vt->vtmode.lock()))
@@ -355,7 +425,7 @@ namespace output::vt
                         if (!valid(mode.relsig) || !valid(mode.acqsig) || !valid(mode.frsig))
                             return std::unexpected { lib::err::invalid_argument };
 
-                        const auto vt = instance_of(index);
+                        const auto vt = get_instance(index);
                         if (!vt)
                             return std::unexpected { lib::err::no_such_device };
 
@@ -475,10 +545,18 @@ namespace output::vt
 
     bool receive_input(std::span<std::byte> buffer)
     {
-        const auto vt = instance_of(current.load(std::memory_order_acquire));
+        const auto vt = get_instance(current.load(std::memory_order_acquire));
         if (!vt)
             return false;
         return vt->receive(buffer);
+    }
+
+    bool is_decckm()
+    {
+        const auto index = current.load(std::memory_order_acquire);
+        if (index == 0 || index > num_vts)
+            return false;
+        return slots[index].decckm.load(std::memory_order_acquire);
     }
 
     lib::initgraph::stage *registered_stage()
@@ -506,6 +584,12 @@ namespace output::vt
                 term::set_visible(slots[i].ctx, false);
             }
             term::set_visible(slots[1].ctx, true);
+
+            for (auto &slot : slots)
+            {
+                if (slot.ctx)
+                    flanterm_set_callback(slot.ctx, callback);
+            }
         }
     };
 
