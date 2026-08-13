@@ -399,7 +399,7 @@ namespace fs::dev::tty
 
     default_ldisc::default_ldisc(instance *inst) : line_discipline { inst },
         raw_buffer { }, raw_wq { }, in_buffer { }, in_wq { },
-        out_buffer { }, out_wq { }, stopped { false },
+        out_buffer { }, output_lock { }, out_wq { }, stopped { false },
         worker_thread { }, should_work { false }, shut_down { false }, hung_wq { } { }
 
     void default_ldisc::open()
@@ -434,6 +434,26 @@ namespace fs::dev::tty
         in_wq.wake_all();
         out_wq.wake_all();
         raw_wq.wake_all();
+    }
+
+    void default_ldisc::wait_sent()
+    {
+        while (!inst->hung_up.load(std::memory_order_relaxed))
+        {
+            const auto gen = out_wq.snapshot_gen();
+            {
+                const std::unique_lock _ { output_lock };
+                if (out_buffer.empty())
+                    return;
+            }
+            out_wq.wait_prepared(gen);
+        }
+    }
+
+    void default_ldisc::write_wake()
+    {
+        output_flush();
+        out_wq.wake_all();
     }
 
     default_ldisc::~default_ldisc()
@@ -480,12 +500,19 @@ namespace fs::dev::tty
     void default_ldisc::set_stopped(bool value)
     {
         lib::bug_on(!inst);
-        if (stopped.exchange(value, std::memory_order_relaxed) != value)
+
+        bool changed;
+        {
+            const std::unique_lock _ { output_lock };
+            changed = stopped.exchange(value, std::memory_order_relaxed) != value;
+        }
+        if (changed)
             inst->flow_notify(value);
     }
 
     void default_ldisc::output_flush()
     {
+        const std::unique_lock _ { output_lock };
         if (stopped.load(std::memory_order_relaxed))
             return;
 
@@ -507,11 +534,36 @@ namespace fs::dev::tty
             out_wq.wake_all();
 
             auto span = std::span { buffer.data(), num_chars };
-            const auto res = inst->transmit(std::move(span));
-            // TODO: error?
-            if (res != num_chars)
-                lib::warn("tty: could not transmit {} characters (got {})", num_chars, res);
+            if (const auto res = inst->transmit(std::move(span)); res != num_chars)
+                lib::error("tty: could not transmit {} characters (got {})", num_chars, res);
         }
+    }
+
+    void default_ldisc::output_clear()
+    {
+        const std::unique_lock _ { output_lock };
+        out_buffer.clear();
+        out_wq.wake_all();
+    }
+
+    void default_ldisc::input_flush_locked()
+    {
+        inst->raw_buffer.clear();
+        raw_buffer.clear();
+
+        {
+            auto in_locked = in_buffer.lock();
+            in_locked->read_tail = in_locked->read_head;
+            in_locked->cooked_head = in_locked->read_head;
+        }
+
+        inst->wakeup_link();
+    }
+
+    void default_ldisc::input_flush()
+    {
+        const auto _ = inst->termios.lock();
+        input_flush_locked();
     }
 
     [[noreturn]]
@@ -587,9 +639,13 @@ namespace fs::dev::tty
 
             const auto raw_gen = self->raw_wq.snapshot_gen();
             const auto hung_gen = self->hung_wq.snapshot_gen();
+
+            auto tios = self->inst->termios.lock();
             auto ret = self->raw_buffer.pop();
+
             if (!ret.has_value())
             {
+                tios.unlock();
                 flush_wakeup();
                 self->output_flush();
 
@@ -609,7 +665,7 @@ namespace fs::dev::tty
             }
             auto chr = static_cast<char>(ret.value());
 
-            termios = self->inst->termios.lock().value();
+            termios = *tios;
             if (next_is_verbatim)
             {
                 next_is_verbatim = false;
@@ -651,12 +707,9 @@ namespace fs::dev::tty
 
                     if (!(termios.c_lflag & noflsh))
                     {
-                        {
-                            auto in_locked = self->in_buffer.lock();
-                            in_locked->read_tail = in_locked->read_head;
-                            in_locked->cooked_head = in_locked->read_head;
-                        }
-                        while (self->raw_buffer.pop().has_value()) { }
+                        self->input_flush_locked();
+                        self->output_clear();
+                        self->inst->flush_notify(tcioflush);
                     }
 
                     std::shared_ptr<sched::group_t> fg;
@@ -1170,212 +1223,6 @@ namespace fs::dev::tty
 
         switch (request)
         {
-            case kdgkbmode:
-            {
-                // TODO
-                const auto mode = inst->kbmode.load(std::memory_order_relaxed);
-                if (!argp.write(mode))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            }
-            case kdskbmode:
-            {
-                // TODO
-                const int mode = argp.value();
-                switch (mode)
-                {
-                    case 0x00: // K_RAW
-                    case 0x01: // K_XLATE
-                    case 0x02: // K_MEDIUMRAW
-                    case 0x03: // K_UNICODE
-                    case 0x04: // K_OFF
-                        break;
-                    default:
-                        return std::unexpected { lib::err::invalid_argument };
-                }
-                inst->kbmode.store(mode, std::memory_order_relaxed);
-                return 0;
-            }
-            // handled in vt
-            case kdsetmode:
-            case kdgetmode:
-            case kdgkbtype:
-            case vt_openqry:
-            case vt_getmode:
-            case vt_setmode:
-            case vt_getstate:
-            case vt_reldisp:
-            case vt_activate:
-            case vt_waitactive:
-            case vt_disallocate:
-                break;
-            case kdsigaccept:
-            {
-                // TODO: magic keys
-                const int sig = argp.value();
-                if (sig < 1 || sig > sched::nsig || sig == sched::sigkill || sig == sched::sigstop)
-                    return std::unexpected { lib::err::invalid_argument };
-                return 0;
-            }
-            case kdgkbled:
-            {
-                // TODO
-                constexpr std::uint8_t no_locks = 0;
-                if (!argp.write(no_locks))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            }
-            case kdskbled:
-                // TODO
-                return 0;
-            case tiocgpgrp:
-            {
-                const auto proc = sched::current_process();
-
-                auto locked = inst->ctrl.lock();
-                if (locked->session.lock() != proc->session)
-                    return std::unexpected { lib::err::inappropriate_ioctl };
-
-                if (locked->pgid == 0)
-                    return std::unexpected { lib::err::inappropriate_ioctl };
-                if (!argp.write(locked->pgid))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            }
-            case tiocgsid:
-            {
-                const auto proc = sched::current_process();
-
-                auto locked = inst->ctrl.lock();
-                const auto tty_session = locked->session.lock();
-                if (!tty_session || tty_session != proc->session)
-                    return std::unexpected { lib::err::inappropriate_ioctl };
-
-                if (!argp.write(tty_session->sid))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            }
-            case tiocspgrp:
-            {
-                pid_t pgid;
-                if (!argp.read(pgid))
-                    return std::unexpected { lib::err::invalid_address };
-                if (pgid < 0)
-                    return std::unexpected { lib::err::invalid_flags };
-
-                const auto proc = sched::current_process();
-
-                std::shared_ptr<sched::session_t> tty_session;
-                {
-                    auto locked = inst->ctrl.lock();
-                    tty_session = locked->session.lock();
-                    if (!tty_session || tty_session != proc->session)
-                        return std::unexpected { lib::err::inappropriate_ioctl };
-                }
-
-                if (const auto ret = background_check(*inst, sched::sigttou); !ret)
-                    return std::unexpected { ret.error() };
-
-                std::shared_ptr<sched::group_t> new_group;
-                {
-                    auto members = tty_session->members.lock();
-                    auto it = members->find(pgid);
-                    if (it == members->end())
-                        return std::unexpected { lib::err::not_permitted };
-                    new_group = it->second.lock();
-                    if (!new_group)
-                        return std::unexpected { lib::err::not_permitted };
-                }
-                inst->ctrl.lock()->set_group(std::move(new_group));
-                return 0;
-            }
-            case tiocgwinsz:
-                if (!argp.write(inst->winsize.lock().value()))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            case tiocswinsz:
-                if (!argp.read(inst->winsize.lock().value()))
-                    return std::unexpected { lib::err::invalid_address };
-                return 0;
-            case tiocsctty:
-            {
-                const int force = argp.value();
-
-                const auto proc = sched::current_process();
-                if (proc->pid != proc->session->sid)
-                    return std::unexpected { lib::err::not_permitted };
-
-                auto locked = inst->ctrl.lock();
-                if (auto existing = locked->session.lock())
-                {
-                    if (existing == proc->session)
-                        return 0;
-
-                    if (force != 1 || !sched::capable(sched::cap_t::sys_admin))
-                        return std::unexpected { lib::err::not_permitted };
-
-                    auto old_ctty = existing->ctty.lock();
-                    if (old_ctty.value().get() == inst)
-                        old_ctty.value().reset();
-
-                    locked->session.reset();
-                    locked->reset_group();
-                }
-
-                {
-                    auto locked = proc->session->ctty.lock();
-                    if (locked.value())
-                        return std::unexpected { lib::err::not_permitted };
-                    locked.value() = inst->shared_from_this();
-                }
-
-                locked->session = proc->session;
-                locked->set_group(proc->group);
-                return 0;
-            }
-            case tiocnotty:
-            {
-                const auto proc = sched::current_process();
-
-                std::shared_ptr<sched::group_t> fg_group;
-                {
-                    auto locked = inst->ctrl.lock();
-                    if (locked->session.lock() != proc->session)
-                        return std::unexpected { lib::err::inappropriate_ioctl };
-
-                    if (proc->pid != proc->session->sid)
-                        return 0;
-
-                    fg_group = locked->group.lock();
-                    locked->session.reset();
-                    locked->reset_group();
-                }
-
-                {
-                    auto ctty_locked = proc->session->ctty.lock();
-                    if (ctty_locked.value().get() == inst)
-                        ctty_locked.value().reset();
-                }
-
-                if (fg_group)
-                {
-                    fg_group->signal_all(sched::sighup);
-                    fg_group->signal_all(sched::sigcont);
-                }
-                return 0;
-            }
-            case tcsbrk:
-            {
-                while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
-                    sched::yield();
-                if (argp.value() == 0)
-                {
-                    inst->break_ctl(true);
-                    sched::sleep_for_ns(250'000'000);
-                    inst->break_ctl(false);
-                }
-                return 0;
-            }
             case tcxonc:
             {
                 const auto termios = inst->termios.lock().value();
@@ -1427,20 +1274,15 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
 
                 if (request == tcsetsw || request == tcsetsf)
-                {
-                    // TODO: do it better
-                    while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
-                        sched::yield();
-                }
-
-                if (request == tcsetsf)
-                {
-                    auto in_locked = in_buffer.lock();
-                    in_locked->read_tail = in_locked->read_head;
-                    in_locked->cooked_head = in_locked->read_head;
-                }
+                    wait_sent();
 
                 auto wlocked = inst->termios.lock();
+                if (request == tcsetsf)
+                {
+                    input_flush_locked();
+                    inst->flush_notify(tciflush);
+                }
+
                 const auto old = wlocked.value();
 
                 wlocked->c_iflag = utios.c_iflag;
@@ -1474,20 +1316,15 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
 
                 if (request == tcsetsw2 || request == tcsetsf2)
-                {
-                    // TODO: do it better
-                    while (!out_buffer.empty() && !inst->hung_up.load(std::memory_order_relaxed))
-                        sched::yield();
-                }
-
-                if (request == tcsetsf2)
-                {
-                    auto in_locked = in_buffer.lock();
-                    in_locked->read_tail = in_locked->read_head;
-                    in_locked->cooked_head = in_locked->read_head;
-                }
+                    wait_sent();
 
                 auto wlocked = inst->termios.lock();
+                if (request == tcsetsf2)
+                {
+                    input_flush_locked();
+                    inst->flush_notify(tciflush);
+                }
+
                 const auto old = wlocked.value();
                 wlocked.value() = ktios;
                 apply_locked(wlocked.value(), old);
@@ -1507,27 +1344,15 @@ namespace fs::dev::tty
                 switch (argp.value())
                 {
                     case tciflush:
-                    {
-                        auto in_locked = in_buffer.lock();
-                        in_locked->read_tail = in_locked->read_head;
-                        in_locked->cooked_head = in_locked->read_head;
-                        raw_buffer.clear();
+                        input_flush();
                         break;
-                    }
                     case tcoflush:
-                        out_buffer.clear();
+                        output_clear();
                         break;
                     case tcioflush:
-                    {
-                        {
-                            auto in_locked = in_buffer.lock();
-                            in_locked->read_tail = in_locked->read_head;
-                            in_locked->cooked_head = in_locked->read_head;
-                            raw_buffer.clear();
-                        }
-                        out_buffer.clear();
+                        input_flush();
+                        output_clear();
                         break;
-                    }
                     default:
                         return std::unexpected { lib::err::invalid_flags };
                 }
@@ -1543,6 +1368,26 @@ namespace fs::dev::tty
                 if (!sched::capable(sched::cap_t::sys_admin))
                     return std::unexpected { lib::err::permission_denied };
                 if (!argp.read(inst->termios_locked.lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tiocinq:
+            {
+                const auto tios = inst->termios.lock();
+                const auto in_locked = in_buffer.lock();
+                const int count = (tios->c_lflag & ktermios::lflag::icanon)
+                    ? in_locked->cooked_head - in_locked->read_tail
+                    : in_locked->read_head - in_locked->read_tail;
+
+                if (!argp.write(count))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tiocoutq:
+            {
+                const std::unique_lock _ { output_lock };
+                const int value = out_buffer.size();
+                if (!argp.write(value))
                     return std::unexpected { lib::err::invalid_address };
                 return 0;
             }
@@ -1567,13 +1412,11 @@ namespace fs::dev::tty
 
         const bool hung_up = inst->hung_up.load(std::memory_order_relaxed);
 
-        const auto termios = inst->termios.lock().value();
-        const bool is_cooked = (termios.c_lflag & ktermios::lflag::icanon) != 0;
-
         std::size_t available = 0;
         {
+            const auto tios = inst->termios.lock();
             auto in_locked = in_buffer.lock();
-            available = is_cooked
+            available = (tios->c_lflag & ktermios::lflag::icanon)
                 ? (in_locked->cooked_head - in_locked->read_tail)
                 : (in_locked->read_head - in_locked->read_tail);
         }
@@ -1581,8 +1424,12 @@ namespace fs::dev::tty
         if (hung_up || available > 0 || !raw_buffer.empty() || !inst->raw_buffer.empty())
             mask |= pollin;
 
-        if (!hung_up && !out_buffer.full())
-            mask |= pollout;
+        if (!hung_up)
+        {
+            const std::unique_lock _ { output_lock };
+            if (!out_buffer.full())
+                mask |= pollout;
+        }
 
         if (hung_up)
             mask |= pollhup | pollerr;
@@ -1591,8 +1438,8 @@ namespace fs::dev::tty
     }
 
     instance::instance(driver *drv, std::uint32_t minor, std::shared_ptr<line_discipline> ld)
-        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, kbmode { 0x01 /* K_XLATE */ },
-          ldisc { ld }, termios { drv->init_termios }, termios_locked { ktermios { } },
+        : drv { drv }, minor { minor }, ref { 0 }, hung_up { false }, ldisc { ld },
+          termios { drv->init_termios }, termios_locked { ktermios { } },
           winsize { winsize::standard() }, ctrl { }, raw_buffer { }, raw_wq { },
           worker_thread { }, raw_should_work { ld != nullptr }
     {
@@ -1631,12 +1478,18 @@ namespace fs::dev::tty
 
             const auto gen = self->raw_wq.snapshot_gen();
             std::array<std::byte, 64> chunk;
+
+            auto tios = self->termios.lock();
             const auto num = self->raw_buffer.pop(std::span { chunk });
+
             if (num == 0)
             {
+                tios.unlock();
                 self->raw_wq.wait_prepared(gen);
                 continue;
             }
+
+            self->wakeup_link();
 
             auto ld = self->ldisc.lock().value();
             lib::bug_on(!ld);
@@ -1644,17 +1497,217 @@ namespace fs::dev::tty
         }
     }
 
+    std::shared_ptr<instance> instance::real_tty()
+    {
+        auto self = shared_from_this();
+        if (drv->subtyp != subtype::pty_master)
+            return self;
+        if (auto peer = link.lock())
+            return peer;
+        return self;
+    }
+
+    void instance::resize(const struct winsize &size)
+    {
+        {
+            auto current = winsize.lock();
+            if (!std::memcmp(&*current, &size, sizeof(size)))
+                return;
+            *current = size;
+        }
+
+        const auto fg_group = ctrl.lock()->group.lock();
+        if (fg_group)
+            fg_group->signal_all(sched::sigwinch);
+    }
+
     lib::expect<int> instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
     {
-        auto ld = ldisc.lock().value();
-        if (!ld)
-            return std::unexpected { lib::err::io_error };
-        const auto res = ld->ioctl(request, argp);
+        lib::bug_on(!drv);
+
+        const auto target = real_tty();
+        switch (request)
+        {
+            case tcsbrk:
+            {
+                auto ld = ldisc.lock().value();
+                if (!ld)
+                    return std::unexpected { lib::err::io_error };
+                ld->wait_sent();
+                if (argp.value() == 0)
+                {
+                    break_ctl(true);
+                    sched::sleep_for_ns(250'000'000);
+                    break_ctl(false);
+                }
+                return 0;
+            }
+            case tiocgpgrp:
+            {
+                const auto proc = sched::current_process();
+
+                auto locked = target->ctrl.lock();
+                if (locked->session.lock() != proc->session)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+
+                if (locked->pgid == 0)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+                if (!argp.write(locked->pgid))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tiocspgrp:
+            {
+                pid_t pgid;
+                if (!argp.read(pgid))
+                    return std::unexpected { lib::err::invalid_address };
+                if (pgid < 0)
+                    return std::unexpected { lib::err::invalid_flags };
+
+                const auto proc = sched::current_process();
+
+                std::shared_ptr<sched::session_t> tty_session;
+                {
+                    auto locked = target->ctrl.lock();
+                    tty_session = locked->session.lock();
+                    if (!tty_session || tty_session != proc->session)
+                        return std::unexpected { lib::err::inappropriate_ioctl };
+                }
+
+                if (const auto ret = background_check(*target, sched::sigttou); !ret)
+                    return std::unexpected { ret.error() };
+
+                std::shared_ptr<sched::group_t> new_group;
+                {
+                    auto members = tty_session->members.lock();
+                    auto it = members->find(pgid);
+                    if (it == members->end())
+                        return std::unexpected { lib::err::not_permitted };
+                    new_group = it->second.lock();
+                    if (!new_group)
+                        return std::unexpected { lib::err::not_permitted };
+                }
+                target->ctrl.lock()->set_group(std::move(new_group));
+                return 0;
+            }
+            case tiocgsid:
+            {
+                const auto proc = sched::current_process();
+
+                auto locked = target->ctrl.lock();
+                const auto tty_session = locked->session.lock();
+                if (!tty_session || tty_session != proc->session)
+                    return std::unexpected { lib::err::inappropriate_ioctl };
+
+                if (!argp.write(tty_session->sid))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tiocgwinsz:
+                if (!argp.write(target->winsize.lock().value()))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            case tiocswinsz:
+            {
+                struct winsize size;
+                if (!argp.read(size))
+                    return std::unexpected { lib::err::invalid_address };
+                target->resize(size);
+                return 0;
+            }
+            case tiocsctty:
+            {
+                const int force = argp.value();
+
+                const auto proc = sched::current_process();
+                if (proc->pid != proc->session->sid)
+                    return std::unexpected { lib::err::not_permitted };
+
+                auto locked = target->ctrl.lock();
+                if (auto existing = locked->session.lock())
+                {
+                    if (existing == proc->session)
+                        return 0;
+
+                    if (force != 1 || !sched::capable(sched::cap_t::sys_admin))
+                        return std::unexpected { lib::err::not_permitted };
+
+                    auto old_ctty = existing->ctty.lock();
+                    if (old_ctty.value().get() == target.get())
+                        old_ctty.value().reset();
+
+                    locked->session.reset();
+                    locked->reset_group();
+                }
+
+                {
+                    auto locked = proc->session->ctty.lock();
+                    if (locked.value())
+                        return std::unexpected { lib::err::not_permitted };
+                    locked.value() = target;
+                }
+
+                locked->session = proc->session;
+                locked->set_group(proc->group);
+                return 0;
+            }
+            case tiocnotty:
+            {
+                const auto proc = sched::current_process();
+                std::shared_ptr<sched::group_t> fg_group;
+                {
+                    auto locked = ctrl.lock();
+                    if (locked->session.lock() != proc->session)
+                        return std::unexpected { lib::err::inappropriate_ioctl };
+
+                    if (proc->pid != proc->session->sid)
+                        return 0;
+
+                    fg_group = locked->group.lock();
+                    locked->session.reset();
+                    locked->reset_group();
+                }
+
+                {
+                    auto ctty_locked = proc->session->ctty.lock();
+                    if (ctty_locked.value().get() == this)
+                        ctty_locked.value().reset();
+                }
+
+                if (fg_group)
+                {
+                    fg_group->signal_all(sched::sighup);
+                    fg_group->signal_all(sched::sigcont);
+                }
+                return 0;
+            }
+        }
+
+        const auto res = drv->ioctl(this, request, argp);
         if (res.has_value() || (res.error() != lib::err::inappropriate_ioctl))
             return res;
 
-        lib::bug_on(!drv);
-        return drv->ioctl(this, request, argp);
+        auto ldisc_target = shared_from_this();
+        switch (request)
+        {
+            case tcgets:
+            case tcsets:
+            case tcsetsw:
+            case tcsetsf:
+            case tcgets2:
+            case tcsets2:
+            case tcsetsw2:
+            case tcsetsf2:
+            case tiocglcktrmios:
+            case tiocslcktrmios:
+                ldisc_target = target;
+                break;
+        }
+
+        auto ld = ldisc_target->ldisc.lock().value();
+        if (!ld)
+            return std::unexpected { lib::err::io_error };
+        return ld->ioctl(request, argp);
     }
 
     lib::expect<std::uint16_t> instance::poll(vfs::poll_table_t *pt)
@@ -1663,6 +1716,17 @@ namespace fs::dev::tty
         if (!ld)
             return std::unexpected { lib::err::io_error };
         return ld->poll(pt);
+    }
+
+    void instance::wakeup_link()
+    {
+        const auto peer = link.lock();
+        if (!peer)
+            return;
+
+        const auto peer_ld = peer->ldisc.lock().value();
+        if (peer_ld)
+            peer_ld->write_wake();
     }
 
     void instance::hangup()

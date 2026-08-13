@@ -9,6 +9,7 @@ module drivers.output.vt;
 import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
 import drivers.output;
+import system.input;
 import system.sched;
 import system.vfs;
 import system.dev;
@@ -20,27 +21,7 @@ namespace output::vt
     namespace tty = fs::dev::tty;
     namespace
     {
-        constexpr std::size_t num_vts = 63;
         constexpr bool debug = false;
-
-        enum vtmode
-        {
-            vt_auto = 0x00,
-            vt_process = 0x01
-        };
-
-        enum kdmode
-        {
-            kd_text = 0x00,
-            kd_graphics = 0x01
-        };
-
-        enum gkbtype : std::uint8_t
-        {
-            kb_84 = 0x01,
-            kb_101 = 0x02,
-            kb_other = 0x03
-        };
 
         struct vt_mode
         {
@@ -67,7 +48,7 @@ namespace output::vt
         };
 
         // + 1 cuz tty0
-        std::array<slot_t, num_vts + 1> slots { };
+        std::array<slot_t, num_consoles + 1> slots { };
         std::atomic<std::size_t> current = 1;
 
         sched::mutex_t switch_lock;
@@ -130,7 +111,7 @@ namespace output::vt
 
         std::shared_ptr<vt_t> get_instance(std::size_t index)
         {
-            if (index == 0 || index > num_vts)
+            if (index == 0 || index > num_consoles)
                 return nullptr;
             return slots[index].inst.lock();
         }
@@ -254,7 +235,7 @@ namespace output::vt
 
         lib::expect<void> request_switch(std::size_t index)
         {
-            if (index == 0 || index > num_vts)
+            if (index == 0 || index > num_consoles)
                 return std::unexpected { lib::err::invalid_argument };
 
             if (index == current.load(std::memory_order_acquire))
@@ -308,7 +289,7 @@ namespace output::vt
         {
             std::shared_ptr<tty::instance> create_instance(std::uint32_t minor) override
             {
-                if (minor == 0 || minor > num_vts)
+                if (minor == 0 || minor > num_consoles)
                     return nullptr;
 
                 auto inst = std::make_shared<vt_t>(this, minor);
@@ -329,6 +310,42 @@ namespace output::vt
                 const auto index = inst->minor;
                 switch (request)
                 {
+                    case tty::kdgkbmode:
+                    {
+                        const auto mode = input::get_kbmode(index);
+                        if (!mode)
+                            return std::unexpected { mode.error() };
+                        const int value = *mode;
+                        if (!argp.write(value))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    case tty::kdskbmode:
+                    {
+                        const auto mode = static_cast<input::kbmode>(argp.value());
+                        if (const auto ret = input::set_kbmode(index, mode); !ret)
+                            return std::unexpected { ret.error() };
+                        return 0;
+                    }
+                    case tty::kdsigaccept:
+                    {
+                        // TODO: magic keys
+                        const int sig = argp.value();
+                        if (sig < 1 || sig > sched::nsig || sig == sched::sigkill || sig == sched::sigstop)
+                            return std::unexpected { lib::err::invalid_argument };
+                        return 0;
+                    }
+                    case tty::kdgkbled:
+                    {
+                        // TODO
+                        constexpr std::uint8_t no_locks = 0;
+                        if (!argp.write(no_locks))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    case tty::kdskbled:
+                        // TODO
+                        return 0;
                     case tty::kdgkbtype:
                         // TODO
                         if (!argp.write(kb_101))
@@ -370,7 +387,7 @@ namespace output::vt
                             stat.active = current.load(std::memory_order_acquire);
                             stat.signal = 0;
                             stat.state = 1;
-                            for (std::size_t i = 1; i <= num_vts; i++)
+                            for (std::size_t i = 1; i <= num_consoles; i++)
                             {
                                 if (slots[i].inst.lock())
                                     stat.state |= 1u << i;
@@ -385,7 +402,7 @@ namespace output::vt
                         int free = -1;
                         {
                             const std::unique_lock _ { switch_lock };
-                            for (std::size_t i = 1; i <= num_vts; i++)
+                            for (std::size_t i = 1; i <= num_consoles; i++)
                             {
                                 if (!slots[i].inst.lock())
                                 {
@@ -475,7 +492,7 @@ namespace output::vt
                     case tty::vt_waitactive:
                     {
                         const std::size_t target = argp.value();
-                        if (target == 0 || target > num_vts)
+                        if (target == 0 || target > num_consoles)
                             return std::unexpected { lib::err::invalid_argument };
 
                         while (true)
@@ -492,7 +509,7 @@ namespace output::vt
                     case tty::vt_disallocate:
                     {
                         const std::size_t target = argp.value();
-                        if (target > num_vts)
+                        if (target > num_consoles)
                             return std::unexpected { lib::err::invalid_argument };
 
                         const std::unique_lock _ { switch_lock };
@@ -514,7 +531,7 @@ namespace output::vt
                                 return std::unexpected { lib::err::target_is_busy };
                             return 0;
                         }
-                        for (std::size_t i = 1; i <= num_vts; i++)
+                        for (std::size_t i = 1; i <= num_consoles; i++)
                             destroy_one(i);
                         return 0;
                     }
@@ -525,7 +542,7 @@ namespace output::vt
 
             driver_t() : tty::driver {
                 "vt", "tty", 1,
-                4, 1, num_vts,
+                4, 1, num_consoles,
                 tty::flag::none, tty::type::console, tty::subtype::syscons,
                 tty::ktermios::standard()
             } { }
@@ -554,7 +571,7 @@ namespace output::vt
     bool is_decckm()
     {
         const auto index = current.load(std::memory_order_acquire);
-        if (index == 0 || index > num_vts)
+        if (index == 0 || index > num_consoles)
             return false;
         return slots[index].decckm.load(std::memory_order_acquire);
     }
@@ -576,7 +593,7 @@ namespace output::vt
         lib::initgraph::require { output::initialised_stage() },
         [] {
             slots[1].ctx = term::main();
-            for (std::size_t i = 2; i <= num_vts; i++)
+            for (std::size_t i = 2; i <= num_consoles; i++)
             {
                 slots[i].ctx = term::create();
                 if (!slots[i].ctx)

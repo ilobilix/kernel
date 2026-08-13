@@ -279,16 +279,33 @@ export namespace fs::dev::tty
         }
     };
 
-    enum ioctl
+    using namespace lib::ioc;
+    enum ioctl : std::uint32_t
     {
+        kiocsound = 0x4B2F,
+        kdmktone = 0x4B30,
+        kdsetled = 0x4B32,
         kdgkbtype = 0x4B33,
         kdsetmode = 0x4B3A,
         kdgetmode = 0x4B3B,
         kdgkbmode = 0x4B44,
         kdskbmode = 0x4B45,
+        kdgkbent = 0x4B46,
+        kdskbent = 0x4B47,
+        kdgkbsent = 0x4B48,
+        kdskbsent = 0x4B49,
+        kdgkbdiacr = 0x4B4A,
+        kdskbdiacr = 0x4B4B,
+        kdgetkeycode = 0x4B4C,
+        kdsetkeycode = 0x4B4D,
         kdsigaccept = 0x4B4E,
+        kdkbdrep = 0x4B52,
+        kdgkbmeta = 0x4B62,
+        kdskbmeta = 0x4B63,
         kdgkbled = 0x4B64,
         kdskbled = 0x4B65,
+        kdgkbdiacruc = 0x4BFA,
+        kdskbdiacruc = 0x4BFB,
         tcgets = 0x5401,
         tcsets = 0x5402,
         tcsetsw = 0x5403,
@@ -296,13 +313,24 @@ export namespace fs::dev::tty
         tcsbrk = 0x5409,
         tcxonc = 0x540A,
         tcflsh = 0x540B,
+        tiocexcl = 0x540C,
+        tiocnxcl = 0x540D,
+        tiocsctty = 0x540E,
         tiocgpgrp = 0x540F,
         tiocspgrp = 0x5410,
+        tiocoutq = 0x5411,
+        tiocsti = 0x5412,
         tiocgwinsz = 0x5413,
         tiocswinsz = 0x5414,
+        tiocinq = 0x541B,
+        tioccons = 0x541D,
         tiocnotty = 0x5422,
-        tiocsctty = 0x540E,
+        tiocsetd = 0x5423,
+        tiocgetd = 0x5424,
         tiocgsid = 0x5429,
+        tiocgdev = make_ior<unsigned int>('T', 0x32),
+        tiocvhangup = 0x5437,
+        tiocgexcl = make_ior<int>('T', 0x40),
         tiocglcktrmios = 0x5456,
         tiocslcktrmios = 0x5457,
         vt_openqry = 0x5600,
@@ -313,10 +341,17 @@ export namespace fs::dev::tty
         vt_activate = 0x5606,
         vt_waitactive = 0x5607,
         vt_disallocate = 0x5608,
-        tcgets2 = 0x802C542A,
-        tcsets2 = 0x402C542B,
-        tcsetsw2 = 0x402C542C,
-        tcsetsf2 = 0x402C542D
+        vt_resize = 0x5609,
+        vt_resizex = 0x560A,
+        vt_lockswitch = 0x560B,
+        vt_unlockswitch = 0x560C,
+        vt_gethifontmask = 0x560D,
+        vt_waitevent = 0x560E,
+        vt_setactivate = 0x560F,
+        tcgets2 = make_ior<ktermios>('T', 0x2A),
+        tcsets2 = make_iow<ktermios>('T', 0x2B),
+        tcsetsw2 = make_iow<ktermios>('T', 0x2C),
+        tcsetsf2 = make_iow<ktermios>('T', 0x2D)
     };
 
     enum tcflow
@@ -343,19 +378,19 @@ export namespace fs::dev::tty
         virtual ~line_discipline() = default;
 
         virtual void open() = 0;
-
         virtual void shutdown() = 0;
+        virtual void hangup() = 0;
+
+        virtual void wait_sent() = 0;
+        virtual void write_wake() = 0;
 
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
 
         virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) = 0;
-
         virtual lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt) = 0;
 
         virtual void receive(std::span<std::byte> buffer) = 0;
-
-        virtual void hangup() = 0;
     };
 
     struct default_ldisc : line_discipline
@@ -429,13 +464,14 @@ export namespace fs::dev::tty
             }
         };
 
-        lib::rbspscd<std::byte, buffer_size> raw_buffer;
+        lib::rbmpmcd<std::byte, buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
 
         lib::locker<in_buffer_t, sched::mutex_t> in_buffer;
         sched::wait_queue_t in_wq;
 
         lib::rbmpscd<char, buffer_size> out_buffer;
+        sched::mutex_t output_lock;
         sched::wait_queue_t out_wq;
 
         std::atomic_bool stopped;
@@ -452,8 +488,15 @@ export namespace fs::dev::tty
         void shutdown() override;
         void hangup() override;
 
+        void wait_sent() override;
+        void write_wake() override;
+
         bool output_append(const ktermios &termios, char chr);
         void output_flush();
+        void output_clear();
+
+        void input_flush_locked();
+        void input_flush();
 
         void set_stopped(bool value);
         bool maybe_readable();
@@ -467,7 +510,6 @@ export namespace fs::dev::tty
         lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) override;
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
-
         lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt) override;
     };
 
@@ -481,7 +523,6 @@ export namespace fs::dev::tty
         std::atomic<std::uint32_t> ref;
 
         std::atomic_bool hung_up;
-        std::atomic<int> kbmode;
 
         lib::locker<std::shared_ptr<line_discipline>, sched::mutex_t> ldisc;
 
@@ -509,7 +550,7 @@ export namespace fs::dev::tty
         };
         lib::locker<ctrl_t, sched::mutex_t> ctrl;
 
-        lib::rbspscd<std::byte, raw_buffer_size> raw_buffer;
+        lib::rbmpmcd<std::byte, raw_buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
         std::weak_ptr<sched::thread_t> worker_thread;
         std::atomic_bool raw_should_work;
@@ -552,8 +593,9 @@ export namespace fs::dev::tty
 
         virtual bool needs_close_erase() const { return true; }
 
-        virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
+        virtual void resize(const struct winsize &size);
 
+        virtual lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp);
         virtual lib::expect<std::uint16_t> poll(vfs::poll_table_t *pt);
 
         virtual void set_termios(ktermios &current, const ktermios &old)
@@ -577,6 +619,8 @@ export namespace fs::dev::tty
             lib::unused(stop);
         }
 
+        std::shared_ptr<instance> real_tty();
+
         // called by hardware
         bool receive(std::span<std::byte> buffer)
         {
@@ -585,8 +629,9 @@ export namespace fs::dev::tty
             return pushed;
         }
 
-        void hangup();
+        void wakeup_link();
 
+        void hangup();
         void detach(sched::session_t *session) override;
     };
 

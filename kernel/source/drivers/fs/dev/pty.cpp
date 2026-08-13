@@ -19,11 +19,17 @@ namespace fs::dev::pty
         constexpr std::uint32_t master_major = 128;
         constexpr std::uint32_t slave_major = 136;
 
-        constexpr std::uint64_t tiocgptn = 0x80045430;
-        constexpr std::uint64_t tiocsptlck = 0x40045431;
-        constexpr std::uint64_t tiocgptlck = 0x80045439;
-        constexpr std::uint64_t tiocpkt = 0x5420;
-        constexpr std::uint64_t tiocgptpeer = 0x5441;
+        using namespace lib::ioc;
+        enum ioctls
+        {
+            tiocpkt = 0x5420,
+            tiocgptn = make_ior<unsigned int>('T', 0x30),
+            tiocsptlck = make_iow<int>('T', 0x31),
+            tiocsig = make_iow<int>('T', 0x36),
+            tiocgpkt = make_ior<int>('T', 0x38),
+            tiocgptlck = make_ior<int>('T', 0x39),
+            tiocgptpeer = make_io('T', 0x41)
+        };
 
         enum pkt : std::uint8_t
         {
@@ -87,22 +93,6 @@ namespace fs::dev::pty
                 peer->hangup();
         }
 
-        void propagate_winsize(tty::instance &from, tty::instance &to)
-        {
-            const auto current = from.winsize.lock().value();
-            to.winsize.lock().value() = current;
-        }
-
-        void signal_winch(tty::instance &slave_inst)
-        {
-            std::shared_ptr<sched::group_t> fg_group;
-            {
-                auto locked = slave_inst.ctrl.lock();
-                fg_group = locked->group.lock();
-            }
-            if (fg_group)
-                fg_group->signal_all(sched::sigwinch);
-        }
     } // namespace
 
     struct pty_instance_base : tty::instance
@@ -140,6 +130,13 @@ namespace fs::dev::pty
         {
             return find_pair(minor) == nullptr;
         }
+
+        void resize(const tty::winsize &size) override
+        {
+            tty::instance::resize(size);
+            if (auto peer = link.lock())
+                peer->winsize.lock().value() = size;
+        }
     };
 
     struct ptm_instance : pty_instance_base
@@ -170,7 +167,6 @@ namespace fs::dev::pty
         void set_termios(tty::ktermios &current, const tty::ktermios &old) override;
 
         lib::expect<void> permit_open(std::shared_ptr<vfs::file_t>) override;
-        lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
     };
 
     struct pty_driver_base : tty::driver
@@ -216,9 +212,18 @@ namespace fs::dev::pty
 
     void pts_instance::flush_notify(int queue)
     {
-        if (queue == tty::tciflush)
-            return;
-        raise(pkt_flushread | pkt_flushwrite);
+        switch (queue)
+        {
+            case tty::tciflush:
+                raise(pkt_flushread);
+                break;
+            case tty::tcoflush:
+                raise(pkt_flushwrite);
+                break;
+            case tty::tcioflush:
+                raise(pkt_flushread | pkt_flushwrite);
+                break;
+        }
     }
 
     void pts_instance::flow_notify(bool stop)
@@ -390,33 +395,6 @@ namespace fs::dev::pty
                 }
                 return *fdres;
             }
-            case tty::ioctl::tcgets:
-            case tty::ioctl::tcsets:
-            case tty::ioctl::tcsetsw:
-            case tty::ioctl::tcsetsf:
-            case tty::ioctl::tcgets2:
-            case tty::ioctl::tcsets2:
-            case tty::ioctl::tcsetsw2:
-            case tty::ioctl::tcsetsf2:
-            {
-                auto peer = link.lock();
-                if (!peer)
-                    return std::unexpected { lib::err::io_error };
-                return peer->ioctl(request, argp);
-            }
-            case tty::ioctl::tiocswinsz:
-            {
-                const auto base_res = tty::instance::ioctl(request, argp);
-                if (!base_res.has_value())
-                    return base_res;
-
-                if (auto peer = link.lock())
-                {
-                    propagate_winsize(*this, *peer);
-                    signal_winch(*peer);
-                }
-                return base_res;
-            }
             default:
                 return tty::instance::ioctl(request, argp);
         }
@@ -433,21 +411,6 @@ namespace fs::dev::pty
             *events |= vfs::pollin | vfs::pollrdnorm;
 
         return events;
-    }
-
-    lib::expect<int> pts_instance::ioctl(std::uint64_t request, lib::uptr_or_addr argp)
-    {
-        if (request == tty::ioctl::tiocswinsz)
-        {
-            const auto base_res = tty::instance::ioctl(request, argp);
-            if (!base_res.has_value())
-                return base_res;
-            if (auto peer = link.lock())
-                propagate_winsize(*this, *peer);
-            signal_winch(*this);
-            return base_res;
-        }
-        return tty::instance::ioctl(request, argp);
     }
 
     lib::expect<std::shared_ptr<pair>> alloc()

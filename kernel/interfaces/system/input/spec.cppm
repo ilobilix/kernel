@@ -239,6 +239,15 @@ export namespace input
         ff_cnt = (ff_max + 1)
     };
 
+    enum kbmode
+    {
+        k_raw = 0x00,
+        k_xlate = 0x01,
+        k_mediumraw = 0x02,
+        k_unicode = 0x03,
+        k_off = 0x04
+    };
+
     using namespace lib::ioc;
     enum ioctls : std::uint32_t
     {

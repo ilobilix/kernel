@@ -449,4 +449,7 @@ export namespace input
 
     lib::expect<void> register_consumer(consumer_t &consumer);
     void unregister_consumer(consumer_t &consumer);
+
+    lib::expect<kbmode> get_kbmode(std::size_t console);
+    lib::expect<void> set_kbmode(std::size_t console, kbmode mode);
 } // export namespace input
