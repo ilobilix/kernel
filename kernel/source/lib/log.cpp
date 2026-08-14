@@ -803,7 +803,7 @@ namespace lib::log
 
         while (true)
         {
-            std::size_t wait_gen = 0;
+            sched::gen_t wait_gen;
             bool should_wait = false;
             {
                 const std::unique_lock _ { consumer_lock };

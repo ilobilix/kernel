@@ -157,7 +157,7 @@ export namespace sched
             >, mutex_t
         > members;
 
-        int signal_all(int sig);
+        int signal_all(int sig, bool kernel = false);
     };
 
     std::string comm_of(process_t *proc);

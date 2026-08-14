@@ -55,7 +55,7 @@ namespace sched
                 .value = 0
             };
             send_signal(parent.get(), info);
-            parent->wait_child.wake_one();
+            parent->wait_child.wake_all();
         }
 
         void stop_process(process_t *proc, int sig)

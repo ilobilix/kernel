@@ -122,7 +122,7 @@ namespace syscall::vfs
                 while (true)
                 {
                     bool blocked = false;
-                    std::size_t gen = 0;
+                    sched::gen_t gen;
                     {
                         auto locked = data->counter.lock();
                         if (val > ev_max - *locked)

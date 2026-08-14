@@ -123,6 +123,7 @@ namespace syscall::vfs
             while (true)
             {
                 poll_table_t pt;
+                const auto gen = pt.poll_wq->snapshot_gen();
                 std::size_t ready = pre_ready;
 
                 for (nfds_t i = 0; i < fds.size(); i++)
@@ -153,7 +154,7 @@ namespace syscall::vfs
                 if (timeout && timeout_ns == 0)
                     return 0;
 
-                const auto res = pt.poll_wq->wait(timeout ? timeout_ns : 0);
+                const auto res = pt.poll_wq->wait_prepared(gen, timeout ? timeout_ns : 0);
                 if (res.killed || res.interrupted)
                 {
                     guard.disarm();

@@ -47,7 +47,7 @@ namespace uacpi
                     }
                 }
                 if (worked)
-                    completed.wake_one();
+                    completed.wake_all();
 
                 added.wait_prepared(gen);
             }

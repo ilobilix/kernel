@@ -29,10 +29,10 @@ export namespace output::vt
     };
 
     std::size_t active();
-    lib::expect<void> activate(std::size_t index);
+    bool activate(std::size_t index);
+    bool activate_previous();
 
-    bool receive_input(std::span<std::byte> buffer);
-    bool is_decckm();
+    bool receive_input(std::size_t console, std::span<std::byte> buffer);
 
     lib::initgraph::stage *registered_stage();
 } // export namespace output::vt

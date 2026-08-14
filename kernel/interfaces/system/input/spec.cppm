@@ -248,6 +248,13 @@ export namespace input
         k_off = 0x04
     };
 
+    enum kbled
+    {
+        k_scrolllock = 0x01,
+        k_numlock = 0x02,
+        k_capslock = 0x04
+    };
+
     using namespace lib::ioc;
     enum ioctls : std::uint32_t
     {

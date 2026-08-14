@@ -547,7 +547,7 @@ namespace vfs::socket::netlink
 
             while (true)
             {
-                std::size_t gen = 0;
+                sched::gen_t gen;
                 std::shared_ptr<netlink_sock_t> keepalive;
                 {
                     auto locked = registry.lock();
@@ -601,7 +601,7 @@ namespace vfs::socket::netlink
             while (true)
             {
                 std::optional<dgram_t> msg;
-                std::size_t gen = 0;
+                sched::gen_t gen;
 
                 {
                     auto locked = receive.lock();

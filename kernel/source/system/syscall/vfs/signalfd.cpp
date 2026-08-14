@@ -138,6 +138,8 @@ namespace syscall::vfs
 
                 while (true)
                 {
+                    const auto gen = data->bell.snapshot_gen();
+
                     std::size_t count = 0;
                     if (const auto res = drain(count); !res)
                         return std::unexpected { res.error() };
@@ -148,7 +150,7 @@ namespace syscall::vfs
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto res = data->bell.wait();
+                    const auto res = data->bell.wait_prepared(gen);
                     if (res.interrupted || res.killed)
                     {
                         std::size_t after = 0;

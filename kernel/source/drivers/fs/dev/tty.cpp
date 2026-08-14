@@ -1450,16 +1450,16 @@ namespace fs::dev::tty
 
     instance::~instance()
     {
-        if (!raw_should_work.load(std::memory_order_relaxed))
+        if (!raw_should_work.load(std::memory_order_acquire))
         {
             lib::bug_on(!worker_thread.expired());
             return;
         }
 
-        raw_should_work.store(false, std::memory_order_relaxed);
+        raw_should_work.store(false, std::memory_order_release);
         raw_wq.wake_one();
 
-        while (!raw_should_work.load(std::memory_order_relaxed))
+        while (!raw_should_work.load(std::memory_order_acquire))
             sched::yield();
     }
 
@@ -1470,13 +1470,13 @@ namespace fs::dev::tty
 
         while (true)
         {
-            if (!self->raw_should_work.load(std::memory_order_relaxed))
+            const auto gen = self->raw_wq.snapshot_gen();
+            if (!self->raw_should_work.load(std::memory_order_acquire))
             {
-                self->raw_should_work.store(true, std::memory_order_relaxed);
+                self->raw_should_work.store(true, std::memory_order_release);
                 sched::thread_exit(0);
             }
 
-            const auto gen = self->raw_wq.snapshot_gen();
             std::array<std::byte, 64> chunk;
 
             auto tios = self->termios.lock();

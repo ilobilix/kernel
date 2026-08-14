@@ -543,8 +543,7 @@ namespace vfs::socket
                 {
                     while (true)
                     {
-                        std::size_t gen = 0;
-
+                        sched::gen_t gen;
                         {
                             auto tlocked = target->state.lock();
                             if (tlocked->state != listening || tlocked->shut_read)
@@ -645,8 +644,8 @@ namespace vfs::socket
                 while (true)
                 {
                     std::shared_ptr<unix_sock> client;
-                    std::size_t gen = 0;
                     bool freed_slot = false;
+                    sched::gen_t gen;
 
                     {
                         auto slocked = state.lock();
@@ -780,7 +779,7 @@ namespace vfs::socket
                         std::size_t chunk = 0;
                         bool fault = false;
                         bool peer_gone = false;
-                        std::size_t gen = 0;
+                        sched::gen_t gen;
 
                         {
                             {
@@ -963,7 +962,7 @@ namespace vfs::socket
 
                     while (true)
                     {
-                        std::size_t gen = 0;
+                        sched::gen_t gen;
                         {
                             auto locked = dest->receive.lock();
                             std::size_t queued = 0;
@@ -1084,7 +1083,7 @@ namespace vfs::socket
                         std::size_t chunk = 0;
                         bool fault = false;
                         bool eof = false;
-                        std::size_t gen = 0;
+                        sched::gen_t gen;
 
                         {
                             auto locked = receive.lock();
@@ -1177,7 +1176,7 @@ namespace vfs::socket
                     while (true)
                     {
                         std::optional<receive_t::dgram> msg;
-                        std::size_t gen = 0;
+                        sched::gen_t gen;
 
                         {
                             auto locked = receive.lock();
@@ -1672,7 +1671,7 @@ namespace vfs::socket
 
                         while (true)
                         {
-                            std::size_t gen;
+                            sched::gen_t gen;
                             {
                                 auto plocked = peer_ptr->receive.lock();
                                 if (plocked->buffered == 0)

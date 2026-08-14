@@ -72,8 +72,9 @@ namespace x86_64::output::uart8250
                     auto chr = lib::io::in<8>(port);
 
                     //! TODO: TEMPORARY
+                    namespace vt = ::output::vt;
                     auto byte = static_cast<std::byte>(chr);
-                    if (::output::vt::receive_input({ &byte, 1 }))
+                    if (vt::receive_input(vt::active(), { &byte, 1 }))
                         continue;
 
                     if (hooks[idx])

@@ -38,6 +38,13 @@ export namespace input
         ev_cnt = ev_max + 1
     };
 
+    enum key_value : std::int32_t
+    {
+        key_released = 0,
+        key_pressed = 1,
+        key_repeated = 2
+    };
+
     enum syn_code : std::uint16_t
     {
         syn_report = 0,

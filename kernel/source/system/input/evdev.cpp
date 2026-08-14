@@ -393,7 +393,7 @@ namespace input
                     if (count != 0)
                         break;
 
-                    std::size_t gen = 0;
+                    sched::gen_t gen;
                     {
                         const std::unique_lock _ { handle->lock };
                         if (handle->tail != handle->packet)

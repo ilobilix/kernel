@@ -118,7 +118,7 @@ namespace vfs::pipe
         {
             while (true)
             {
-                std::size_t gen;
+                sched::gen_t gen;
                 {
                     const std::unique_lock _ { pdata->lock };
                     if (pdata->writers > 0)
@@ -142,7 +142,7 @@ namespace vfs::pipe
         {
             while (true)
             {
-                std::size_t gen;
+                sched::gen_t gen;
                 {
                     const std::unique_lock _ { pdata->lock };
                     if (pdata->readers > 0)
@@ -253,7 +253,7 @@ namespace vfs::pipe
                     std::size_t copied = 0;
                     bool fault = false;
                     bool no_writers = false;
-                    std::size_t gen = 0;
+                    sched::gen_t gen;
 
                     {
                         const std::unique_lock _ { pdata->lock };
@@ -312,7 +312,7 @@ namespace vfs::pipe
                     std::size_t chunk = 0;
                     bool fault = false;
                     bool no_readers = false;
-                    std::size_t gen = 0;
+                    sched::gen_t gen;
 
                     {
                         const std::unique_lock _ { pdata->lock };

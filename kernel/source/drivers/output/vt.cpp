@@ -44,7 +44,6 @@ namespace output::vt
         {
             flanterm_context *ctx;
             std::weak_ptr<vt_t> inst;
-            std::atomic_bool decckm;
         };
 
         // + 1 cuz tty0
@@ -53,6 +52,7 @@ namespace output::vt
 
         sched::mutex_t switch_lock;
         std::size_t pending = 0;
+        std::size_t previous = 1;
         sched::wait_queue_t switch_wq;
 
         struct vt_t : tty::instance
@@ -140,29 +140,41 @@ namespace output::vt
 
         void callback(
             flanterm_context *ctx, std::uint64_t type,
-            std::uint64_t count, std::uint64_t values, std::uint64_t final
+            std::uint64_t count, std::uint64_t values, std::uint64_t arg
         )
         {
+            using namespace input::kbd;
+
             const auto index = get_slot(ctx);
             if (index == 0)
                 return;
 
+            const std::span vals {
+                reinterpret_cast<const std::uint32_t *>(values),
+                count
+            };
+
             switch (type)
             {
                 case FLANTERM_CB_DEC:
-                {
-                    if (final != 'h' && final != 'l')
+                    if (arg != 'h' && arg != 'l')
                         break;
 
-                    const std::span vals {
-                        reinterpret_cast<const std::uint32_t *>(values),
-                        count
-                    };
-
-                    if (std::ranges::contains(vals, 1u))
-                        slots[index].decckm.store(final == 'h', std::memory_order_release);
+                    for (const auto val : vals)
+                    {
+                        if (val == 1)
+                            set_term_mode(index, term_mode::app_cursor, arg == 'h');
+                        else if (val == 8)
+                            set_term_mode(index, term_mode::autorepeat, arg == 'h');
+                    }
                     break;
-                }
+                case FLANTERM_CB_MODE:
+                    if (arg != 'h' && arg != 'l')
+                        break;
+
+                    if (std::ranges::contains(vals, 20))
+                        set_term_mode(index, term_mode::newline, arg == 'h');
+                    break;
                 case FLANTERM_CB_PRIVATE_ID:
                     reply(index, "\e[?1;2c");
                     break;
@@ -176,7 +188,6 @@ namespace output::vt
                 case FLANTERM_CB_OSC:
                 case FLANTERM_CB_BELL:
                 case FLANTERM_CB_LINUX:
-                case FLANTERM_CB_MODE:
                     // TODO
                 default:
                     break;
@@ -213,10 +224,12 @@ namespace output::vt
             if (old == index)
                 return;
 
+            previous = old;
             term::set_visible(slots[old].ctx, false);
 
             auto ctx = slots[index].ctx;
             current.store(index, std::memory_order_release);
+            input::kbd::refresh_leds();
 
             const auto vt = get_instance(index);
             term::set_visible(ctx, !(vt && vt->graphics()));
@@ -233,34 +246,34 @@ namespace output::vt
             switch_wq.wake_all();
         }
 
-        lib::expect<void> request_switch(std::size_t index)
+        bool request_switch(std::size_t index)
         {
             if (index == 0 || index > num_consoles)
-                return std::unexpected { lib::err::invalid_argument };
+                return false;
 
             if (index == current.load(std::memory_order_acquire))
             {
                 pending = 0;
-                return { };
+                return true;
             }
 
             const auto vt = get_instance(current.load(std::memory_order_acquire));
             if (!vt)
             {
                 commit(index);
-                return { };
+                return true;
             }
 
             const auto vtmode = *vt->vtmode.lock();
             if (vtmode.mode != vt_process)
             {
                 commit(index);
-                return { };
+                return true;
             }
 
             pending = index;
             signal_owner(vt, vtmode.relsig);
-            return { };
+            return true;
         }
 
         void resolve_pending(std::size_t index)
@@ -275,7 +288,8 @@ namespace output::vt
 
             *vtmode.lock() = { vt_auto, 0, 0, 0, 0 };
             owner.store(0, std::memory_order_release);
-            slots[minor].decckm.store(false, std::memory_order_release);
+
+            input::kbd::reset_term_modes(minor);
 
             if (mode.exchange(kd_text, std::memory_order_acq_rel) == kd_graphics &&
                 minor == current.load(std::memory_order_acquire))
@@ -308,13 +322,20 @@ namespace output::vt
             {
                 lib::bug_on(!inst);
                 const auto index = inst->minor;
+
+                const auto proc = sched::current_process();
+                const bool tty_config = sched::capable(sched::cap_t::sys_tty_config);
+
+                const bool is_ctty = proc->session->ctty.lock()->get() == inst;
+                const bool perm = is_ctty || tty_config;
+
                 switch (request)
                 {
                     case tty::kdgkbmode:
                     {
-                        const auto mode = input::get_kbmode(index);
+                        const auto mode = input::kbd::get_mode(index);
                         if (!mode)
-                            return std::unexpected { mode.error() };
+                            return std::unexpected { lib::err::invalid_argument };
                         const int value = *mode;
                         if (!argp.write(value))
                             return std::unexpected { lib::err::invalid_address };
@@ -322,37 +343,82 @@ namespace output::vt
                     }
                     case tty::kdskbmode:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         const auto mode = static_cast<input::kbmode>(argp.value());
-                        if (const auto ret = input::set_kbmode(index, mode); !ret)
-                            return std::unexpected { ret.error() };
+                        if (!input::kbd::set_mode(index, mode))
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        if (const auto ld = inst->ldisc.lock().value())
+                            ld->input_flush();
+                        return 0;
+                    }
+                    case tty::kdsetled:
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
+                        if (!input::kbd::set_led_lights(index, argp.value()))
+                            return std::unexpected { lib::err::invalid_argument };
+                        return 0;
+                    case tty::kdgkbmeta:
+                    {
+                        const auto mode = input::kbd::get_meta_mode(index);
+                        if (!mode)
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        const int value = std::to_underlying(*mode);
+                        if (!argp.write(value))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    case tty::kdskbmeta:
+                    {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
+                        const auto mode = static_cast<input::kbd::meta_mode>(argp.value());
+                        if (!input::kbd::set_meta_mode(index, mode))
+                            return std::unexpected { lib::err::invalid_argument };
                         return 0;
                     }
                     case tty::kdsigaccept:
                     {
+                        if (!perm || !sched::capable(sched::cap_t::kill))
+                            return std::unexpected { lib::err::not_permitted };
+
                         // TODO: magic keys
                         const int sig = argp.value();
-                        if (sig < 1 || sig > sched::nsig || sig == sched::sigkill || sig == sched::sigstop)
+                        if (sig < 1 || sig > sched::nsig || sig == sched::sigkill)
                             return std::unexpected { lib::err::invalid_argument };
                         return 0;
                     }
                     case tty::kdgkbled:
                     {
-                        // TODO
-                        constexpr std::uint8_t no_locks = 0;
-                        if (!argp.write(no_locks))
+                        const auto state = input::kbd::get_led_state(index);
+                        if (!state)
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        if (!argp.write(*state))
                             return std::unexpected { lib::err::invalid_address };
                         return 0;
                     }
                     case tty::kdskbled:
-                        // TODO
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
+                        if (!input::kbd::set_led_state(index, argp.value()))
+                            return std::unexpected { lib::err::invalid_argument };
                         return 0;
                     case tty::kdgkbtype:
-                        // TODO
                         if (!argp.write(kb_101))
                             return std::unexpected { lib::err::invalid_address };
                         return 0;
                     case tty::kdsetmode:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         const int mode = argp.value();
                         if (mode != kd_text && mode != kd_graphics)
                             return std::unexpected { lib::err::invalid_argument };
@@ -428,6 +494,9 @@ namespace output::vt
                     }
                     case tty::vt_setmode:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         vt_mode mode { };
                         if (!argp.read(mode))
                             return std::unexpected { lib::err::invalid_address };
@@ -435,16 +504,11 @@ namespace output::vt
                         if (mode.mode != vt_auto && mode.mode != vt_process)
                             return std::unexpected { lib::err::invalid_argument };
 
-                        const auto valid = [](std::int16_t sig) {
-                            return sig >= 0 && sig <= sched::nsig &&
-                                sig != sched::sigkill && sig != sched::sigstop;
-                        };
-                        if (!valid(mode.relsig) || !valid(mode.acqsig) || !valid(mode.frsig))
-                            return std::unexpected { lib::err::invalid_argument };
-
                         const auto vt = get_instance(index);
                         if (!vt)
                             return std::unexpected { lib::err::no_such_device };
+
+                        mode.frsig = 0;
 
                         const std::unique_lock _ { switch_lock };
                         *vt->vtmode.lock() = mode;
@@ -459,6 +523,9 @@ namespace output::vt
                     }
                     case tty::vt_reldisp:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         const int arg = argp.value();
 
                         const std::unique_lock _ { switch_lock };
@@ -483,14 +550,20 @@ namespace output::vt
                     }
                     case tty::vt_activate:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         const std::size_t target = argp.value();
                         const std::unique_lock _ { switch_lock };
-                        if (const auto ret = request_switch(target); !ret)
-                            return std::unexpected { ret.error() };
+                        if (!request_switch(target))
+                            return std::unexpected { lib::err::invalid_argument };
                         return 0;
                     }
                     case tty::vt_waitactive:
                     {
+                        if (!perm)
+                            return std::unexpected { lib::err::not_permitted };
+
                         const std::size_t target = argp.value();
                         if (target == 0 || target > num_consoles)
                             return std::unexpected { lib::err::invalid_argument };
@@ -554,26 +627,24 @@ namespace output::vt
         return current.load(std::memory_order_acquire);
     }
 
-    lib::expect<void> activate(std::size_t index)
+    bool activate(std::size_t index)
     {
         const std::unique_lock _ { switch_lock };
         return request_switch(index);
     }
 
-    bool receive_input(std::span<std::byte> buffer)
+    bool activate_previous()
     {
-        const auto vt = get_instance(current.load(std::memory_order_acquire));
+        const std::unique_lock _ { switch_lock };
+        return request_switch(previous);
+    }
+
+    bool receive_input(std::size_t console, std::span<std::byte> buffer)
+    {
+        const auto vt = get_instance(console);
         if (!vt)
             return false;
         return vt->receive(buffer);
-    }
-
-    bool is_decckm()
-    {
-        const auto index = current.load(std::memory_order_acquire);
-        if (index == 0 || index > num_consoles)
-            return false;
-        return slots[index].decckm.load(std::memory_order_acquire);
     }
 
     lib::initgraph::stage *registered_stage()

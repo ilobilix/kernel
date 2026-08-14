@@ -260,7 +260,7 @@ namespace sched
                 while (true)
                 {
                     preempt_disable();
-                    std::size_t gen;
+                    sched::gen_t gen;
                     {
                         auto locked = deads.lock();
                         gen = bell.snapshot_gen();
@@ -284,6 +284,39 @@ namespace sched
                         arch::pause();
                 }
             }
+        }
+
+        int signal_group(group_t &group, const siginfo_t &info, bool check_perms)
+        {
+            std::vector<std::shared_ptr<process_t>> targets;
+            {
+                auto locked = group.members.lock();
+                if (locked->empty())
+                    return -ESRCH;
+
+                targets.reserve(locked->size());
+                for (auto it = locked->begin(); it != locked->end(); )
+                {
+                    if (auto ptr = it->second.lock())
+                    {
+                        targets.push_back(std::move(ptr));
+                        it++;
+                    }
+                    else it = locked->erase(it);
+                }
+            }
+
+            bool any_perm = false;
+            for (auto &proc : targets)
+            {
+                if (check_perms && !check_kill(info.signo, proc.get()))
+                    continue;
+
+                any_perm = true;
+                if (info.signo != 0)
+                    send_signal(proc.get(), info);
+            }
+            return any_perm ? 0 : (targets.empty() ? -ESRCH : -EPERM);
         }
     } // namespace
 
@@ -1014,7 +1047,7 @@ namespace sched
                     const bool was_zombie = child->is_zombie;
                     init_children->emplace(pid, std::move(child));
                     if (was_zombie)
-                        init->wait_child.wake_one();
+                        init->wait_child.wake_all();
                 }
                 locked->clear();
             }
@@ -1092,7 +1125,7 @@ namespace sched
                     send_signal(parent.get(), info);
                 }
 
-                parent->wait_child.wake_one();
+                parent->wait_child.wake_all();
             }
         }
 
@@ -1457,54 +1490,23 @@ namespace sched
         return ret;
     }
 
-    int group_t::signal_all(int sig)
+    int group_t::signal_all(int sig, bool kernel)
     {
-        if (sig < 0 || sig > nsig)
+        if (sig < (kernel ? 1 : 0) || sig > nsig)
             return -EINVAL;
 
         const auto caller = current_process();
-        siginfo_t info {
+        const siginfo_t info {
             .signo = sig,
-            .code = si_user,
+            .code = kernel ? si_kernel : si_user,
             .err = 0,
-            .pid = caller->pid,
-            .uid = caller->cred->ruid,
+            .pid = kernel ? 0 : caller->pid,
+            .uid = kernel ? 0 : caller->cred->ruid,
             .status = 0,
             .addr = 0,
             .value = 0,
         };
-
-        std::vector<std::shared_ptr<process_t>> targets;
-        {
-            auto locked = members.lock();
-            if (locked->empty())
-                return -ESRCH;
-
-            targets.reserve(locked->size());
-            for (auto it = locked->begin(); it != locked->end(); )
-            {
-                if (auto ptr = it->second.lock())
-                {
-                    targets.push_back(std::move(ptr));
-                    it++;
-                }
-                else it = locked->erase(it);
-            }
-        }
-
-        bool any_perm = false;
-        for (auto &proc : targets)
-        {
-            if (!check_kill(sig, proc.get()))
-                continue;
-
-            any_perm = true;
-            if (sig == 0)
-                continue;
-
-            send_signal(proc.get(), info);
-        }
-        return any_perm ? 0 : -EPERM;
+        return signal_group(*this, info, !kernel);
     }
 
     int setpgid(pid_t pid, pid_t pgid)
@@ -1882,7 +1884,7 @@ namespace sched
                 (*parent->children.lock())[target_proc->pid] = target_proc;
         }
 
-        std::size_t vfork_gen = 0;
+        sched::gen_t vfork_gen;
         if (flags & clone_vfork)
         {
             target_proc->vfork_pending = true;

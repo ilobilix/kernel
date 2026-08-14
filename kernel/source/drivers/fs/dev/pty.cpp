@@ -339,6 +339,26 @@ namespace fs::dev::pty
                 }
                 return 0;
             }
+            case tiocgpkt:
+            {
+                const int value = packet.load(std::memory_order_acquire) ? 1 : 0;
+                if (!argp.write(value))
+                    return std::unexpected { lib::err::invalid_address };
+                return 0;
+            }
+            case tiocsig:
+            {
+                const int sig = argp.value();
+                if (sig != sched::sigint && sig != sched::sigquit && sig != sched::sigtstp)
+                    return std::unexpected { lib::err::invalid_argument };
+
+                if (const auto slave = link.lock())
+                {
+                    if (const auto group = slave->ctrl.lock()->group.lock())
+                        group->signal_all(sig, true);
+                }
+                return 0;
+            }
             case tiocgptn:
             {
                 const auto value = static_cast<unsigned int>(minor);

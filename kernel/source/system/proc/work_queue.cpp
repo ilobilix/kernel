@@ -43,8 +43,9 @@ namespace sched
                         const auto now = timer->ns();
                         if (first->deadline > now)
                         {
+                            const auto gen = self->work_wq.snapshot_gen();
                             self->lock.unlock();
-                            self->work_wq.wait(first->deadline - now);
+                            self->work_wq.wait_prepared(gen, first->deadline - now);
                             self->lock.lock();
                             continue;
                         }
@@ -57,8 +58,9 @@ namespace sched
 
                         delete first;
                     }
+                    const auto gen = self->work_wq.snapshot_gen();
                     self->lock.unlock();
-                    self->work_wq.wait();
+                    self->work_wq.wait_prepared(gen);
                 }
             }
         };

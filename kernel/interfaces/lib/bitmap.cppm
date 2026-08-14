@@ -172,6 +172,31 @@ export namespace lib
             return std::nullopt;
         }
 
+        constexpr std::optional<std::size_t> find(
+            bool value, std::size_t start = 0,
+            std::memory_order order = std::memory_order_relaxed
+        ) const
+        {
+            if (start >= _count)
+                return std::nullopt;
+
+            lib::bug_on(_data == nullptr);
+            const auto first = start / word_bits;
+
+            for (std::size_t idx = first; idx < size_words(); idx++)
+            {
+                const Word before = idx == first
+                    ? (static_cast<Word>(1) << (start % word_bits)) - 1 : 0;
+                const Word usable = valid_bits(idx) & ~before;
+
+                const Word word = load(idx, order);
+                const Word found = (value ? word : static_cast<Word>(~word)) & usable;
+                if (found)
+                    return idx * word_bits + std::countr_zero(found);
+            }
+            return std::nullopt;
+        }
+
         constexpr bit operator[](std::size_t index) requires (!Const);
         constexpr bool operator[](std::size_t index) const { return get(index); }
 

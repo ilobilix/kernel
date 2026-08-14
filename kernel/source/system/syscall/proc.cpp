@@ -730,6 +730,8 @@ namespace syscall::proc
         const auto result = [&] {
             while (true)
             {
+                const auto gen = queue.snapshot_gen();
+
                 if (const auto info = dequeue_signal(thread, set))
                     return deliver(*info);
 
@@ -742,7 +744,7 @@ namespace syscall::proc
                     wait_ns = deadline_ns - now;
                 }
 
-                const auto res = queue.wait(wait_ns);
+                const auto res = queue.wait_prepared(gen, wait_ns);
 
                 if (consume_pending_stops())
                     continue;

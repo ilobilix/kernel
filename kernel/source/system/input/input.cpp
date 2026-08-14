@@ -491,7 +491,7 @@ namespace input
             if (registered() && !inhibited() && event->repeat_active &&
                 supported.get(ev_key, code) && event->state.get(ev_key, code))
             {
-                handle_event(event, ev_key, code, 2);
+                handle_event(event, ev_key, code, key_repeated);
                 handle_event(event, ev_syn, syn_report, 1);
 
                 if (repeat[rep_period])
@@ -591,7 +591,7 @@ namespace input
                 event->state.set(ev_key, code, false);
 
                 const value_t release[] {
-                    { ev_key, code, 0 },
+                    { ev_key, code, key_released },
                     { ev_syn, syn_report, 0 }
                 };
                 dispatch(event, release);
@@ -647,7 +647,7 @@ namespace input
             case ev_sw:
             case ev_led:
             {
-                if (val.type == ev_key && val.value == 2) // autorepeat
+                if (val.type == ev_key && val.value == key_repeated)
                     break;
 
                 const bool down = val.value != 0;
@@ -836,7 +836,7 @@ namespace input
             if (!keys.get(code))
                 continue;
 
-            handle_event(event, ev_key, code, 0);
+            handle_event(event, ev_key, code, key_released);
             sync = true;
         }
 

@@ -97,6 +97,7 @@ namespace sched
         {
             while (true)
             {
+                sched::gen_t gen;
                 while (true)
                 {
                     std::shared_ptr<process_t> proc;
@@ -104,7 +105,10 @@ namespace sched
                     {
                         auto locked = timer_sig_queue.lock();
                         if (locked->empty())
+                        {
+                            gen = timer_sig_bell.snapshot_gen();
                             break;
+                        }
 
                         auto front = locked->pop_front();
                         proc = std::move(front->timer_sig_self);
@@ -118,7 +122,7 @@ namespace sched
                     if (bits & timer_sig_prof)
                         deliver_timer_signal(proc.get(), sigprof);
                 }
-                timer_sig_bell.wait();
+                timer_sig_bell.wait_prepared(gen);
             }
         }
 

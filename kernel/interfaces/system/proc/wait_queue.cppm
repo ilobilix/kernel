@@ -59,6 +59,7 @@ export namespace sched
         ~wait_queue_entry_t() { detach_entry(*this); }
     };
 
+    enum class gen_t : std::uint64_t { };
     struct wait_queue_t
     {
         private:
@@ -68,12 +69,9 @@ export namespace sched
         > entries;
 
         lib::spinlock_irq lock;
-        std::atomic_size_t pending;
-        std::atomic_size_t generation;
+        std::atomic_uint64_t generation;
 
         std::shared_ptr<wait_queue_anchor_t> anchor;
-
-        bool try_dec_pending();
 
         void link_locked(wait_queue_entry_t &entry);
         void unlink_locked(wait_queue_entry_t &entry);
@@ -82,7 +80,7 @@ export namespace sched
 
         public:
         wait_queue_t()
-            : entries { }, lock { }, pending { 0 }, generation { 0 }, anchor { } { }
+            : entries { }, lock { }, generation { 0 }, anchor { } { }
         ~wait_queue_t();
 
         void add_entry(wait_queue_entry_t &entry);
@@ -100,19 +98,19 @@ export namespace sched
         };
 
         private:
-        wait_result_t wait_common(std::size_t gen, std::uint64_t ns, wait_mode mode);
+        wait_result_t wait_common(gen_t gen, std::uint64_t ns, wait_mode mode);
 
         public:
         wait_result_t wait(std::uint64_t ns = 0);
         wait_result_t wait_killable(std::uint64_t ns = 0);
         wait_result_t wait_unkillable(std::uint64_t ns = 0);
 
-        std::size_t snapshot_gen() const;
-        wait_result_t wait_prepared(std::size_t gen, std::uint64_t ns = 0);
-        wait_result_t wait_killable_prepared(std::size_t gen, std::uint64_t ns = 0);
-        wait_result_t wait_unkillable_prepared(std::size_t gen, std::uint64_t ns = 0);
+        gen_t snapshot_gen() const;
+        wait_result_t wait_prepared(gen_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_killable_prepared(gen_t gen, std::uint64_t ns = 0);
+        wait_result_t wait_unkillable_prepared(gen_t gen, std::uint64_t ns = 0);
 
-        void wake_one(bool drop = false);
+        void wake_one();
         void wake_all();
     };
 } // export namespace sched

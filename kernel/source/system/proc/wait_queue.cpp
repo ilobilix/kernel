@@ -11,20 +11,6 @@ namespace sched
         return sched::current_thread();
     }
 
-    bool wait_queue_t::try_dec_pending()
-    {
-        auto expected = pending.load(std::memory_order_acquire);
-        while (expected > 0)
-        {
-            if (pending.compare_exchange_weak(
-                expected, expected - 1,
-                std::memory_order_acquire,
-                std::memory_order_acquire))
-                return true;
-        }
-        return false;
-    }
-
     wait_queue_t::~wait_queue_t()
     {
         if (!anchor)
@@ -96,14 +82,12 @@ namespace sched
         entry_ref.store(nullptr, std::memory_order_relaxed);
     }
 
-    std::size_t wait_queue_t::snapshot_gen() const
+    auto wait_queue_t::snapshot_gen() const -> gen_t
     {
-        return generation.load(std::memory_order_acquire);
+        return static_cast<gen_t>(generation.load(std::memory_order_acquire));
     }
 
-    auto wait_queue_t::wait_common(
-        std::size_t gen, std::uint64_t ns, wait_mode mode
-    ) -> wait_result_t
+    auto wait_queue_t::wait_common(gen_t gen, std::uint64_t ns, wait_mode mode) -> wait_result_t
     {
         lib::bug_on(!!in_hard_irq());
         lib::bug_on(!!is_preempt_disabled());
@@ -114,18 +98,10 @@ namespace sched
         if (kill_aware && thread->has_flag(thread_flags::kill_pending))
             return { false, false, true };
 
-        if (try_dec_pending())
-            return { false, false, false };
-
         wait_queue_entry_t entry { };
 
         lock.lock();
-        if (try_dec_pending())
-        {
-            lock.unlock();
-            return { false, false, false };
-        }
-        if (generation.load(std::memory_order_acquire) != gen)
+        if (generation.load(std::memory_order_acquire) != static_cast<std::uint64_t>(gen))
         {
             lock.unlock();
             return { false, false, false };
@@ -209,33 +185,34 @@ namespace sched
         return wait_common(snapshot_gen(), ns, wait_mode::unkillable);
     }
 
-    auto wait_queue_t::wait_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
+    auto wait_queue_t::wait_prepared(gen_t gen, std::uint64_t ns) -> wait_result_t
     {
         return wait_common(gen, ns, wait_mode::interruptible);
     }
 
-    auto wait_queue_t::wait_killable_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
+    auto wait_queue_t::wait_killable_prepared(gen_t gen, std::uint64_t ns) -> wait_result_t
     {
         return wait_common(gen, ns, wait_mode::killable);
     }
 
-    auto wait_queue_t::wait_unkillable_prepared(std::size_t gen, std::uint64_t ns) -> wait_result_t
+    auto wait_queue_t::wait_unkillable_prepared(gen_t gen, std::uint64_t ns) -> wait_result_t
     {
         return wait_common(gen, ns, wait_mode::unkillable);
     }
 
-    void wait_queue_t::wake_one(bool drop)
+    void wait_queue_t::wake_one()
     {
         lock.lock();
+        generation.fetch_add(1, std::memory_order_release);
+
         if (entries.empty())
         {
-            if (!drop)
-                pending.fetch_add(1, std::memory_order_release);
             lock.unlock();
             return;
         }
 
         auto entry = entries.pop_front();
+        // TODO: can allocate
         auto type = entry->type;
         entry->linked.store(false, std::memory_order_release);
 
@@ -252,6 +229,7 @@ namespace sched
 
     void wait_queue_t::wake_all()
     {
+        // TODO: do not allocate
         std::vector<decltype(wait_queue_entry_t::type)> callbacks;
         {
             const std::unique_lock _ { lock };
@@ -272,6 +250,7 @@ namespace sched
 
                 entries.remove(entry);
 
+                // TODO: can allocate
                 auto type = entry->type;
                 entry->linked.store(false, std::memory_order_release);
 

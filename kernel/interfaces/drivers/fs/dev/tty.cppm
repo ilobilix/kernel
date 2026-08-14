@@ -384,6 +384,8 @@ export namespace fs::dev::tty
         virtual void wait_sent() = 0;
         virtual void write_wake() = 0;
 
+        virtual void input_flush() = 0;
+
         virtual lib::expect<std::size_t> read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
         virtual lib::expect<std::size_t> write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer) = 0;
 
@@ -496,7 +498,7 @@ export namespace fs::dev::tty
         void output_clear();
 
         void input_flush_locked();
-        void input_flush();
+        void input_flush() override;
 
         void set_stopped(bool value);
         bool maybe_readable();
@@ -625,7 +627,7 @@ export namespace fs::dev::tty
         bool receive(std::span<std::byte> buffer)
         {
             const auto [pushed, _] = raw_buffer.push(buffer);
-            raw_wq.wake_one();
+            raw_wq.wake_all();
             return pushed;
         }
 
