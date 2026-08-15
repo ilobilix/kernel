@@ -1,9 +1,9 @@
 // Copyright (C) 2024-2026  ilobilo
 
-import system.virtio;
+import drivers.virtio;
+import drivers.dev;
 import system.random;
 import system.sched;
-import system.dev;
 import libarch;
 import lib;
 import std;

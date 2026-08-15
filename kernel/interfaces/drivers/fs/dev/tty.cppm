@@ -4,7 +4,7 @@ export module drivers.fs.dev.tty;
 
 import system.sched;
 import system.vfs;
-import system.dev;
+import drivers.dev;
 import lib;
 import std;
 

@@ -8,10 +8,10 @@ module drivers.output.framebuffer;
 
 import drivers.fs.devtmpfs;
 import drivers.fs.sysfs;
+import drivers.pci;
+import drivers.dev;
 import system.memory.virt;
 import system.vfs;
-import system.dev;
-import system.pci;
 import boot;
 import lib;
 import fmt;

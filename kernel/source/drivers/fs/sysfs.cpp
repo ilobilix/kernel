@@ -6,7 +6,7 @@ import system.memory.virt;
 import system.sched;
 import system.vfs.dev;
 import system.vfs;
-import system.dev;
+import drivers.dev;
 import frigg;
 import std;
 

@@ -20,7 +20,7 @@ import x86_64.system.ioapic;
 
 import drivers.timers;
 import drivers.output;
-import system.pci;
+import drivers.pci;
 import arch;
 import boot;
 

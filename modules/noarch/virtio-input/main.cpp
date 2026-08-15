@@ -1,8 +1,8 @@
 // Copyright (C) 2024-2026  ilobilo
 
-import system.virtio;
-import system.input;
-import system.dev;
+import drivers.virtio;
+import drivers.input;
+import drivers.dev;
 import libarch;
 import fmt;
 import lib;

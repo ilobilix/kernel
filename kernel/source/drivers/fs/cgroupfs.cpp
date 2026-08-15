@@ -4,7 +4,7 @@ module drivers.fs.cgroupfs;
 
 import drivers.fs.tmpfs;
 import system.sched.mutex;
-import system.dev;
+import drivers.dev;
 import frigg;
 import fmt;
 

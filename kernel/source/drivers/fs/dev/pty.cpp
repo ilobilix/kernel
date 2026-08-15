@@ -5,10 +5,10 @@ module drivers.fs.dev.pty;
 import drivers.fs.devtmpfs;
 import drivers.fs.devpts;
 import drivers.fs.dev.tty;
+import drivers.dev;
 import system.sched.mutex;
 import system.sched;
 import system.vfs.dev;
-import system.dev;
 import fmt;
 
 namespace fs::dev::pty

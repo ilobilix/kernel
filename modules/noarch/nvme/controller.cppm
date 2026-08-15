@@ -3,9 +3,9 @@
 export module nvme:ctrl;
 
 import system.sched;
-import system.pci;
 import system.irq;
-import system.dev;
+import drivers.pci;
+import drivers.dev;
 
 import :queue;
 import :ns;

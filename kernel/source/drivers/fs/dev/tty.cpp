@@ -4,9 +4,9 @@ module drivers.fs.dev.tty;
 
 import drivers.output.terminal;
 import drivers.fs.devtmpfs;
+import drivers.dev;
 import system.memory.virt;
 import system.vfs.dev;
-import system.dev;
 import arch;
 import fmt;
 

@@ -6,7 +6,7 @@ import system.sched.wait_queue;
 import system.sched.mutex;
 import system.sched;
 import drivers.fs.procfs;
-import system.dev;
+import drivers.dev;
 import fmt;
 
 namespace vfs::socket::netlink

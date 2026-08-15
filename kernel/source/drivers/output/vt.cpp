@@ -9,10 +9,10 @@ module drivers.output.vt;
 import drivers.fs.devtmpfs;
 import drivers.fs.dev.tty;
 import drivers.output;
-import system.input;
+import drivers.input;
+import drivers.dev;
 import system.sched;
 import system.vfs;
-import system.dev;
 import frigg;
 import fmt;
 

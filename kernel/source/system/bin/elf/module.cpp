@@ -11,9 +11,9 @@ module system.bin.elf;
 
 import drivers.initramfs;
 import drivers.fs.procfs;
+import drivers.pci;
 import system.memory;
 import system.vfs;
-import system.pci;
 import magic_enum;
 import fmt;
 import lib;

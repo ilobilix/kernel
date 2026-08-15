@@ -2,7 +2,7 @@
 
 export module nvme:sys;
 
-import system.dev;
+import drivers.dev;
 import system.vfs;
 
 import :ctrl;

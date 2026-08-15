@@ -1,8 +1,8 @@
 // Copyright (C) 2024-2026  ilobilo
 
 // pci driver requires these imports
-import system.pci;
-import system.dev;
+import drivers.pci;
+import drivers.dev;
 import lib;
 
 namespace pci

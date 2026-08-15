@@ -5,10 +5,10 @@
 // TODO: batch submissions and only write to doorbell once
 // TODO: interrupt coalescing
 
-import system.dev;
-import system.dev.block;
 import system.vfs.dev;
-import system.pci;
+import drivers.pci;
+import drivers.dev;
+import drivers.dev.block;
 import fmt;
 import lib;
 import std;

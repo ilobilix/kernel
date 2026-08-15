@@ -1,9 +1,9 @@
 // Copyright (C) 2024-2026  ilobilo
 
-import system.virtio;
+import drivers.virtio;
+import drivers.dev;
+import drivers.pci;
 import system.chrono;
-import system.dev;
-import system.pci;
 import system.irq;
 import system.cpu;
 import magic_enum;

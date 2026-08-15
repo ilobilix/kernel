@@ -2,7 +2,7 @@
 
 export module nvme:ns;
 
-import system.dev.block;
+import drivers.dev.block;
 
 import :cmd;
 import :queue;
