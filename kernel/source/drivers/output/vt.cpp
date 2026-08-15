@@ -23,6 +23,9 @@ namespace output::vt
     {
         constexpr bool debug = false;
 
+        constexpr int k_metabit = 0x03;
+        constexpr int k_escprefix = 0x04;
+
         struct vt_mode
         {
             std::uint8_t mode;
@@ -163,9 +166,9 @@ namespace output::vt
                     for (const auto val : vals)
                     {
                         if (val == 1)
-                            set_term_mode(index, term_mode::app_cursor, arg == 'h');
+                            set_mode_flag(index, mode_flag::app_cursor, arg == 'h');
                         else if (val == 8)
-                            set_term_mode(index, term_mode::autorepeat, arg == 'h');
+                            set_mode_flag(index, mode_flag::autorepeat, arg == 'h');
                     }
                     break;
                 case FLANTERM_CB_MODE:
@@ -173,7 +176,7 @@ namespace output::vt
                         break;
 
                     if (std::ranges::contains(vals, 20))
-                        set_term_mode(index, term_mode::newline, arg == 'h');
+                        set_mode_flag(index, mode_flag::newline, arg == 'h');
                     break;
                 case FLANTERM_CB_PRIVATE_ID:
                     reply(index, "\e[?1;2c");
@@ -289,7 +292,7 @@ namespace output::vt
             *vtmode.lock() = { vt_auto, 0, 0, 0, 0 };
             owner.store(0, std::memory_order_release);
 
-            input::kbd::reset_term_modes(minor);
+            input::kbd::reset_mode_flags(minor);
 
             if (mode.exchange(kd_text, std::memory_order_acq_rel) == kd_graphics &&
                 minor == current.load(std::memory_order_acquire))
@@ -363,11 +366,13 @@ namespace output::vt
                         return 0;
                     case tty::kdgkbmeta:
                     {
-                        const auto mode = input::kbd::get_meta_mode(index);
-                        if (!mode)
+                        const auto enabled = input::kbd::get_mode_flag(
+                            index, input::kbd::mode_flag::meta_escape
+                        );
+                        if (!enabled)
                             return std::unexpected { lib::err::invalid_argument };
 
-                        const int value = std::to_underlying(*mode);
+                        const int value = *enabled ? k_escprefix : k_metabit;
                         if (!argp.write(value))
                             return std::unexpected { lib::err::invalid_address };
                         return 0;
@@ -377,8 +382,13 @@ namespace output::vt
                         if (!perm)
                             return std::unexpected { lib::err::not_permitted };
 
-                        const auto mode = static_cast<input::kbd::meta_mode>(argp.value());
-                        if (!input::kbd::set_meta_mode(index, mode))
+                        const int value = argp.value();
+                        if (value != k_metabit && value != k_escprefix)
+                            return std::unexpected { lib::err::invalid_argument };
+
+                        using enum input::kbd::mode_flag;
+                        const auto val = value == k_escprefix;
+                        if (!input::kbd::set_mode_flag(index, meta_escape, val))
                             return std::unexpected { lib::err::invalid_argument };
                         return 0;
                     }

@@ -2,8 +2,6 @@
 
 module;
 
-#define FLANTERM_IN_FLANTERM
-#include <flanterm.h>
 #include <flanterm_backends/fb.h>
 
 module drivers.output.terminal;
@@ -54,11 +52,11 @@ namespace output::term
             [] { lock.unlock(); }
         };
 
-        flanterm_context *make_context(const frm::framebuffer &frm, std::uint32_t *target)
+        flanterm_context *make_context(const frm::framebuffer &frm, bool autoflush)
         {
             return flanterm_fb_init(
                 lib::alloc, [](void *ptr, std::size_t) { lib::free(ptr); },
-                target,
+                static_cast<std::uint32_t *>(frm.address),
                 frm.width, frm.height, frm.pitch,
                 frm.red_mask_size, frm.red_mask_shift,
                 frm.green_mask_size, frm.green_mask_shift,
@@ -66,7 +64,7 @@ namespace output::term
                 nullptr, ansi_colours, ansi_bright_colours,
                 nullptr, nullptr, nullptr, &default_fg,
                 font, 8, 16, 1,
-                0, 0, 0, FLANTERM_FB_ROTATE_0
+                0, 0, 0, FLANTERM_FB_ROTATE_0, autoflush
             );
         }
     } // namespace
@@ -120,7 +118,7 @@ namespace output::term
             nullptr, ansi_colours, ansi_bright_colours,
             nullptr, nullptr /* &default_fg */, nullptr, &default_fg,
             font, 8, 16, 1,
-            0, 0, 0, FLANTERM_FB_ROTATE_0
+            0, 0, 0, FLANTERM_FB_ROTATE_0, true
         );
         if (early == nullptr)
             lib::panic("could not initialise flanterm");
@@ -135,18 +133,7 @@ namespace output::term
         if (frm::framebuffers.empty())
             return nullptr;
 
-        // this ugly hack makes flanterm not refresh the framebuffer on context creation
-        const auto &frm = frm::framebuffers.back();
-        auto buffer = lib::alloc<std::uint32_t *>(frm.pitch * frm.height);
-        auto ctx = make_context(frm, buffer);
-        if (ctx)
-        {
-            reinterpret_cast<flanterm_fb_context *>(ctx)->framebuffer =
-                static_cast<std::uint32_t *>(frm.address);
-        }
-
-        lib::free(buffer);
-        return ctx;
+        return make_context(frm::framebuffers.back(), false);
     }
 
     void destroy(flanterm_context *ctx)
@@ -168,7 +155,7 @@ namespace output::term
                 continue;
             }
 
-            auto ctx = make_context(frm, static_cast<std::uint32_t *>(frm.address));
+            auto ctx = make_context(frm, true);
             if (ctx == nullptr)
                 lib::panic("could not initialise flanterm");
 

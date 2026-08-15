@@ -106,8 +106,8 @@ void kthread()
             .pathname = path.data(),
             .argv = { lib::path_view { path } .basename().data() },
             .envp = {
-                "TERM=xterm-256color",
-                "PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin"
+                "HOME=/",
+                "TERM=linux"
             },
             .proc = proc.get()
         });

@@ -12,17 +12,8 @@ namespace input::kbd
     namespace vt = output::vt;
     namespace
     {
-        enum class mode_mask : std::uint8_t
-        {
-            invalid = 0,
-            applic = (1 << 0),
-            ckmode = (1 << 1),
-            repeat = (1 << 2),
-            crlf = (1 << 3),
-            meta = (1 << 4)
-        };
         using namespace magic_enum::bitwise_operators;
-        constexpr auto defmode = mode_mask::repeat | mode_mask::meta;
+        constexpr auto defmflags = mode_flag::autorepeat | mode_flag::meta_escape;
 
         struct handler_ctx_t
         {
@@ -56,11 +47,11 @@ namespace input::kbd
             std::uint8_t ledstate : 4 = 0;
             std::uint8_t defledstate : 4 = 0;
             std::uint8_t kbdmode : 3 = k_unicode;
-            mode_mask modemask : 5 = defmode;
+            mode_flag mode_flags : 5 = defmflags;
 
-            bool get_mode_mask(mode_mask mask) const
+            bool get_mode_flag(mode_flag flag) const
             {
-                return (modemask & mask) != mode_mask::invalid;
+                return (mode_flags & flag) != mode_flag::none;
             }
 
             bool get_led_state(kbled led) const
@@ -289,7 +280,7 @@ namespace input::kbd
                     if (diacr)
                         enqueue_uni(kbd, std::exchange(diacr, 0));
                     enqueue('\r');
-                    if (kbd.get_mode_mask(mode_mask::crlf))
+                    if (kbd.get_mode_flag(mode_flag::newline))
                         enqueue('\n');
                     break;
                 case spec_last_console:
@@ -300,7 +291,7 @@ namespace input::kbd
                         kbd.ledstate ^= std::to_underlying(k_capslock);
                     break;
                 case spec_num:
-                    if (kbd.get_mode_mask(mode_mask::applic))
+                    if (kbd.get_mode_flag(mode_flag::app_keypad))
                         enqueue('P', true);
                     else if (!rep)
                         kbd.ledstate ^= std::to_underlying(k_numlock);
@@ -336,7 +327,7 @@ namespace input::kbd
             if (up || val >= pad_count)
                 return;
 
-            if (kbd.get_mode_mask(mode_mask::applic) && !shift_down[kg_shift])
+            if (kbd.get_mode_flag(mode_flag::app_keypad) && !shift_down[kg_shift])
             {
                 enqueue(app_map[val], true);
                 return;
@@ -366,7 +357,7 @@ namespace input::kbd
                         handle_cur(ctx, kbd, cur_left, 0);
                         return;
                     case pad_5:
-                        enqueue('G', kbd.get_mode_mask(mode_mask::applic));
+                        enqueue('G', kbd.get_mode_flag(mode_flag::app_keypad));
                         return;
                     case pad_6:
                         handle_cur(ctx, kbd, cur_right, 0);
@@ -386,7 +377,7 @@ namespace input::kbd
             }
 
             enqueue(pad_chars[val]);
-            if (val == pad_enter && kbd.get_mode_mask(mode_mask::crlf))
+            if (val == pad_enter && kbd.get_mode_flag(mode_flag::newline))
                 enqueue('\n');
         }
 
@@ -417,7 +408,7 @@ namespace input::kbd
                 enqueue('0' + modifier);
                 enqueue(cursor_chars[val]);
             }
-            else enqueue(cursor_chars[val], kbd.get_mode_mask(mode_mask::ckmode));
+            else enqueue(cursor_chars[val], kbd.get_mode_flag(mode_flag::app_cursor));
         }
 
         void handle_shift(handler_ctx_t &ctx, keyboard_t &kbd, std::uint32_t val, bool up)
@@ -462,7 +453,7 @@ namespace input::kbd
             if (up)
                 return;
 
-            if (kbd.get_mode_mask(mode_mask::meta))
+            if (kbd.get_mode_flag(mode_flag::meta_escape))
             {
                 enqueue('\033');
                 enqueue(val);
@@ -636,7 +627,7 @@ namespace input::kbd
 
                 keys_down.set(val.code, val.value != key_released);
 
-                if (rep && !kbd.get_mode_mask(mode_mask::repeat))
+                if (rep && !kbd.get_mode_flag(mode_flag::autorepeat))
                     return;
 
                 const auto shift = (shift_state | kbd.slock) ^ kbd.lock;
@@ -830,23 +821,23 @@ namespace input::kbd
         return true;
     }
 
-    bool set_term_mode(std::size_t console, term_mode mode, bool enabled)
+    std::optional<bool> get_mode_flag(std::size_t console, mode_flag flag)
     {
-        mode_mask mask;
-        switch (mode)
-        {
-            case term_mode::app_cursor:
-                mask = mode_mask::ckmode;
-                break;
-            case term_mode::autorepeat:
-                mask = mode_mask::repeat;
-                break;
-            case term_mode::newline:
-                mask = mode_mask::crlf;
-                break;
-            default:
-                return false;
-        }
+        if (flag == mode_flag::none || !magic_enum::enum_contains(flag))
+            return std::nullopt;
+
+        const auto kbd = get_keyboard(console);
+        if (!kbd)
+            return std::nullopt;
+
+        const std::unique_lock _ { lock };
+        return kbd->get_mode_flag(flag);
+    }
+
+    bool set_mode_flag(std::size_t console, mode_flag flag, bool enabled)
+    {
+        if (flag == mode_flag::none || !magic_enum::enum_contains(flag))
+            return false;
 
         const auto kbd = get_keyboard(console);
         if (!kbd)
@@ -854,59 +845,20 @@ namespace input::kbd
 
         const std::unique_lock _ { lock };
         if (enabled)
-            kbd->modemask = kbd->modemask | mask;
+            kbd->mode_flags = kbd->mode_flags | flag;
         else
-            kbd->modemask = kbd->modemask & ~mask;
+            kbd->mode_flags = kbd->mode_flags & ~flag;
         return true;
     }
 
-    bool reset_term_modes(std::size_t console)
+    bool reset_mode_flags(std::size_t console)
     {
         const auto kbd = get_keyboard(console);
         if (!kbd)
             return false;
 
         const std::unique_lock _ { lock };
-        kbd->modemask = (kbd->modemask & mode_mask::meta) | mode_mask::repeat;
-        return true;
-    }
-
-    std::optional<meta_mode> get_meta_mode(std::size_t console)
-    {
-        const auto kbd = get_keyboard(console);
-        if (!kbd)
-            return std::nullopt;
-
-        const std::unique_lock _ { lock };
-        return kbd->get_mode_mask(mode_mask::meta)
-            ? meta_mode::escape_prefix
-            : meta_mode::high_bit;
-    }
-
-    bool set_meta_mode(std::size_t console, meta_mode mode)
-    {
-        bool escape_prefix;
-        switch (mode)
-        {
-            case meta_mode::high_bit:
-                escape_prefix = false;
-                break;
-            case meta_mode::escape_prefix:
-                escape_prefix = true;
-                break;
-            default:
-                return false;
-        }
-
-        const auto kbd = get_keyboard(console);
-        if (!kbd)
-            return false;
-
-        const std::unique_lock _ { lock };
-        if (escape_prefix)
-            kbd->modemask = kbd->modemask | mode_mask::meta;
-        else
-            kbd->modemask = kbd->modemask & ~mode_mask::meta;
+        kbd->mode_flags = (kbd->mode_flags & mode_flag::meta_escape) | mode_flag::autorepeat;
         return true;
     }
 

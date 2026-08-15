@@ -483,10 +483,9 @@ namespace dev::block
             if (const auto ret = drv->rw(false, true, offset,
                     std::views::single(buffer.subspan(0, real_size))); !ret)
                 return std::unexpected { ret.error() };
+            return real_size;
         }
-        else mem.read(offset, buffer.subspan(0, real_size));
-
-        return real_size;
+        return mem.read(offset, buffer.subspan(0, real_size));
     }
 
     lib::expect<std::size_t> ops_t::write(
@@ -512,10 +511,9 @@ namespace dev::block
             if (const auto ret = drv->rw(true, sync, offset,
                     std::views::single(buffer.subspan(0, real_size))); !ret)
                 return std::unexpected { ret.error() };
+            return real_size;
         }
-        else mem.write(offset, buffer.subspan(0, real_size)); // TODO: sync
-
-        return real_size;
+        return mem.write(offset, buffer.subspan(0, real_size)); // TODO: sync
     }
 
     lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)

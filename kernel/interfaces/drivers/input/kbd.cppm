@@ -9,27 +9,22 @@ import :spec;
 
 export namespace input::kbd
 {
-    enum class term_mode : std::uint8_t
+    enum class mode_flag : std::uint8_t
     {
-        app_cursor,
-        autorepeat,
-        newline
-    };
-
-    enum class meta_mode : std::uint8_t
-    {
-        high_bit = 0x03,
-        escape_prefix = 0x04
+        none = 0,
+        app_keypad = (1 << 0),
+        app_cursor = (1 << 1),
+        autorepeat = (1 << 2),
+        newline = (1 << 3),
+        meta_escape = (1 << 4)
     };
 
     std::optional<kbmode> get_mode(std::size_t console);
     bool set_mode(std::size_t console, kbmode mode);
 
-    bool set_term_mode(std::size_t console, term_mode mode, bool enabled);
-    bool reset_term_modes(std::size_t console);
-
-    std::optional<meta_mode> get_meta_mode(std::size_t console);
-    bool set_meta_mode(std::size_t console, meta_mode mode);
+    std::optional<bool> get_mode_flag(std::size_t console, mode_flag flag);
+    bool set_mode_flag(std::size_t console, mode_flag flag, bool enabled);
+    bool reset_mode_flags(std::size_t console);
 
     std::optional<std::uint8_t> get_led_state(std::size_t console);
     bool set_led_state(std::size_t console, std::uint32_t state);
