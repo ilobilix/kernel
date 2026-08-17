@@ -136,6 +136,18 @@ set(_ILOBILIX_DEFINES
     "FMT_BUILTIN_TYPES=0"
     "FMT_FULLY_FREESTANDING=1"
 
+    "LZ4_FREESTANDING=1"
+    "LZ4_memcpy=__builtin_memcpy"
+    "LZ4_memmove=__builtin_memmove"
+    "LZ4_memset=__builtin_memset"
+
+    "MINIZ_NO_STDIO"
+    "MINIZ_NO_TIME"
+    "MINIZ_NO_MALLOC"
+    "MINIZ_NO_DEFLATE_APIS"
+    "MINIZ_NO_ARCHIVE_APIS"
+    "MINIZ_NO_ZLIB_APIS"
+
     "offsetof=__builtin_offsetof"
 
     "__user=__attribute__((address_space(1)))"

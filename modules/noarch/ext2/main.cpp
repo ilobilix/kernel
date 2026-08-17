@@ -20,23 +20,6 @@ namespace ext2
 
         constexpr std::uint32_t max_log_block_size = 2;
 
-        template<typename Type>
-        auto read_at(auto &file, std::uint64_t offset, std::size_t count = 1)
-            -> lib::expect<lib::buffer<Type>>
-        {
-            lib::buffer<Type> buffer { count };
-            auto uspan = buffer.byte_uspan();
-            lib::bug_on(!uspan);
-
-            const auto ret = file->pread(offset, *uspan);
-            if (!ret.has_value())
-                return std::unexpected { ret.error() };
-
-            if (*ret != buffer.size_bytes())
-                return std::unexpected { lib::err::invalid_argument };
-            return buffer;
-        }
-
         auto check_features(const superblock_t *sb, bool rw) -> lib::expect<void>
         {
             if ((sb->feature_incompat & incompat_supported) != incompat_supported)
@@ -214,7 +197,7 @@ namespace ext2
             auto read_at(std::uint64_t offset, std::size_t count = 1)
                 -> lib::expect<lib::buffer<Type>>
             {
-                return ext2::read_at<Type>(src, offset, count);
+                return src->read_obj<Type>(offset, count);
             }
 
             std::uint64_t inode_offset(std::uint32_t ino) const
@@ -2340,7 +2323,7 @@ namespace ext2
             if (const auto ret = file->open(0, sched::current_process()->pid); !ret.has_value())
                 return std::unexpected { ret.error() };
 
-            auto sbres = read_at<superblock_t>(file, superblock_start);
+            auto sbres = file->read_obj<superblock_t>(superblock_start);
             if (!sbres.has_value())
                 return std::unexpected { sbres.error() };
 
@@ -2380,8 +2363,8 @@ namespace ext2
                 sb->blocks_per_group
             );
 
-            auto gdres = read_at<group_desc_t>(
-                file, static_cast<std::uint64_t>(sb->first_data_block + 1) * block_size, group_count
+            auto gdres = file->read_obj<group_desc_t>(
+                static_cast<std::uint64_t>(sb->first_data_block + 1) * block_size, group_count
             );
             if (!gdres.has_value())
                 return std::unexpected { gdres.error() };
@@ -2394,6 +2377,7 @@ namespace ext2
             );
             {
                 auto locked = instance.lock();
+                locked->fs = const_cast<fs_t *>(this);
 
                 auto rres = locked->iget(instance, root_ino);
                 if (!rres.has_value())

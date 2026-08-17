@@ -16,6 +16,9 @@ export namespace lib
     class buffer
     {
         private:
+        template<typename Self>
+        using element_t = std::conditional_t<std::is_const_v<Self>, const Type, Type>;
+
         Allocator _alloc;
         Type *_ptr;
         std::size_t _count;
@@ -77,67 +80,95 @@ export namespace lib
 
         void allocate(std::size_t count)
         {
-            lib::bug_on(count == 0);
-
-            if (_ptr != nullptr)
-                _alloc.deallocate(_ptr, _count);
-
+            lib::bug_on(count == 0 || _ptr != nullptr);
             _ptr = _alloc.allocate(count);
             _count = count;
         }
 
         template<typename Self>
-        auto span(this Self &&self)
+        auto span(this Self &self)
         {
-            return std::span<Type> {
-                std::forward<Self>(self)._ptr,
-                std::forward<Self>(self)._count
-            };
+            return std::span<element_t<Self>> { self._ptr, self._count };
         }
 
         template<typename Self>
-        std::optional<maybe_uspan<Type>> uspan(this Self &&self)
+        auto uspan(this Self &self)
         {
-            return lib::maybe_uspan<Type>::create(
-                std::forward<Self>(self)._ptr,
-                std::forward<Self>(self)._count
-            );
+            return lib::maybe_uspan<element_t<Self>>::create(self._ptr, self._count);
         }
 
         template<typename Self>
-        auto byte_span(this Self &&self)
+        auto byte_span(this Self &self)
         {
-            return std::as_writable_bytes(std::forward<Self>(self).span());
+            if constexpr (std::is_const_v<Self>)
+                return std::as_bytes(self.span());
+            else
+                return std::as_writable_bytes(self.span());
         }
 
         template<typename Self>
-        std::optional<lib::maybe_uspan<std::byte>> byte_uspan(this Self &&self)
+        auto byte_uspan(this Self &self)
         {
-            auto bytes = std::forward<Self>(self).byte_span();
-            return lib::maybe_uspan<std::byte>::create(bytes.data(), bytes.size());
+            auto bytes = self.byte_span();
+            using byte_t = decltype(bytes)::element_type;
+            return lib::maybe_uspan<byte_t>::create(bytes.data(), bytes.size());
         }
 
         template<typename Self>
-        auto data(this Self &&self) { return std::forward<Self>(self)._ptr; }
+        element_t<Self> *data(this Self &self) { return self._ptr; }
 
         template<typename Self>
-        auto virt_data(this Self &&self) { return std::forward<Self>(self)._ptr; }
+        element_t<Self> *virt_data(this Self &self) { return self._ptr; }
 
         template<typename Self>
-        auto phys_data(this Self &&self) { return fromhh(std::forward<Self>(self)._ptr); }
+        auto phys_data(this Self &self) { return fromhh(self.data()); }
 
         template<typename Self>
-        auto &at(this Self &&self, std::size_t index)
+        element_t<Self> &at(this Self &self, std::size_t index)
         {
             lib::bug_on(self._ptr == nullptr || index >= self._count);
-            return std::forward<Self>(self)._ptr[index];
+            return self._ptr[index];
         }
 
         template<typename Self>
-        auto begin(this Self &&self) { return std::forward<Self>(self)._ptr; }
+        element_t<Self> &operator[](this Self &self, std::size_t index)
+        {
+            return self.at(index);
+        }
 
         template<typename Self>
-        auto end(this Self &&self) { return std::forward<Self>(self)._ptr + self._count; }
+        element_t<Self> *begin(this Self &self) { return self._ptr; }
+
+        template<typename Self>
+        element_t<Self> *end(this Self &self) { return self._ptr + self._count; }
+
+        template<typename Self>
+        element_t<Self> &front(this Self &self)
+        {
+            lib::bug_on(self._ptr == nullptr || self._count == 0);
+            return *self.begin();
+        }
+
+        template<typename Self>
+        element_t<Self> &back(this Self &self)
+        {
+            lib::bug_on(self._ptr == nullptr || self._count == 0);
+            return *(self.end() - 1);
+        }
+
+        template<typename Self>
+        element_t<Self> &operator*(this Self &self)
+        {
+            lib::bug_on(self._ptr == nullptr || self._count != 1);
+            return self.front();
+        }
+
+        template<typename Self>
+        element_t<Self> *operator->(this Self &self)
+        {
+            lib::bug_on(self._ptr == nullptr || self._count != 1);
+            return self.data();
+        }
 
         std::size_t size() const { return _count; }
         std::size_t size_bytes() const { return _count * sizeof(Type); }

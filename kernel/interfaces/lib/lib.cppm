@@ -10,6 +10,7 @@ export import :buffer;
 export import :bug_on;
 export import :chacha20;
 export import :crc;
+export import :decompress;
 export import :endian;
 export import :errno;
 export import :error;

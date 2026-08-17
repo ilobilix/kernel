@@ -58,3 +58,11 @@
 	path = dependencies/libstdcxx-headers/libstdcxx-headers
 	url = https://github.com/ilobilo/libstdcxx-headers
 	shallow = true
+[submodule "dependencies/lz4/lz4"]
+	path = dependencies/lz4/lz4
+	url = https://github.com/lz4/lz4
+	shallow = true
+[submodule "dependencies/miniz/miniz"]
+	path = dependencies/miniz/miniz
+	url = https://github.com/richgel999/miniz
+	shallow = true

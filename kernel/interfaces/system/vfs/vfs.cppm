@@ -716,6 +716,28 @@ export namespace vfs
             return { };
         }
 
+        template<typename Type>
+            requires std::is_trivially_copyable_v<Type>
+        lib::expect<lib::buffer<Type>> read_obj(std::uint64_t offset, std::size_t count = 1)
+        {
+            if (count > std::numeric_limits<std::size_t>::max() / sizeof(Type))
+                return std::unexpected { lib::err::invalid_argument };
+
+            lib::buffer<Type> buffer { count };
+            auto uspan = buffer.byte_uspan();
+            lib::bug_on(!uspan);
+
+            const auto ret = pread(offset, *uspan);
+            if (!ret.has_value())
+                return std::unexpected { ret.error() };
+
+            if (*ret != buffer.size_bytes())
+                return std::unexpected { lib::err::invalid_argument };
+
+            std::start_lifetime_as_array<Type>(buffer.data(), count);
+            return buffer;
+        }
+
         static std::shared_ptr<file_t> create(const vfs::path_t &path, std::size_t offset, int flags)
         {
             auto file = std::make_shared<vfs::file_t>();

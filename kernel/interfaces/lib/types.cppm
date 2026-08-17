@@ -52,10 +52,10 @@ export namespace lib
     class signature;
 
     template<typename Ret, typename ...Args>
-    class signature<Ret(Args...)>
+    class signature<Ret (Args...)>
     {
         public:
-        using type = Ret(Args...);
+        using type = Ret (Args...);
         using return_type = Ret;
         using args_type = std::tuple<Args...>;
     };
@@ -78,10 +78,16 @@ export namespace lib
     struct remove_address_space<Type *> : remove_address_space_helper<Type *> { };
 
     template<typename Type>
-    struct remove_address_space<const Type> { using type = const typename remove_address_space<Type>::type; };
+    struct remove_address_space<const Type>
+    {
+        using type = const typename remove_address_space<Type>::type;
+    };
 
     template<typename Type>
-    struct remove_address_space<const Type *> { using type = const typename remove_address_space<Type>::type *; };
+    struct remove_address_space<const Type *>
+    {
+        using type = const typename remove_address_space<Type>::type *;
+    };
 
     template<typename Type>
     using remove_address_space_t = typename remove_address_space<Type>::type;

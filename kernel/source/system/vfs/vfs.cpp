@@ -944,7 +944,7 @@ namespace vfs
         mnt.value()->mounted_on = target;
         mnt.value()->id = allocate_mount_id();
         mnt.value()->parent_id = target.mnt ? target.mnt->id : 0;
-        mnt.value()->flags = flags;
+        mnt.value()->flags |= flags;
         mnt.value()->fstype = fstype;
         mnt.value()->source = source_path.str();
         target.dentry->child_mounts.lock()->push_back(mnt.value());

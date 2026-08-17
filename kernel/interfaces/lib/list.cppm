@@ -290,6 +290,26 @@ export namespace lib
             erase_one(pos._current);
         }
 
+        void move_to_front(iterator pos)
+        {
+            bug_on(pos._lst != this || pos._current == nullptr);
+
+            auto current = pos._current;
+            if (current == _head)
+                return;
+
+            current->prev->next = current->next;
+            if (current->next != nullptr)
+                current->next->prev = current->prev;
+            else
+                _tail = current->prev;
+
+            current->prev = nullptr;
+            current->next = _head;
+            _head->prev = current;
+            _head = current;
+        }
+
         void pop_front()
         {
             bug_on(_head == nullptr);
