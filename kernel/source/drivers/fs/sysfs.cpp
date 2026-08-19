@@ -401,33 +401,16 @@ namespace fs::sysfs
                     dentry->inode = mkdir(kobj);
                     dentry->parent = parent;
 
-                    for (auto attr : kobj->type.attributes())
-                    {
-                        auto child = std::make_shared<vfs::dentry_t>();
-                        child->name = attr->name;
-                        child->inode = mkattr(kobj, attr);
-                        child->parent = dentry;
-                        dentry->children.lock()->insert(std::move(child));
-                    }
-
-                    for (auto battr : kobj->type.bin_attributes())
-                    {
-                        auto child = std::make_shared<vfs::dentry_t>();
-                        child->name = battr->name;
-                        child->inode = mkbin(kobj, battr);
-                        child->parent = dentry;
-                        dentry->children.lock()->insert(std::move(child));
-                    }
-
                     for (const auto &group : kobj->type.groups())
                     {
-                        if (group.name.empty())
-                            continue;
-
-                        auto dir = std::make_shared<vfs::dentry_t>();
-                        dir->name = group.name;
-                        dir->inode = mkdir(kobj);
-                        dir->parent = dentry;
+                        auto dir = dentry;
+                        if (!group.name.empty())
+                        {
+                            dir = std::make_shared<vfs::dentry_t>();
+                            dir->name = group.name;
+                            dir->inode = mkdir(kobj);
+                            dir->parent = dentry;
+                        }
 
                         for (auto attr : group.attributes)
                         {
@@ -438,7 +421,17 @@ namespace fs::sysfs
                             dir->children.lock()->insert(std::move(child));
                         }
 
-                        dentry->children.lock()->insert(std::move(dir));
+                        for (auto battr : group.bin_attributes)
+                        {
+                            auto child = std::make_shared<vfs::dentry_t>();
+                            child->name = battr->name;
+                            child->inode = mkbin(kobj, battr);
+                            child->parent = dir;
+                            dir->children.lock()->insert(std::move(child));
+                        }
+
+                        if (dir != dentry)
+                            dentry->children.lock()->insert(std::move(dir));
                     }
 
                     if (kobj->as_device() || kobj->type != dev::empty_ktype())

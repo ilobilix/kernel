@@ -25,16 +25,6 @@ namespace nvme
         // TODO
         struct ctrl_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
-            {
-                return { };
-            }
-
-            std::span<dev::bin_attribute_t *const> bin_attributes() const override
-            {
-                return { };
-            }
-
             void fill_uevent(dev::kobject_t &kobj, dev::uevent_t &uev) override
             {
                 auto dev = kobj.as_device();
@@ -48,16 +38,6 @@ namespace nvme
         // TODO
         struct ns_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
-            {
-                return { };
-            }
-
-            std::span<dev::bin_attribute_t *const> bin_attributes() const override
-            {
-                return { };
-            }
-
             void fill_uevent(dev::kobject_t &kobj, dev::uevent_t &uev) override
             {
                 lib::unused(uev);

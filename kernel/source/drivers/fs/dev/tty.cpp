@@ -282,12 +282,15 @@ namespace fs::dev::tty
 
         struct tty_ktype_t : ::dev::ktype_t
         {
-            std::span<::dev::attribute_t *const> attributes() const override
+            std::span<const ::dev::attribute_group_t> groups() const override
             {
                 static ::dev::attribute_t *list[] {
                     ::dev::dev_attribute()
                 };
-                return list;
+                static const ::dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
 
@@ -299,7 +302,7 @@ namespace fs::dev::tty
 
         struct redirect_ktype_t final : tty_ktype_t
         {
-            std::span<::dev::attribute_t *const> attributes() const override
+            std::span<const ::dev::attribute_group_t> groups() const override
             {
                 static ::dev::make_attribute_t active {
                     [](::dev::device_t &device) -> lib::expect<std::string> {
@@ -319,7 +322,10 @@ namespace fs::dev::tty
                     &active,
                     ::dev::dev_attribute()
                 };
-                return list;
+                static const ::dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
 

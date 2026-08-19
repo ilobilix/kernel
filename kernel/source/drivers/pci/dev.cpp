@@ -79,7 +79,7 @@ namespace pci
 
         struct ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 struct attribute_t : dev::make_attribute_t
                 {
@@ -202,10 +202,13 @@ namespace pci
                     &revision,
                     &enable
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list, .bin_attributes = bin_attributes() }
+                };
+                return group_list;
             }
 
-            std::span<dev::bin_attribute_t *const> bin_attributes() const override
+            std::span<dev::bin_attribute_t *const> bin_attributes() const
             {
                 struct config_attribute_t : dev::bin_attribute_t
                 {
@@ -347,7 +350,7 @@ namespace pci
 
         struct driver_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 struct new_id_attribute_t : dev::attribute_t
                 {
@@ -389,7 +392,10 @@ namespace pci
                     dev::bind_attribute(), dev::unbind_attribute(),
                     &new_id, &remove_id
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
     } // namespace

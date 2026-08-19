@@ -31,7 +31,7 @@ namespace virtio
                     } { }
             };
 
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 static attribute_t vendor {
                     [](device_t &dev) -> lib::expect<std::string> {
@@ -66,19 +66,25 @@ namespace virtio
                     &features,
                     &status
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
 
         struct driver_ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 static dev::attribute_t *list[] {
                     dev::bind_attribute(),
                     dev::unbind_attribute()
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
 

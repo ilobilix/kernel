@@ -31,12 +31,15 @@ namespace input
 
         struct evdev_ktype_t final : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 static dev::attribute_t *list[] {
                     dev::dev_attribute()
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         };
 

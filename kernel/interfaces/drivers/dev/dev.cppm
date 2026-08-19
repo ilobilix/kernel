@@ -101,8 +101,10 @@ export namespace dev
 
     struct attribute_group_t
     {
-        std::string_view name;
-        std::span<attribute_t *const> attributes;
+        // name.empty() means that attributes don't go in a subdirectory
+        std::string_view name = { };
+        std::span<attribute_t *const> attributes = { };
+        std::span<bin_attribute_t *const> bin_attributes = { };
     };
 
     class ktype_t
@@ -116,16 +118,6 @@ export namespace dev
         bool operator==(const ktype_t &rhs) const
         {
             return id == rhs.id;
-        }
-
-        virtual std::span<attribute_t *const> attributes() const
-        {
-            return { };
-        }
-
-        virtual std::span<bin_attribute_t *const> bin_attributes() const
-        {
-            return { };
         }
 
         virtual std::span<const attribute_group_t> groups() const

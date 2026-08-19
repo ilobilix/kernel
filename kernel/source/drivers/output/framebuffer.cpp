@@ -290,7 +290,7 @@ namespace output::frm
 
         struct ktype_t : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<const dev::attribute_group_t> groups() const override
             {
                 static attribute_t name {
                     [](dev::device_t &, fb_dev &fb) -> lib::expect<std::string> {
@@ -322,7 +322,10 @@ namespace output::frm
                     &stride,
                     dev::dev_attribute()
                 };
-                return list;
+                static const dev::attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
         } ktype;
 

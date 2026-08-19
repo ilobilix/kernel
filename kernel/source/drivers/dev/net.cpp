@@ -50,7 +50,7 @@ namespace dev::net
                 return std::static_pointer_cast<data_t>(device.private_data)->nic.lock();
             }
 
-            std::span<attribute_t *const> attributes() const override
+            std::span<attribute_t *const> attributes() const
             {
                 struct nic_attribute_t : make_attribute_t
                 {
@@ -177,7 +177,8 @@ namespace dev::net
                 };
 
                 static const dev::attribute_group_t list[] {
-                    { "statistics", stats }
+                    { .attributes = attributes() },
+                    { .name = "statistics", .attributes = stats }
                 };
                 return list;
             }

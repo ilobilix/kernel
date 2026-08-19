@@ -331,13 +331,16 @@ namespace dev
 
         struct driver_ktype_t : ktype_t
         {
-            std::span<attribute_t *const> attributes() const override
+            std::span<const attribute_group_t> groups() const override
             {
                 static attribute_t *attrs[] {
                     bind_attribute(),
                     unbind_attribute()
                 };
-                return attrs;
+                static const attribute_group_t group_list[] {
+                    { .attributes = attrs }
+                };
+                return group_list;
             }
         };
 
@@ -348,7 +351,7 @@ namespace dev
 
         struct bus_ktype_t : ktype_t
         {
-            std::span<attribute_t *const> attributes() const override
+            std::span<const attribute_group_t> groups() const override
             {
                 struct autoprobe_attr_t : attribute_t
                 {
@@ -389,7 +392,10 @@ namespace dev
                     &autoprobe,
                     &probe
                 };
-                return attrs;
+                static const attribute_group_t group_list[] {
+                    { .attributes = attrs }
+                };
+                return group_list;
             }
 
             void fill_uevent(kobject_t &kobj, uevent_t &uev) override

@@ -59,7 +59,7 @@ namespace dev::block
                 return std::static_pointer_cast<drive_data_t>(device.private_data)->drive.lock();
             }
 
-            std::span<attribute_t *const> attributes() const override
+            std::span<const attribute_group_t> groups() const override
             {
                 struct drive_attribute_t : make_attribute_t
                 {
@@ -118,7 +118,10 @@ namespace dev::block
                     &size, &diskseq, &ro, &removable,
                     dev_attribute()
                 };
-                return list;
+                static const attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
 
             void fill_uevent(kobject_t &kobj, uevent_t &uev) override
@@ -138,7 +141,7 @@ namespace dev::block
 
         struct part_ktype_t : ktype_t
         {
-            std::span<attribute_t *const> attributes() const override
+            std::span<const attribute_group_t> groups() const override
             {
                 struct part_attribute_t : make_attribute_t
                 {
@@ -218,7 +221,10 @@ namespace dev::block
                     &size, &start, &partition, &removable,
                     dev_attribute()
                 };
-                return list;
+                static const attribute_group_t group_list[] {
+                    { .attributes = list }
+                };
+                return group_list;
             }
 
             void fill_uevent(kobject_t &kobj, uevent_t &uev) override

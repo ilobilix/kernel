@@ -89,7 +89,7 @@ namespace input
 
         struct input_ktype_t final : dev::ktype_t
         {
-            std::span<dev::attribute_t *const> attributes() const override
+            std::span<dev::attribute_t *const> attributes() const
             {
                 struct string_attribute_t : dev::make_attribute_t
                 {
@@ -202,8 +202,9 @@ namespace input
                 };
 
                 static const dev::attribute_group_t list[] {
-                    { "capabilities", caps },
-                    { "id", ids }
+                    { .attributes = attributes() },
+                    { .name = "capabilities", .attributes = caps },
+                    { .name = "id", .attributes = ids }
                 };
                 return list;
             }
