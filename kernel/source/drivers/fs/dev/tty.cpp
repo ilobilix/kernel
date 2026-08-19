@@ -429,6 +429,8 @@ namespace fs::dev::tty
 
         while (!should_work.load(std::memory_order_relaxed))
         {
+            in_space_wq.wake_all();
+            raw_space_wq.wake_all();
             raw_wq.wake_all();
             hung_wq.wake_all();
             sched::yield();
@@ -437,12 +439,14 @@ namespace fs::dev::tty
 
     void default_ldisc::hangup()
     {
+        in_space_wq.wake_all();
+        raw_space_wq.wake_all();
         in_wq.wake_all();
         out_wq.wake_all();
         raw_wq.wake_all();
     }
 
-    void default_ldisc::wait_sent()
+    lib::expect<void> default_ldisc::wait_sent()
     {
         while (!inst->hung_up.load(std::memory_order_relaxed))
         {
@@ -450,10 +454,14 @@ namespace fs::dev::tty
             {
                 const std::unique_lock _ { output_lock };
                 if (out_buffer.empty())
-                    return;
+                    return { };
             }
-            out_wq.wait_prepared(gen);
+
+            const auto res = out_wq.wait_prepared(gen);
+            if (res.interrupted || res.killed)
+                return std::unexpected { lib::err::interrupted };
         }
+        return { };
     }
 
     void default_ldisc::write_wake()
@@ -496,11 +504,11 @@ namespace fs::dev::tty
         if (inst->hung_up.load(std::memory_order_relaxed))
             return true;
 
-        if (!raw_buffer.empty() || !inst->raw_buffer.empty())
-            return true;
-
+        const auto tios = inst->termios.lock();
         auto in_locked = in_buffer.lock();
-        return in_locked->read_head != in_locked->read_tail;
+        return (tios->c_lflag & ktermios::lflag::icanon)
+            ? in_locked->cooked_head != in_locked->read_tail
+            : in_locked->read_head != in_locked->read_tail;
     }
 
     void default_ldisc::set_stopped(bool value)
@@ -564,6 +572,9 @@ namespace fs::dev::tty
         }
 
         inst->wakeup_link();
+
+        in_space_wq.wake_all();
+        raw_space_wq.wake_all();
     }
 
     void default_ldisc::input_flush()
@@ -669,15 +680,47 @@ namespace fs::dev::tty
                 else self->raw_wq.wait_prepared(raw_gen);
                 continue;
             }
+            else if (self->raw_buffer.available() >= raw_space_wake)
+                self->raw_space_wq.wake_all();
+
             auto chr = static_cast<char>(ret.value());
 
             termios = *tios;
+
+            const auto input_push = [&](char value)
+            {
+                const bool cooked = (termios.c_lflag & icanon) != 0;
+                while (true)
+                {
+                    const auto gen = self->in_space_wq.snapshot_gen();
+                    {
+                        auto in_locked = self->in_buffer.lock();
+                        if (in_locked->push(value))
+                            return true; // dropped
+
+                        if (cooked && in_locked->cooked_head == in_locked->read_tail)
+                            return false;
+                    }
+
+                    if (!self->should_work.load(std::memory_order_relaxed) ||
+                        self->inst->hung_up.load(std::memory_order_relaxed))
+                        return false;
+
+                    wake_readers = false;
+                    self->in_wq.wake_all();
+
+                    tios.unlock();
+                    self->output_flush();
+                    self->in_space_wq.wait_unkillable_prepared(gen);
+                    tios.lock();
+                }
+            };
+
             if (next_is_verbatim)
             {
                 next_is_verbatim = false;
-                if (!self->in_buffer.lock()->push(chr))
+                if (!input_push(chr))
                 {
-                    // TODO
                     echo_out('\a');
                     continue;
                 }
@@ -846,34 +889,23 @@ namespace fs::dev::tty
                 }
 
                 const bool is_eol = (chr == '\n' || (termios.c_cc[veol] && chr == termios.c_cc[veol]));
+                if (chr == termios.c_cc[veof])
                 {
-                    auto in_locked = self->in_buffer.lock();
-                    if (chr == termios.c_cc[veof])
-                    {
-                        // if (!in_locked->push(chr))
-                        // {
-                        //     // TODO
-                        //     echo_out('\a');
-                        //     continue;
-                        // }
+                    self->in_buffer.lock()->commit();
+                    wake_readers = true;
+                    continue;
+                }
 
-                        in_locked->commit();
-                        wake_readers = true;
-                        continue;
-                    }
+                if (!input_push(chr))
+                {
+                    echo_out('\a');
+                    continue;
+                }
 
-                    if (!in_locked->push(chr))
-                    {
-                        // TODO
-                        echo_out('\a');
-                        continue;
-                    }
-
-                    if (is_eol)
-                    {
-                        in_locked->commit();
-                        wake_readers = true;
-                    }
+                if (is_eol)
+                {
+                    self->in_buffer.lock()->commit();
+                    wake_readers = true;
                 }
 
                 if (termios.c_lflag & echo)
@@ -895,31 +927,45 @@ namespace fs::dev::tty
             }
             else // raw
             {
-                auto in_locked = self->in_buffer.lock();
-                if (in_locked->push(chr))
-                {
-                    wake_readers = true;
+                if (!input_push(chr))
+                    continue;
 
-                    if (termios.c_lflag & echo)
+                wake_readers = true;
+
+                if (termios.c_lflag & echo)
+                {
+                    if ((termios.c_lflag & echoctl) && is_control(chr) && chr != '\n')
                     {
-                        if ((termios.c_lflag & echoctl) && is_control(chr) && chr != '\n')
-                        {
-                            echo_out('^');
-                            echo_out((chr + '@') % 128);
-                        }
-                        else echo_out(chr);
+                        echo_out('^');
+                        echo_out((chr + '@') % 128);
                     }
+                    else echo_out(chr);
                 }
-                else echo_out('\a'); // TODO
             }
         }
     }
 
     void default_ldisc::receive(std::span<std::byte> buffer)
     {
-        // TODO: don't drop characters if raw buffer is full
-        if (raw_buffer.push(buffer).first)
-            raw_wq.wake_all();
+        while (!buffer.empty())
+        {
+            const auto gen = raw_space_wq.snapshot_gen();
+            const auto num = std::min(buffer.size(), raw_buffer.available());
+
+            if (num && raw_buffer.push(buffer.first(num)).first)
+            {
+                buffer = buffer.subspan(num);
+                raw_wq.wake_all();
+                continue;
+            }
+
+            if (inst->hung_up.load(std::memory_order_relaxed) ||
+                !inst->raw_should_work.load(std::memory_order_relaxed) ||
+                shut_down.load(std::memory_order_relaxed))
+                return;
+
+            raw_space_wq.wait_unkillable_prepared(gen);
+        }
     }
 
     lib::expect<std::size_t> default_ldisc::read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer)
@@ -963,6 +1009,8 @@ namespace fs::dev::tty
             lib::membuffer buf { to_read };
             for (std::size_t i = 0; i < to_read; i++)
                 buf.data()[i] = static_cast<std::byte>(extract_char(in_locked));
+
+            in_space_wq.wake_all();
 
             in_locked.unlock();
             lib::bug_on(!buffer.subspan(start_from, to_read).copy_from(buf.span()));
@@ -1008,7 +1056,11 @@ namespace fs::dev::tty
 
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait_prepared(gen);
+
+                    const auto res = in_wq.wait_prepared(gen);
+                    if (res.interrupted || res.killed)
+                        return std::unexpected { lib::err::interrupted };
+
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -1068,7 +1120,11 @@ namespace fs::dev::tty
 
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait_prepared(gen);
+
+                    const auto res = in_wq.wait_prepared(gen);
+                    if (res.interrupted || res.killed)
+                        return std::unexpected { lib::err::interrupted };
+
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -1089,7 +1145,11 @@ namespace fs::dev::tty
 
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait_prepared(gen, ms * 1'000'000);
+
+                    const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
+                    if (res.interrupted || res.killed)
+                        return std::unexpected { lib::err::interrupted };
+
                     in_locked.lock();
                     available = get_available(in_locked);
                     if (available == 0)
@@ -1116,7 +1176,11 @@ namespace fs::dev::tty
 
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
-                    in_wq.wait_prepared(gen);
+
+                    const auto res = in_wq.wait_prepared(gen);
+                    if (res.interrupted || res.killed)
+                        return std::unexpected { lib::err::interrupted };
+
                     in_locked.lock();
                     available = get_available(in_locked);
                 }
@@ -1137,15 +1201,15 @@ namespace fs::dev::tty
 
                         const auto gen = in_wq.snapshot_gen();
                         in_locked.unlock();
-                        const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
-                        in_locked.lock();
 
-                        available = get_available(in_locked);
-                        if (!res.interrupted && !res.killed && available == 0)
-                        {
-                            lib::bug_on(!res.expired);
+                        const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
+                        if (res.interrupted || res.killed)
                             return progress;
-                        }
+
+                        in_locked.lock();
+                        available = get_available(in_locked);
+                        if (available == 0 && res.expired)
+                            return progress;
                     }
                 }
                 return progress;
@@ -1205,9 +1269,19 @@ namespace fs::dev::tty
                     progress++;
                     continue;
                 }
-                out_wq.wait_prepared(gen);
+
+                const auto res = out_wq.wait_prepared(gen);
                 if (inst->hung_up.load(std::memory_order_relaxed))
                     return std::unexpected { lib::err::io_error };
+
+                if (res.interrupted || res.killed)
+                {
+                    if (progress == 0)
+                        return std::unexpected { lib::err::interrupted };
+
+                    output_flush();
+                    return progress;
+                }
                 goto again;
             }
         }
@@ -1282,7 +1356,10 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
 
                 if (request == tcsetsw || request == tcsetsf)
-                    wait_sent();
+                {
+                    if (const auto ret = wait_sent(); !ret)
+                        return std::unexpected { ret.error() };
+                }
 
                 auto wlocked = inst->termios.lock();
                 if (request == tcsetsf)
@@ -1324,7 +1401,10 @@ namespace fs::dev::tty
                     return std::unexpected { lib::err::invalid_address };
 
                 if (request == tcsetsw2 || request == tcsetsf2)
-                    wait_sent();
+                {
+                    if (const auto ret = wait_sent(); !ret)
+                        return std::unexpected { ret.error() };
+                }
 
                 auto wlocked = inst->termios.lock();
                 if (request == tcsetsf2)
@@ -1429,7 +1509,7 @@ namespace fs::dev::tty
                 : (in_locked->read_head - in_locked->read_tail);
         }
 
-        if (hung_up || available > 0 || !raw_buffer.empty() || !inst->raw_buffer.empty())
+        if (hung_up || available > 0)
             mask |= pollin;
 
         if (!hung_up)
@@ -1465,6 +1545,10 @@ namespace fs::dev::tty
         }
 
         raw_should_work.store(false, std::memory_order_release);
+
+        if (const auto ld = ldisc.lock().value())
+            ld->hangup();
+
         raw_wq.wake_one();
 
         while (!raw_should_work.load(std::memory_order_acquire))
@@ -1489,10 +1573,10 @@ namespace fs::dev::tty
 
             auto tios = self->termios.lock();
             const auto num = self->raw_buffer.pop(std::span { chunk });
+            tios.unlock();
 
             if (num == 0)
             {
-                tios.unlock();
                 self->raw_wq.wait_prepared(gen);
                 continue;
             }
@@ -1541,7 +1625,10 @@ namespace fs::dev::tty
                 auto ld = ldisc.lock().value();
                 if (!ld)
                     return std::unexpected { lib::err::io_error };
-                ld->wait_sent();
+
+                if (const auto ret = ld->wait_sent(); !ret)
+                    return std::unexpected { ret.error() };
+
                 if (argp.value() == 0)
                 {
                     break_ctl(true);

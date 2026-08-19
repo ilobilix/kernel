@@ -43,7 +43,7 @@ namespace vmm
                 const auto gen = wq.snapshot_gen();
                 if (!(pg->flags.load(std::memory_order_acquire) & page::flag::busy))
                     break;
-                wq.wait_prepared(gen);
+                wq.wait_unkillable_prepared(gen);
             }
         }
 

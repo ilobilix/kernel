@@ -381,7 +381,7 @@ export namespace fs::dev::tty
         virtual void shutdown() = 0;
         virtual void hangup() = 0;
 
-        virtual void wait_sent() = 0;
+        virtual lib::expect<void> wait_sent() = 0;
         virtual void write_wake() = 0;
 
         virtual void input_flush() = 0;
@@ -397,7 +397,8 @@ export namespace fs::dev::tty
 
     struct default_ldisc : line_discipline
     {
-        static constexpr std::size_t buffer_size = 4096 * 4;
+        static constexpr std::size_t buffer_size = 4096;
+        static constexpr std::size_t raw_space_wake = buffer_size / 4;
 
         struct in_buffer_t
         {
@@ -469,8 +470,12 @@ export namespace fs::dev::tty
         lib::rbmpmcd<std::byte, buffer_size> raw_buffer;
         sched::wait_queue_t raw_wq;
 
+        sched::wait_queue_t raw_space_wq;
+
         lib::locker<in_buffer_t, sched::mutex_t> in_buffer;
         sched::wait_queue_t in_wq;
+
+        sched::wait_queue_t in_space_wq;
 
         lib::rbmpscd<char, buffer_size> out_buffer;
         sched::mutex_t output_lock;
@@ -490,7 +495,7 @@ export namespace fs::dev::tty
         void shutdown() override;
         void hangup() override;
 
-        void wait_sent() override;
+        lib::expect<void> wait_sent() override;
         void write_wake() override;
 
         bool output_append(const ktermios &termios, char chr);

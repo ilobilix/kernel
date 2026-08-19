@@ -72,7 +72,7 @@ namespace nvme
                 slot = *res;
                 break;
             }
-            _slot_free.wait_prepared(gen);
+            _slot_free.wait_unkillable_prepared(gen);
         }
 
         cmd->buffer().common.command_id = slot;

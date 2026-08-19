@@ -113,15 +113,16 @@ export namespace sched
         int exit_code = 0;
         int term_signal = 0;
         int exit_signal = 0;
-        // this saves 8 bytes :trl:
+        // this saves a few bytes :trl:
         bool killed_by_signal : 1 = false;
         bool dumped_core : 1 = false;
         bool is_zombie : 1 = false;
         bool has_execved : 1 = false;
-        bool vfork_pending : 1 = false;
         bool no_new_privs : 1 = false;
-
         bool pending_continued : 1 = false;
+
+        std::atomic_bool vfork_pending = false;
+
         int pending_stop_sig = 0;
         lib::spinlock report_lock;
 

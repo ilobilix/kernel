@@ -531,7 +531,7 @@ extern "C"
             const auto gen = uacpi::completed.snapshot_gen();
             if (uacpi::is_empty())
                 break;
-            uacpi::completed.wait_prepared(gen);
+            uacpi::completed.wait_unkillable_prepared(gen);
         }
         return UACPI_STATUS_OK;
     }

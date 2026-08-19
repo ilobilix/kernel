@@ -704,7 +704,7 @@ namespace lib::log
             const auto gen = finished.snapshot_gen();
             if (last_consumed.load(std::memory_order_acquire) >= target)
                 break;
-            finished.wait_prepared(gen);
+            finished.wait_unkillable_prepared(gen);
         }
     }
 

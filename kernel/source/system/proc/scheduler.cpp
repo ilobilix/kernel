@@ -1099,11 +1099,8 @@ namespace sched
 
             if (auto parent = proc->parent.lock())
             {
-                if (proc->vfork_pending)
-                {
-                    proc->vfork_pending = false;
+                if (proc->vfork_pending.exchange(false, std::memory_order_acq_rel))
                     parent->vfork_done.wake_all();
-                }
 
                 if (proc->exit_signal)
                 {
@@ -1884,11 +1881,11 @@ namespace sched
                 (*parent->children.lock())[target_proc->pid] = target_proc;
         }
 
-        sched::gen_t vfork_gen;
+        std::shared_ptr<process_t> vfork_child;
         if (flags & clone_vfork)
         {
-            target_proc->vfork_pending = true;
-            vfork_gen = caller_proc->vfork_done.snapshot_gen();
+            target_proc->vfork_pending.store(true, std::memory_order_release);
+            vfork_child = target_proc;
         }
 
         sched::enqueue_new(target_thread.get());
@@ -1897,8 +1894,18 @@ namespace sched
         target_thread.reset();
         target_proc.reset();
 
-        if (flags & clone_vfork)
-            caller_proc->vfork_done.wait_killable_prepared(vfork_gen);
+        if (vfork_child)
+        {
+            while (true)
+            {
+                const auto gen = caller_proc->vfork_done.snapshot_gen();
+                if (!vfork_child->vfork_pending.load(std::memory_order_acquire))
+                    break;
+
+                if (caller_proc->vfork_done.wait_killable_prepared(gen).killed)
+                    break;
+            }
+        }
 
         return target_tid;
     }
@@ -2054,11 +2061,9 @@ namespace sched
             process->comm.clear();
             process->has_execved = true;
 
-            if (auto parent = process->parent.lock(); parent && process->vfork_pending)
-            {
-                process->vfork_pending = false;
+            if (auto parent = process->parent.lock(); parent &&
+                process->vfork_pending.exchange(false, std::memory_order_acq_rel))
                 parent->vfork_done.wake_all();
-            }
 
             image->reset();
 
