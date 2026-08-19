@@ -598,7 +598,13 @@ namespace dev
 
         auto locked = buses.write_lock();
         if (locked->contains(bus.name))
+        {
+            locked.unlock();
+            unregister_kobject(kobj);
+            unregister_kobject(devices_kobj);
+            unregister_kobject(drivers_kobj);
             return std::unexpected { lib::err::already_exists };
+        }
 
         lib::info("dev: registering bus '{}'", bus.name);
         locked.value()[bus.name] = bus_state_t {
@@ -623,13 +629,20 @@ namespace dev
 
     lib::expect<void> register_class(class_t &cls)
     {
-        auto locked = classes.write_lock();
-        if (locked->contains(cls.name))
+        if (classes.read_lock()->contains(cls.name))
             return std::unexpected { lib::err::already_exists };
 
         auto kobj = kobject_t::create(cls.name, cls.type, root("/class"));
         if (auto res = register_kobject(kobj); !res)
             return res;
+
+        auto locked = classes.write_lock();
+        if (locked->contains(cls.name))
+        {
+            locked.unlock();
+            unregister_kobject(kobj);
+            return std::unexpected { lib::err::already_exists };
+        }
 
         lib::info("dev: registering class '{}'", cls.name);
         locked.value()[cls.name] = class_state_t {
@@ -642,14 +655,19 @@ namespace dev
 
     bool unregister_class(class_t &cls)
     {
-        auto locked = classes.write_lock();
+        std::shared_ptr<kobject_t> kobj;
+        {
+            auto locked = classes.write_lock();
 
-        auto it = locked->find(cls.name);
-        if (it == locked->end())
-            return false;
+            auto it = locked->find(cls.name);
+            if (it == locked->end())
+                return false;
 
-        lib::unused(unregister_kobject(it->second.kobj));
-        locked->erase(it);
+            kobj = std::move(it->second.kobj);
+            locked->erase(it);
+        }
+
+        lib::unused(unregister_kobject(kobj));
 
         lib::info("dev: unregistered class '{}'", cls.name);
         return true;
@@ -660,8 +678,9 @@ namespace dev
         if (drv.bus == nullptr)
             return std::unexpected { lib::err::invalid_argument };
 
+        std::shared_ptr<kobject_t> drivers_kobj;
         {
-            auto locked = buses.write_lock();
+            const auto locked = buses.read_lock();
             const auto it = locked->find(drv.bus->name);
             if (it == locked->end())
                 return std::unexpected { lib::err::no_such_device };
@@ -669,12 +688,32 @@ namespace dev
             if (std::ranges::contains(it->second.drivers, &drv))
                 return std::unexpected { lib::err::already_exists };
 
+            drivers_kobj = it->second.drivers_kobj;
+        }
+
+        auto kobj = driver_kobject_t::create(drv.name, drv.type, drivers_kobj, drv);
+        if (auto res = register_kobject(kobj); !res)
+            return res;
+
+        {
+            auto locked = buses.write_lock();
+
+            const auto it = locked->find(drv.bus->name);
+            if (it == locked->end())
+            {
+                locked.unlock();
+                unregister_kobject(kobj);
+                return std::unexpected { lib::err::no_such_device };
+            }
+
+            if (std::ranges::contains(it->second.drivers, &drv))
+            {
+                locked.unlock();
+                unregister_kobject(kobj);
+                return std::unexpected { lib::err::already_exists };
+            }
+
             it->second.drivers.push_back(&drv);
-
-            auto kobj = driver_kobject_t::create(drv.name, drv.type, it->second.drivers_kobj, drv);
-            if (auto res = register_kobject(kobj); !res)
-                return res;
-
             it->second.driver_kobjs[&drv] = std::move(kobj);
         }
 
