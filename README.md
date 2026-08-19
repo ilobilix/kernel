@@ -13,10 +13,12 @@ See [ilobilix/ilobilix](https://github.com/ilobilix/ilobilix) for more informati
 - x86_64 and aarch64
 - Loadable kernel modules
 - Initgraph (from managarm)
+- SMP, CFS-style scheduler
 - Buddy PMM, UVM inspired VMM, ASIDs
 - ACPI via uACPI
-- SMP, CFS-style scheduler
-- Linux compatible syscalls, input subsystem, etc
-- UNIX sockets, netlink, pipes, ttys and ptys
-- NVMe, Virtio device drivers
+- Linux compatible syscalls, input subsystem, procfs, sysfs, etc
+- UNIX sockets, netlink, pipes, ttys, ptys, VTs
+- Networking via lwIP
+- EXT2, SquashFS, TMPFS, USTAR and CPIO initrd
+- NVMe, Virtio pci, input, net, entropy
 - And more

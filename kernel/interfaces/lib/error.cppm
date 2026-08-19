@@ -86,7 +86,8 @@ export namespace lib
         operation_in_progress = EINPROGRESS,
 
         would_block = EWOULDBLOCK,
-        host_unreachable = EHOSTUNREACH
+        host_unreachable = EHOSTUNREACH,
+        network_down = ENETDOWN
     };
 
     template<typename Type>

@@ -54,6 +54,8 @@ export namespace vnet
         sched::wait_queue_t ctrl_wait;
         sched::mutex_t ctrl_lock;
 
+        std::atomic_bool running = false;
+
         // bool guest_gso = false;
 
         bool has_any_feat(feature feat) const

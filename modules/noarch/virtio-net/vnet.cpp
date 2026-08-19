@@ -131,6 +131,9 @@ namespace vnet
         {
             auto ret = _dev.setup_rx_queue(
                 i * 2, max_rx_bufs, rxsize, [this](std::span<const std::byte> buffer) {
+                    if (!running.load(std::memory_order_acquire))
+                        return;
+
                     const auto hdr_size = header_size();
                     if (buffer.size() < hdr_size)
                         return;
@@ -228,6 +231,9 @@ namespace vnet
 
     lib::expect<void> device_t::do_transmit(std::span<const std::byte> frame)
     {
+        if (!running.load(std::memory_order_acquire))
+            return std::unexpected { lib::err::network_down };
+
         const auto hdr_size = header_size();
         auto &queue = queues[cpu::self().unsafe_get().idx % used_pairs];
 
@@ -267,13 +273,18 @@ namespace vnet
 
     lib::expect<void> device_t::start()
     {
+        if (running.exchange(true, std::memory_order_acq_rel))
+            return { };
+
         set_carrier(link_up());
         return { };
     }
 
     void device_t::stop()
     {
-        // TODO: disable interrupts
+        if (!running.exchange(false, std::memory_order_acq_rel))
+            return;
+
         set_carrier(false);
     }
 
