@@ -334,6 +334,8 @@ namespace virtio
         if (!(tp.status() & status::features_ok))
             return fail(lib::err::not_supported);
 
+        tp.features_negotiated();
+
         if (auto ret = dev.setup_irqs(cpu::bsp_idx()); !ret)
             return fail(ret.error());
 

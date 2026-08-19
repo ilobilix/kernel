@@ -17,6 +17,9 @@ namespace virtio
     dev::bus_t *get_bus();
     dev::ktype_t &get_ktype();
     dev::ktype_t &get_driver_ktype();
+
+    template<typename Type>
+    concept valid_cfg = std::is_trivially_copyable_v<Type> && !std::is_unbounded_array_v<Type>;
 } // namespace virtio
 
 export namespace virtio
@@ -143,7 +146,9 @@ export namespace virtio
         }
 
         std::uint64_t features() const { return _features; }
-        bool has(feature feat) const { return _features & feature_bit(feat); }
+
+        bool has_any(std::uint64_t bits) const { return _features & bits; }
+        bool has(feature feat) const { return has_any(feature_bit(feat)); }
 
         transport_t &transport() { return *_transport; }
 
@@ -169,9 +174,19 @@ export namespace virtio
             _transport->read_config(off, buffer);
         }
 
-        void write_config(std::size_t off, std::span<const std::byte> buffer)
+        template<valid_cfg Type>
+        lib::normalise_array_t<Type> read_config(std::size_t off)
         {
-            _transport->write_config(off, buffer);
+            lib::normalise_array_t<Type> value { };
+            read_config(off, std::as_writable_bytes(std::span { &value, 1 }));
+            return value;
+        }
+
+        template<auto Member>
+        auto read_config()
+        {
+            using type = lib::member_type_t<decltype(Member)>;
+            return read_config<type>(lib::offset_of(Member));
         }
 
         void read_config_stable(std::size_t off, std::span<std::byte> buffer)
@@ -185,33 +200,37 @@ export namespace virtio
             }
         }
 
-        template<typename Type>
-            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
-        Type read_config(std::size_t off)
+        template<valid_cfg Type>
+        lib::normalise_array_t<Type> read_config_stable(std::size_t off)
         {
-            Type value { };
-            read_config(off, std::as_writable_bytes(std::span { &value, 1 }));
+            lib::normalise_array_t<Type> value { };
+            read_config_stable(off, std::as_writable_bytes(std::span { &value, 1 }));
             return value;
         }
 
-        template<typename Type>
-            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
-        void write_config(std::size_t off, Type value)
+        template<auto Member>
+        auto read_config_stable()
+        {
+            using type = lib::member_type_t<decltype(Member)>;
+            return read_config_stable<type>(lib::offset_of(Member));
+        }
+
+        void write_config(std::size_t off, std::span<const std::byte> buffer)
+        {
+            _transport->write_config(off, buffer);
+        }
+
+        template<valid_cfg Type>
+        void write_config(std::size_t off, const lib::normalise_array_t<Type> &value)
         {
             write_config(off, std::as_bytes(std::span { &value, 1 }));
         }
 
-        template<typename Type>
-            requires std::is_trivially_copyable_v<Type> && (!std::is_array_v<Type>)
-        Type read_config_stable(std::size_t off)
+        template<auto Member>
+        void write_config(const auto &value)
         {
-            while (true)
-            {
-                const auto before = _transport->config_generation();
-                const auto value = read_config<Type>(off);
-                if (before == _transport->config_generation())
-                    return value;
-            }
+            using type = lib::member_type_t<decltype(Member)>;
+            write_config<type>(lib::offset_of(Member), value);
         }
 
         void set_ready();

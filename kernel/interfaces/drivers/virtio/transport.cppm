@@ -38,6 +38,8 @@ export namespace virtio
 
         virtual std::uint64_t mandatory_features() const = 0;
 
+        virtual void features_negotiated() = 0;
+
         virtual std::uint8_t status() = 0;
         virtual void add_status(std::uint8_t bits) = 0;
         virtual void reset() = 0;

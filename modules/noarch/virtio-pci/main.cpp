@@ -303,6 +303,7 @@ namespace virtio::pci
 
             std::uint32_t _notify_mult;
             std::vector<std::size_t> _notify_offsets;
+            std::optional<std::uint16_t> _num_queues;
 
             lib::spinlock _lock;
 
@@ -325,10 +326,8 @@ namespace virtio::pci
                 std::uint32_t notify_multiplier
             ) : _dev { dev }, _common { common }, _notify { notify }, _isr { isr },
                 _device_cfg { device_cfg }, _irqs { }, _shared_isr { true },
-                _notify_mult { notify_multiplier }, _notify_offsets { }, _lock { }
-            {
-                _notify_offsets.resize(_common.space.load(regs::num_queues), 0);
-            }
+                _notify_mult { notify_multiplier }, _notify_offsets { }, _num_queues { }, _lock { }
+            { }
 
             std::string_view type() const override { return "pci-modern"; }
 
@@ -361,6 +360,13 @@ namespace virtio::pci
                 return feature_bit(feature::version_1);
             }
 
+            void features_negotiated() override
+            {
+                const std::unique_lock _ { _lock };
+                _num_queues = _common.space.load(regs::num_queues);
+                _notify_offsets.resize(*_num_queues, 0);
+            }
+
             std::uint8_t status() override
             {
                 return _common.space.load(regs::device_status);
@@ -382,20 +388,15 @@ namespace virtio::pci
                 );
             }
 
-            ~pci_transport_t() override
-            {
-                reset();
-                _irqs.release(*_dev);
-            }
-
             std::uint16_t num_queues() override
             {
-                return _common.space.load(regs::num_queues);
+                lib::bug_on(!_num_queues);
+                return *_num_queues;
             }
 
             std::uint16_t queue_max_size(std::uint16_t qid) override
             {
-                if (qid >= _notify_offsets.size())
+                if (qid >= num_queues())
                     return 0;
 
                 const std::unique_lock _ { _lock };
@@ -405,7 +406,7 @@ namespace virtio::pci
 
             lib::expect<void> enable_queue(std::uint16_t qid, const queue_addr_t &addr) override
             {
-                if (qid >= _notify_offsets.size())
+                if (qid >= num_queues())
                     return std::unexpected { lib::err::no_such_device };
 
                 if (addr.size == 0 || !std::has_single_bit(addr.size))
@@ -449,7 +450,7 @@ namespace virtio::pci
 
             void disable_queue(std::uint16_t qid) override
             {
-                if (qid >= _notify_offsets.size())
+                if (qid >= num_queues())
                     return;
 
                 const std::unique_lock _ { _lock };
@@ -461,7 +462,7 @@ namespace virtio::pci
 
             void notify(std::uint16_t qid) override
             {
-                lib::bug_on(qid >= _notify_offsets.size());
+                lib::bug_on(qid >= num_queues());
 
                 _notify.space.store(
                     arch::scalar_register<std::uint16_t> {
@@ -533,6 +534,12 @@ namespace virtio::pci
                     return 0;
                 return _isr.space.load(arch::scalar_register<std::uint8_t> { 0 });
             }
+
+            ~pci_transport_t() override
+            {
+                reset();
+                _irqs.release(*_dev);
+            }
         };
 
         namespace legacy
@@ -566,7 +573,7 @@ namespace virtio::pci
 
                 irq_alloc_t _irqs;
                 std::atomic_bool _shared_isr;
-                std::uint16_t _num_queues;
+                std::optional<std::uint16_t> _num_queues;
 
                 lib::spinlock _lock;
 
@@ -601,17 +608,9 @@ namespace virtio::pci
                     const std::shared_ptr<device> &dev,
                     arch::io_space io, std::size_t io_size
                 ) : _dev { dev }, _io { io }, _io_size { io_size }, _irqs { }, _shared_isr { true },
-                    _num_queues { 0 }, _lock { }
+                    _num_queues { }, _lock { }
                 {
                     reset();
-
-                    for (std::uint16_t qid = 0; qid < max_queues; qid++)
-                    {
-                        select(qid);
-                        if (_io.load(regs::queue_size) == 0)
-                            break;
-                        _num_queues = qid + 1;
-                    }
                 }
 
                 std::string_view type() const override { return "pci-legacy"; }
@@ -628,6 +627,20 @@ namespace virtio::pci
                 }
 
                 std::uint64_t mandatory_features() const override { return 0; }
+
+                void features_negotiated() override
+                {
+                    const std::unique_lock _ { _lock };
+
+                    _num_queues = 0;
+                    for (std::uint16_t qid = 0; qid < max_queues; qid++)
+                    {
+                        select(qid);
+                        if (_io.load(regs::queue_size) == 0)
+                            break;
+                        _num_queues = qid + 1;
+                    }
+                }
 
                 std::uint8_t status() override
                 {
@@ -650,34 +663,33 @@ namespace virtio::pci
                     );
                 }
 
-                ~transport_t() override
+                std::uint16_t num_queues() override
                 {
-                    reset();
-                    _irqs.release(*_dev);
+                    lib::bug_on(!_num_queues);
+                    return *_num_queues;
                 }
 
-                std::uint16_t num_queues() override { return _num_queues; }
                 bool legacy_layout() const override { return true; }
 
                 std::uint16_t queue_max_size(std::uint16_t qid) override
                 {
-                    if (qid >= _num_queues)
+                    const std::unique_lock _ { _lock };
+                    if (qid >= num_queues())
                         return 0;
 
-                    const std::unique_lock _ { _lock };
                     select(qid);
                     return _io.load(regs::queue_size);
                 }
 
                 lib::expect<void> enable_queue(std::uint16_t qid, const queue_addr_t &addr) override
                 {
-                    if (qid >= _num_queues)
-                        return std::unexpected { lib::err::no_such_device };
-
                     if (addr.size == 0 || !std::has_single_bit(addr.size))
                         return std::unexpected { lib::err::invalid_argument };
 
                     const std::unique_lock _ { _lock };
+                    if (qid >= num_queues())
+                        return std::unexpected { lib::err::no_such_device };
+
                     select(qid);
 
                     const auto max = _io.load(regs::queue_size);
@@ -718,17 +730,17 @@ namespace virtio::pci
 
                 void disable_queue(std::uint16_t qid) override
                 {
-                    if (qid >= _num_queues)
+                    const std::unique_lock _ { _lock };
+                    if (qid >= num_queues())
                         return;
 
-                    const std::unique_lock _ { _lock };
                     select(qid);
                     _io.store(regs::queue_pfn, 0);
                 }
 
                 void notify(std::uint16_t qid) override
                 {
-                    lib::bug_on(qid >= _num_queues);
+                    lib::bug_on(qid >= num_queues());
                     _io.store(regs::queue_notify, qid);
                 }
 
@@ -791,6 +803,12 @@ namespace virtio::pci
                 std::uint8_t isr_status() override
                 {
                     return _io.load(regs::isr_status);
+                }
+
+                ~transport_t() override
+                {
+                    reset();
+                    _irqs.release(*_dev);
                 }
             };
 
@@ -950,11 +968,10 @@ namespace virtio::pci
                 (*transport)->add_status(status::driver);
 
                 const auto type = static_cast<device_type>(ident->device);
-                const auto num_queues = (*transport)->num_queues();
                 lib::info(
-                    "virtio-pci: found device: type: '{}', transport: '{}', {} queue{}",
+                    "virtio-pci: found device: type: '{}', transport: '{}'",
                     magic_enum::enum_contains(type) ? magic_enum::enum_name(type) : "unknown",
-                    (*transport)->type(), num_queues, num_queues != 1 ? "s" : ""
+                    (*transport)->type()
                 );
 
                 auto vdev = device_t::create(std::move(*transport), *ident, pdev.as_weak());
