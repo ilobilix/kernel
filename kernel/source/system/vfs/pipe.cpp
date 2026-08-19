@@ -185,7 +185,7 @@ namespace vfs::pipe
                 const bool wr = is_write(flags);
 
                 if (!rd && !wr)
-                    return std::unexpected { lib::err::invalid_flags };
+                    return std::unexpected { lib::err::invalid_argument };
 
                 const auto pdata = get_or_create(file->path.dentry->inode);
                 file->private_data = pdata;

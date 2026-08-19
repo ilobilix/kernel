@@ -119,6 +119,8 @@ export namespace sched
         signal_queue_t sigqueue;
         stack_t altstack { };
 
+        int err = 0;
+
         inline void set_flag(thread_flags flag)
         {
             flags.fetch_or(static_cast<std::uint8_t>(flag), std::memory_order_acq_rel);

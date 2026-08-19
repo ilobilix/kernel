@@ -43,7 +43,7 @@ namespace syscall::vfs
             auto val = detail::get_path(source);
             if (val.has_value())
                 source_path = std::move(*val);
-            else if (val.error() != lib::err::invalid_path)
+            else if (val.error() != lib::err::invalid_argument)
                 return -lib::map_error(val.error());
         }
 

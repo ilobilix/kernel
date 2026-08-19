@@ -397,7 +397,7 @@ export namespace fs::dev::tty
 
     struct default_ldisc : line_discipline
     {
-        static constexpr std::size_t buffer_size = 4096;
+        static constexpr std::size_t buffer_size = 4096 * 4;
 
         struct in_buffer_t
         {

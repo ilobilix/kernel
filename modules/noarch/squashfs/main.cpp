@@ -989,13 +989,13 @@ namespace squashfs
         {
             // TODO
             lib::unused(file, offset, buffer);
-            return std::unexpected { lib::err::todo };
+            return std::unexpected { lib::err::not_implemented };
         }
 
         // TODO
         // lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
         // {
-        //     return std::unexpected { lib::err::todo };
+        //     return std::unexpected { lib::err::not_implemented };
         // }
 
         auto instance_t::readdir(std::shared_ptr<vfs::dentry_t> dir, std::size_t cookie)
@@ -1059,7 +1059,7 @@ namespace squashfs
         {
             const auto inode = get_inode(dentry);
             if (inode->stat.type() != stat::s_iflnk)
-                return std::unexpected { lib::err::invalid_symlink };
+                return std::unexpected { lib::err::invalid_argument };
 
             std::string target(inode->stat.st_size, '\0');
 

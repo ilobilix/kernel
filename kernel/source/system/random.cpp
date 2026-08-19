@@ -393,6 +393,14 @@ namespace random
         return ret;
     }
 
+    std::ssize_t get_bytes(std::span<std::byte> buffer)
+    {
+        lib::lock::acquire_irq();
+        fill_local(_local.unsafe_get(), buffer);
+        lib::lock::release_irq();
+        return buffer.size_bytes();
+    }
+
     std::ssize_t get_bytes(lib::maybe_uspan<std::byte> buffer)
     {
         if (buffer.is_user())
@@ -415,11 +423,7 @@ namespace random
             }
             return static_cast<std::ssize_t>(progress);
         }
-
-        lib::lock::acquire_irq();
-        fill_local(_local.unsafe_get(), buffer.span());
-        lib::lock::release_irq();
-        return buffer.size_bytes();
+        return get_bytes(buffer.span());
     }
 
     lib::initgraph::task random_init_task

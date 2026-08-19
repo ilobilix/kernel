@@ -55,10 +55,10 @@ namespace fs::devtmpfs
     lib::expect<void> create(lib::path path, mode_t mode, dev_t rdev)
     {
         if (!fs.valid())
-            return std::unexpected { lib::err::invalid_filesystem };
+            return std::unexpected { lib::err::no_such_device };
 
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         const vfs::path_t devroot {
             .mnt = fs->internal_mnt,
@@ -92,10 +92,10 @@ namespace fs::devtmpfs
     lib::expect<void> remove(lib::path path)
     {
         if (!fs.valid())
-            return std::unexpected { lib::err::invalid_filesystem };
+            return std::unexpected { lib::err::no_such_device };
 
         if (path.empty() || path == "." || path.is_absolute() || path.str().starts_with("dev/"))
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         const vfs::path_t devroot {
             .mnt = fs->internal_mnt,

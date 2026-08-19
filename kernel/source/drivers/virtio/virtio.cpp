@@ -22,6 +22,7 @@ namespace virtio
                                 return std::unexpected { lib::err::io_error };
                             return rfn(static_cast<device_t &>(dev));
                         },
+                        wfn == nullptr ? dev::make_attribute_t::wfn_t { } :
                         [wfn](dev::device_t &dev, std::string_view value) -> lib::expect<void> {
                             if (dev.bus != get_bus())
                                 return std::unexpected { lib::err::io_error };

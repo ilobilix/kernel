@@ -1151,11 +1151,11 @@ namespace ext2
         {
             const auto &dentry = file->path.dentry;
             if (!dentry || !dentry->inode)
-                return std::unexpected { lib::err::mapping_unsupported };
+                return std::unexpected { lib::err::no_such_device };
 
             const auto finode = inode_of(file);
             if (finode->stat.type() != stat::s_ifreg)
-                return std::unexpected { lib::err::mapping_unsupported };
+                return std::unexpected { lib::err::no_such_device };
 
             return get_object(finode);
         }

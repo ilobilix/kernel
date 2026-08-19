@@ -6,7 +6,7 @@ import system.sched.wait_queue;
 import system.sched.mutex;
 import system.sched;
 import drivers.fs.procfs;
-import drivers.dev;
+import drivers.dev.net;
 import fmt;
 
 namespace vfs::socket::netlink
@@ -961,7 +961,7 @@ namespace vfs::socket::netlink
     {
         "socket.procfs.register-netlink",
         lib::initgraph::postsched_init_engine,
-        lib::initgraph::require { registered_procfs_stage() },
+        lib::initgraph::require { dev::net::registered_stage() },
         [] {
             if (const auto ret = register_family(&netlink_family); !ret)
             {

@@ -69,7 +69,7 @@ namespace lib::syscall
                 [](cpu::registers *regs, std::string_view name, void *handler, bool log_exit)
                     -> std::uintptr_t
                 {
-                    using sign = typename lib::signature<std::remove_cvref_t<decltype(func)>>;
+                    using sign = typename lib::func_signature<std::remove_cvref_t<decltype(func)>>;
                     constexpr bool is_void = std::same_as<typename sign::return_type, void>;
                     static_assert(
                         std::is_trivially_default_constructible_v<typename sign::return_type> ||

@@ -93,7 +93,7 @@ export namespace dev
         virtual lib::expect<vmm::object::ptr> map(kobject_t &kobj)
         {
             lib::unused(kobj);
-            return std::unexpected { lib::err::mapping_unsupported };
+            return std::unexpected { lib::err::no_such_device };
         }
 
         virtual ~bin_attribute_t() = default;

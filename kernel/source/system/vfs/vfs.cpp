@@ -194,7 +194,7 @@ namespace vfs
     auto filesystem_t::instance_t::readlink(std::shared_ptr<dentry_t> dentry) -> lib::expect<lib::path>
     {
         if (!dentry || dentry->symlinked_to.empty())
-            return std::unexpected { lib::err::invalid_symlink };
+            return std::unexpected { lib::err::invalid_argument };
         return dentry->symlinked_to;
     }
 
@@ -269,7 +269,7 @@ namespace vfs
                 static const std::size_t reclen = (sizeof(vfs::dirent64) + dotstr.size() + 7) & ~7;
 
                 if (progress + reclen > buffer.size())
-                    return std::unexpected { lib::err::buffer_too_small };
+                    return std::unexpected { lib::err::invalid_argument };
 
                 const auto ino = path.dentry->inode->stat.st_ino;
                 vfs::dirent64 dot
@@ -297,7 +297,7 @@ namespace vfs
                 if (progress + reclen > buffer.size())
                 {
                     if (progress == 0)
-                        return std::unexpected { lib::err::buffer_too_small };
+                        return std::unexpected { lib::err::invalid_argument };
                     return progress;
                 }
 
@@ -338,7 +338,7 @@ namespace vfs
                 if (progress + reclen > buffer.size())
                 {
                     if (progress == 0)
-                        return std::unexpected { lib::err::buffer_too_small };
+                        return std::unexpected { lib::err::invalid_argument };
                     return progress;
                 }
 
@@ -733,13 +733,13 @@ namespace vfs
             else if (!src.dentry->symlinked_to.empty())
                 target = src.dentry->symlinked_to;
             else
-                return std::unexpected { lib::err::invalid_symlink };
+                return std::unexpected { lib::err::invalid_argument };
 
             const auto ret = resolve(parent, target, automount);
             if (!ret)
                 return std::unexpected { ret.error() };
             if (ret->target.dentry == src.dentry)
-                return std::unexpected { lib::err::invalid_symlink };
+                return std::unexpected { lib::err::invalid_argument };
 
             parent = ret->parent;
             src = ret->target;
@@ -759,7 +759,7 @@ namespace vfs
     ) -> lib::expect<void>
     {
         if (flags & ~std::to_underlying(ms_supported))
-            return std::unexpected { lib::err::invalid_flags };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (flags & ms_remount)
         {
@@ -769,7 +769,7 @@ namespace vfs
 
             auto target = ret.value();
             if (!target.mnt || target.dentry != target.mnt->root)
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
 
             target.mnt->flags = flags & ~std::to_underlying(ms_remount);
 
@@ -790,7 +790,7 @@ namespace vfs
 
             if (!src->mnt || src->dentry != src->mnt->root ||
                 !src->mnt->mounted_on.has_value() || src->mnt->parent_id == 0)
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
 
             auto tgt = resolve_real_dir(std::nullopt, target_path);
             if (!tgt)
@@ -803,7 +803,7 @@ namespace vfs
             for (auto mnt = tgt->mnt; mnt; )
             {
                 if (mnt == src->mnt)
-                    return std::unexpected { lib::err::invalid_path };
+                    return std::unexpected { lib::err::invalid_argument };
                 if (!mnt->mounted_on.has_value() || !mnt->mounted_on->mnt)
                     break;
                 mnt = mnt->mounted_on->mnt;
@@ -824,7 +824,7 @@ namespace vfs
             if (!src)
                 return std::unexpected { src.error() };
             if (!src->mnt)
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
 
             auto tgt = resolve_real_dir(std::nullopt, target_path);
             if (!tgt)
@@ -911,13 +911,13 @@ namespace vfs
 
         auto fs = find_fs(fstype);
         if (!fs)
-            return std::unexpected { lib::err::invalid_filesystem };
+            return std::unexpected { lib::err::no_such_device };
 
         std::optional<path_t> source { };
         if (fs->requires_dev)
         {
             if (source_path.empty())
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
 
             auto ret = path_for(source_path);
             if (!ret)
@@ -969,7 +969,7 @@ namespace vfs
 
         auto mnt = res->mnt;
         if (!mnt || res->dentry != mnt->root)
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         const std::unique_lock _ { mount_tree_lock };
 
@@ -1215,7 +1215,7 @@ namespace vfs
     {
         const auto base = path.basename();
         if (base == "." || base == "..")
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto res = resolve(parent, path);
         if (!res)
@@ -1225,12 +1225,12 @@ namespace vfs
         const auto target_dentry = res->target.dentry;
 
         if (target_dentry == real_parent)
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         {
             const auto locked = real_parent->children.lock();
             if (locked->lookup(target_dentry->name) != target_dentry)
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
         }
 
         auto &inode = target_dentry->inode;
@@ -1275,7 +1275,7 @@ namespace vfs
         const auto new_base = new_path.basename();
         if (old_base.str() == "."sv || old_base.str() == ".."sv ||
             new_base.str() == "."sv || new_base.str() == ".."sv)
-            return std::unexpected { lib::err::invalid_path };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto old_res = resolve(old_parent, old_path);
         if (!old_res)
@@ -1301,7 +1301,7 @@ namespace vfs
             for (auto den = new_parent_dentry; den; )
             {
                 if (den == old_dentry)
-                    return std::unexpected { lib::err::invalid_path };
+                    return std::unexpected { lib::err::invalid_argument };
                 auto parent = den->parent.lock();
                 if (parent == den)
                     break;

@@ -262,13 +262,27 @@ namespace syscall::misc
                     static_cast<sched::dumpable_t>(arg2), std::memory_order_relaxed
                 );
                 return 0;
+            case 7: // PR_GET_KEEPCAPS
+                return sched::has_secbit(sched::secbit_t::keep_caps);
+            case 8: // PR_SET_KEEPCAPS
+                if (arg2 > 1)
+                    return -EINVAL;
+
+                if (sched::has_secbit(sched::secbit_t::keep_caps_locked))
+                    return -EPERM;
+                sched::set_securebit(sched::secbit_t::keep_caps, arg2);
+                return 0;
             case 15: // PR_SET_NAME
             {
-                char tmp[sched::comm_max + 1] { };
-                if (!lib::copy_from_user(
-                    tmp, reinterpret_cast<const char __user *>(arg2), sched::comm_max))
+                const auto name = reinterpret_cast<const char __user *>(arg2);
+                const auto len = lib::strnlen_user(name, sched::comm_max);
+                if (len < 0)
                     return -EFAULT;
-                tmp[sched::comm_max] = '\0';
+
+                char tmp[sched::comm_max + 1] { };
+                if (!lib::copy_from_user(tmp, name, len))
+                    return -EFAULT;
+                tmp[len] = '\0';
 
                 const auto thread = sched::current_thread();
                 const auto proc = thread->proc.get();
@@ -296,10 +310,12 @@ namespace syscall::misc
             }
             case 21: // PR_GET_SECCOMP
                 // TODO
-                return -EINVAL;
+                return 0;
             case 22: // PR_SET_SECCOMP
                 // TODO
-                return -EINVAL;
+                if (arg2 != 2)
+                    return -EINVAL;
+                return 0;
             case 23: // PR_CAPBSET_READ
             {
                 if (arg2 >= 64)

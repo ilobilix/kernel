@@ -30,7 +30,7 @@ namespace syscall::vfs
                 return std::unexpected { lib::err::invalid_address };
             auto str = lib::user_string::get(name, xattr_name_max + 1);
             if (!str.has_value())
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
             return std::move(*str);
         }
 

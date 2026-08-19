@@ -401,6 +401,4 @@ export namespace vfs::socket
     auto create_pair(addr_fam af, sock_type type, int protocol)
         -> lib::expect<std::pair<std::shared_ptr<socket_t>, std::shared_ptr<socket_t>>>;
     auto create_anon(std::shared_ptr<socket_t> sock, int flags) -> lib::expect<int>;
-
-    lib::initgraph::stage *registered_procfs_stage();
 } // export namespace vfs::socket

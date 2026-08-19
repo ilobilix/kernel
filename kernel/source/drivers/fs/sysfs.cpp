@@ -207,7 +207,7 @@ namespace fs::sysfs
             {
                 const auto inod = std::static_pointer_cast<inode_t>(file->path.dentry->inode);
                 if (inod->typ != inode_t::type::bin)
-                    return std::unexpected { lib::err::mapping_unsupported };
+                    return std::unexpected { lib::err::no_such_device };
                 return inod->battr->map(*inod->kobj);
             }
 

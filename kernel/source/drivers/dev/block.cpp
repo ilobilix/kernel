@@ -10,6 +10,8 @@ namespace dev::block
 {
     namespace
     {
+        std::atomic_uint64_t next_seq = 1;
+
         struct drive_data_t
         {
             std::weak_ptr<drive_t> drive;
@@ -76,6 +78,7 @@ namespace dev::block
                                     return std::unexpected { lib::err::io_error };
                                 return rfn(dev, std::move(drive));
                             },
+                            wfn == nullptr ? make_attribute_t::wfn_t { } :
                             [wfn](device_t &dev, std::string_view value) -> lib::expect<void> {
                                 auto drive = drive_from(dev);
                                 if (!drive)
@@ -256,6 +259,11 @@ namespace dev::block
             }
         };
     } // namespace
+
+    std::uint64_t drive_t::alloc_seq()
+    {
+        return next_seq.fetch_add(1, std::memory_order_relaxed);
+    }
 
     lib::expect<void> drive_t::rw(
         bool write, bool sync, std::uint64_t offset, std::size_t total_size,
@@ -541,7 +549,9 @@ namespace dev::block
         return drv->flush();
     }
 
-    lib::expect<void> register_drive(std::shared_ptr<drive_t> drive, std::string_view part_prefix)
+    lib::expect<void> register_drive(
+        const std::shared_ptr<drive_t> &drive, std::string_view part_prefix
+    )
     {
         drive->dev->add_ref_fn = [](auto &ref, auto &dev) {
             ref.add_link(root("/block"), dev.name, dev.path());
@@ -725,7 +735,7 @@ namespace dev::block
         return { };
     }
 
-    bool unregister_drive(std::shared_ptr<drive_t> drive)
+    bool unregister_drive(const std::shared_ptr<drive_t> &drive)
     {
         for (const auto &part : drive->partitions())
         {

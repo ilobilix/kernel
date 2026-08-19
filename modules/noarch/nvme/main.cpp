@@ -5,10 +5,9 @@
 // TODO: batch submissions and only write to doorbell once
 // TODO: interrupt coalescing
 
-import system.vfs.dev;
-import drivers.pci;
-import drivers.dev;
 import drivers.dev.block;
+import drivers.pci;
+import system.vfs.dev;
 import fmt;
 import lib;
 import std;
@@ -23,11 +22,13 @@ namespace nvme
             pci::id_t::from_class(0x01, 0x08, 0x02)
         };
 
-        lib::map::flat_hash<
-            std::size_t,
-            std::shared_ptr<controller_t>
+        lib::locker<
+            lib::map::flat_hash<
+                std::size_t,
+                std::shared_ptr<controller_t>
+            >, lib::spinlock
         > ctrls;
-        std::size_t idx = 0;
+        std::atomic_size_t idx = 0;
 
         driver_t() : pci::driver_t { "nvme", match_ids } { }
 
@@ -44,14 +45,16 @@ namespace nvme
             lib::bug_on(!ret && ret.error() != lib::err::already_exists);
 
             return controller_t::create(dev.dev).transform([&](auto &&ctrl) {
+                const auto id = idx.fetch_add(1, std::memory_order_relaxed);
+
                 auto nvdir = dev::kobject_t::create("nvme", dev::empty_ktype(), dev.as_weak());
                 lib::bug_on(!dev::register_kobject(nvdir));
 
                 auto nvctrl = dev::device_t::create(
-                    "nvme" + std::to_string(idx), get_ctrl_ktype(), nvdir
+                    "nvme" + std::to_string(id), get_ctrl_ktype(), nvdir
                 );
                 nvctrl->cls = &get_class();
-                nvctrl->devt = makedev(vfs::dev::alloc_char_major(), idx);
+                nvctrl->devt = makedev(vfs::dev::alloc_char_major(), id);
                 nvctrl->fops = std::make_shared<ctrl_ops_t>(ctrl);
                 lib::bug_on(!dev::register_device(nvctrl));
 
@@ -59,7 +62,7 @@ namespace nvme
                 {
                     // TODO: nvme specific disk attributes
                     auto dev = dev::device_t::create(
-                        fmt::format("nvme{}n{}", idx, nsid + 1),
+                        fmt::format("nvme{}n{}", id, nsid + 1),
                         dev::block::get_ktype(), nvctrl
                     );
                     dev->cls = &dev::block::get_class();
@@ -73,29 +76,33 @@ namespace nvme
                 ctrl->dev = std::move(nvctrl);
                 ctrl->dir = std::move(nvdir);
 
-                idx++;
-                lib::bug_on(!ctrls.emplace(dev.id, std::move(ctrl)).second);
+                lib::bug_on(!ctrls.lock()->emplace(dev.id, std::move(ctrl)).second);
             });
         }
 
         bool remove(pci::device_t &dev) override
         {
-            if (auto it = ctrls.find(dev.id); it != ctrls.end())
-            {
-                lib::info("nvme: removing device");
+            auto ctrl = [&] -> std::shared_ptr<controller_t> {
+                auto locked = ctrls.lock();
+                const auto it = locked->find(dev.id);
+                if (it == locked->end())
+                    return nullptr;
 
-                auto &[_, ctrl] = *it;
+                auto ret = it->second;
+                locked->erase(it);
+                return ret;
+            } ();
+            if (!ctrl)
+                return false;
 
-                for (const auto &ns : ctrl->namespaces())
-                    lib::bug_on(!dev::block::unregister_drive(ns));
+            lib::info("nvme: removing device");
 
-                lib::bug_on(!dev::unregister_device(ctrl->dev));
-                lib::bug_on(!dev::unregister_kobject(ctrl->dir));
+            for (const auto &ns : ctrl->namespaces())
+                lib::bug_on(!dev::block::unregister_drive(ns));
 
-                ctrls.erase(it);
-                return true;
-            }
-            return false;
+            lib::bug_on(!dev::unregister_device(ctrl->dev));
+            lib::bug_on(!dev::unregister_kobject(ctrl->dir));
+            return true;
         }
     } driver;
 } // namespace nvme

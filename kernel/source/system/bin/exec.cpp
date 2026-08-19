@@ -53,7 +53,7 @@ namespace bin::exec
     )
     {
         if (depth >= max_depth)
-            return std::unexpected { lib::err::binfmt_recursion };
+            return std::unexpected { lib::err::symloop_max };
 
         std::vector<std::shared_ptr<format>> candidates;
         {

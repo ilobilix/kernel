@@ -13,7 +13,6 @@ export namespace lib
 {
     enum class err
     {
-        todo = ENOSYS,
         not_implemented = ENOSYS,
 
         already_exists = EEXIST,
@@ -25,7 +24,6 @@ export namespace lib
 
         symloop_max = ELOOP,
 
-        binfmt_recursion = ELOOP,
         invalid_exec = ENOEXEC,
 
         target_is_a_dir = EISDIR,
@@ -35,28 +33,16 @@ export namespace lib
 
         different_filesystem = EXDEV,
 
-        invalid_filesystem = ENODEV,
         no_such_device = ENODEV,
         invalid_device_or_address = ENXIO,
 
-        invalid_path = EINVAL,
-        invalid_symlink = EINVAL,
-        invalid_flags = EINVAL,
-        invalid_type = EINVAL,
         invalid_argument = EINVAL,
-        invalid_pml_entry = EINVAL,
-        invalid_length = EINVAL,
-        addr_not_aligned = EINVAL,
-        addr_out_of_bounds = EINVAL,
-        buffer_too_small = EINVAL,
-
         path_too_long = ENAMETOOLONG,
 
         invalid_fd = EBADF,
         too_many_files = EMFILE,
 
         invalid_address = EFAULT,
-        not_mapped = EFAULT,
 
         no_space_left = ENOSPC,
         no_buffer_space = ENOBUFS,
@@ -64,7 +50,6 @@ export namespace lib
         try_again = EAGAIN,
         interrupted = EINTR,
         inappropriate_ioctl = ENOTTY,
-        mapping_unsupported = ENODEV,
         io_error = EIO,
 
         out_of_memory = ENOMEM,
@@ -79,7 +64,6 @@ export namespace lib
         illegal_seek = ESPIPE,
         broken_pipe = EPIPE,
 
-        bad_message = EBADMSG,
         corrupted_data = EBADMSG,
 
         timed_out = ETIMEDOUT,
@@ -94,10 +78,15 @@ export namespace lib
         already_connected = EISCONN,
         not_connected = ENOTCONN,
         connection_refused = ECONNREFUSED,
+        connection_aborted = ECONNABORTED,
+        connection_reset = ECONNRESET,
         message_too_long = EMSGSIZE,
         address_in_use = EADDRINUSE,
         already_in_progress = EALREADY,
-        operation_in_progress = EINPROGRESS
+        operation_in_progress = EINPROGRESS,
+
+        would_block = EWOULDBLOCK,
+        host_unreachable = EHOSTUNREACH
     };
 
     template<typename Type>

@@ -2,9 +2,10 @@
 
 export module drivers.dev.block;
 
+export import drivers.dev;
+
 import system.memory.virt;
 import system.vfs;
-import drivers.dev;
 import libarch;
 import lib;
 import std;
@@ -13,11 +14,11 @@ export namespace dev::block
 {
     class drive_t
     {
-        static inline std::atomic_uint64_t disk_seq { 1 };
-
         friend lib::expect<void> register_drive(
-            std::shared_ptr<drive_t> drive, std::string_view part_prefix
+            const std::shared_ptr<drive_t> &drive, std::string_view part_prefix
         );
+
+        static std::uint64_t alloc_seq();
 
         protected:
         std::uint8_t _lba_shift;
@@ -49,7 +50,7 @@ export namespace dev::block
             std::uint64_t max_transfer_lba, arch::dma_pool &pool
         ) : _lba_shift { lba_shift }, _lba_count { lba_count },
             _max_transfer_lba { max_transfer_lba }, _pool { pool },
-            _seq { disk_seq.fetch_add(1, std::memory_order_relaxed) }  { }
+            _seq { alloc_seq() }  { }
 
         virtual ~drive_t() = default;
 
@@ -250,8 +251,10 @@ export namespace dev::block
         static_assert(sizeof(table_t) == 92);
     } // namespace gpt
 
-    lib::expect<void> register_drive(std::shared_ptr<drive_t> drive, std::string_view part_prefix);
-    bool unregister_drive(std::shared_ptr<drive_t> drive);
+    lib::expect<void> register_drive(
+        const std::shared_ptr<drive_t> &drive, std::string_view part_prefix
+    );
+    bool unregister_drive(const std::shared_ptr<drive_t> &drive);
 
     class_t &get_class();
     ktype_t &get_ktype();

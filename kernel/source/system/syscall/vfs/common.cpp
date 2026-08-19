@@ -80,7 +80,7 @@ namespace syscall::vfs
             if (pathname_len < 0)
                 return std::unexpected { lib::err::invalid_address };
             if (pathname_len == 0)
-                return std::unexpected { lib::err::invalid_path };
+                return std::unexpected { lib::err::invalid_argument };
             if (pathname_len == path_max)
                 return std::unexpected { lib::err::path_too_long };
 

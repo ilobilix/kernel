@@ -3,6 +3,7 @@
 module system.vfs.socket;
 
 import drivers.fs.procfs;
+import drivers.dev.net;
 import system.chrono;
 import system.sched;
 import system.vfs;
@@ -1882,7 +1883,7 @@ namespace vfs::socket
         {
             "socket.procfs.register-unix",
             lib::initgraph::postsched_init_engine,
-            lib::initgraph::require { registered_procfs_stage() },
+            lib::initgraph::require { dev::net::registered_stage() },
             [] {
                 if (const auto ret = register_family(&unix_family); !ret)
                 {

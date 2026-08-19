@@ -28,7 +28,7 @@ namespace std
         std::size_t _size;
 
         constexpr deallocator() noexcept = default;
-        constexpr explicit deallocator(const Allocator &alloc, std::size_t size)
+        explicit constexpr deallocator(const Allocator &alloc, std::size_t size)
             : _alloc { alloc }, _size { size } { }
 
         constexpr void operator()(value_type *ptr)

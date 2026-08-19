@@ -12,29 +12,29 @@ namespace sched
             process->cred = new_cred;
         }
 
-        void euid_transition(std::shared_ptr<cred_t> &cred, uid_t old_euid)
+        void euid_transition(std::shared_ptr<cred_t> &cred, const cred_t &old)
         {
-            if (old_euid == 0 && cred->euid != 0)
-            {
-                if (has_secbit(cred->securebits, secbit_t::no_setuid_fixup))
-                    cred->effective = cap_t::none;
-            }
+            if (has_secbit(cred->securebits, secbit_t::no_setuid_fixup))
+                return;
 
-            if (old_euid != 0 && cred->euid == 0)
-            {
-                if (has_secbit(cred->securebits, secbit_t::no_setuid_fixup))
-                    cred->effective = cred->permitted;
-            }
+            const bool had_root = old.ruid == 0 || old.euid == 0 || old.suid == 0;
+            const bool has_root = cred->ruid == 0 || cred->euid == 0 || cred->suid == 0;
 
-            if (cred->ruid != 0 && cred->euid != 0 && cred->suid != 0)
+            if (had_root && !has_root)
             {
-                if (has_secbit(cred->securebits, secbit_t::keep_caps))
+                if (!has_secbit(cred->securebits, secbit_t::keep_caps))
                 {
                     cred->permitted = cap_t::none;
                     cred->effective = cap_t::none;
                 }
                 cred->ambient = cap_t::none;
             }
+
+            if (old.euid == 0 && cred->euid != 0)
+                cred->effective = cap_t::none;
+
+            if (old.euid != 0 && cred->euid == 0)
+                cred->effective = cred->permitted;
         }
     } // namespace
 
@@ -46,6 +46,11 @@ namespace sched
     bool capable(cap_t cap)
     {
         return capable(current_process()->cred, cap);
+    }
+
+    bool has_secbit(secbit_t bit)
+    {
+        return has_secbit(current_process()->cred->securebits, bit);
     }
 
     bool check_perms(const std::shared_ptr<cred_t> &cred, const stat &stat, access_mode desired)
@@ -124,6 +129,7 @@ namespace sched
     lib::expect<void> setuid(uid_t uid)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         const bool can_setuid = capable(old_cred, cap_t::setuid);
@@ -139,7 +145,7 @@ namespace sched
         new_cred->euid = uid;
         new_cred->fsuid = uid;
 
-        euid_transition(new_cred, old_cred->euid);
+        euid_transition(new_cred, *old_cred);
         set_creds(process, std::move(new_cred));
         return { };
     }
@@ -149,6 +155,7 @@ namespace sched
         constexpr auto empty = static_cast<uid_t>(-1);
 
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         if (!capable(old_cred, cap_t::setuid))
@@ -171,7 +178,7 @@ namespace sched
         if (ruid != empty || (euid != empty && euid != old_cred->euid))
             new_cred->suid = new_cred->euid;
 
-        euid_transition(new_cred, old_cred->euid);
+        euid_transition(new_cred, *old_cred);
         set_creds(process, std::move(new_cred));
         return { };
     }
@@ -181,6 +188,7 @@ namespace sched
         constexpr auto empty = static_cast<uid_t>(-1);
 
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         if ((ruid == empty || ruid == old_cred->ruid) &&
@@ -210,7 +218,7 @@ namespace sched
             new_cred->suid = suid;
         new_cred->fsuid = euid;
 
-        euid_transition(new_cred, old_cred->euid);
+        euid_transition(new_cred, *old_cred);
         set_creds(process, std::move(new_cred));
         return { };
     }
@@ -218,6 +226,7 @@ namespace sched
     lib::expect<void> setgid(gid_t gid)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         const bool can_setgid = capable(old_cred, cap_t::setgid);
@@ -241,6 +250,7 @@ namespace sched
         constexpr auto empty = static_cast<uid_t>(-1);
 
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         const bool can_setgid = capable(old_cred, cap_t::setgid);
@@ -274,6 +284,7 @@ namespace sched
         constexpr auto empty = static_cast<uid_t>(-1);
 
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         if ((rgid == empty || rgid == old_cred->rgid) &&
@@ -310,6 +321,7 @@ namespace sched
     uid_t setfsuid(uid_t fsuid)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         const uid_t old_fsuid = old_cred->fsuid;
 
@@ -331,6 +343,7 @@ namespace sched
     gid_t setfsgid(gid_t fsgid)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         const gid_t old_fsgid = old_cred->fsgid;
 
@@ -355,12 +368,14 @@ namespace sched
         if (!capable(process->cred, cap_t::setgid))
             return std::unexpected { lib::err::not_permitted };
 
-        auto new_cred = process->cred->clone();
-
-        new_cred->supp_gids.gids.resize(groups.size());
-        if (!groups.copy_to(new_cred->supp_gids.gids))
+        std::vector<gid_t> gids(groups.size());
+        if (!groups.copy_to(gids))
             return std::unexpected { lib::err::invalid_address };
-        std::ranges::sort(new_cred->supp_gids.gids);
+        std::ranges::sort(gids);
+
+        const std::unique_lock _ { process->lock };
+        auto new_cred = process->cred->clone();
+        new_cred->supp_gids.gids = std::move(gids);
 
         set_creds(process, std::move(new_cred));
         return { };
@@ -377,7 +392,7 @@ namespace sched
         if (const auto size = groups.size())
         {
             if (size < gids.size())
-                return std::unexpected { lib::err::invalid_length };
+                return std::unexpected { lib::err::invalid_argument };
 
             std::span<gid_t> span { gids.data(), gids.size() };
             if (!groups.copy_from(span))
@@ -412,6 +427,7 @@ namespace sched
         if (pid != 0 && pid != process->pid)
             return std::unexpected { lib::err::not_permitted };
 
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         if ((data->permitted & ~old_cred->permitted) != cap_t::none)
             return std::unexpected { lib::err::not_permitted };
@@ -439,6 +455,7 @@ namespace sched
     lib::expect<void> cap_bounding_drop(cap_t cap)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         if (!capable(old_cred, cap_t::setpcap))
             return std::unexpected { lib::err::not_permitted };
@@ -452,6 +469,7 @@ namespace sched
     lib::expect<void> cap_ambient_raise(cap_t cap)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         if (has_secbit(old_cred->securebits, secbit_t::no_cap_ambient_raise))
@@ -470,6 +488,7 @@ namespace sched
     void cap_ambient_lower(cap_t cap)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         auto new_cred = old_cred->clone();
         new_cred->ambient &= ~cap;
@@ -479,6 +498,7 @@ namespace sched
     lib::expect<void> set_securebits(secbit_t securebits)
     {
         auto process = current_process();
+        const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
         if (!capable(old_cred, cap_t::setpcap))
@@ -506,16 +526,29 @@ namespace sched
 
         if (has_secbit(securebits, secbit_t::exec_restrict_file) &&
             !has_secbit(securebits, secbit_t::exec_restrict_file_locked))
-            return std::unexpected { lib::err::invalid_flags };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (has_secbit(securebits, secbit_t::exec_deny_interactive) &&
             !has_secbit(securebits, secbit_t::exec_deny_interactive_locked))
-            return std::unexpected { lib::err::invalid_flags };
+            return std::unexpected { lib::err::invalid_argument };
 
         auto new_cred = old_cred->clone();
         new_cred->securebits = securebits;
         set_creds(process, std::move(new_cred));
         return { };
+    }
+
+    void set_securebit(secbit_t bit, bool set)
+    {
+        auto process = current_process();
+        const std::unique_lock _ { process->lock };
+
+        auto new_cred = process->cred->clone();
+        if (set)
+            new_cred->securebits |= bit;
+        else
+            new_cred->securebits &= ~bit;
+        set_creds(process, std::move(new_cred));
     }
 
     void apply_exec_caps(

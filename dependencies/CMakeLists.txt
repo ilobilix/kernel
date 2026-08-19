@@ -10,6 +10,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/frigg/frigg.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/libarch/libarch.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/libstdcxx-headers/libstdcxx-headers.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/limine-protocol/limine-protocol.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/lwip/lwip.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/lz4/lz4.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/magic_enum/magic_enum.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/miniz/miniz.cmake")
@@ -39,3 +40,8 @@ set(DEPENDENCY_SOURCES "${_dependency_sources}" CACHE INTERNAL "")
 include(${CMAKE_SOURCE_DIR}/cmake/deps-toolchain.cmake)
 add_library(kernel_deps STATIC ${DEPENDENCY_SOURCES})
 target_include_directories(kernel_deps PRIVATE ${DEPENDENCY_INCLUDES})
+# for lwip
+target_compile_options(kernel_deps PRIVATE
+    -Wno-unused-but-set-variable
+    -Wno-unused-parameter
+)

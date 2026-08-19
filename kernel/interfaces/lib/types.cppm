@@ -45,20 +45,33 @@ export namespace lib
     class private_t
     {
         friend Type;
-        constexpr explicit private_t() = default;
+        explicit constexpr private_t() = default;
     };
 
     template<typename>
-    class signature;
+    class func_signature;
 
     template<typename Ret, typename ...Args>
-    class signature<Ret (Args...)>
+    class func_signature<Ret (Args...)>
     {
         public:
         using type = Ret (Args...);
         using return_type = Ret;
         using args_type = std::tuple<Args...>;
     };
+
+    template<typename Type>
+    struct member_signature;
+
+    template<typename Class, typename Type>
+    struct member_signature<Type Class::*>
+    {
+        using class_type = Class;
+        using value_type = Type;
+    };
+
+    template<typename Type>
+    using member_type_t = member_signature<Type>::value_type;
 
     template<typename Type>
     struct remove_address_space { using type = Type; };
@@ -100,6 +113,22 @@ export namespace lib
 
     template<typename Type>
     inline constexpr bool has_address_space_v = has_address_space<Type>::value;
+
+    template<typename Type>
+    struct normalise_array { using type = Type; };
+
+    template<typename Type, std::size_t Num>
+    struct normalise_array<Type [Num]> { using type = std::array<Type, Num>; };
+
+    template<typename Type>
+    using normalise_array_t = normalise_array<Type>::type;
+
+    template<typename Type, typename Class>
+    std::size_t offset_of(Type Class::*member)
+    {
+        static_assert(sizeof(member) == sizeof(std::ptrdiff_t));
+        return std::bit_cast<std::ptrdiff_t>(member);
+    }
 
     template<typename Type, typename Pred>
     std::size_t erase_if(std::vector<Type> &vec, Pred pred)

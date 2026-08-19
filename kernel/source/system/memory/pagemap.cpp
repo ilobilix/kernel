@@ -115,14 +115,14 @@ namespace vmm
             {
                 auto accessor = entry.access();
                 if (!accessor.getflags(valid_table_flags) || !is_canonical(accessor.getaddr()))
-                    return std::unexpected { lib::err::invalid_pml_entry };
+                    return std::unexpected { lib::err::invalid_argument };
                 if (level_psize == page_size::small || accessor.is_large())
                     return std::make_pair(std::addressof(entry), level_psize);
             }
 
             pml = getlvl(entry, allocate, split, level_psize, user);
             if (pml == nullptr)
-                return std::unexpected { lib::err::invalid_pml_entry };
+                return std::unexpected { lib::err::invalid_argument };
 
             shift -= 9;
         }
@@ -157,7 +157,7 @@ namespace vmm
             if (use_psize > max_psize)
             {
                 lib::unused(unmap_internal(vaddr, current_vaddr - vaddr, std::nullopt, fr_out));
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
             }
 
             const auto aflags = to_arch(flags, cache, use_psize);
@@ -215,7 +215,7 @@ namespace vmm
 
             const auto npsize = from_page_size(psize.value());
             if (paddr % npsize || vaddr % npsize)
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
         }
 
         flush_range fr, lfr;
@@ -249,7 +249,7 @@ namespace vmm
             const auto npsize = from_page_size(use_psize);
 
             if (use_psize > max_psize)
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
 
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
@@ -308,7 +308,7 @@ namespace vmm
 
             psize = fixpsize(psize.value());
             if (vaddr % from_page_size(psize.value()))
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
         }
 
         flush_range fr, lfr;
@@ -341,7 +341,7 @@ namespace vmm
             const auto npsize = from_page_size(use_psize);
 
             if (use_psize > max_psize)
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
 
             const auto ret = getpte(current_vaddr, use_psize, false, true);
             if (!ret.has_value())
@@ -377,7 +377,7 @@ namespace vmm
 
             psize = fixpsize(psize.value());
             if (vaddr % from_page_size(psize.value()))
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
         }
 
         flush_range fr;
@@ -401,7 +401,7 @@ namespace vmm
 
         psize = fixpsize(psize);
         if (vaddr % from_page_size(psize))
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto ret = getpte(vaddr, psize, false, false);
         if (!ret.has_value())
@@ -409,7 +409,7 @@ namespace vmm
 
         const auto addr = (*ret)->access().getaddr();
         if (!is_canonical(addr))
-            return std::unexpected { lib::err::invalid_pml_entry };
+            return std::unexpected { lib::err::invalid_argument };
 
         return addr;
     }

@@ -605,7 +605,7 @@ namespace fs::procfs
                 {
                     const auto inod = std::static_pointer_cast<inode_t>(dentry->inode);
                     if (inod->type != inode_type::symlink)
-                        return std::unexpected { lib::err::invalid_symlink };
+                        return std::unexpected { lib::err::invalid_argument };
 
                     std::shared_ptr<sched::process_t> proc;
                     if (inod->pid > 0)

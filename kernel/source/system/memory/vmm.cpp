@@ -593,10 +593,10 @@ namespace vmm
     )
     {
         if (length == 0)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (((flags & flag::shared) != 0) + ((flags & flag::private_) != 0) != 1)
-            return std::unexpected { lib::err::invalid_flags };
+            return std::unexpected { lib::err::invalid_argument };
 
         if ((max_prot & prot) != prot)
             return std::unexpected { lib::err::permission_denied };
@@ -604,14 +604,14 @@ namespace vmm
         const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (obj && offset % npsize)
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto offp = offset / npsize;
 
         const auto orig_length = length;
         length = lib::align_up(length, npsize);
         if (length < orig_length)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         object::ptr target_obj;
         anon_map::ptr target_amap;
@@ -623,11 +623,11 @@ namespace vmm
         if (is_mmio)
         {
             if (!(flags & flag::shared))
-                return std::unexpected { lib::err::invalid_flags };
+                return std::unexpected { lib::err::invalid_argument };
             if (prot & prot::exec)
                 return std::unexpected { lib::err::permission_denied };
             if (is_anon)
-                return std::unexpected { lib::err::invalid_flags };
+                return std::unexpected { lib::err::invalid_argument };
         }
 
         if (is_file)
@@ -653,10 +653,10 @@ namespace vmm
         if ((flags & flag::fixed) || (flags & flag::fixed_noreplace))
         {
             if (hint % npsize)
-                return std::unexpected { lib::err::addr_not_aligned };
+                return std::unexpected { lib::err::invalid_argument };
 
             if (!valid_user_range(hint, length))
-                return std::unexpected { lib::err::addr_out_of_bounds };
+                return std::unexpected { lib::err::invalid_argument };
 
             startp = hint / npsize;
             endp = (hint + length) / npsize;
@@ -754,20 +754,20 @@ namespace vmm
     lib::expect<void> vmspace::unmap(std::uintptr_t address, std::size_t length)
     {
         if (length == 0)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (address % npsize)
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto orig_length = length;
         length = lib::align_up(length, npsize);
         if (length < orig_length)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (!valid_user_range(address, length))
-            return std::unexpected { lib::err::addr_out_of_bounds };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto startp = address / npsize;
         const auto endp = (address + length) / npsize;
@@ -852,20 +852,20 @@ namespace vmm
     lib::expect<void> vmspace::protect(std::uintptr_t address, std::size_t length, prot_t prot)
     {
         if (length == 0)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
         if (address % npsize)
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto orig_length = length;
         length = lib::align_up(length, npsize);
         if (length < orig_length)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (!valid_user_range(address, length))
-            return std::unexpected { lib::err::addr_out_of_bounds };
+            return std::unexpected { lib::err::invalid_argument };
 
         auto startp = address / npsize;
         const auto endp = (address + length) / npsize;
@@ -971,7 +971,7 @@ namespace vmm
 
             if (const auto ret = pmap->protect(vaddr, len, prot_to_pflags(tgt_prot), psize); !ret)
             {
-                if (ret.error() != lib::err::not_mapped)
+                if (ret.error() != lib::err::invalid_address)
                     return std::unexpected { ret.error() };
             }
 
@@ -984,28 +984,28 @@ namespace vmm
     lib::expect<std::uintptr_t> vmspace::remap(const remap_options &opts)
     {
         if (opts.old_len == 0 || opts.new_len == 0)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto psize = default_psize();
         const auto npsize = pagemap::from_page_size(psize);
 
         if (opts.old_addr % npsize)
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
         if (opts.fixed && opts.new_addr % npsize)
-            return std::unexpected { lib::err::addr_not_aligned };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto old_len = lib::align_up(opts.old_len, npsize);
         const auto new_len = lib::align_up(opts.new_len, npsize);
         if (old_len < opts.old_len || new_len < opts.new_len)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (!valid_user_range(opts.old_addr, old_len))
-            return std::unexpected { lib::err::addr_out_of_bounds };
+            return std::unexpected { lib::err::invalid_argument };
         if (opts.fixed && !valid_user_range(opts.new_addr, new_len))
-            return std::unexpected { lib::err::addr_out_of_bounds };
+            return std::unexpected { lib::err::invalid_argument };
 
         if (opts.fixed && !opts.may_move)
-            return std::unexpected { lib::err::invalid_flags };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto old_startp = opts.old_addr / npsize;
         const auto old_endp = (opts.old_addr + old_len) / npsize;
@@ -1118,7 +1118,7 @@ namespace vmm
             const auto grow_addr = opts.old_addr + old_len;
             const auto grow_bytes = new_len - old_len;
             if (!valid_user_range(grow_addr, grow_bytes))
-                return std::unexpected { lib::err::addr_out_of_bounds };
+                return std::unexpected { lib::err::invalid_argument };
 
             const auto grow_pages = grow_bytes / npsize;
             const auto grow_start = old_endp;
@@ -1230,7 +1230,7 @@ namespace vmm
     lib::expect<std::uintptr_t> vmspace::find_free_region(std::size_t length)
     {
         if (length == 0)
-            return std::unexpected { lib::err::invalid_length };
+            return std::unexpected { lib::err::invalid_argument };
 
         const auto locked = tree.lock();
         return find_free_region_internal(locked, length);

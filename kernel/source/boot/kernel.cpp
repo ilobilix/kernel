@@ -88,7 +88,7 @@ void kthread()
 
         proc->sigactions = std::make_shared<sched::signal_actions_t>();
 
-        const std::string tty_path { cmdline::get("console").value_or("/dev/ttyS0") };
+        const std::string tty_path { cmdline::get("console").value_or("/dev/tty1") };
         auto ret = vfs::resolve(std::nullopt, tty_path);
         if (!ret.has_value())
             lib::panic("could not resolve {}", tty_path);

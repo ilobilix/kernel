@@ -49,7 +49,7 @@ namespace lib
                 );
 
                 if (result == TINFL_STATUS_HAS_MORE_OUTPUT)
-                    return std::unexpected { lib::err::buffer_too_small };
+                    return std::unexpected { lib::err::invalid_argument };
 
                 if (result != TINFL_STATUS_DONE || in.size() != insize)
                     return std::unexpected { lib::err::corrupted_data };
@@ -59,7 +59,7 @@ namespace lib
             {
                 constexpr auto max = std::numeric_limits<int>::max();
                 if (in.size() > max || out.size() > max)
-                    return std::unexpected { lib::err::invalid_length };
+                    return std::unexpected { lib::err::invalid_argument };
 
                 const auto result = LZ4_decompress_safe(
                     reinterpret_cast<const char *>(in.data()),

@@ -57,7 +57,7 @@ namespace fs::devpts
     lib::expect<vfs::path_t> attach_slave(std::uint32_t minor, mode_t mode, dev_t rdev)
     {
         if (!fs.valid())
-            return std::unexpected { lib::err::invalid_filesystem };
+            return std::unexpected { lib::err::no_such_device };
 
         return vfs::create(vfs::path_t {
             .mnt = fs->internal_mnt,
@@ -68,7 +68,7 @@ namespace fs::devpts
     lib::expect<void> detach_slave(std::uint32_t minor)
     {
         if (!fs.valid())
-            return std::unexpected { lib::err::invalid_filesystem };
+            return std::unexpected { lib::err::no_such_device };
 
         return vfs::unlink(vfs::path_t {
             .mnt = fs->internal_mnt,

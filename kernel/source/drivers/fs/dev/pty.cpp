@@ -20,7 +20,7 @@ namespace fs::dev::pty
         constexpr std::uint32_t slave_major = 136;
 
         using namespace lib::ioc;
-        enum ioctls
+        enum ioctls : std::uint32_t
         {
             tiocpkt = 0x5420,
             tiocgptn = make_ior<unsigned int>('T', 0x30),

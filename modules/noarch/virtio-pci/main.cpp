@@ -279,7 +279,7 @@ namespace virtio::pci
                     "virtio-pci: capability at 0x{:X}-0x{:X} is outside bar {} with size 0x{:X}",
                     info.offset, info.offset + info.length, info.bar, bar.size
                 );
-                return std::unexpected { lib::err::addr_out_of_bounds };
+                return std::unexpected { lib::err::invalid_argument };
             }
 
             return region_t {
@@ -439,7 +439,7 @@ namespace virtio::pci
                         "is outside the notify region (0x{:X} bytes)",
                         qid, offset, _notify.length
                     );
-                    return std::unexpected { lib::err::addr_out_of_bounds };
+                    return std::unexpected { lib::err::invalid_argument };
                 }
 
                 _notify_offsets[qid] = offset;
@@ -706,7 +706,7 @@ namespace virtio::pci
                     if (pfn > std::numeric_limits<std::uint32_t>::max())
                     {
                         lib::error("virtio-pci: queue {} is out of bounds of the pfn", qid);
-                        return std::unexpected { lib::err::addr_out_of_bounds };
+                        return std::unexpected { lib::err::invalid_argument };
                     }
 
                     if (auto ret = write_vector(regs::queue_msix_vector, addr.vector); !ret)
@@ -808,7 +808,7 @@ namespace virtio::pci
                 if (bars[0].size < legacy::regs::config)
                 {
                     lib::error("virtio-pci: legacy io bar 0 is too small (0x{:X} bytes)", bars[0].size);
-                    return std::unexpected { lib::err::invalid_length };
+                    return std::unexpected { lib::err::invalid_argument };
                 }
 
                 return std::make_unique<transport_t>(
@@ -862,7 +862,7 @@ namespace virtio::pci
             if (common->length < regs::common_cfg_size)
             {
                 lib::error("virtio-pci: common config is too small ({} bytes)", common->length);
-                return std::unexpected { lib::err::invalid_length };
+                return std::unexpected { lib::err::invalid_argument };
             }
 
             const auto notify = map_region(dev, *caps[cfg_type::notify_cfg]);

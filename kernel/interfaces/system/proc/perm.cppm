@@ -16,6 +16,8 @@ export namespace sched
     bool capable(const std::shared_ptr<cred_t> &cred, cap_t cap);
     bool capable(cap_t cap);
 
+    bool has_secbit(secbit_t bit);
+
     enum class access_mode
     {
         none  = 0,
@@ -62,6 +64,8 @@ export namespace sched
     void cap_ambient_lower(cap_t cap);
 
     lib::expect<void> set_securebits(secbit_t securebits);
+    // this is unchecked and should be called with validated data
+    void set_securebit(secbit_t bit, bool set);
 
     void apply_exec_caps(
         process_t *process, const stat &stat, std::optional<vfs::file_caps> fcaps

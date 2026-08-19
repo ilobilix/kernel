@@ -72,7 +72,7 @@ export namespace lib
             : _data { other._data }, _count { other._count } { }
 
         template<bool OtherAtomic> requires (OtherAtomic != Atomic)
-        constexpr explicit bitmap_view_base(const bitmap_view_base<OtherAtomic, Const, Word> &other)
+        explicit constexpr bitmap_view_base(const bitmap_view_base<OtherAtomic, Const, Word> &other)
             : _data { other._data }, _count { other._count } { }
 
         constexpr void clear(int ch = 0, std::memory_order order = std::memory_order_seq_cst)

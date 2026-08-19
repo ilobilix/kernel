@@ -78,7 +78,7 @@ namespace nvme
         auto ctrl = this->ctrl.lock();
         if (!ctrl)
             return std::unexpected { lib::err::invalid_device_or_address };
-        return std::unexpected { lib::err::todo };
+        return std::unexpected { lib::err::not_implemented };
     }
 
     // TODO
@@ -91,7 +91,7 @@ namespace nvme
         auto ctrl = this->ctrl.lock();
         if (!ctrl)
             return std::unexpected { lib::err::invalid_device_or_address };
-        return std::unexpected { lib::err::todo };
+        return std::unexpected { lib::err::not_implemented };
     }
 
     // TODO

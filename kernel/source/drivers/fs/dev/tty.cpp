@@ -671,6 +671,7 @@ namespace fs::dev::tty
                 next_is_verbatim = false;
                 if (!self->in_buffer.lock()->push(chr))
                 {
+                    // TODO
                     echo_out('\a');
                     continue;
                 }
@@ -845,6 +846,7 @@ namespace fs::dev::tty
                     {
                         // if (!in_locked->push(chr))
                         // {
+                        //     // TODO
                         //     echo_out('\a');
                         //     continue;
                         // }
@@ -856,6 +858,7 @@ namespace fs::dev::tty
 
                     if (!in_locked->push(chr))
                     {
+                        // TODO
                         echo_out('\a');
                         continue;
                     }
@@ -887,9 +890,8 @@ namespace fs::dev::tty
             else // raw
             {
                 auto in_locked = self->in_buffer.lock();
-                if (!in_locked->full())
+                if (in_locked->push(chr))
                 {
-                    in_locked->push(chr);
                     wake_readers = true;
 
                     if (termios.c_lflag & echo)
@@ -902,14 +904,14 @@ namespace fs::dev::tty
                         else echo_out(chr);
                     }
                 }
-                else echo_out('\a');
+                else echo_out('\a'); // TODO
             }
         }
     }
 
     void default_ldisc::receive(std::span<std::byte> buffer)
     {
-        // drop characters if raw buffer is full
+        // TODO: don't drop characters if raw buffer is full
         if (raw_buffer.push(buffer).first)
             raw_wq.wake_all();
     }
@@ -1245,7 +1247,7 @@ namespace fs::dev::tty
                         output_flush();
                         break;
                     default:
-                        return std::unexpected { lib::err::invalid_flags };
+                        return std::unexpected { lib::err::invalid_argument };
                 }
                 return 0;
             }
@@ -1354,7 +1356,7 @@ namespace fs::dev::tty
                         output_clear();
                         break;
                     default:
-                        return std::unexpected { lib::err::invalid_flags };
+                        return std::unexpected { lib::err::invalid_argument };
                 }
                 inst->flush_notify(argp.value());
                 return 0;
@@ -1562,7 +1564,7 @@ namespace fs::dev::tty
                 if (!argp.read(pgid))
                     return std::unexpected { lib::err::invalid_address };
                 if (pgid < 0)
-                    return std::unexpected { lib::err::invalid_flags };
+                    return std::unexpected { lib::err::invalid_argument };
 
                 const auto proc = sched::current_process();
 

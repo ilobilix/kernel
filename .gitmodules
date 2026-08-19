@@ -66,3 +66,7 @@
 	path = dependencies/miniz/miniz
 	url = https://github.com/richgel999/miniz
 	shallow = true
+[submodule "dependencies/lwip/lwip"]
+	path = dependencies/lwip/lwip
+	url = https://github.com/lwip-tcpip/lwip
+	shallow = true

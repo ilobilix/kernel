@@ -89,11 +89,11 @@ namespace vfs
     {
         const auto &dentry = file->path.dentry;
         if (!dentry || !dentry->inode)
-            return std::unexpected { lib::err::mapping_unsupported };
+            return std::unexpected { lib::err::no_such_device };
 
         auto &inode = dentry->inode;
         if (inode->stat.type() != stat::type::s_ifreg)
-            return std::unexpected { lib::err::mapping_unsupported };
+            return std::unexpected { lib::err::no_such_device };
 
         const std::unique_lock _ { inode->lock };
         if (!inode->mapping)

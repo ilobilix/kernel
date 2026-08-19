@@ -39,56 +39,53 @@ export namespace lib
         constexpr endian_storage(const endian_storage &) = default;
         constexpr endian_storage(endian_storage &&) = default;
 
-        constexpr endian_storage(Type value)
-            : value { convert_endian<E, std::endian::native>(static_cast<Type>(value)) } { }
+        explicit constexpr endian_storage(Type value)
+            : value { convert_endian<E, std::endian::native>(value) } { }
 
         constexpr endian_storage &operator=(const endian_storage &) = default;
         constexpr endian_storage &operator=(endian_storage &&) = default;
 
-        constexpr endian_storage &operator=(Type value)
+        constexpr endian_storage &operator=(Type val)
         {
-            store(value);
+            store(val);
             return *this;
         }
 
-        constexpr Type data()
+        constexpr Type data() const
         {
             return value;
         }
 
-        constexpr Type load()
+        constexpr Type load() const
         {
             return convert_endian<std::endian::native, E>(value);
         }
 
-        constexpr void store(Type value)
+        constexpr void store(Type val)
         {
-            value = convert_endian<E, std::endian::native>(value);
+            value = convert_endian<E, std::endian::native>(val);
         }
 
-        constexpr operator Type()
+        explicit constexpr operator Type() const
         {
             return load();
         }
 
-        constexpr bool operator==(endian_storage rhs)
+        friend constexpr bool operator==(const endian_storage &, const endian_storage &) = default;
+
+        friend constexpr bool operator==(const endian_storage &lhs, Type rhs)
         {
-            return value == rhs.value;
+            return lhs.load() == rhs;
         }
 
-        constexpr bool operator==(Type rhs)
+        friend constexpr auto operator<=>(const endian_storage &lhs, const endian_storage &rhs)
         {
-            return load() == rhs;
+            return lhs.load() <=> rhs.load();
         }
 
-        constexpr auto operator<=>(endian_storage rhs)
+        friend constexpr auto operator<=>(const endian_storage &lhs, Type rhs)
         {
-            return value <=> rhs.value;
-        }
-
-        constexpr auto operator<=>(Type rhs)
-        {
-            return load() <=> rhs;
+            return lhs.load() <=> rhs;
         }
     };
 
