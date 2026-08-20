@@ -166,30 +166,40 @@ export namespace syscall::vfs
     int pipe(int __user *pipefd);
 
     int socket(int domain, int type, int protocol);
+    int socketpair(int family, int type, int protocol, int __user *sv);
+
     int connect(int sockfd, const sockaddr __user *addr, socklen_t addrlen);
+    int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags);
     int accept(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
+
     std::ssize_t sendto(
         int sockfd, const void __user *buf, std::size_t len,
         std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
     );
+    std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags);
+    int sendmmsg(int fd, mmsghdr __user *mmsg, std::uint32_t vlen, std::uint32_t flags);
+
     std::ssize_t recvfrom(
         int sockfd, void __user *buf, std::size_t size,
         std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
     );
-    std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags);
     std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags);
+    int recvmmsg(
+        int fd, mmsghdr __user *mmsg, std::uint32_t vlen,
+        std::uint32_t flags, timespec __user *timeout
+    );
+
     int shutdown(int sockfd, int how);
     int bind(int sockfd, const sockaddr __user *addr, socklen_t addrlen);
     int listen(int sockfd, int backlog);
+
     int getsockname(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
     int getpeername(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen);
-    int socketpair(int family, int type, int protocol, int __user *sv);
-    int setsockopt(int sockfd, int level, int optname, const char __user *optval, socklen_t optlen);
-    int getsockopt(int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen);
-    int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags);
+
+    int setsockopt(int sockfd, int level, int optname, const void __user *optval, socklen_t optlen);
+    int getsockopt(int sockfd, int level, int optname, void __user *optval, socklen_t __user *optlen);
 
     int getdents64(int fd, struct dirent64 __user *buf, std::size_t count);
-
     int fadvise64(int fd, loff_t offset, std::size_t len, int advice);
 
     struct pollfd

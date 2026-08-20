@@ -33,6 +33,7 @@
 #define MEM_USE_POOLS   0
 
 #define LWIP_SO_RCVBUF 1
+#define SO_REUSE 1
 
 #define LWIP_PROVIDE_ERRNO
 

@@ -3,6 +3,7 @@
 module system.syscall.vfs;
 
 import system.vfs.socket;
+import system.chrono;
 import magic_enum;
 import frigg;
 
@@ -61,12 +62,12 @@ namespace syscall::vfs
                 lib::maybe_uspan<std::byte>, 8,
                 frg::allocator<lib::maybe_uspan<std::byte>>
             > vec;
-            vec.resize(kmsg.msg_iovlen);
+            vec.resize(kmsg.iovlen);
 
-            for (std::size_t i = 0; i < kmsg.msg_iovlen; i++)
+            for (std::size_t i = 0; i < kmsg.iovlen; i++)
             {
                 iovec local_iov;
-                if (!lib::copy_from_user(&local_iov, kmsg.msg_iov + i, sizeof(iovec)))
+                if (!lib::copy_from_user(&local_iov, kmsg.iov + i, sizeof(iovec)))
                     return std::nullopt;
 
                 auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
@@ -76,6 +77,103 @@ namespace syscall::vfs
                 vec[i] = *uspan;
             }
             return vec;
+        }
+
+        lib::expect<std::size_t> do_sendmsg(
+            socket::socket_t &sock, const msghdr &kmsg, std::uint32_t flags
+        )
+        {
+            if (kmsg.iovlen > uio_maxiov)
+                return std::unexpected { lib::err::message_too_long };
+
+            lib::maybe_uspan<std::byte> nameuspan;
+            if (kmsg.name)
+            {
+                auto res = lib::maybe_uspan<std::byte>::create(kmsg.name, kmsg.namelen);
+                if (!res)
+                    return std::unexpected { lib::err::invalid_address };
+                nameuspan = *res;
+            }
+
+            lib::maybe_uspan<std::byte> ctrluspan;
+            if (kmsg.control)
+            {
+                auto res = lib::maybe_uspan<std::byte>::create(kmsg.control, kmsg.controllen);
+                if (!res)
+                    return std::unexpected { lib::err::invalid_address };
+                ctrluspan = *res;
+            }
+
+            auto vec = read_iov(kmsg);
+            if (!vec)
+                return std::unexpected { lib::err::invalid_address };
+
+            std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
+            socket::msg_header_t hdr {
+                .name = nameuspan,
+                .iovs = iovs,
+                .msgctrl = ctrluspan,
+                .msgctrl_len_out = 0,
+                .addr_len_out = 0,
+                .out_flags = 0
+            };
+
+            return sock.sendmsg(hdr, flags);
+        }
+
+        lib::expect<std::size_t> do_recvmsg(
+            socket::socket_t &sock, msghdr __user *umsg, const msghdr &kmsg, std::uint32_t flags
+        )
+        {
+            if (kmsg.iovlen > uio_maxiov)
+                return std::unexpected { lib::err::message_too_long };
+
+            lib::maybe_uspan<std::byte> nameuspan;
+            if (kmsg.name)
+            {
+                auto res = lib::maybe_uspan<std::byte>::create(kmsg.name, kmsg.namelen);
+                if (!res)
+                    return std::unexpected { lib::err::invalid_address };
+                nameuspan = *res;
+            }
+
+            lib::maybe_uspan<std::byte> ctrluspan;
+            if (kmsg.control)
+            {
+                auto res = lib::maybe_uspan<std::byte>::create(kmsg.control, kmsg.controllen);
+                if (!res)
+                    return std::unexpected { lib::err::invalid_address };
+                ctrluspan = *res;
+            }
+
+            auto vec = read_iov(kmsg);
+            if (!vec)
+                return std::unexpected { lib::err::invalid_address };
+
+            std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
+            socket::msg_header_t hdr {
+                .name = nameuspan,
+                .iovs = iovs,
+                .msgctrl = ctrluspan,
+                .msgctrl_len_out = 0,
+                .addr_len_out = 0,
+                .out_flags = 0
+            };
+
+            const auto res = sock.recvmsg(hdr, flags);
+            if (!res)
+                return res;
+
+            if (!lib::copy_to_user(&umsg->namelen, &hdr.addr_len_out, sizeof(socklen_t)))
+                return std::unexpected { lib::err::invalid_address };
+
+            if (!lib::copy_to_user(&umsg->controllen, &hdr.msgctrl_len_out, sizeof(umsg->controllen)))
+                return std::unexpected { lib::err::invalid_address };
+
+            if (!lib::copy_to_user(&umsg->flags, &hdr.out_flags, sizeof(int)))
+                return std::unexpected { lib::err::invalid_address };
+
+            return res;
         }
     } // namespace
 
@@ -106,6 +204,45 @@ namespace syscall::vfs
         return *res;
     }
 
+    int socketpair(int family, int type, int protocol, int __user *sv /* [2] */)
+    {
+        const auto flags = type & ~0xF;
+        if (flags & ~(sock_cloexec | sock_nonblock))
+            return -EINVAL;
+
+        if (family < 0 || family >= af_max)
+            return -EAFNOSUPPORT;
+
+        const auto typ = static_cast<sock_type>(type & 0xF);
+        if (!magic_enum::enum_contains(typ))
+            return -ESOCKTNOSUPPORT;
+
+        const auto proc = sched::current_process();
+
+        auto pres = socket::create_pair(
+            static_cast<addr_fam>(family),
+            typ, protocol
+        );
+        if (!pres)
+            return -lib::map_error(pres.error());
+
+        auto res1 = socket::create_anon(std::move(pres->first), map_flags(flags));
+        if (!res1)
+            return -lib::map_error(res1.error());
+
+        auto res2 = socket::create_anon(std::move(pres->second), map_flags(flags));
+        if (!res2)
+        {
+            proc->fdt->close(*res1);
+            return -lib::map_error(res2.error());
+        }
+
+        int ksv[2] { *res1, *res2 };
+        if (!lib::copy_to_user(sv, ksv, sizeof(int) * 2))
+            return -EFAULT;
+        return 0;
+    }
+
     int connect(int sockfd, const sockaddr __user *addr, socklen_t addrlen)
     {
         if (addrlen < sizeof(addr_fam) || addrlen > sizeof(sockaddr_storage))
@@ -126,6 +263,51 @@ namespace syscall::vfs
         if (const auto res = sock->connect(*uspan, nonblock); !res)
             return -lib::map_error(res.error());
         return 0;
+    }
+
+    int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags)
+    {
+        if (flags & ~(sock_cloexec | sock_nonblock))
+            return -EINVAL;
+
+        const auto proc = sched::current_process();
+
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
+        if (!sockres)
+            return -lib::map_error(sockres.error());
+        auto sock = std::move(*sockres);
+
+        socklen_t in_len = 0;
+        lib::maybe_uspan<std::byte> uspan;
+        if (addr && addrlen)
+        {
+            if (!lib::copy_from_user(&in_len, addrlen, sizeof(socklen_t)))
+                return -EFAULT;
+
+            auto res = lib::maybe_uspan<std::byte>::create(addr, in_len);
+            if (!res)
+                return -EFAULT;
+
+            uspan = *res;
+        }
+
+        socklen_t out_len = in_len;
+        auto ares = sock->accept(uspan, &out_len, nonblock);
+        if (!ares)
+            return -lib::map_error(ares.error());
+
+        auto res = socket::create_anon(std::move(*ares), map_flags(flags));
+        if (!res)
+            return -lib::map_error(res.error());
+
+        if (addr && addrlen)
+        {
+            if (!lib::copy_to_user(addrlen, &out_len, sizeof(socklen_t)))
+                return -EFAULT;
+        }
+
+        return *res;
     }
 
     int accept(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen)
@@ -176,6 +358,73 @@ namespace syscall::vfs
         if (!res)
             return -lib::map_error(res.error());
         return *res;
+    }
+
+    std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags)
+    {
+        const auto proc = sched::current_process();
+
+        bool nonblock = false;
+        auto sockres = get_socket(proc, sockfd, &nonblock);
+        if (!sockres)
+            return -lib::map_error(sockres.error());
+        auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
+
+        msghdr kmsg;
+        if (!lib::copy_from_user(&kmsg, msg, sizeof(msghdr)))
+            return -EFAULT;
+
+        const auto res = do_sendmsg(*sock, kmsg, flags);
+        if (!res)
+            return -lib::map_error(res.error());
+        return *res;
+    }
+
+    int sendmmsg(int fd, mmsghdr __user *mmsg, std::uint32_t vlen, std::uint32_t flags)
+    {
+        const auto proc = sched::current_process();
+
+        bool nonblock = false;
+        auto sockres = get_socket(proc, fd, &nonblock);
+        if (!sockres)
+            return -lib::map_error(sockres.error());
+        auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
+
+        vlen = std::min<std::uint32_t>(vlen, uio_maxiov);
+
+        std::uint32_t sent = 0;
+        int err = 0;
+
+        while (sent < vlen)
+        {
+            msghdr kmsg;
+            if (!lib::copy_from_user(&kmsg, &mmsg[sent].hdr, sizeof(msghdr)))
+            {
+                err = -EFAULT;
+                break;
+            }
+
+            const auto res = do_sendmsg(*sock, kmsg, flags);
+            if (!res)
+            {
+                err = -lib::map_error(res.error());
+                break;
+            }
+
+            const std::uint32_t len = *res;
+            if (!lib::copy_to_user(&mmsg[sent].len, &len, sizeof(len)))
+            {
+                err = -EFAULT;
+                break;
+            }
+            sent++;
+        }
+
+        return sent ?: err;
     }
 
     std::ssize_t recvfrom(
@@ -230,63 +479,6 @@ namespace syscall::vfs
         return *res;
     }
 
-    std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags)
-    {
-        const auto proc = sched::current_process();
-
-        bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
-        if (!sockres)
-            return -lib::map_error(sockres.error());
-        auto sock = std::move(*sockres);
-        if (nonblock)
-            flags |= msg_dontwait;
-
-        msghdr kmsg;
-        if (!lib::copy_from_user(&kmsg, msg, sizeof(msghdr)))
-            return -EFAULT;
-
-        if (kmsg.msg_iovlen > uio_maxiov)
-            return -EMSGSIZE;
-
-        lib::maybe_uspan<std::byte> nameuspan;
-        if (kmsg.msg_name)
-        {
-            auto res = lib::maybe_uspan<std::byte>::create(kmsg.msg_name, kmsg.msg_namelen);
-            if (!res)
-                return -EFAULT;
-            nameuspan = *res;
-        }
-
-        lib::maybe_uspan<std::byte> ctrluspan;
-        if (kmsg.msg_control)
-        {
-            auto res = lib::maybe_uspan<std::byte>::create(kmsg.msg_control, kmsg.msg_controllen);
-            if (!res)
-                return -EFAULT;
-            ctrluspan = *res;
-        }
-
-        auto vec = read_iov(kmsg);
-        if (!vec)
-            return -EFAULT;
-
-        std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
-        socket::msg_header_t hdr {
-            .name = nameuspan,
-            .iovs = iovs,
-            .msgctrl = ctrluspan,
-            .msgctrl_len_out = 0,
-            .addr_len_out = 0,
-            .out_flags = 0
-        };
-
-        const auto res = sock->sendmsg(hdr, flags);
-        if (!res)
-            return -lib::map_error(res.error());
-        return *res;
-    }
-
     std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags)
     {
         const auto proc = sched::current_process();
@@ -303,55 +495,97 @@ namespace syscall::vfs
         if (!lib::copy_from_user(&kmsg, msg, sizeof(msghdr)))
             return -EFAULT;
 
-        if (kmsg.msg_iovlen > uio_maxiov)
-            return -EMSGSIZE;
-
-        lib::maybe_uspan<std::byte> nameuspan;
-        if (kmsg.msg_name)
-        {
-            auto res = lib::maybe_uspan<std::byte>::create(kmsg.msg_name, kmsg.msg_namelen);
-            if (!res)
-                return -EFAULT;
-            nameuspan = *res;
-        }
-
-        lib::maybe_uspan<std::byte> ctrluspan;
-        if (kmsg.msg_control)
-        {
-            auto res = lib::maybe_uspan<std::byte>::create(kmsg.msg_control, kmsg.msg_controllen);
-            if (!res)
-                return -EFAULT;
-            ctrluspan = *res;
-        }
-
-        auto vec = read_iov(kmsg);
-        if (!vec)
-            return -EFAULT;
-
-        std::span<lib::maybe_uspan<std::byte>> iovs { vec->data(), vec->size() };
-        socket::msg_header_t hdr {
-            .name = nameuspan,
-            .iovs = iovs,
-            .msgctrl = ctrluspan,
-            .msgctrl_len_out = 0,
-            .addr_len_out = 0,
-            .out_flags = 0
-        };
-
-        const auto res = sock->recvmsg(hdr, flags);
+        const auto res = do_recvmsg(*sock, msg, kmsg, flags);
         if (!res)
             return -lib::map_error(res.error());
-
-        if (!lib::copy_to_user(&msg->msg_namelen, &hdr.addr_len_out, sizeof(socklen_t)))
-            return -EFAULT;
-
-        if (!lib::copy_to_user(&msg->msg_controllen, &hdr.msgctrl_len_out, sizeof(socklen_t)))
-            return -EFAULT;
-
-        if (!lib::copy_to_user(&msg->msg_flags, &hdr.out_flags, sizeof(int)))
-            return -EFAULT;
-
         return *res;
+    }
+
+    int recvmmsg(
+        int fd, mmsghdr __user *mmsg, std::uint32_t vlen,
+        std::uint32_t flags, timespec __user *timeout
+    )
+    {
+        const auto proc = sched::current_process();
+
+        bool nonblock = false;
+        auto sockres = get_socket(proc, fd, &nonblock);
+        if (!sockres)
+            return -lib::map_error(sockres.error());
+        auto sock = std::move(*sockres);
+        if (nonblock)
+            flags |= msg_dontwait;
+
+        const auto timer = chrono::main_timer();
+
+        timespec ktimeout;
+        std::uint64_t deadline = 0;
+        if (timeout)
+        {
+            if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
+                return -EFAULT;
+            if (!ktimeout.valid())
+                return -EINVAL;
+
+            deadline = timer->ns() + ktimeout.to_ns();
+        }
+
+        vlen = std::min<std::uint32_t>(vlen, uio_maxiov);
+
+        std::uint32_t received = 0;
+        int err = 0;
+
+        while (received < vlen)
+        {
+            msghdr kmsg;
+            if (!lib::copy_from_user(&kmsg, &mmsg[received].hdr, sizeof(msghdr)))
+            {
+                err = -EFAULT;
+                break;
+            }
+
+            const auto res = do_recvmsg(*sock, &mmsg[received].hdr, kmsg, flags & ~msg_waitforone);
+            if (!res)
+            {
+                const auto error = res.error();
+                if (received > 0 && (error == lib::err::try_again ||
+                    error == lib::err::would_block || error == lib::err::interrupted))
+                    break;
+
+                err = -lib::map_error(error);
+                break;
+            }
+
+            const std::uint32_t len = *res;
+            if (!lib::copy_to_user(&mmsg[received].len, &len, sizeof(len)))
+            {
+                err = -EFAULT;
+                break;
+            }
+            received++;
+
+            if (flags & msg_waitforone)
+                flags |= msg_dontwait;
+
+            if (timeout)
+            {
+                const auto now = timer->ns();
+                if (now >= deadline)
+                {
+                    ktimeout = timespec { };
+                    break;
+                }
+                ktimeout = timespec { deadline - now };
+            }
+        }
+
+        if (timeout && received > 0)
+        {
+            if (!lib::copy_to_user(timeout, &ktimeout, sizeof(timespec)))
+                return -EFAULT;
+        }
+
+        return received ?: err;
     }
 
     int shutdown(int sockfd, int how)
@@ -462,46 +696,7 @@ namespace syscall::vfs
         return 0;
     }
 
-    int socketpair(int family, int type, int protocol, int __user *sv /* [2] */)
-    {
-        const auto flags = type & ~0xF;
-        if (flags & ~(sock_cloexec | sock_nonblock))
-            return -EINVAL;
-
-        if (family < 0 || family >= af_max)
-            return -EAFNOSUPPORT;
-
-        const auto typ = static_cast<sock_type>(type & 0xF);
-        if (!magic_enum::enum_contains(typ))
-            return -ESOCKTNOSUPPORT;
-
-        const auto proc = sched::current_process();
-
-        auto pres = socket::create_pair(
-            static_cast<addr_fam>(family),
-            typ, protocol
-        );
-        if (!pres)
-            return -lib::map_error(pres.error());
-
-        auto res1 = socket::create_anon(std::move(pres->first), map_flags(flags));
-        if (!res1)
-            return -lib::map_error(res1.error());
-
-        auto res2 = socket::create_anon(std::move(pres->second), map_flags(flags));
-        if (!res2)
-        {
-            proc->fdt->close(*res1);
-            return -lib::map_error(res2.error());
-        }
-
-        int ksv[2] { *res1, *res2 };
-        if (!lib::copy_to_user(sv, ksv, sizeof(int) * 2))
-            return -EFAULT;
-        return 0;
-    }
-
-    int setsockopt(int sockfd, int level, int optname, const char __user *optval, socklen_t optlen)
+    int setsockopt(int sockfd, int level, int optname, const void __user *optval, socklen_t optlen)
     {
         const auto proc = sched::current_process();
 
@@ -520,7 +715,7 @@ namespace syscall::vfs
         return 0;
     }
 
-    int getsockopt(int sockfd, int level, int optname, char __user *optval, socklen_t __user *optlen)
+    int getsockopt(int sockfd, int level, int optname, void __user *optval, socklen_t __user *optlen)
     {
         const auto proc = sched::current_process();
 
@@ -546,50 +741,5 @@ namespace syscall::vfs
         if (!lib::copy_to_user(optlen, &actual_len, sizeof(socklen_t)))
             return -EFAULT;
         return 0;
-    }
-
-    int accept4(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen, int flags)
-    {
-        if (flags & ~(sock_cloexec | sock_nonblock))
-            return -EINVAL;
-
-        const auto proc = sched::current_process();
-
-        bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
-        if (!sockres)
-            return -lib::map_error(sockres.error());
-        auto sock = std::move(*sockres);
-
-        socklen_t in_len = 0;
-        lib::maybe_uspan<std::byte> uspan;
-        if (addr && addrlen)
-        {
-            if (!lib::copy_from_user(&in_len, addrlen, sizeof(socklen_t)))
-                return -EFAULT;
-
-            auto res = lib::maybe_uspan<std::byte>::create(addr, in_len);
-            if (!res)
-                return -EFAULT;
-
-            uspan = *res;
-        }
-
-        socklen_t out_len = in_len;
-        auto ares = sock->accept(uspan, &out_len, nonblock);
-        if (!ares)
-            return -lib::map_error(ares.error());
-
-        auto res = socket::create_anon(std::move(*ares), map_flags(flags));
-        if (!res)
-            return -lib::map_error(res.error());
-
-        if (addr && addrlen)
-        {
-            if (!lib::copy_to_user(addrlen, &out_len, sizeof(socklen_t)))
-                return -EFAULT;
-        }
-
-        return *res;
     }
 } // namespace syscall::vfs

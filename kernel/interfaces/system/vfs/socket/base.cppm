@@ -182,41 +182,6 @@ export
         so_lock_filter = 44
     };
 
-    enum ip_proto : int
-    {
-        ipproto_ip = 0,
-        ipproto_icmp = 1,
-        ipproto_igmp = 2,
-        ipproto_ipip = 4,
-        ipproto_tcp = 6,
-        ipproto_egp = 8,
-        ipproto_pup = 12,
-        ipproto_udp = 17,
-        ipproto_idp = 22,
-        ipproto_tp = 29,
-        ipproto_dccp = 33,
-        ipproto_ipv6 = 41,
-        ipproto_rsvp = 46,
-        ipproto_gre = 47,
-        ipproto_esp = 50,
-        ipproto_ah = 51,
-        ipproto_mtp = 92,
-        ipproto_beetph = 94,
-        ipproto_encap = 98,
-        ipproto_pim = 103,
-        ipproto_comp = 108,
-        ipproto_l2tp = 115,
-        ipproto_sctp = 132,
-        ipproto_udplite = 136,
-        ipproto_mpls = 137,
-        ipproto_ethernet = 143,
-        ipproto_aggfrag = 144,
-        ipproto_raw = 255,
-        ipproto_smc = 256,
-        ipproto_mptcp = 262,
-        ipproto_max
-    };
-
     enum sock_type : int
     {
         sock_stream = 1,
@@ -275,38 +240,44 @@ export
 
     struct sockaddr
     {
-        addr_fam sa_family;
-        char sa_data[14];
+        addr_fam family;
+        char data[14];
     };
 
     struct alignas(std::uint64_t) sockaddr_storage
     {
-        addr_fam ss_family;
-        char ss_padding[126];
+        addr_fam family;
+        char padding[126];
     };
 
     struct msghdr
     {
-        void __user *msg_name;
-        socklen_t msg_namelen;
-        iovec __user *msg_iov;
-        std::size_t msg_iovlen;
-        void __user *msg_control;
-        std::size_t msg_controllen;
-        int msg_flags;
+        void __user *name;
+        socklen_t namelen;
+        iovec __user *iov;
+        std::size_t iovlen;
+        void __user *control;
+        std::size_t controllen;
+        int flags;
+    };
+
+    struct mmsghdr
+    {
+        msghdr hdr;
+        std::uint32_t len;
     };
 
     struct cmsghdr
     {
-        std::size_t cmsg_len;
-        int cmsg_level;
-        int cmsg_type;
+        std::size_t len;
+        int level;
+        int type;
     };
 
     struct linger
     {
-        int l_onoff;
-        int l_linger;
+        int onoff;
+        int linger;
     };
 
     struct ucred

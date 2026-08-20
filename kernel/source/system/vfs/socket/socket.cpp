@@ -108,9 +108,9 @@ namespace vfs::socket
         }
 
         const cmsghdr hd {
-            .cmsg_len = total,
-            .cmsg_level = sol_socket,
-            .cmsg_type = type
+            .len = total,
+            .level = sol_socket,
+            .type = type
         };
         if (!msgctrl.subspan(msgctrl_len_out, sizeof(cmsghdr))
             .copy_from(std::as_bytes(std::span { &hd, 1 })))

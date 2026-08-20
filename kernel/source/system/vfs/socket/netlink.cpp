@@ -18,8 +18,8 @@ namespace vfs::socket::netlink
         constexpr std::size_t max_rcvbuf = lib::mib(16);
 
         struct netlink_sock_t;
-        void add_netlink_sock(netlink_sock_t *sock);
-        void remove_netlink_sock(netlink_sock_t *sock);
+        void register_sock(netlink_sock_t *sock);
+        void unregister_sock(netlink_sock_t *sock);
 
         struct table_t;
         struct netlink_sock_t : socket_t, std::enable_shared_from_this<netlink_sock_t>
@@ -68,12 +68,12 @@ namespace vfs::socket::netlink
             netlink_sock_t(table_t *table, int protocol, sock_type type)
                 : socket_t { protocol, af_netlink, type }, proto_hook { }, table { table }
             {
-                add_netlink_sock(this);
+                register_sock(this);
             }
 
             ~netlink_sock_t()
             {
-                remove_netlink_sock(this);
+                unregister_sock(this);
             }
 
             bool deliver(
@@ -103,13 +103,13 @@ namespace vfs::socket::netlink
             lib::expect<void> bind_portid(std::uint32_t portid);
             lib::expect<void> autobind();
 
-            auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void>;
+            auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> override;
 
             auto connect(
                 lib::maybe_uspan<const std::byte> addr, bool nonblock
-            ) -> lib::expect<void>;
+            ) -> lib::expect<void> override;
 
-            auto listen(int backlog) -> lib::expect<void>
+            auto listen(int backlog) -> lib::expect<void> override
             {
                 lib::unused(backlog);
                 return std::unexpected { lib::err::operation_unsupported };
@@ -118,16 +118,16 @@ namespace vfs::socket::netlink
             auto accept(
                 lib::maybe_uspan<std::byte> peer_addr_out,
                 socklen_t *addr_len_inout, bool nonblock
-            ) -> lib::expect<std::shared_ptr<socket_t>>
+            ) -> lib::expect<std::shared_ptr<socket_t>> override
             {
                 lib::unused(peer_addr_out, addr_len_inout, nonblock);
                 return std::unexpected { lib::err::operation_unsupported };
             }
 
-            auto sendmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t>;
-            auto recvmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t>;
+            auto sendmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> override;
+            auto recvmsg(msg_header_t &hdr, int flags) -> lib::expect<std::size_t> override;
 
-            auto ioctl(std::uint64_t request, lib::uptr_or_addr argp) -> lib::expect<int>
+            auto ioctl(std::uint64_t request, lib::uptr_or_addr argp) -> lib::expect<int> override
             {
                 switch (request)
                 {
@@ -145,7 +145,7 @@ namespace vfs::socket::netlink
                 }
             }
 
-            auto poll(vfs::poll_table_t *pt) -> lib::expect<std::uint16_t>
+            auto poll(vfs::poll_table_t *pt) -> lib::expect<std::uint16_t> override
             {
                 if (pt)
                 {
@@ -161,7 +161,7 @@ namespace vfs::socket::netlink
                 return mask;
             }
 
-            auto shutdown(int how) -> lib::expect<void>
+            auto shutdown(int how) -> lib::expect<void> override
             {
                 lib::unused(how);
                 read_wait.wake_all();
@@ -169,7 +169,7 @@ namespace vfs::socket::netlink
                 return { };
             }
 
-            auto getsockname(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t>
+            auto getsockname(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> override
             {
                 sockaddr_nl sa {
                     .family = af_netlink,
@@ -190,7 +190,7 @@ namespace vfs::socket::netlink
                 return sizeof(sa);
             }
 
-            auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t>
+            auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> override
             {
                 sockaddr_nl sa {
                     .family = af_netlink,
@@ -216,13 +216,13 @@ namespace vfs::socket::netlink
             auto setsockopt(
                 sock_lvl lvl, int opt,
                 lib::maybe_uspan<const std::byte> buf
-            ) -> lib::expect<void>;
+            ) -> lib::expect<void> override;
             auto getsockopt(
                 sock_lvl lvl, int opt,
                 lib::maybe_uspan<std::byte> buf
-            ) -> lib::expect<std::size_t>;
+            ) -> lib::expect<std::size_t> override;
 
-            auto release() -> lib::expect<void>;
+            auto release() -> lib::expect<void> override;
         };
 
         struct table_t
@@ -248,13 +248,13 @@ namespace vfs::socket::netlink
             >, sched::mutex_t
         > registry;
 
-        void add_netlink_sock(netlink_sock_t *sock)
+        void register_sock(netlink_sock_t *sock)
         {
             const auto _ = registry.lock();
             sock->table->sockets.push_back(sock);
         }
 
-        void remove_netlink_sock(netlink_sock_t *sock)
+        void unregister_sock(netlink_sock_t *sock)
         {
             const auto _ = registry.lock();
             sock->table->sockets.remove(sock);
