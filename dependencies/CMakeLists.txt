@@ -44,4 +44,5 @@ target_include_directories(kernel_deps PRIVATE ${DEPENDENCY_INCLUDES})
 target_compile_options(kernel_deps PRIVATE
     -Wno-unused-but-set-variable
     -Wno-unused-parameter
+    -Wno-tautological-constant-out-of-range-compare
 )

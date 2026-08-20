@@ -57,13 +57,14 @@ void lwip_port_assert(const char *msg, const char *file, int line);
 #define LWIP_DEBUG 0
 
 // TCP
-// #define TCP_MSS           460
-// #define TCP_WND           (8 * TCP_MSS)
-// #define TCP_SND_BUF       (8 * TCP_MSS)
-// #define TCP_SND_QUEUELEN  ((4 * TCP_SND_BUF) / TCP_MSS)
-// #define LWIP_WND_SCALE    1
-// #define TCP_RCV_SCALE     2
-// #define LWIP_TCP_SACK_OUT 1
+#define TCP_MSS           1460
+#define LWIP_WND_SCALE    1
+#define TCP_RCV_SCALE     5
+#define TCP_WND           (768 * TCP_MSS)
+#define TCP_SND_BUF       (256 * TCP_MSS)
+#define TCP_SND_QUEUELEN  ((4 * TCP_SND_BUF) / TCP_MSS)
+#define TCP_SNDLOWAT      (16 * TCP_MSS)
+#define LWIP_TCP_SACK_OUT 1
 
 // memory pool sizing
 // #define MEM_SIZE                (64 * 1024)
@@ -78,9 +79,9 @@ void lwip_port_assert(const char *msg, const char *file, int line);
 // threading sizes
 // #define TCPIP_THREAD_STACKSIZE    0x4000
 // #define TCPIP_THREAD_PRIO         0
-#define TCPIP_MBOX_SIZE           128
+#define TCPIP_MBOX_SIZE           512
 #define DEFAULT_UDP_RECVMBOX_SIZE 64
-#define DEFAULT_TCP_RECVMBOX_SIZE 64
+#define DEFAULT_TCP_RECVMBOX_SIZE 1024
 #define DEFAULT_RAW_RECVMBOX_SIZE 32
 #define DEFAULT_ACCEPTMBOX_SIZE   32
 
