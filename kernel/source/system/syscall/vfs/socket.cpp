@@ -167,7 +167,8 @@ namespace syscall::vfs
             if (!lib::copy_to_user(&umsg->namelen, &hdr.addr_len_out, sizeof(socklen_t)))
                 return std::unexpected { lib::err::invalid_address };
 
-            if (!lib::copy_to_user(&umsg->controllen, &hdr.msgctrl_len_out, sizeof(umsg->controllen)))
+            const std::size_t controllen = hdr.msgctrl_len_out;
+            if (!lib::copy_to_user(&umsg->controllen, &controllen, sizeof(controllen)))
                 return std::unexpected { lib::err::invalid_address };
 
             if (!lib::copy_to_user(&umsg->flags, &hdr.out_flags, sizeof(int)))

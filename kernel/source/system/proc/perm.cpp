@@ -6,10 +6,10 @@ namespace sched
 {
     namespace
     {
-        void set_creds(process_t *process, const std::shared_ptr<cred_t> &new_cred)
+        void set_creds(process_t *process, std::shared_ptr<cred_t> new_cred)
         {
             const std::unique_lock _ { process->lock };
-            process->cred = new_cred;
+            process->cred = std::move(new_cred);
         }
 
         void euid_transition(std::shared_ptr<cred_t> &cred, const cred_t &old)
@@ -100,14 +100,14 @@ namespace sched
         return false;
     }
 
-    bool check_perms(const stat &stat, access_mode mode)
+    bool check_perms(const stat &stat, access_mode desired)
     {
-        return check_perms(current_process()->cred, stat, mode);
+        return check_perms(current_process()->cred, stat, desired);
     }
 
     bool check_kill(int sig, const process_t *target)
     {
-        const auto proc = current_process();
+        const auto *proc = current_process();
         const auto &cred = proc->cred;
         if (capable(cred, cap_t::kill))
             return true;
@@ -128,7 +128,7 @@ namespace sched
 
     lib::expect<void> setuid(uid_t uid)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -154,7 +154,7 @@ namespace sched
     {
         constexpr auto empty = static_cast<uid_t>(-1);
 
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -173,7 +173,7 @@ namespace sched
             new_cred->ruid = ruid;
         if (euid != empty)
             new_cred->euid = euid;
-        new_cred->fsuid = euid;
+        new_cred->fsuid = new_cred->euid;
 
         if (ruid != empty || (euid != empty && euid != old_cred->euid))
             new_cred->suid = new_cred->euid;
@@ -187,7 +187,7 @@ namespace sched
     {
         constexpr auto empty = static_cast<uid_t>(-1);
 
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -216,7 +216,7 @@ namespace sched
             new_cred->euid = euid;
         if (suid != empty)
             new_cred->suid = suid;
-        new_cred->fsuid = euid;
+        new_cred->fsuid = new_cred->euid;
 
         euid_transition(new_cred, *old_cred);
         set_creds(process, std::move(new_cred));
@@ -225,7 +225,7 @@ namespace sched
 
     lib::expect<void> setgid(gid_t gid)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -240,6 +240,7 @@ namespace sched
             new_cred->sgid = gid;
         }
         new_cred->egid = gid;
+        new_cred->fsgid = gid;
 
         set_creds(process, std::move(new_cred));
         return { };
@@ -249,7 +250,7 @@ namespace sched
     {
         constexpr auto empty = static_cast<uid_t>(-1);
 
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -270,7 +271,7 @@ namespace sched
             new_cred->rgid = rgid;
         if (egid != empty)
             new_cred->egid = egid;
-        new_cred->fsgid = egid;
+        new_cred->fsgid = new_cred->egid;
 
         if (rgid != empty || (egid != empty && egid != old_cred->egid))
             new_cred->sgid = new_cred->egid;
@@ -283,7 +284,7 @@ namespace sched
     {
         constexpr auto empty = static_cast<uid_t>(-1);
 
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -312,7 +313,7 @@ namespace sched
             new_cred->egid = egid;
         if (sgid != empty)
             new_cred->sgid = sgid;
-        new_cred->fsgid = egid;
+        new_cred->fsgid = new_cred->egid;
 
         set_creds(process, std::move(new_cred));
         return { };
@@ -320,7 +321,7 @@ namespace sched
 
     uid_t setfsuid(uid_t fsuid)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         const uid_t old_fsuid = old_cred->fsuid;
@@ -342,7 +343,7 @@ namespace sched
 
     gid_t setfsgid(gid_t fsgid)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         const gid_t old_fsgid = old_cred->fsgid;
@@ -364,7 +365,7 @@ namespace sched
 
     lib::expect<void> setgroups(lib::maybe_uspan<gid_t> groups)
     {
-        auto process = current_process();
+        auto *process = current_process();
         if (!capable(process->cred, cap_t::setgid))
             return std::unexpected { lib::err::not_permitted };
 
@@ -383,7 +384,7 @@ namespace sched
 
     lib::expect<std::size_t> getgroups(lib::maybe_uspan<gid_t> groups)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const auto &cred = process->cred;
         auto &gids = cred->supp_gids.gids;
         if (gids.empty())
@@ -423,7 +424,7 @@ namespace sched
     lib::expect<void> capset(pid_t pid, const cap_user_data_t *data)
     {
         lib::bug_on(!data);
-        auto process = current_process();
+        auto *process = current_process();
         if (pid != 0 && pid != process->pid)
             return std::unexpected { lib::err::not_permitted };
 
@@ -454,7 +455,7 @@ namespace sched
 
     lib::expect<void> cap_bounding_drop(cap_t cap)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         if (!capable(old_cred, cap_t::setpcap))
@@ -468,7 +469,7 @@ namespace sched
 
     lib::expect<void> cap_ambient_raise(cap_t cap)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -487,7 +488,7 @@ namespace sched
 
     void cap_ambient_lower(cap_t cap)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
         auto new_cred = old_cred->clone();
@@ -497,7 +498,7 @@ namespace sched
 
     lib::expect<void> set_securebits(secbit_t securebits)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
         const auto &old_cred = process->cred;
 
@@ -512,8 +513,8 @@ namespace sched
             return std::unexpected { lib::err::not_permitted };
 
         const auto check_locked = [&](secbit_t bit, secbit_t lock) {
-            return !((old_bits & lock) != secbit_t::none &&
-                    ((old_bits & bit) != (securebits & bit)));
+            return (old_bits & lock) == secbit_t::none ||
+                    ((old_bits & bit) == (securebits & bit));
         };
 
         if (!check_locked(secbit_t::noroot, secbit_t::noroot_locked) ||
@@ -540,7 +541,7 @@ namespace sched
 
     void set_securebit(secbit_t bit, bool set)
     {
-        auto process = current_process();
+        auto *process = current_process();
         const std::unique_lock _ { process->lock };
 
         auto new_cred = process->cred->clone();
