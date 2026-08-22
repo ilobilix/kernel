@@ -1353,6 +1353,15 @@ namespace syscall::proc
                     return -EINVAL;
                 wait_pid = id == 0 ? 0 : -id;
                 break;
+            case 3: // P_PIDFD
+            {
+                const auto target = syscall::vfs::detail::pidfd_to_process(id);
+                if (!target)
+                    return -lib::map_error(target.error());
+
+                wait_pid = (*target)->pid;
+                break;
+            }
             default:
                 return -EINVAL;
         }

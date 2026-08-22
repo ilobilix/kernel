@@ -134,6 +134,7 @@ export namespace sched
 
         wait_queue_t wait_child;
         wait_queue_t vfork_done;
+        wait_queue_t exited;
 
         // itimer_real
         lib::locker<

@@ -69,7 +69,7 @@ namespace fs::procfs
             std::shared_ptr<node_ops> ops, node_type type, mode_t mode
         )
         {
-            auto current = std::addressof(registry);
+            auto *current = std::addressof(registry);
 
             auto split = std::views::split(path.str(), '/');
             const std::size_t size = std::ranges::distance(split);
@@ -116,7 +116,7 @@ namespace fs::procfs
 
                 (*locked)[segment] = node_t {
                     std::string { segment },
-                    mode, type, ops
+                    mode, type, std::move(ops)
                 };
                 return true;
             }
@@ -235,7 +235,7 @@ namespace fs::procfs
                 const auto inod = std::static_pointer_cast<inode_t>(file->path.dentry->inode);
 
                 std::shared_ptr<sched::process_t> proc;
-                if (inod->pid > 0)
+                if (inod->pid >= 0)
                 {
                     proc = sched::get_process(inod->pid);
                     if (!proc)
@@ -296,7 +296,7 @@ namespace fs::procfs
                 const auto inod = std::static_pointer_cast<inode_t>(file->path.dentry->inode);
 
                 std::shared_ptr<sched::process_t> proc;
-                if (inod->pid > 0)
+                if (inod->pid >= 0)
                 {
                     proc = sched::get_process(inod->pid);
                     if (!proc)
@@ -506,7 +506,7 @@ namespace fs::procfs
                                 return result;
 
                             std::shared_ptr<sched::process_t> proc;
-                            if (inod->pid > 0)
+                            if (inod->pid >= 0)
                             {
                                 proc = sched::get_process(inod->pid);
                                 if (!proc)
@@ -563,7 +563,7 @@ namespace fs::procfs
                                 return std::unexpected { lib::err::not_found };
                             const auto pid = *res;
 
-                            if (!sched::get_process(pid))
+                            if (pid <= 0 || !sched::get_process(pid))
                                 return std::unexpected { lib::err::not_found };
 
                             return vfs::dir_entry {
@@ -577,7 +577,7 @@ namespace fs::procfs
                                 return std::unexpected { lib::err::not_found };
 
                             std::shared_ptr<sched::process_t> proc;
-                            if (inod->pid > 0)
+                            if (inod->pid >= 0)
                             {
                                 proc = sched::get_process(inod->pid);
                                 if (!proc)
@@ -608,7 +608,7 @@ namespace fs::procfs
                         return std::unexpected { lib::err::invalid_argument };
 
                     std::shared_ptr<sched::process_t> proc;
-                    if (inod->pid > 0)
+                    if (inod->pid >= 0)
                     {
                         proc = sched::get_process(inod->pid);
                         if (!proc)
@@ -628,7 +628,7 @@ namespace fs::procfs
                     if (!proc)
                         return false;
 
-                    return !(inod->ops && !inod->ops->revalidate(proc.get()));
+                    return !inod->ops || inod->ops->revalidate(proc.get());
                 }
 
                 bool permission(
@@ -711,32 +711,32 @@ namespace fs::procfs
     std::shared_ptr<node_ops> make_file_ops(gen_fn gfn, write_fn wfn)
     {
         auto ret = std::shared_ptr<file_ops>(new file_ops { });
-        ret->gfn = gfn;
-        ret->wfn = wfn;
+        ret->gfn = std::move(gfn);
+        ret->wfn = std::move(wfn);
         return ret;
     }
 
     std::shared_ptr<node_ops> make_streaming_file_ops(stream_fn sfn, write_fn wfn)
     {
         auto ret = std::shared_ptr<file_ops>(new file_ops { });
-        ret->sfn = sfn;
-        ret->wfn = wfn;
+        ret->sfn = std::move(sfn);
+        ret->wfn = std::move(wfn);
         return ret;
     }
 
     std::shared_ptr<node_ops> make_symlink_ops(readlink_fn rdlfn, revalidate_fn rvfn)
     {
         auto ret = std::shared_ptr<file_ops>(new file_ops { });
-        ret->rdlfn = rdlfn;
-        ret->rvfn = rvfn;
+        ret->rdlfn = std::move(rdlfn);
+        ret->rvfn = std::move(rvfn);
         return ret;
     }
 
     std::shared_ptr<node_ops> make_dir_ops(lookup_fn lfn, readdir_fn rfn)
     {
         auto ret = std::shared_ptr<dir_ops>(new dir_ops { });
-        ret->lfn = lfn;
-        ret->rfn = rfn;
+        ret->lfn = std::move(lfn);
+        ret->rfn = std::move(rfn);
         return ret;
     }
 
@@ -746,7 +746,7 @@ namespace fs::procfs
     )
     {
         lib::bug_on(path.empty() || !ops);
-        return register_in(global_registry, path, ops, type, mode);
+        return register_in(global_registry, std::move(path), std::move(ops), type, mode);
     }
 
     bool register_per_pid(
@@ -755,7 +755,7 @@ namespace fs::procfs
     )
     {
         lib::bug_on(path.empty() || !ops);
-        return register_in(pid_dir_ops()->registry, path, ops, type, mode);
+        return register_in(pid_dir_ops()->registry, std::move(path), std::move(ops), type, mode);
     }
 
     lib::initgraph::stage *registered_stage()

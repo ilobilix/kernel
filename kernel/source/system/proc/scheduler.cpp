@@ -4,6 +4,7 @@ module system.sched;
 
 import drivers.fs.procfs;
 import drivers.timers;
+import system.syscall.vfs;
 import system.bin.exec;
 import system.chrono;
 import system.cpu;
@@ -1085,6 +1086,7 @@ namespace sched
 
             proc->exit_code = exit_code;
             proc->is_zombie = true;
+            proc->exited.wake_all();
 
             if (auto parent = proc->parent.lock())
             {
@@ -1651,6 +1653,16 @@ namespace sched
         if ((flags & clone_thread) && (flags & clone_pidfd))
             return -EINVAL;
 
+        if (flags & clone_pidfd)
+        {
+            if (flags & clone_detached)
+                return -EINVAL;
+
+            const auto addr = reinterpret_cast<std::uintptr_t>(args.pidfd);
+            if (lib::classify_address(addr, sizeof(int)) != lib::address_space::user)
+                return -EFAULT;
+        }
+
         if (!(flags & clone_vm) && (flags & clone_sighand))
             return -EINVAL;
 
@@ -1836,7 +1848,23 @@ namespace sched
 
         // TODO: cgroups
         // TODO: namespaces
-        // TODO: pidfd
+
+        if (flags & clone_pidfd)
+        {
+            const auto fd = syscall::vfs::detail::make_pidfd(target_proc);
+            if (!fd)
+            {
+                cleanup();
+                return -lib::map_error(fd.error());
+            }
+
+            if (!lib::copy_to_user(args.pidfd, std::addressof(*fd), sizeof(int)))
+            {
+                caller_proc->fdt->close(*fd);
+                cleanup();
+                return -EFAULT;
+            }
+        }
 
         // TODO: better abstraction
 #if defined(__x86_64__)

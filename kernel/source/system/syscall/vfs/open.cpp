@@ -11,7 +11,7 @@ namespace syscall::vfs
 
     int openat(int dirfd, const char __user *pathname, int flags, mode_t mode)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const auto fd_max = proc->rlimits->get(sched::rlimit_nofile).cur;
         auto &fdt = proc->fdt;
 
@@ -60,7 +60,7 @@ namespace syscall::vfs
 
             lib::bug_on(!dir.mnt);
             auto fs = dir.mnt->fs.lock();
-            if (!fs.get())
+            if (!fs)
                 return -EIO;
 
             const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
@@ -167,12 +167,17 @@ namespace syscall::vfs
             if (target.dentry->inode->stat.type() == stat::type::s_iflnk)
             {
                 if (!follow_links)
-                    return -ELOOP;
-
-                auto reduced = reduce(res->parent, target);
-                if (!reduced.has_value())
-                    return -lib::map_error(reduced.error());
-                target = std::move(*reduced);
+                {
+                    if (!(flags & o_path))
+                        return -ELOOP;
+                }
+                else
+                {
+                    auto reduced = reduce(res->parent, target);
+                    if (!reduced.has_value())
+                        return -lib::map_error(reduced.error());
+                    target = std::move(*reduced);
+                }
             }
         }
 
@@ -269,7 +274,7 @@ namespace syscall::vfs
         if (flags & ~(unshare | cloexec))
             return -EINVAL;
 
-        auto proc = sched::current_process();
+        auto *proc = sched::current_process();
         if (flags & unshare)
             proc->fdt = proc->fdt->clone();
 

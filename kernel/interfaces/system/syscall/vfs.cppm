@@ -93,7 +93,7 @@ export namespace syscall::vfs
 
     int renameat2(
         int olddfd, const char __user *oldname, int newdfd,
-        const char __user *newname, unsigned int flags
+        const char __user *newname, std::uint32_t flags
     );
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath);
     int rename(const char __user *oldpath, const char __user *newpath);
@@ -227,12 +227,6 @@ export namespace syscall::vfs
 
     int fsopen(const char __user *fsname, std::uint32_t flags);
 
-    int eventfd2(unsigned int count, int flags);
-    int eventfd(unsigned int count);
-
-    int signalfd4(int fd, sigset_t __user *mask, std::size_t sizemask, int flags);
-    int signalfd(int fd, sigset_t __user *mask, std::size_t sizemask);
-
     int epoll_create1(int flags);
     int epoll_create(int size);
     int epoll_ctl(int epfd, int op, int fd,  struct epoll_event __user *event);
@@ -246,10 +240,22 @@ export namespace syscall::vfs
     );
     int epoll_wait(int epfd, epoll_event __user *events, int maxevents, int timeout);
 
+    int eventfd2(std::uint32_t count, int flags);
+    int eventfd(std::uint32_t count);
+
     int inotify_init1(int flags);
     int inotify_init();
     int inotify_add_watch(int fd, const char __user *pathname, std::uint32_t mask);
     int inotify_rm_watch(int fd, std::int32_t wd);
+
+    int pidfd_open(pid_t pid, std::uint32_t flags);
+    int pidfd_getfd(int pidfd, int fd, std::uint32_t flags);
+    int pidfd_send_signal(
+        int pidfd, int sig, sched::user_siginfo_t __user *info, std::uint32_t flags
+    );
+
+    int signalfd4(int fd, sigset_t __user *mask, std::size_t sizemask, int flags);
+    int signalfd(int fd, sigset_t __user *mask, std::size_t sizemask);
 
     int timerfd_create(int clockid, int flags);
     int timerfd_settime(
@@ -262,6 +268,12 @@ export namespace syscall::vfs
     int init_module(void __user *umod, unsigned long len, const char __user *uargs);
     int finit_module(int fd, const char __user *uargs, int flags);
 } // export namespace syscall::vfs
+
+export namespace syscall::vfs::detail
+{
+    lib::expect<int> make_pidfd(const std::shared_ptr<sched::process_t> &proc, int flags = 0);
+    lib::expect<std::shared_ptr<sched::process_t>> pidfd_to_process(int fd);
+} // export namespace syscall::vfs::detail
 
 namespace syscall::vfs::detail
 {

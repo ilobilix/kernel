@@ -10,7 +10,7 @@ namespace syscall::vfs
 
     std::ssize_t readlinkat(int dirfd, const char __user *pathname, char __user *buf, std::size_t bufsiz)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto target = get_target(proc, dirfd, pathname, false, true, true);
         if (!target.has_value())
@@ -48,7 +48,7 @@ namespace syscall::vfs
 
     int mkdirat(int dirfd, const char __user *pathname, mode_t mode)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         auto val = detail::get_path(pathname);
         if (!val.has_value())
@@ -104,7 +104,7 @@ namespace syscall::vfs
         if (flags & ~at_removedir)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         auto val = detail::get_path(pathname);
         if (!val.has_value())
@@ -180,7 +180,7 @@ namespace syscall::vfs
                 return -EINVAL;
         }
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const auto &cred = proc->cred;
 
         const bool is_dev = (kind == stat::type::s_ifchr || kind == stat::type::s_ifblk);
@@ -245,7 +245,7 @@ namespace syscall::vfs
         if (flags & ~(at_symlink_follow | at_empty_path))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const bool follow_links = (flags & at_symlink_follow) != 0;
         const bool empty_path = (flags & at_empty_path) != 0;
 
@@ -288,7 +288,7 @@ namespace syscall::vfs
 
     int symlinkat(const char __user *target, int newdirfd, const char __user *linkpath)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         auto target_val = detail::get_path(target);
         if (!target_val.has_value())
@@ -352,7 +352,7 @@ namespace syscall::vfs
 
     int renameat2(
         int olddfd, const char __user *oldname, int newdfd,
-        const char __user *newname, unsigned int flags
+        const char __user *newname, std::uint32_t flags
     )
     {
         // TODO: glibc seems to fall back to renameat
@@ -362,7 +362,7 @@ namespace syscall::vfs
 
     int renameat(int olddirfd, const char __user *oldpath, int newdirfd, const char __user *newpath)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         auto old_val = detail::get_path(oldpath);
         if (!old_val.has_value())
@@ -456,7 +456,7 @@ namespace syscall::vfs
         }
         else ktimes[0] = ktimes[1] = now;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;

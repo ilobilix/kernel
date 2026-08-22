@@ -169,7 +169,7 @@ namespace syscall::vfs
         };
     } // namespace
 
-    int eventfd2(unsigned int count, int flags)
+    int eventfd2(std::uint32_t count, int flags)
     {
         if (flags & ~(efd_semaphore | efd_cloexec | efd_nonblock))
             return -EINVAL;
@@ -190,7 +190,7 @@ namespace syscall::vfs
         return ret->first;
     }
 
-    int eventfd(unsigned int count)
+    int eventfd(std::uint32_t count)
     {
         return eventfd2(count, 0);
     }

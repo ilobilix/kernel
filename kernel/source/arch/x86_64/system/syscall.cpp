@@ -253,9 +253,12 @@ namespace x86_64::syscall
         [322] = { "execveat", proc::execveat },
         [332] = { "statx", vfs::statx },
         [334] = { "rseq", proc::rseq },
+        [424] = { "pidfd_send_signal", vfs::pidfd_send_signal },
         [430] = { "fsopen", vfs::fsopen, true },
+        [434] = { "pidfd_open", vfs::pidfd_open, true },
         [435] = { "clone3", proc::clone3, true },
         [436] = { "close_range", vfs::close_range },
+        [438] = { "pidfd_getfd", vfs::pidfd_getfd, true },
         [439] = { "faccessat2", vfs::faccessat2 },
         [441] = { "epoll_pwait2", vfs::epoll_pwait2, true },
         [444] = { "landlock_create_ruleset", misc::landlock_create_ruleset, true },
@@ -268,7 +271,7 @@ namespace x86_64::syscall
         const auto idx = regs->rax;
         if (idx >= std::size(table) || !table[idx].is_valid())
         {
-            const auto thread = sched::current_thread();
+            auto *const thread = sched::current_thread();
             lib::error(
                 "invalid syscall: {} from [{}:{}] '{}'", idx,
                 thread->proc->pid, thread->tid, sched::comm_of(thread)

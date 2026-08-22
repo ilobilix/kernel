@@ -18,7 +18,7 @@ namespace syscall::chrono
             if (!sched::capable(sched::cap_t::sys_time))
                 return -EPERM;
 
-            if (!ts.valid())
+            if (!ts.valid(true))
                 return -EINVAL;
 
             if (!chrono::set_now(clockid, ts))

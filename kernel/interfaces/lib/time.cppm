@@ -6,6 +6,12 @@ import :math;
 import :types;
 import std;
 
+namespace
+{
+    constexpr std::uint64_t ns_max = std::numeric_limits<std::int64_t>::max();
+    constexpr time_t sec_max = ns_max / 1'000'000'000ul;
+} // namespace
+
 export
 {
     struct timeval
@@ -21,20 +27,24 @@ export
             };
         }
 
-        constexpr bool valid() const
+        constexpr bool valid(bool check_max = false) const
         {
-            constexpr time_t max_sec = std::numeric_limits<std::int64_t>::max() / 1'000'000'000l / 2;
-            return tv_sec >= 0 && tv_sec <= max_sec && tv_usec >= 0 && tv_usec < 1'000'000l;
+            return tv_sec >= 0 && tv_usec >= 0 && tv_usec < 1'000'000l &&
+                (!check_max || tv_sec < sec_max);
         }
 
         constexpr std::uint64_t to_ns() const
         {
-            return (tv_sec * 1'000'000'000ul) + (tv_usec * 1'000);
+            if (tv_sec >= sec_max)
+                return ns_max;
+            return (static_cast<std::uint64_t>(tv_sec) * 1'000'000'000ul) + (tv_usec * 1'000);
         }
 
         constexpr std::uint64_t to_ms() const
         {
-            return (tv_sec * 1000ul) + (tv_usec / 1'000);
+            if (tv_sec >= sec_max)
+                return ns_max / 1'000'000ul;
+            return (static_cast<std::uint64_t>(tv_sec) * 1000ul) + (tv_usec / 1'000);
         }
     };
 
@@ -43,9 +53,9 @@ export
         timeval it_interval;
         timeval it_value;
 
-        constexpr bool valid() const
+        constexpr bool valid(bool check_max = false) const
         {
-            return it_value.valid() && it_interval.valid();
+            return it_value.valid(check_max) && it_interval.valid(check_max);
         }
     };
 
@@ -125,20 +135,24 @@ export
             return tv_nsec <=> other.tv_nsec;
         }
 
-        constexpr bool valid() const
+        constexpr bool valid(bool check_max = false) const
         {
-            constexpr time_t max_sec = std::numeric_limits<std::int64_t>::max() / 1'000'000'000l / 2;
-            return tv_sec >= 0 && tv_sec <= max_sec && tv_nsec >= 0 && tv_nsec < 1'000'000'000l;
+            return tv_sec >= 0 && tv_nsec >= 0 && tv_nsec < 1'000'000'000l &&
+                (!check_max || tv_sec < sec_max);
         }
 
         constexpr std::uint64_t to_ns() const
         {
-            return (tv_sec * 1'000'000'000ul) + tv_nsec;
+            if (tv_sec >= sec_max)
+                return ns_max;
+            return (static_cast<std::uint64_t>(tv_sec) * 1'000'000'000ul) + tv_nsec;
         }
 
         constexpr std::uint64_t to_ms() const
         {
-            return (tv_sec * 1000ul) + (tv_nsec / 1'000'000);
+            if (tv_sec >= sec_max)
+                return ns_max / 1'000'000ul;
+            return (static_cast<std::uint64_t>(tv_sec) * 1000ul) + (tv_nsec / 1'000'000);
         }
 
         constexpr timeval to_timeval() const
@@ -159,9 +173,9 @@ export
         timespec interval; // period
         timespec value;    // expiration
 
-        constexpr bool valid() const
+        constexpr bool valid(bool check_max = false) const
         {
-            return value.valid() && interval.valid();
+            return value.valid(check_max) && interval.valid(check_max);
         }
     };
 } // export
