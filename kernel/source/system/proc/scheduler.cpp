@@ -1291,11 +1291,7 @@ namespace sched
             src_rq.dequeue(thread);
             src_rq.nr_running--;
 
-            const auto delta = static_cast<std::int64_t>(
-                thread->vruntime - src_rq._min_vruntime
-            );
-            thread->vruntime = my_rq._min_vruntime + std::max(0l, delta);
-
+            my_rq.rebase(thread);
             my_rq.enqueue(thread);
             my_rq.nr_running++;
 

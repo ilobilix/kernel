@@ -68,16 +68,19 @@ export namespace sched
         // returns the runtime delta
         std::uint64_t update_current(std::uint64_t now);
 
+        // move vruntime from the old queue to this one
+        void rebase(thread_t *thread) const;
+
         // adjust vruntime
-        void adjust(thread_t *thread, bool initial);
+        void adjust(thread_t *thread, bool initial) const;
 
         // check if current should be preempted with thread
-        bool check_preempt_wakeup(thread_t *thread);
+        bool check_preempt_wakeup(thread_t *thread) const;
 
         // calculate fair timeslice for a thread
-        std::uint64_t calc_timeslice(std::uint64_t weight);
+        std::uint64_t calc_timeslice(std::uint64_t weight) const;
 
-        std::uint64_t calc_vruntime(
+        static std::uint64_t calc_vruntime(
             std::uint64_t delta_ns,
             std::uint64_t weight, std::uint64_t inv_weight
         );

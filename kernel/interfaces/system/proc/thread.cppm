@@ -70,6 +70,7 @@ export namespace sched
         std::atomic<int> pending_exit_code = 0;
 
         std::uint64_t vruntime = 0;
+        std::uint64_t rq_min_vruntime = 0;
         std::uint64_t total_runtime = 0;
         std::uint64_t prev_runtime = 0;
         std::uint64_t sched_time = 0;
@@ -121,30 +122,30 @@ export namespace sched
 
         int err = 0;
 
-        inline void set_flag(thread_flags flag)
+        void set_flag(thread_flags flag)
         {
             flags.fetch_or(static_cast<std::uint8_t>(flag), std::memory_order_acq_rel);
         }
 
-        inline void clear_flag(thread_flags flag)
+        void clear_flag(thread_flags flag)
         {
             flags.fetch_and(~static_cast<std::uint8_t>(flag), std::memory_order_acq_rel);
         }
 
-        inline bool has_flag(thread_flags flag) const
+        bool has_flag(thread_flags flag) const
         {
             return (flags.load(std::memory_order_acquire) & static_cast<std::uint8_t>(flag)) != 0;
         }
 
-        inline bool test_and_clear_flag(thread_flags flag)
+        bool test_and_clear_flag(thread_flags flag)
         {
             const auto bits = static_cast<std::uint8_t>(flag);
             return (flags.fetch_and(~bits, std::memory_order_acq_rel) & bits) != 0;
         }
 
-        inline bool is_kernel() const { return has_flag(thread_flags::kernel); }
-        inline bool is_idle() const { return has_flag(thread_flags::idle); }
-        inline bool needs_resched() const { return has_flag(thread_flags::needs_resched); }
+        bool is_kernel() const { return has_flag(thread_flags::kernel); }
+        bool is_idle() const { return has_flag(thread_flags::idle); }
+        bool needs_resched() const { return has_flag(thread_flags::needs_resched); }
 
         ~thread_t();
     };

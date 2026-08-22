@@ -20,6 +20,7 @@ namespace sched
         queue.remove(thread);
         total_weight -= thread->weight;
         thread->on_rq = nullptr;
+        thread->rq_min_vruntime = _min_vruntime;
         update_min_vruntime();
     }
 
@@ -27,7 +28,7 @@ namespace sched
     {
         if (queue.empty())
             return nullptr;
-        const auto first = queue.first();
+        auto *first = queue.first();
         lib::bug_on(first->on_rq != this);
         return first;
     }
@@ -63,28 +64,34 @@ namespace sched
             current->vruntime + calc_vruntime(delta, current->weight, current->inv_weight)
         );
         update_min_vruntime();
+        current->rq_min_vruntime = _min_vruntime;
         return delta;
     }
 
-    void run_queue_t::adjust(thread_t *thread, bool initial)
+    void run_queue_t::rebase(thread_t *thread) const
     {
-        auto vruntime = _min_vruntime;
+        thread->vruntime = _min_vruntime + std::clamp<std::int64_t>(
+            thread->vruntime - thread->rq_min_vruntime,
+            0, latency_ns
+        );
+        thread->rq_min_vruntime = _min_vruntime;
+    }
+
+    void run_queue_t::adjust(thread_t *thread, bool initial) const
+    {
         if (initial)
         {
             // new threads start at min_vruntime + half a latency period
             // so they don't immediately preempt everything
-            vruntime += period(queue.size() + 1) / 2;
+            thread->vruntime = _min_vruntime + (period(queue.size() + 1) / 2);
+            thread->rq_min_vruntime = _min_vruntime;
+            return;
         }
-        else
-        {
-            if (thread->vruntime > vruntime)
-                return;
-            vruntime -= latency_ns / 2;
-        }
-        thread->vruntime = std::max(thread->vruntime, vruntime);
+        rebase(thread);
+        thread->vruntime -= std::min(thread->vruntime, latency_ns / 2);
     }
 
-    bool run_queue_t::check_preempt_wakeup(thread_t *thread)
+    bool run_queue_t::check_preempt_wakeup(thread_t *thread) const
     {
         if (current == nullptr)
             return true;
@@ -96,7 +103,7 @@ namespace sched
             static_cast<std::int64_t>(wakeup_gran_ns);
     }
 
-    std::uint64_t run_queue_t::calc_timeslice(std::uint64_t weight)
+    std::uint64_t run_queue_t::calc_timeslice(std::uint64_t weight) const
     {
         const auto per = period(queue.size());
         if (total_weight == 0)
