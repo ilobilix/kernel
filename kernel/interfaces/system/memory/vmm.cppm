@@ -76,7 +76,7 @@ export namespace vmm
     struct object;
     struct page
     {
-        enum flag : flag_t
+        enum flag : std::uint16_t
         {
             busy = (1 << 0),
             dirty = (1 << 1),
@@ -84,7 +84,14 @@ export namespace vmm
             anonymous = (1 << 3)
         };
 
-        std::atomic<flag_t> flags;
+        std::atomic<std::uint16_t> flags;
+
+        struct {
+            std::uint8_t order : std::bit_width(pmm::max_order);
+            std::uint8_t allocated : 1;
+            std::uint8_t listed : 1;
+        } buddy;
+
         std::atomic<std::uint32_t> refcount;
 
         void ref()
@@ -97,12 +104,6 @@ export namespace vmm
             return refcount.fetch_sub(num, std::memory_order_acq_rel) == num;
         }
 
-        struct {
-            std::uint64_t next_paddr : pmm::paddr_bits - pmm::page_bits;
-            std::uint64_t order : std::bit_width(pmm::max_order);
-            std::uint64_t allocated : 1;
-        } buddy;
-
         union {
             struct {
                 object *obj_ptr;
@@ -114,7 +115,7 @@ export namespace vmm
             };
         };
     };
-    static_assert(sizeof(page) == 32);
+    static_assert(sizeof(page) == 24);
 
     enum class object_type : std::uint8_t
     {

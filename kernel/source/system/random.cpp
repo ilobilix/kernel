@@ -47,7 +47,7 @@ namespace random
         using batch_u32 = batch<std::uint32_t>;
         using batch_u64 = batch<std::uint64_t>;
 
-        constexpr std::uint64_t reseed_interval = 1024 * 1024;
+        constexpr std::uint64_t reseed_interval = 1024ul * 1024;
         constexpr std::uint64_t reseed_period_ns = 60'000'000'000ull;
         constexpr std::array<std::byte, lib::chacha20_nonce_size> zero_nonce { };
 
@@ -132,9 +132,7 @@ namespace random
             for (std::size_t i = 0; i < iters; i++)
             {
                 const auto cycles = arch::cycle_count();
-                const auto now = static_cast<std::uint64_t>(
-                    chrono::now(chrono::realtime).to_ns()
-                );
+                const auto now =  chrono::now(chrono::realtime).to_ns();
                 lib::blake2s_update(_base.pool, std::as_bytes(std::span { &cycles, 1 }));
                 lib::blake2s_update(_base.pool, std::as_bytes(std::span { &now, 1 }));
                 arch::pause();
@@ -149,7 +147,7 @@ namespace random
             mix_value(hhdm);
 
             {
-                const auto kaddr = boot::requests::kernel_address.response;
+                const auto *kaddr = boot::requests::kernel_address.response;
                 const auto pbase = kaddr->physical_base;
                 const auto vbase = kaddr->virtual_base;
                 mix_value(pbase);
@@ -157,19 +155,19 @@ namespace random
             }
 
             {
-                const auto rsdp = boot::requests::rsdp.response;
-                const auto addr = rsdp->address;
+                const auto *rsdp = boot::requests::rsdp.response;
+                const auto *addr = rsdp->address;
                 mix_value(addr);
             }
 
             {
-                const auto memmap = boot::requests::memmap.response;
+                const auto *memmap = boot::requests::memmap.response;
                 const auto cnt = memmap->entry_count;
                 mix_value(cnt);
 
                 for (std::uint64_t i = 0; i < cnt; i++)
                 {
-                    const auto entry = memmap->entries[i];
+                    const auto *entry = memmap->entries[i];
                     const auto base = entry->base;
                     const auto length = entry->length;
                     const auto type = entry->type;
@@ -181,13 +179,13 @@ namespace random
             }
 
             {
-                const auto fb = boot::requests::framebuffer.response;
+                const auto *fb = boot::requests::framebuffer.response;
                 const auto cnt = fb->framebuffer_count;
                 mix_value(cnt);
 
                 for (std::uint64_t i = 0; i < cnt; i++)
                 {
-                    const auto frm = fb->framebuffers[i];
+                    const auto *frm = fb->framebuffers[i];
                     const auto addr = reinterpret_cast<std::uintptr_t>(frm->address);
                     const auto width = frm->width;
                     const auto height = frm->height;
@@ -200,14 +198,14 @@ namespace random
                 }
             }
 
-            if (const auto mods = boot::requests::module_.response)
+            if (const auto *mods = boot::requests::module_.response)
             {
                 const auto cnt = mods->module_count;
                 mix_value(cnt);
 
                 for (std::uint64_t i = 0; i < cnt; i++)
                 {
-                    const auto mod = mods->modules[i];
+                    const auto *mod = mods->modules[i];
                     const auto addr = reinterpret_cast<std::uintptr_t>(mod->address);
                     const auto size = mod->size;
 
@@ -426,13 +424,18 @@ namespace random
         return get_bytes(buffer.span());
     }
 
+    void get_uuid(std::span<std::uint8_t, 16> buffer)
+    {
+        lib::bug_on(get_bytes(std::as_writable_bytes(buffer)) != buffer.size());
+        buffer[6] = (buffer[6] & 0x0F) | 0x40;
+	    buffer[8] = (buffer[8] & 0x3F) | 0x80;
+    }
+
     lib::initgraph::task random_init_task
     {
         "random.initialise",
         lib::initgraph::presched_init_engine,
-        lib::initgraph::require {
-            arch::cpus_stage()
-        },
+        lib::initgraph::require { arch::cpus_stage() },
         [] {
             {
                 const std::unique_lock _ { _base_lock };

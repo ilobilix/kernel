@@ -15,4 +15,6 @@ export namespace random
 
     std::ssize_t get_bytes(std::span<std::byte> buffer);
     std::ssize_t get_bytes(lib::maybe_uspan<std::byte> buffer);
+
+    void get_uuid(std::span<std::uint8_t, 16> buffer);
 } // export namespace random

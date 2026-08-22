@@ -3,12 +3,32 @@
 module system.sysctl;
 
 import drivers.fs.procfs;
+import system.random;
 import system.sched;
 import fmt;
 
 namespace sysctl
 {
     using namespace fs::procfs;
+
+    namespace
+    {
+        std::string get_uuid()
+        {
+            std::array<std::uint8_t, 16> buffer;
+            std::span buf { buffer };
+            random::get_uuid(buf);
+
+            return fmt::format(
+                "{:02x}-{:02x}-{:02x}-{:02x}-{:02x}\n",
+                fmt::join(buf.subspan<0, 4>(), ""),
+                fmt::join(buf.subspan<4, 2>(), ""),
+                fmt::join(buf.subspan<6, 2>(), ""),
+                fmt::join(buf.subspan<8, 2>(), ""),
+                fmt::join(buf.subspan<10, 6>(), "")
+            );
+        }
+    } // namespace
 
     bool register_entry(std::string_view path, read_fn read, write_fn write, mode_t mode)
     {
@@ -58,7 +78,7 @@ namespace sysctl
                     int val = 0;
                     while (!data.empty() && data.front() >= '0' && data.front() <= '9')
                     {
-                        val = val * 10 + (data.front() - '0');
+                        val = (val * 10) + (data.front() - '0');
                         data.remove_prefix(1);
                     }
                     return write(neg ? -val : val);
@@ -110,6 +130,16 @@ namespace sysctl
             ));
             lib::bug_on(!register_ro("kernel/version",
                 [] { return fmt::format("{}\n", lib::uts::version); }
+            ));
+
+            lib::bug_on(!register_ro("kernel/random/boot_id",
+                [] {
+                    static auto val = get_uuid();
+                    return val;
+                }
+            ));
+            lib::bug_on(!register_ro("kernel/random/uuid",
+                [] { return get_uuid(); }
             ));
 
             // TODO

@@ -19,8 +19,6 @@ namespace pmm
         constinit memory mem;
         constinit bool initialised = false;
 
-        std::uintptr_t bootstrap_alloc(std::size_t npages);
-
         template<std::uintptr_t Start, std::uintptr_t End>
         struct allocator
         {
@@ -28,42 +26,63 @@ namespace pmm
             static constexpr std::uintptr_t end = End;
 
             struct list { list *prev = nullptr; list *next = nullptr; };
-            list lists[max_order + 1];
+            list lists[max_order + 1] { };
 
-            constexpr allocator() : lists { } { }
-
-            static inline bool in_range(const auto ptr)
+            static bool in_range(const auto ptr)
             {
                 const auto addr = lib::fromhh(reinterpret_cast<std::uintptr_t>(ptr));
                 return addr >= start && addr < end;
             }
 
-            static inline bool in_range(std::uintptr_t rstart, std::uintptr_t rend)
+            static bool in_range(std::uintptr_t rstart, std::uintptr_t rend)
             {
                 return lib::range_overlaps(rstart, rend, start, end);
             }
 
-            static inline std::pair<std::uintptr_t, std::uintptr_t> range_intersection(std::uintptr_t rstart, std::uintptr_t rend)
+            static auto range_intersection(std::uintptr_t rstart, std::uintptr_t rend)
             {
                 return lib::range_intersection(rstart, rend, start, end);
             }
 
-            static inline std::ptrdiff_t prev_order_from(std::size_t size)
+            static std::ptrdiff_t prev_order_from(std::size_t size)
             {
                 if (size < page_size)
                     return -1;
                 return lib::log2(std::bit_floor(size)) - 12;
             }
 
-            static inline std::ptrdiff_t next_order_from(std::size_t size)
+            static std::ptrdiff_t next_order_from(std::size_t size)
             {
                 if (size < page_size)
                     return -1;
                 return lib::log2(std::bit_ceil(size)) - 12;
             }
 
-            inline void put(std::size_t order, list *pg)
+            static std::uintptr_t get_phys(const list *pg)
             {
+                return lib::fromhh(reinterpret_cast<std::uintptr_t>(pg));
+            }
+
+            static std::uintptr_t get_buddy(std::uintptr_t paddr, std::size_t order)
+            {
+                return paddr ^ (page_size << order);
+            }
+
+            static bool buddy_valid(std::uintptr_t paddr, std::size_t order)
+            {
+                const auto size = page_size << order;
+                const auto buddy = get_buddy(paddr, order);
+
+                if (buddy < start || buddy + size > end)
+                    return false;
+
+                return buddy + size <= mem.usable_top;
+            }
+
+            void put(std::size_t order, list *pg)
+            {
+                vmm::page_for(pg)->buddy.listed = 1;
+
                 pg->next = lists[order].next;
                 pg->prev = nullptr;
                 if (lists[order].next)
@@ -71,16 +90,18 @@ namespace pmm
                 lists[order].next = pg;
             }
 
-            inline void *rem(std::size_t order)
+            void *rem(std::size_t order)
             {
                 const auto ret = lists[order].next;
+                vmm::page_for(ret)->buddy.listed = 0;
+
                 lists[order].next = ret->next;
                 if (lists[order].next)
                     lists[order].next->prev = nullptr;
                 return ret;
             }
 
-            inline bool has_pages(std::size_t order)
+            bool has_pages(std::size_t order)
             {
                 return lists[order].next != nullptr;
             }
@@ -110,8 +131,7 @@ namespace pmm
                     if (order == static_cast<std::size_t>(-1))
                         break;
 
-                    const auto pg_page = vmm::page_for(base);
-                    pg_page->buddy.order = order;
+                    vmm::page_for(base)->buddy.order = order;
 
                     put(order, pg);
 
@@ -140,19 +160,20 @@ namespace pmm
 
                     current--;
 
-                    const auto buddy = reinterpret_cast<list *>(pgaddr + page_size * lib::pow2(current));
+                    const auto buddy = reinterpret_cast<list *>(
+                        pgaddr + (page_size * lib::pow2(current))
+                    );
 
-                    const auto pg_page = vmm::page_for(pgaddr);
-                    const auto buddy_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(buddy));
+                    auto *pg_page = vmm::page_for(pgaddr);
+                    auto *buddy_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(buddy));
 
                     lib::bug_on(pg_page->buddy.allocated != 0);
+                    lib::bug_on(pg_page->buddy.listed != 0);
                     lib::bug_on(buddy_page->buddy.allocated != 0);
+                    lib::bug_on(buddy_page->buddy.listed != 0);
 
                     pg_page->buddy.order = current;
                     buddy_page->buddy.order = current;
-
-                    buddy_page->buddy.next_paddr = pg_page->buddy.next_paddr;
-                    pg_page->buddy.next_paddr = lib::fromhh(reinterpret_cast<std::uintptr_t>(buddy)) >> page_bits;
 
                     put(current, pg);
                     put(current, buddy);
@@ -164,8 +185,7 @@ namespace pmm
                 if (target == 0)
                     return;
 
-                if (target > max_order)
-                    target = max_order;
+                target = std::min(target, max_order);
 
                 for (std::size_t order = 0; order < target; order++)
                 {
@@ -174,8 +194,8 @@ namespace pmm
 
                     while (has_pages(order))
                     {
-                        while (!vmm::page_for(curr)->buddy.next_paddr ||
-                            reinterpret_cast<std::uintptr_t>(curr) % next_block_size)
+                        while (get_phys(curr) % next_block_size ||
+                            !buddy_valid(get_phys(curr), order))
                         {
                             curr = curr->next;
                             if (!curr)
@@ -186,10 +206,11 @@ namespace pmm
                         lib::bug_on(curr_page->buddy.allocated != 0);
                         lib::bug_on(curr_page->buddy.order != order);
 
-                        const auto buddy_addr = lib::tohh(curr_page->buddy.next_paddr << page_bits);
+                        const auto buddy_addr = lib::tohh(get_buddy(get_phys(curr), order));
                         const auto buddy_page = vmm::page_for(buddy_addr);
 
-                        if (buddy_page->buddy.allocated || buddy_page->buddy.order != order)
+                        // if it's not allocated or listed, then it's not a fren
+                        if (!buddy_page->buddy.listed || buddy_page->buddy.order != order)
                         {
                             // cannot coalesce :(
                             curr = curr->next;
@@ -198,8 +219,12 @@ namespace pmm
                             continue;
                         }
 
+                        lib::bug_on(buddy_page->buddy.allocated != 0);
+
                         auto remove = [this, &order](auto pg)
                         {
+                            vmm::page_for(pg)->buddy.listed = 0;
+
                             if (pg->prev)
                                 pg->prev->next = pg->next;
                             else
@@ -212,11 +237,10 @@ namespace pmm
                         remove(curr);
                         remove(reinterpret_cast<list *>(buddy_addr));
 
-                        const auto merged = reinterpret_cast<list *>(curr);
-                        const auto merged_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(merged));
-                        merged_page->buddy.order = order + 1;
-                        merged_page->buddy.next_paddr = buddy_page->buddy.next_paddr;
+                        auto *merged = reinterpret_cast<list *>(curr);
+                        auto *merged_page = vmm::page_for(reinterpret_cast<std::uintptr_t>(merged));
 
+                        merged_page->buddy.order = order + 1;
                         put(order + 1, merged);
 
                         curr = lists[order].next;
@@ -232,7 +256,7 @@ namespace pmm
                 if (order < 0 || static_cast<std::size_t>(order) > max_order)
                     return 0;
 
-                const auto pg = vmm::page_for(addr);
+                auto *pg = vmm::page_for(addr);
                 lib::bug_on(
                     pg->buddy.allocated == 0,
                     "pmm::free: not allocated: addr=0x{:X} npages={} order={} pg->order={}",
@@ -283,7 +307,7 @@ namespace pmm
                 found:
                 const auto ret = reinterpret_cast<std::uintptr_t>(rem(order));
 
-                const auto pg = vmm::page_for(ret);
+                auto *pg = vmm::page_for(ret);
                 lib::bug_on(
                     pg->buddy.allocated == 1,
                     "pmm::alloc: already allocated: addr=0x{:X} order={} pg->order={}",
@@ -354,7 +378,6 @@ namespace pmm
                 mem.used += wasted;
             else
                 mem.used -= size - wasted;
-            return;
         }
 
         std::size_t bootstrap_memmap_idx = -1;
@@ -369,13 +392,13 @@ namespace pmm
             static const auto once = [] {
                 lib::info("pmm: setting up bootstrap allocator");
 
-                const auto memmaps = boot::requests::memmap.response->entries;
+                const auto *memmaps = boot::requests::memmap.response->entries;
                 const std::size_t num = boot::requests::memmap.response->entry_count;
 
                 std::size_t max_size = 0, idx = -1;
                 for (std::size_t i = 0; i < num; i++)
                 {
-                    const auto memmap = memmaps[i];
+                    const auto *memmap = memmaps[i];
                     if (static_cast<boot::memmap>(memmap->type) != boot::memmap::usable)
                         continue;
 
@@ -397,7 +420,7 @@ namespace pmm
             if (bootstrap_memmap.length < npages * page_size)
                 lib::panic("pmm: bootstrap allocator is out of memory");
 
-            const auto ret = bootstrap_memmap.base + bootstrap_memmap.length - npages * page_size;
+            const auto ret = bootstrap_memmap.base + bootstrap_memmap.length - (npages * page_size);
 #if defined(__x86_64__)
             if (ret < lib::mib(1))
                 lib::panic("pmm: bootstrap allocator tried to allocate memory below 1 MiB");
@@ -409,8 +432,8 @@ namespace pmm
 
         void pfndb_add(std::size_t idx)
         {
-            const auto memmaps = boot::requests::memmap.response->entries;
-            const auto memmap = memmaps[idx];
+            const auto *memmaps = boot::requests::memmap.response->entries;
+            const auto *memmap = memmaps[idx];
 
             const auto pg = reinterpret_cast<std::uintptr_t>(vmm::page_for(memmap->base));
             const auto vstart = lib::align_down(pg, page_size);
@@ -433,18 +456,43 @@ namespace pmm
                     lib::panic("pmm: could not map pfndb: {}", lib::error_name(ret.error()));
             }
         };
+
+        void pfndb_fill_holes()
+        {
+            const auto psize = vmm::page_size::small;
+            const auto flags = vmm::pflag::read | vmm::pflag::global;
+
+            const auto zero = alloc(1, true);
+            std::size_t num = 0;
+
+            const auto vstart = lib::align_down(mem.pfndb_base, page_size);
+            const auto vend = lib::align_up(mem.pfndb_end, page_size);
+
+            for (std::uintptr_t vaddr = vstart; vaddr < vend; vaddr += page_size)
+            {
+                if (const auto ret = vmm::kernel_pagemap->translate(vaddr, psize); ret && ret.value() != 0)
+                    continue;
+
+                if (const auto ret = vmm::kernel_pagemap->map(vaddr, zero, page_size, flags, psize); !ret)
+                    lib::panic("pmm: could not map pfndb hole: {}", lib::error_name(ret.error()));
+
+                num++;
+            }
+
+            lib::debug("pmm: filled {} hole pages for pfndb", num);
+        }
     } // namespace
 
     memory info() { return mem; }
 
     [[nodiscard]]
-    std::uintptr_t alloc(std::size_t npages, bool clear, type tp)
+    std::uintptr_t alloc(std::size_t count, bool clear, type tp)
     {
-        if (npages == 0)
+        if (count == 0)
             return 0;
 
         const std::unique_lock _ { lock };
-        const auto size = npages * page_size;
+        const auto size = count * page_size;
 
         std::pair<std::uintptr_t, std::size_t> ret { 0, 0 };
         if (initialised)
@@ -452,33 +500,33 @@ namespace pmm
             switch (tp)
             {
                 case type::normal:
-                    ret = normal.alloc(npages);
+                    ret = normal.alloc(count);
                     if (!ret.first && bootstrap_memmap_idx != static_cast<std::size_t>(-1))
-                        ret = { bootstrap_alloc(npages), size };
+                        ret = { bootstrap_alloc(count), size };
                     if (!ret.first)
-                        ret = sub4gib.alloc(npages);
+                        ret = sub4gib.alloc(count);
 #if !defined(__x86_64__)
                     if (!ret.first)
-                        ret = sub1mib.alloc(npages);
+                        ret = sub1mib.alloc(count);
 #endif
                     break;
                 case type::sub4gib:
-                    ret = sub4gib.alloc(npages);
+                    ret = sub4gib.alloc(count);
                     break;
                 case type::sub1mib:
-                    ret = sub1mib.alloc(npages);
+                    ret = sub1mib.alloc(count);
                     break;
                 default:
                     lib::panic("pmm: unknown allocation type {}", magic_enum::enum_name(tp));
             }
         }
-        else ret = { bootstrap_alloc(npages), size };
+        else ret = { bootstrap_alloc(count), size };
 
         if (!ret.first)
         {
             lib::panic(
                 "pmm: could not allocate {} page{}. type: {}",
-                npages, npages == 1 ? "" : "s", magic_enum::enum_name(tp)
+                count, count == 1 ? "" : "s", magic_enum::enum_name(tp)
             );
         }
 
@@ -489,9 +537,9 @@ namespace pmm
         return lib::fromhh(ret.first);
     }
 
-    void free(std::uintptr_t addr, std::size_t npages)
+    void free(std::uintptr_t addr, std::size_t count)
     {
-        if (npages == 0 || addr == 0)
+        if (count == 0 || addr == 0)
             return;
 
         if (initialised)
@@ -499,11 +547,11 @@ namespace pmm
             const std::unique_lock _ { lock };
 
             if (sub1mib.in_range(addr))
-                mem.used -= sub1mib.free(addr, npages);
+                mem.used -= sub1mib.free(addr, count);
             else if (sub4gib.in_range(addr))
-                mem.used -= sub4gib.free(addr, npages);
+                mem.used -= sub4gib.free(addr, count);
             else if (normal.in_range(addr))
-                mem.used -= normal.free(addr, npages);
+                mem.used -= normal.free(addr, count);
             else
                 lib::panic("pmm: attempted to free memory outside managed ranges: 0x{:X}", addr);
         }
@@ -514,12 +562,12 @@ namespace pmm
     {
         lib::debug("pmm: reclaiming bootloader memory");
 
-        const auto memmaps = boot::requests::memmap.response->entries;
+        const auto *memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
 
         for (std::size_t i = 0; i < num; i++)
         {
-            const auto memmap = memmaps[i];
+            const auto *memmap = memmaps[i];
             if (static_cast<boot::memmap>(memmap->type) != boot::memmap::bootloader)
                 continue;
 
@@ -529,14 +577,14 @@ namespace pmm
 
     void init()
     {
-        const auto memmaps = boot::requests::memmap.response->entries;
+        const auto *memmaps = boot::requests::memmap.response->entries;
         const std::size_t num = boot::requests::memmap.response->entry_count;
 
         lib::debug("pmm: number of memory maps: {}", num);
 
         for (std::size_t i = 0; i < num; i++)
         {
-            const auto memmap = memmaps[i];
+            const auto *memmap = memmaps[i];
             const auto type = static_cast<boot::memmap>(memmap->type);
 
             const std::uintptr_t end = memmap->base + memmap->length;
@@ -556,16 +604,13 @@ namespace pmm
             lib::debug("pmm: pfndb base: 0x{:X}", mem.pfndb_base);
 
             const std::size_t num_pages = lib::div_roundup(mem.usable_top, page_size);
-            mem.pfndb_end = mem.pfndb_base + num_pages * sizeof(vmm::page);
+            mem.pfndb_end = mem.pfndb_base + (num_pages * sizeof(vmm::page));
 
-            std::size_t start = mem.used;
+            const std::size_t start = mem.used;
 
             for (std::size_t i = 0; i < num; i++)
             {
-                if (i == bootstrap_memmap_idx)
-                    continue;
-
-                const auto memmap = memmaps[i];
+                const auto *memmap = memmaps[i];
                 const auto type = static_cast<boot::memmap>(memmap->type);
 
                 if (type != boot::memmap::usable && type != boot::memmap::bootloader && type != boot::memmap::kernel_and_modules)
@@ -573,7 +618,11 @@ namespace pmm
 
                 pfndb_add(i);
             }
-            pfndb_used_total += mem.used - start;
+
+            pfndb_fill_holes();
+
+            pfndb_used_total = mem.used - start;
+            lib::debug("pmm: pfndb size: {} KiB", pfndb_used_total / lib::kib(1));
         }
 
         lib::info("pmm: initialising the physical memory allocator");
@@ -583,7 +632,7 @@ namespace pmm
             if (i == bootstrap_memmap_idx)
                 continue;
 
-            const auto memmap = memmaps[i];
+            const auto *memmap = memmaps[i];
             const auto type = static_cast<boot::memmap>(memmap->type);
 
             if (type != boot::memmap::usable)
@@ -601,18 +650,8 @@ namespace pmm
 
         initialised = true;
 
-        {
-            lib::debug("pmm: adding bootstrap memory to pfndb");
-
-            std::size_t start = mem.used;
-            *memmaps[bootstrap_memmap_idx] = bootstrap_memmap;
-            pfndb_add(bootstrap_memmap_idx);
-            pfndb_used_total += mem.used - start;
-
-            lib::debug("pmm: total memory used for pfndb: {} KiB", pfndb_used_total / lib::kib(1));
-        }
-
         lib::debug("pmm: adding bootstrap memory to allocator");
+        *memmaps[bootstrap_memmap_idx] = bootstrap_memmap;
         add_range(bootstrap_memmap.base, bootstrap_memmap.length, false);
 
         bootstrap_memmap_idx = -1;

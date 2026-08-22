@@ -9,7 +9,7 @@ export namespace pmm
     constexpr std::size_t max_order = 15;
 
     constexpr std::size_t page_bits = std::countr_zero(page_size);
-    constexpr std::size_t paddr_bits = 48;
+    constexpr std::size_t paddr_bits = 52;
 
     struct memory
     {
