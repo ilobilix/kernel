@@ -2,11 +2,29 @@
 
 export module system.sched:timer;
 
+import system.chrono;
 import lib;
 import std;
 
 export namespace sched
 {
+    // virtual and prof
+    constexpr std::size_t cpu_itimer_count = 2;
+
+    struct cpu_itimer_t
+    {
+        std::uint64_t value_ns = 0;
+        std::uint64_t interval_ns = 0;
+        lib::spinlock_irq lock;
+    };
+
+    enum itimer_type
+    {
+        itimer_real = 0,
+        itimer_virtual = 1,
+        itimer_prof = 2
+    };
+
     struct timer_t : std::enable_shared_from_this<timer_t>
     {
         public:
@@ -14,6 +32,14 @@ export namespace sched
         {
             std::uint64_t remaining_ns; // 0 when disarmed
             std::uint64_t interval_ns;  // 0 for one shot
+
+            constexpr itimerspec to_itimerspec() const
+            {
+                return {
+                    .interval = interval_ns,
+                    .value = remaining_ns
+                };
+            }
         };
 
         private:
@@ -37,12 +63,16 @@ export namespace sched
 
         public:
         mutable lib::spinlock lock;
+        const chrono::type clockid;
 
+        timer_t(chrono::type clockid) : clockid { clockid } { }
         virtual ~timer_t() = default;
 
         state_t arm(std::uint64_t delay_ns, std::uint64_t interval_ns);
         state_t disarm();
         state_t query() const;
+
+        state_t settime(bool abstime, const itimerspec &its);
     };
 
     enum sigev
@@ -63,6 +93,14 @@ export namespace sched
 
     struct process_t;
     struct ptimer_t;
+    struct real_timer_t;
+
+    timer_t::state_t itimer_get(process_t *proc, itimer_type which);
+    timer_t::state_t itimer_set(
+        process_t *proc, itimer_type which,
+        std::uint64_t value_ns, std::uint64_t interval_ns
+    );
+    void itimer_clear(process_t *proc);
 
     lib::expect<int> ptimer_create(clockid_t clockid, const sigevent_t &ev);
     lib::expect<void> ptimer_delete(int id);
@@ -72,3 +110,8 @@ export namespace sched
 
     void ptimer_clear(process_t *proc);
 } // export namespace sched
+
+namespace sched
+{
+    void charge_cpu_itimers(process_t *proc, std::uint64_t delta_ns, bool from_user);
+} // namespace sched

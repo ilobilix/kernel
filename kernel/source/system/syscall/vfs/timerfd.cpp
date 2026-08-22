@@ -19,15 +19,14 @@ namespace syscall::vfs
 
         struct instance_t : sched::timer_t
         {
-            const clockid_t clockid;
-
             std::uint64_t ticks = 0;
             bool might_cancel = false; // cancel_on_set
             bool cancelled = false;
 
             sched::wait_queue_t bell;
 
-            instance_t(clockid_t clockid) : clockid { clockid } { }
+            instance_t(clockid_t clockid)
+                : sched::timer_t { static_cast<chrono::type>(clockid) } { }
 
             void expired(std::uint64_t missed) override { ticks += missed; }
             void notify() override { bell.wake_all(); }
@@ -45,19 +44,28 @@ namespace syscall::vfs
             >, lib::spinlock
         > cancel_list;
 
+        void cleanup(std::vector<std::weak_ptr<instance_t>> &list)
+        {
+            for (const auto *it = list.begin(); it != list.end(); )
+            {
+                if (it->expired())
+                    it = list.erase(it);
+                else
+                    it++;
+            }
+        }
+
         void clock_was_set()
         {
             std::vector<std::shared_ptr<instance_t>> live;
             {
-                auto locked = cancel_list.lock();
-                for (auto it = locked->begin(); it != locked->end(); )
+                const auto locked = cancel_list.lock();
+                cleanup(*locked);
+
+                for (const auto &weak : *locked)
                 {
-                    if (auto data = it->lock())
-                    {
+                    if (auto data = weak.lock())
                         live.push_back(std::move(data));
-                        it++;
-                    }
-                    else it = locked->erase(it);
                 }
             }
 
@@ -89,21 +97,14 @@ namespace syscall::vfs
                 return true;
             } ();
 
-            auto locked = cancel_list.lock();
+            const auto locked = cancel_list.lock();
+            cleanup(*locked);
 
-            bool present = false;
-            for (auto it = locked->begin(); it != locked->end(); )
-            {
-                const auto other = it->lock();
-                if (!other)
-                {
-                    it = locked->erase(it);
-                    continue;
+            const auto present = std::ranges::any_of(
+                *locked, [&data](const std::weak_ptr<instance_t> &weak) {
+                    return weak.lock() == data;
                 }
-
-                present = present || other == data;
-                it++;
-            }
+            );
 
             if (!present)
                 locked->push_back(data);
@@ -221,7 +222,7 @@ namespace syscall::vfs
 
         lib::expect<std::shared_ptr<instance_t>> get_instance(int fd)
         {
-            const auto proc = sched::current_process();
+            auto *proc = sched::current_process();
             const auto fdesc_res = detail::get_fd(proc, fd);
             if (!fdesc_res)
                 return std::unexpected { fdesc_res.error() };
@@ -282,16 +283,8 @@ namespace syscall::vfs
             return -lib::map_error(res.error());
         const auto &data = *res;
 
-        const auto clockid = static_cast<chrono::type>(data->clockid);
+        const auto clockid = data->clockid;
         const bool arming = knew.value.tv_sec != 0 || knew.value.tv_nsec != 0;
-
-        std::uint64_t delay = 0;
-        if (arming)
-        {
-            delay = (flags & tfd_timer_abstime)
-                ? chrono::delay_until(clockid, knew.value)
-                : knew.value.to_ns();
-        }
 
         const bool might_cancel = arming && clockid == chrono::realtime &&
             (flags & tfd_timer_abstime) && (flags & tfd_timer_cancel_on_set);
@@ -304,14 +297,7 @@ namespace syscall::vfs
         if (might_cancel)
             watch_clock(data);
 
-        const auto prev = arming
-            ? data->arm(delay, knew.interval.to_ns())
-            : data->disarm();
-
-        const itimerspec kold {
-            .interval = timespec { prev.interval_ns },
-            .value = timespec { prev.remaining_ns }
-        };
+        const auto kold = data->settime(flags & tfd_timer_abstime, knew).to_itimerspec();
         if (otmr && !lib::copy_to_user(otmr, &kold, sizeof(kold)))
             return -EFAULT;
         return 0;
@@ -323,12 +309,7 @@ namespace syscall::vfs
         if (!res)
             return -lib::map_error(res.error());
 
-        const auto cur = (*res)->query();
-        const itimerspec kold {
-            .interval = timespec { cur.interval_ns },
-            .value = timespec { cur.remaining_ns }
-        };
-
+        const auto kold = (*res)->query().to_itimerspec();
         if (!lib::copy_to_user(otmr, &kold, sizeof(kold)))
             return -EFAULT;
         return 0;

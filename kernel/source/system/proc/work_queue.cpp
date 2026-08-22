@@ -86,7 +86,7 @@ namespace sched
             pid0_created_stage()
         },
         [] {
-            sched::spawn(workqueue_t::worker, &wq, 5);
+            sched::spawn(workqueue_t::worker, &wq);
         }
     };
 

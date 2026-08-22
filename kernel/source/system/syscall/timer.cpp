@@ -9,18 +9,7 @@ import std;
 
 namespace syscall::chrono
 {
-    namespace
-    {
-        constexpr int timer_abstime = (1 << 0);
-
-        itimerspec to_itimerspec(const sched::timer_t::state_t &state)
-        {
-            return {
-                .interval = timespec { state.interval_ns },
-                .value = timespec { state.remaining_ns }
-            };
-        }
-    } // namespace
+    constexpr int timer_abstime = (1 << 0);
 
     struct user_sigevent
     {
@@ -96,7 +85,7 @@ namespace syscall::chrono
         if (!res)
             return -lib::map_error(res.error());
 
-        const auto kold = to_itimerspec(*res);
+        const auto kold = res->to_itimerspec();
         if (otmr && !lib::copy_to_user(otmr, &kold, sizeof(kold)))
             return -EFAULT;
         return 0;
@@ -108,7 +97,7 @@ namespace syscall::chrono
         if (!res)
             return -lib::map_error(res.error());
 
-        const auto kold = to_itimerspec(*res);
+        const auto kold = res->to_itimerspec();
         if (!lib::copy_to_user(otmr, &kold, sizeof(kold)))
             return -EFAULT;
         return 0;

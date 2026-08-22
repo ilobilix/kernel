@@ -135,9 +135,14 @@ export namespace sched
         wait_queue_t wait_child;
         wait_queue_t vfork_done;
 
-        alarm_entry_t alarm { };
-        cpu_itimer_t itimer_virtual { };
-        cpu_itimer_t itimer_prof { };
+        // itimer_real
+        lib::locker<
+            std::shared_ptr<real_timer_t>,
+            lib::spinlock
+        > real_timer { };
+
+        // itimer_type - 1
+        cpu_itimer_t cpu_itimers[cpu_itimer_count] { };
 
         std::atomic<std::uint8_t> pending_timer_sigs = 0;
         lib::intrusive_list_hook<process_t> timer_sig_hook;

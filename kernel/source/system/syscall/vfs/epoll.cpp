@@ -504,7 +504,7 @@ namespace syscall::vfs
             if (!lib::copy_from_user(&ktimeout, timeout, sizeof(timespec)))
                 return -EFAULT;
 
-            if (ktimeout.tv_nsec < 0 || ktimeout.tv_nsec >= 1'000'000'000l || ktimeout.tv_sec < 0)
+            if (!ktimeout.valid())
                 return -EINVAL;
 
             has_timeout = true;

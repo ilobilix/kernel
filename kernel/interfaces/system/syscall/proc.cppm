@@ -51,7 +51,7 @@ export namespace syscall::proc
 
     int set_tid_address(int __user *tidptr);
 
-    unsigned int alarm(unsigned int seconds);
+    std::uint32_t alarm(std::uint32_t seconds);
 
     int setitimer(int which, const itimerval __user *new_value, itimerval __user *old_value);
     int getitimer(int which, itimerval __user *curr_value);

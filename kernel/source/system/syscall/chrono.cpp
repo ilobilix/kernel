@@ -18,7 +18,7 @@ namespace syscall::chrono
             if (!sched::capable(sched::cap_t::sys_time))
                 return -EPERM;
 
-            if (ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1'000'000'000l)
+            if (!ts.valid())
                 return -EINVAL;
 
             if (!chrono::set_now(clockid, ts))
@@ -77,57 +77,40 @@ namespace syscall::chrono
         if (!lib::copy_from_user(&ktime, time, sizeof(timespec)))
             return -EFAULT;
 
-        if (ktime.tv_nsec < 0 || ktime.tv_nsec >= 1'000'000'000l)
+        if (!ktime.valid())
             return -EINVAL;
 
-        std::size_t ns = 0;
-        if (flags & abstime)
-        {
-            const auto now = chrono::now(static_cast<chrono::type>(clockid));
-            if (now.to_ns() == 0 || ktime < now)
-                return -EINVAL;
-            ns = (now - ktime).to_ns();
-        }
-        else ns = ktime.to_ns();
-
-        if (ns == 0)
-        {
-            timespec tmp { 0 };
+        const auto finish = [remain](std::uint64_t rns, int ret) {
+            const timespec tmp { rns };
             if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
                 return -EFAULT;
-            return 0;
-        }
+            return ret;
+        };
 
-        const auto timer = chrono::main_timer();
+        const auto ns = (flags & abstime)
+            ? chrono::delay_until(static_cast<chrono::type>(clockid), ktime)
+            : ktime.to_ns();
+
+        if (ns == 0)
+            return finish(0, 0);
+
+        const auto *timer = chrono::main_timer();
         const auto deadline = timer->ns() + ns;
 
         while (true)
         {
             const auto now = timer->ns();
             if (now >= deadline)
-            {
-                timespec tmp { 0 };
-                if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-                    return -EFAULT;
-                return 0;
-            }
+                return finish(0, 0);
 
             const auto rns = sched::sleep_for_ns(deadline - now);
             if (rns == 0)
-            {
-                timespec tmp { 0 };
-                if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-                    return -EFAULT;
-                return 0;
-            }
+                return finish(0, 0);
 
             if (sched::consume_pending_stops())
                 continue;
 
-            timespec tmp { rns };
-            if (remain && !lib::copy_to_user(remain, &tmp, sizeof(timespec)))
-                return -EFAULT;
-            return -EINTR;
+            return finish(rns, -EINTR);
         }
     }
 

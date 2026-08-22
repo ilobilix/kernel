@@ -237,6 +237,8 @@ export namespace input
         {
             std::weak_ptr<device_t> dev;
 
+            repeat_timer_t() : sched::timer_t { chrono::monotonic } { }
+
             void expired(std::uint64_t missed) override;
             void notify() override;
         };

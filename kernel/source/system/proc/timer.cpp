@@ -66,6 +66,19 @@ namespace sched
         return prev;
     }
 
+    timer_t::state_t timer_t::settime(bool abstime, const itimerspec &its)
+    {
+        const bool arming = its.value.tv_sec != 0 || its.value.tv_nsec != 0;
+        if (!arming)
+            return disarm();
+
+        const auto delay = abstime
+            ? chrono::delay_until(clockid, its.value)
+            : its.value.to_ns();
+
+        return arm(delay, its.interval.to_ns());
+    }
+
     void timer_t::schedule(std::uint64_t gen, std::uint64_t delay_ns)
     {
         schedule_work_after_ns(

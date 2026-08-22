@@ -65,14 +65,14 @@ namespace syscall::vfs
             std::uint64_t timeout_ns = 0;
             if (timeout)
             {
-                if (timeout->tv_nsec < 0 || timeout->tv_nsec >= 1'000'000'000l)
+                if (!timeout->valid())
                     return -EINVAL;
 
                 timeout_ns = timeout->to_ns();
             }
 
-            auto thread = sched::current_thread();
-            auto process = thread->proc.get();
+            auto *thread = sched::current_thread();
+            auto *process = thread->proc.get();
 
             sched::scoped_sigmask guard;
             if (sigmask)
@@ -188,7 +188,7 @@ namespace syscall::vfs
                 pfds.emplace_back(fd, events, 0);
             }
 
-            const auto timer = chrono::main_timer();
+            const auto *timer = chrono::main_timer();
 
             std::uint64_t start_ns = 0;
             if (update_timeout && timeout)
@@ -201,17 +201,7 @@ namespace syscall::vfs
                 const auto elapsed = timer->ns() - start_ns;
                 const auto requested = timeout->to_ns();
 
-                if (elapsed >= requested)
-                {
-                    timeout->tv_sec = 0;
-                    timeout->tv_nsec = 0;
-                }
-                else
-                {
-                    const auto left = requested - elapsed;
-                    timeout->tv_sec = static_cast<time_t>(left / 1'000'000'000ul);
-                    timeout->tv_nsec = static_cast<long>(left % 1'000'000'000ul);
-                }
+                *timeout = timespec { elapsed >= requested ? 0 : requested - elapsed };
             }
 
             if (ret < 0)

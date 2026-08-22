@@ -85,7 +85,7 @@ namespace syscall::proc
 
     int getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid)
     {
-        auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto &cred = proc->cred;
         if (ruid)
         {
@@ -114,7 +114,7 @@ namespace syscall::proc
 
     int getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid)
     {
-        auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto &cred = proc->cred;
         if (rgid)
         {
@@ -354,82 +354,42 @@ namespace syscall::proc
 
     int set_tid_address(int __user *tidptr)
     {
-        const auto thread = sched::current_thread();
+        auto *thread = sched::current_thread();
         thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(tidptr);
         return thread->tid;
     }
 
-    unsigned int alarm(unsigned int seconds)
-    {
-        const auto ns = static_cast<std::uint64_t>(seconds) * 1'000'000'000ul;
-        std::uint64_t prev_ns;
-
-        auto proc = sched::current_process();
-
-        if (seconds == 0)
-            prev_ns = sched::cancel_alarm(&proc->alarm);
-        else
-            prev_ns = sched::arm_alarm(&proc->alarm, proc, ns);
-
-        return lib::div_roundup(prev_ns, 1'000'000'000ul);
-    }
-
     namespace
     {
-        enum itimer_which : int
+        constexpr bool valid_which(int which)
         {
-            itimer_real = 0,
-            itimer_virtual = 1,
-            itimer_prof = 2,
-        };
-
-        constexpr std::uint64_t timeval_to_ns(const timeval &tv)
-        {
-            return static_cast<std::uint64_t>(tv.tv_sec) * 1'000'000'000ull +
-                static_cast<std::uint64_t>(tv.tv_usec) * 1'000ull;
+            return which == sched::itimer_real ||
+                which == sched::itimer_virtual ||
+                which == sched::itimer_prof;
         }
 
-        constexpr timeval ns_to_timeval(std::uint64_t ns)
+        constexpr itimerval to_itimerval(const sched::timer_t::state_t &state)
         {
-            return timeval {
-                .tv_sec = static_cast<time_t>(ns / 1'000'000'000ull),
-                .tv_usec = static_cast<suseconds_t>((ns % 1'000'000'000ull) / 1'000ull),
+            return {
+                .it_interval = timeval::from_ns(state.interval_ns),
+                .it_value = timeval::from_ns(state.remaining_ns)
             };
-        }
-
-        bool valid_timeval(const timeval &tv)
-        {
-            return tv.tv_sec >= 0 && tv.tv_usec >= 0 && tv.tv_usec < 1'000'000;
-        }
-
-        itimerval read_cpu_itimer(sched::cpu_itimer_t &it)
-        {
-            const std::unique_lock _ { it.lock };
-            return itimerval {
-                .it_interval = ns_to_timeval(it.interval_ns),
-                .it_value = ns_to_timeval(it.value_ns),
-            };
-        }
-
-        itimerval write_cpu_itimer(
-            sched::cpu_itimer_t &it,
-            std::uint64_t value_ns, std::uint64_t interval_ns
-        )
-        {
-            const std::unique_lock _ { it.lock };
-            const itimerval old {
-                .it_interval = ns_to_timeval(it.interval_ns),
-                .it_value = ns_to_timeval(it.value_ns),
-            };
-            it.value_ns = value_ns;
-            it.interval_ns = (value_ns == 0) ? 0 : interval_ns;
-            return old;
         }
     } // namespace
 
+    std::uint32_t alarm(std::uint32_t seconds)
+    {
+        const auto ns = static_cast<std::uint64_t>(seconds) * 1'000'000'000ul;
+        const auto prev = sched::itimer_set(
+            sched::current_process(), sched::itimer_real, ns, 0
+        );
+
+        return lib::div_roundup(prev.remaining_ns, 1'000'000'000ul);
+    }
+
     int setitimer(int which, const itimerval __user *new_value, itimerval __user *old_value)
     {
-        if (which != itimer_real && which != itimer_virtual && which != itimer_prof)
+        if (!valid_which(which))
             return -EINVAL;
 
         itimerval new_v { };
@@ -437,37 +397,16 @@ namespace syscall::proc
         {
             if (!lib::copy_from_user(&new_v, new_value, sizeof(new_v)))
                 return -EFAULT;
-            if (!valid_timeval(new_v.it_value) || !valid_timeval(new_v.it_interval))
+            if (!new_v.valid())
                 return -EINVAL;
         }
 
-        const auto value_ns = timeval_to_ns(new_v.it_value);
-        const auto interval_ns = (value_ns == 0) ? 0 : timeval_to_ns(new_v.it_interval);
-
-        auto proc = sched::current_process();
-        itimerval old { };
-
-        switch (which)
-        {
-            case itimer_real:
-            {
-                const auto prev = sched::alarm_state(&proc->alarm);
-                if (value_ns == 0)
-                    sched::cancel_alarm(&proc->alarm);
-                else
-                    sched::arm_alarm(&proc->alarm, proc, value_ns, interval_ns);
-
-                old.it_value = ns_to_timeval(prev.remaining_ns);
-                old.it_interval = ns_to_timeval(prev.interval_ns);
-                break;
-            }
-            case itimer_virtual:
-                old = write_cpu_itimer(proc->itimer_virtual, value_ns, interval_ns);
-                break;
-            case itimer_prof:
-                old = write_cpu_itimer(proc->itimer_prof, value_ns, interval_ns);
-                break;
-        }
+        const auto old = to_itimerval(
+            sched::itimer_set(
+                sched::current_process(), static_cast<sched::itimer_type>(which),
+                new_v.it_value.to_ns(), new_v.it_interval.to_ns()
+            )
+        );
 
         if (old_value != nullptr && !lib::copy_to_user(old_value, &old, sizeof(old)))
             return -EFAULT;
@@ -477,31 +416,15 @@ namespace syscall::proc
 
     int getitimer(int which, itimerval __user *curr_value)
     {
-        if (which != itimer_real && which != itimer_virtual && which != itimer_prof)
+        if (!valid_which(which))
             return -EINVAL;
 
         if (curr_value == nullptr)
             return -EFAULT;
 
-        auto proc = sched::current_process();
-        itimerval cur { };
-
-        switch (which)
-        {
-            case itimer_real:
-            {
-                const auto state = sched::alarm_state(&proc->alarm);
-                cur.it_value = ns_to_timeval(state.remaining_ns);
-                cur.it_interval = ns_to_timeval(state.interval_ns);
-                break;
-            }
-            case itimer_virtual:
-                cur = read_cpu_itimer(proc->itimer_virtual);
-                break;
-            case itimer_prof:
-                cur = read_cpu_itimer(proc->itimer_prof);
-                break;
-        }
+        const auto cur = to_itimerval(
+            sched::itimer_get(sched::current_process(), static_cast<sched::itimer_type>(which))
+        );
 
         if (!lib::copy_to_user(curr_value, &cur, sizeof(cur)))
             return -EFAULT;
@@ -544,7 +467,7 @@ namespace syscall::proc
         if (sig == 0)
             return 0;
 
-        const auto caller = current_process();
+        const auto *caller = current_process();
         siginfo_t info {
             .signo = sig,
             .code = si_tkill,
@@ -582,7 +505,7 @@ namespace syscall::proc
             newact.mask &= ~sigmask_uncatchable;
         }
 
-        auto proc = current_process();
+        auto *proc = current_process();
         sigaction_t old;
         {
             auto &sigacts = proc->sigactions;
@@ -639,6 +562,8 @@ namespace syscall::proc
                 case sig_setmask:
                     sigmask = kset;
                     break;
+                default:
+                    std::unreachable();
             }
         }
 
@@ -655,8 +580,8 @@ namespace syscall::proc
         if (sigsetsize != sizeof(sigset_t))
             return -EINVAL;
 
-        auto thread = current_thread();
-        auto proc = thread->proc.get();
+        auto *thread = current_thread();
+        auto *proc = thread->proc.get();
 
         sigset_t pending;
         {
@@ -697,17 +622,17 @@ namespace syscall::proc
             timespec kts;
             if (!lib::copy_from_user(&kts, uts, sizeof(kts)))
                 return -EFAULT;
-            if (kts.tv_nsec < 0 || kts.tv_nsec >= 1'000'000'000l || kts.tv_sec < 0)
+            if (!kts.valid())
                 return -EINVAL;
 
             has_timeout = true;
             timeout_ns = kts.to_ns();
         }
 
-        auto thread = current_thread();
-        auto proc = thread->proc.get();
+        auto *thread = current_thread();
+        auto *proc = thread->proc.get();
 
-        const auto timer = chrono::main_timer();
+        const auto *timer = chrono::main_timer();
         std::uint64_t deadline_ns = 0;
         if (has_timeout)
             deadline_ns = timer->ns() + timeout_ns;
@@ -795,7 +720,7 @@ namespace syscall::proc
     {
         using namespace sched;
 
-        auto thread = current_thread();
+        auto *thread = current_thread();
 
         const bool active = [sp = thread->saved_regs->sp(), &ss = thread->altstack] {
             if (ss.sp == 0 || ss.size == 0)
@@ -894,7 +819,7 @@ namespace syscall::proc
                     timespec kts;
                     if (!lib::copy_from_user(&kts, timeout, sizeof(kts)))
                         return -EFAULT;
-                    if (kts.tv_nsec < 0 || kts.tv_nsec >= 1'000'000'000l || kts.tv_sec < 0)
+                    if (!kts.valid())
                         return -EINVAL;
 
                     if (cmd == futex_wait_bitset)
@@ -1016,7 +941,7 @@ namespace syscall::proc
         else target = sched::current_thread();
 
         using namespace sched::futex;
-        const auto stored_head = reinterpret_cast<robust_list_head_t __user *>(target->robust_list);
+        const auto *stored_head = reinterpret_cast<robust_list_head_t __user *>(target->robust_list);
         if (!lib::copy_to_user(head_ptr, &stored_head, sizeof(head_ptr)))
             return -EFAULT;
 
@@ -1031,7 +956,7 @@ namespace syscall::proc
         if (size != sizeof(sched::futex::robust_list_head_t))
             return -EINVAL;
 
-        auto thread = sched::current_thread();
+        auto *thread = sched::current_thread();
         thread->robust_list = reinterpret_cast<std::uintptr_t>(head);
         thread->robust_list_len = size;
         return 0;
@@ -1156,11 +1081,13 @@ namespace syscall::proc
             case rusage_thread:
                 cputime = sched::thread_cputime(sched::current_thread());
                 break;
+            default:
+                std::unreachable();
         }
 
         rusage kbuf { };
-        kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
-        kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+        kbuf.ru_utime = timeval::from_ns(cputime.utime_ns);
+        kbuf.ru_stime = timeval::from_ns(cputime.stime_ns);
         // TODO: the rest
 
         if (!lib::copy_to_user(usage, &kbuf, sizeof(kbuf)))
@@ -1261,7 +1188,7 @@ namespace syscall::proc
             .cgroup = static_cast<int>(uargs.cgroup),
         };
 
-        const auto uset_tid = reinterpret_cast<int __user *>(uargs.set_tid);
+        const auto *uset_tid = reinterpret_cast<int __user *>(uargs.set_tid);
         const auto uset_tid_size_bytes = uargs.set_tid_size * sizeof(pid_t);
         if (uargs.set_tid && !lib::copy_from_user(set_tid, uset_tid, uset_tid_size_bytes))
             return -EFAULT;
@@ -1294,7 +1221,7 @@ namespace syscall::proc
         if (flags & ~(at_symlink_nofollow | at_empty_path))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *proc = sched::current_process();
 
         const bool follow_links = (flags & at_symlink_nofollow) == 0;
         const bool empty_path = (flags & at_empty_path) != 0;
@@ -1304,8 +1231,8 @@ namespace syscall::proc
             return -lib::map_error(target.error());
 
         const auto stack_limit = proc->rlimits->get(sched::rlimit_stack).cur;
-        constexpr std::size_t max_arg_len = 32 * 4096;
-        const std::size_t max_arg_total = std::max(
+        constexpr auto max_arg_len = 32zu * 4096;
+        const auto max_arg_total = std::max(
             max_arg_len,
             std::min(stack_limit, sched::ustack_size) / 4
         );
@@ -1325,7 +1252,7 @@ namespace syscall::proc
                 if (addr == 0)
                     break;
 
-                const auto ptr = reinterpret_cast<const char __user *>(addr);
+                const auto *ptr = reinterpret_cast<const char __user *>(addr);
                 auto str = lib::user_string::get(ptr, max_arg_len);
                 if (!str.has_value())
                 {
@@ -1392,8 +1319,8 @@ namespace syscall::proc
         {
             // TODO: other fields
             struct rusage kbuf { };
-            kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
-            kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+            kbuf.ru_utime = timeval::from_ns(cputime.utime_ns);
+            kbuf.ru_stime = timeval::from_ns(cputime.stime_ns);
 
             if (!lib::copy_to_user(rusage, &kbuf, sizeof(kbuf)))
                 return -EFAULT;
@@ -1473,8 +1400,8 @@ namespace syscall::proc
             struct rusage kbuf { };
             if (ret > 0)
             {
-                kbuf.ru_utime = ns_to_timeval(cputime.utime_ns);
-                kbuf.ru_stime = ns_to_timeval(cputime.stime_ns);
+                kbuf.ru_utime = timeval::from_ns(cputime.utime_ns);
+                kbuf.ru_stime = timeval::from_ns(cputime.stime_ns);
             }
             if (!lib::copy_to_user(rusage, &kbuf, sizeof(kbuf)))
                 return -EFAULT;
@@ -1508,7 +1435,7 @@ namespace syscall::proc
             return -EINVAL;
 
         std::shared_ptr<sched::thread_t> keep_alive;
-        auto thread = (pid == 0)
+        auto *thread = (pid == 0)
             ? sched::current_thread()
             : (keep_alive = sched::get_thread(pid)).get();
         if (!thread)
@@ -1549,7 +1476,7 @@ namespace syscall::proc
             return -EINVAL;
 
         std::shared_ptr<sched::thread_t> keep_alive;
-        auto thread = (pid == 0)
+        const auto *thread = (pid == 0)
             ? sched::current_thread()
             : (keep_alive = sched::get_thread(pid)).get();
         if (!thread)

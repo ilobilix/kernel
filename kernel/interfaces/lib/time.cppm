@@ -13,6 +13,14 @@ export
         time_t tv_sec;
         suseconds_t tv_usec;
 
+        static constexpr timeval from_ns(std::uint64_t ns)
+        {
+            return timeval {
+                .tv_sec = static_cast<time_t>(ns / 1'000'000'000ul),
+                .tv_usec = static_cast<suseconds_t>((ns % 1'000'000'000ul) / 1'000ul)
+            };
+        }
+
         constexpr bool valid() const
         {
             constexpr time_t max_sec = std::numeric_limits<std::int64_t>::max() / 1'000'000'000l / 2;
@@ -21,12 +29,12 @@ export
 
         constexpr std::uint64_t to_ns() const
         {
-            return tv_sec * 1'000'000'000ul + tv_usec * 1'000;
+            return (tv_sec * 1'000'000'000ul) + (tv_usec * 1'000);
         }
 
         constexpr std::uint64_t to_ms() const
         {
-            return tv_sec * 1000ul + tv_usec / 1'000;
+            return (tv_sec * 1000ul) + (tv_usec / 1'000);
         }
     };
 
@@ -34,6 +42,11 @@ export
     {
         timeval it_interval;
         timeval it_value;
+
+        constexpr bool valid() const
+        {
+            return it_value.valid() && it_interval.valid();
+        }
     };
 
     struct timezone
@@ -85,7 +98,7 @@ export
             tv_nsec -= other.tv_nsec;
             if (tv_nsec < 0)
             {
-                tv_sec -= 1 + (-tv_nsec) / 1'000'000'000ul;
+                tv_sec -= 1 + ((-tv_nsec) / 1'000'000'000ul);
                 tv_nsec = 1'000'000'000ul - ((-tv_nsec) % 1'000'000'000ul);
             }
             return *this;
@@ -120,12 +133,12 @@ export
 
         constexpr std::uint64_t to_ns() const
         {
-            return tv_sec * 1'000'000'000ul + tv_nsec;
+            return (tv_sec * 1'000'000'000ul) + tv_nsec;
         }
 
         constexpr std::uint64_t to_ms() const
         {
-            return tv_sec * 1000ul + tv_nsec / 1'000'000;
+            return (tv_sec * 1000ul) + (tv_nsec / 1'000'000);
         }
 
         constexpr timeval to_timeval() const

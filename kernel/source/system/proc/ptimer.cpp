@@ -2,15 +2,13 @@
 
 module system.sched;
 
-import system.chrono;
-
 namespace sched
 {
     namespace
     {
         lib::expect<std::shared_ptr<ptimer_t>> lookup(int id)
         {
-            const auto proc = current_process();
+            auto *proc = current_process();
             auto locked = proc->ptimers.lock();
 
             const auto it = locked->find(id);
@@ -23,7 +21,6 @@ namespace sched
 
     struct ptimer_t : timer_t
     {
-        const clockid_t clockid;
         const sigevent_t ev;
         const int id;
         const std::weak_ptr<process_t> wproc;
@@ -32,7 +29,8 @@ namespace sched
         std::atomic<int> last_overrun = 0;
 
         ptimer_t(clockid_t clockid, const sigevent_t &ev, int id, std::weak_ptr<process_t> wproc)
-            : clockid { clockid }, ev { ev }, id { id }, wproc { std::move(wproc) } { }
+            : timer_t { static_cast<chrono::type>(clockid) }, ev { ev },
+              id { id }, wproc { std::move(wproc) } { }
 
         void expired(std::uint64_t missed) override
         {
@@ -103,7 +101,7 @@ namespace sched
                 return std::unexpected { lib::err::invalid_argument };
         }
 
-        const auto proc = current_process();
+        auto *proc = current_process();
         if (ev.notify == sigev_thread_id)
         {
             auto locked = proc->threads.lock();
@@ -120,7 +118,7 @@ namespace sched
 
     lib::expect<void> ptimer_delete(int id)
     {
-        const auto proc = current_process();
+        auto *proc = current_process();
         std::shared_ptr<ptimer_t> timer;
         {
             auto locked = proc->ptimers.lock();
@@ -142,16 +140,7 @@ namespace sched
         if (!res)
             return std::unexpected { res.error() };
 
-        const auto &timer = *res;
-        const bool arming = its.value.tv_sec != 0 || its.value.tv_nsec != 0;
-        if (!arming)
-            return timer->disarm();
-
-        const auto delay = abstime
-            ? chrono::delay_until(static_cast<chrono::type>(timer->clockid), its.value)
-            : its.value.to_ns();
-
-        return timer->arm(delay, its.interval.to_ns());
+        return (*res)->settime(abstime, its);
     }
 
     lib::expect<timer_t::state_t> ptimer_gettime(int id)
