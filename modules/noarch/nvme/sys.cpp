@@ -50,7 +50,7 @@ namespace nvme
 
     // TODO
     lib::expect<std::size_t> ctrl_ops_t::read(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -63,7 +63,7 @@ namespace nvme
 
     // TODO
     lib::expect<std::size_t> ctrl_ops_t::write(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -76,7 +76,7 @@ namespace nvme
 
     // TODO
     lib::expect<int> ctrl_ops_t::ioctl(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t request,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t request,
         lib::uptr_or_addr argp
     )
     {

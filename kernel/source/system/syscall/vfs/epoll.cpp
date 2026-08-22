@@ -159,14 +159,14 @@ namespace syscall::vfs
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+            lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
             {
                 lib::unused(file, flags, pid);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -175,7 +175,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -184,7 +184,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+                const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *pt
             ) override
             {
                 auto epi = std::static_pointer_cast<epoll_instance_t>(file->private_data);
@@ -238,7 +238,7 @@ namespace syscall::vfs
             bool has_timeout, std::uint64_t timeout_ns
         )
         {
-            const auto timer = chrono::main_timer();
+            const auto *timer = chrono::main_timer();
             std::uint64_t deadline_ns = 0;
             if (has_timeout)
                 deadline_ns = timer->ns() + timeout_ns;
@@ -255,13 +255,13 @@ namespace syscall::vfs
                         while (!epi->ready.empty() &&
                                static_cast<int>(batch.size() + out.size()) < maxevents)
                         {
-                            auto ent = epi->ready.pop_front();
+                            auto *ent = epi->ready.pop_front();
                             ent->on_ready = false;
                             batch.push_back(ent);
                         }
                     }
 
-                    for (auto ent : batch)
+                    for (auto *ent : batch)
                     {
                         if (!ent->active)
                             continue;
@@ -483,6 +483,8 @@ namespace syscall::vfs
                 epi->watched.erase(it);
                 return 0;
             }
+            default:
+                std::unreachable();
         }
 
         const auto rev = rearm(target);

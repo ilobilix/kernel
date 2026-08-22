@@ -476,7 +476,7 @@ namespace dev::block
     }
 
     lib::expect<std::size_t> ops_t::read(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -503,7 +503,7 @@ namespace dev::block
     }
 
     lib::expect<std::size_t> ops_t::write(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -530,13 +530,13 @@ namespace dev::block
         return mem.write(offset, buffer.subspan(0, real_size)); // TODO: sync
     }
 
-    lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
+    lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
     {
         lib::unused(file);
         return memory;
     }
 
-    lib::expect<void> ops_t::sync(std::shared_ptr<vfs::file_t> file, bool data)
+    lib::expect<void> ops_t::sync(const std::shared_ptr<vfs::file_t> &file, bool data)
     {
         lib::unused(file, data);
 

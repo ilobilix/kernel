@@ -176,7 +176,7 @@ namespace vfs::pipe
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+            lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
             {
                 lib::unused(pid);
                 lib::bug_on(!file || !file->path.dentry || !file->path.dentry->inode);
@@ -235,7 +235,7 @@ namespace vfs::pipe
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -290,7 +290,7 @@ namespace vfs::pipe
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -391,7 +391,7 @@ namespace vfs::pipe
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+                const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *pt
             ) override
             {
                 lib::bug_on(!file || !file->private_data);
@@ -483,7 +483,7 @@ namespace vfs::pipe
         return std::make_pair(rfd->first, wfd->first);
     }
 
-    lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file_t> file)
+    lib::expect<std::size_t> get_size(const std::shared_ptr<vfs::file_t> &file)
     {
         const auto pdata = require_pipe(file);
         if (!pdata.has_value())
@@ -493,7 +493,7 @@ namespace vfs::pipe
         return (*pdata)->capacity;
     }
 
-    lib::expect<std::size_t> set_size(std::shared_ptr<vfs::file_t> file, std::size_t size)
+    lib::expect<std::size_t> set_size(const std::shared_ptr<vfs::file_t> &file, std::size_t size)
     {
         if (size == 0)
             return std::unexpected { lib::err::invalid_argument };

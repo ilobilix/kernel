@@ -12,6 +12,6 @@ export namespace vfs::pipe
 
     lib::expect<std::pair<int, int>> create_pair(int flags);
 
-    lib::expect<std::size_t> get_size(std::shared_ptr<vfs::file_t> file);
-    lib::expect<std::size_t> set_size(std::shared_ptr<vfs::file_t> file, std::size_t size);
+    lib::expect<std::size_t> get_size(const std::shared_ptr<vfs::file_t> &file);
+    lib::expect<std::size_t> set_size(const std::shared_ptr<vfs::file_t> &file, std::size_t size);
 } // export namespace vfs::pipe

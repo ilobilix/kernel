@@ -87,7 +87,7 @@ export namespace dev::block
 
         object_t(std::uint64_t lba_start, std::uint64_t lba_count, std::weak_ptr<drive_t> drive)
             : vmm::object { vmm::object_type::file },
-              drive { drive }, lba_start { lba_start }, lba_count { lba_count } { }
+              drive { std::move(drive) }, lba_start { lba_start }, lba_count { lba_count } { }
     };
 
     struct ops_t : vfs::ops_t
@@ -103,24 +103,24 @@ export namespace dev::block
         ) : vfs::ops_t { }, memory { new object_t {
                 lba_start.value_or(0),
                 lba_count.value_or(drive->block_count()),
-                std::move(drive)
+                drive
             } } { }
 
         object_t &get_memory() { return static_cast<object_t &>(*memory); }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
-        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
+        lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override;
 
-        lib::expect<void> sync(std::shared_ptr<vfs::file_t> file, bool data) override;
+        lib::expect<void> sync(const std::shared_ptr<vfs::file_t> &file, bool data) override;
     };
 
     namespace mbr

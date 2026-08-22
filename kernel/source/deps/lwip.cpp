@@ -57,7 +57,7 @@ namespace lwip
         u32_t sem_wait(lwip_port_sem_t *sem, u32_t timeout_ms)
         {
             const auto start = chrono::now(chrono::monotonic).to_ns();
-            const auto deadline = start + static_cast<std::uint64_t>(timeout_ms) * 1'000'000ul;
+            const auto deadline = start + (static_cast<std::uint64_t>(timeout_ms) * 1'000'000ul);
 
             while (true)
             {

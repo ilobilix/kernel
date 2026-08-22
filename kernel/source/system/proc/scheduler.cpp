@@ -162,16 +162,7 @@ namespace sched
             rq.enqueue(thread);
             rq.nr_running++;
 
-            bool should_resched = false;
-            if (rq.current)
-            {
-                if (rq.current->is_idle())
-                    should_resched = true;
-                else if (rq.check_preempt_wakeup(thread))
-                    should_resched = true;
-            }
-
-            if (should_resched)
+            if (rq.current && (rq.current->is_idle() || rq.check_preempt_wakeup(thread)))
             {
                 rq.current->set_flag(thread_flags::needs_resched);
                 if (cpu_idx != self.idx)
@@ -208,8 +199,7 @@ namespace sched
             {
                 if (auto group = it->second.lock())
                     return group;
-                else
-                    locked->erase(it);
+                locked->erase(it);
             }
             return nullptr;
         }
@@ -230,8 +220,8 @@ namespace sched
 
         void request_kill_siblings(int exit_code)
         {
-            auto current = current_thread();
-            auto process = current->proc.get();
+            const auto *current = current_thread();
+            auto *process = current->proc.get();
 
             std::vector<std::shared_ptr<thread_t>> targets;
             {
@@ -452,7 +442,7 @@ namespace sched
         thread_t *prev = rq.current;
         thread_t *next = nullptr;
 
-        const auto timer = chrono::main_timer();
+        const auto *timer = chrono::main_timer();
         const auto now = timer->ns();
 
         const auto delta = rq.update_current(now);
@@ -490,7 +480,7 @@ namespace sched
         prev->clear_flag(thread_flags::needs_resched);
 
         const auto pick_alive = [&] -> thread_t * {
-            while (auto cand = rq.pick_next())
+            while (auto *cand = rq.pick_next())
             {
                 const auto st = cand->state.load(std::memory_order_relaxed);
                 rq.dequeue(cand);
@@ -542,17 +532,15 @@ namespace sched
             }
             return;
         }
-        else
+
+        auto &loaded = loaded_pmap.unsafe_get();
+        const auto *next_pmap = next->proc->vmspace->pmap.get();
+        if (loaded != next_pmap)
         {
-            auto &loaded = loaded_pmap.unsafe_get();
-            const auto next_pmap = next->proc->vmspace->pmap.get();
-            if (loaded != next_pmap)
-            {
-                if (loaded)
-                    loaded->unload();
-                next_pmap->load();
-                loaded = next_pmap;
-            }
+            if (loaded)
+                loaded->unload();
+            next_pmap->load();
+            loaded = next_pmap;
         }
 
         if (self.in_interrupt.load(std::memory_order_relaxed))
@@ -564,8 +552,8 @@ namespace sched
         arch::arm_timer_ns(timeslice);
         arch::context_switch(prev, next);
 
-        auto thread = current_thread();
-        if (auto released = thread->prev_to_release)
+        auto *thread = current_thread();
+        if (auto *released = thread->prev_to_release)
         {
             thread->prev_to_release = nullptr;
             released->on_cpu.store(false, std::memory_order_release);
@@ -646,7 +634,7 @@ namespace sched
         thread->proc = proc;
         thread->set_flag(thread_flags::kernel);
 
-        thread->nice = nice;
+        thread->nice = std::move(nice);
         thread->weight = nice_to_weight(thread->nice);
         thread->inv_weight = nice_to_inv_weight(thread->nice);
 
@@ -687,7 +675,7 @@ namespace sched
 
         thread->proc = proc;
 
-        thread->nice = nice;
+        thread->nice = std::move(nice);
         thread->weight = nice_to_weight(thread->nice);
         thread->inv_weight = nice_to_inv_weight(thread->nice);
 
@@ -774,7 +762,7 @@ namespace sched
 
     std::shared_ptr<thread_t> spawn(std::uintptr_t ip, std::uintptr_t arg, nice_t nice)
     {
-        auto thread = create_kthread(ip, arg, nice);
+        auto thread = create_kthread(ip, arg, std::move(nice));
         enqueue_new(thread.get());
         return thread;
     }
@@ -843,7 +831,8 @@ namespace sched
                 }
                 return wake_stopped(thread);
             }
-            else if (state != thread_state::sleeping && state != thread_state::blocked)
+
+            if (state != thread_state::sleeping && state != thread_state::blocked)
                 return false;
 
             if (thread->state.compare_exchange_weak(
@@ -861,7 +850,7 @@ namespace sched
         std::size_t target;
         if (thread->on_cpu.load(std::memory_order_acquire))
         {
-            const auto on = thread->running_on;
+            const auto *on = thread->running_on;
             target = on ? on->idx : self_idx;
         }
         else if (should_start.load(std::memory_order_relaxed))
@@ -888,7 +877,7 @@ namespace sched
     {
         while (true)
         {
-            const auto on = static_cast<run_queue_t *>(thread->on_rq);
+            auto *on = static_cast<run_queue_t *>(thread->on_rq);
             if (on == nullptr)
                 return;
 
@@ -909,7 +898,7 @@ namespace sched
     {
         while (true)
         {
-            const auto on = static_cast<run_queue_t *>(thread->on_rq);
+            auto *on = static_cast<run_queue_t *>(thread->on_rq);
             if (on == nullptr)
                 break;
 
@@ -942,7 +931,7 @@ namespace sched
             auto &rq = run_queue.unsafe_get();
             const std::unique_lock _ { rq.lock };
 
-            auto curr = rq.current;
+            auto *curr = rq.current;
             lib::bug_on(curr != current_thread());
 
             if (!rq.queue.empty())
@@ -952,7 +941,7 @@ namespace sched
         preempt_enable();
         schedule();
 
-        auto thread = current_thread();
+        auto *thread = current_thread();
         return thread->test_and_clear_flag(thread_flags::interrupted);
     }
 
@@ -972,7 +961,7 @@ namespace sched
                 thread->set_flag(thread_flags::interrupted);
                 [[fallthrough]];
             case thread_state::blocked:
-                if (auto wq = thread->on_wait_queue.load(std::memory_order_acquire))
+                if (auto *wq = thread->on_wait_queue.load(std::memory_order_acquire))
                     wq->unlink_atomic(thread->on_wait_queue, thread->wait_entry);
                 wake_up(thread, true);
                 break;
@@ -981,7 +970,7 @@ namespace sched
                 break;
             case thread_state::running:
                 thread->set_flag(thread_flags::needs_resched);
-                if (auto on = thread->running_on; on && on != &cpu::self().unsafe_get())
+                if (const auto *on = thread->running_on; on && on != &cpu::self().unsafe_get())
                     arch::wake_up_other(on->idx);
                 break;
             case thread_state::runnable:
@@ -992,15 +981,15 @@ namespace sched
 
     void die_if_kill_pending()
     {
-        auto thread = current_thread();
+        const auto *thread = current_thread();
         if (thread->has_flag(thread_flags::kill_pending))
             thread_exit(thread->pending_exit_code.load(std::memory_order_relaxed));
     }
 
     [[noreturn]] void thread_exit(int exit_code)
     {
-        auto thread = current_thread();
-        auto proc = thread->proc.get();
+        auto *thread = current_thread();
+        auto *proc = thread->proc.get();
 
         if (!thread->saved_vmspace)
             thread->saved_vmspace = proc->vmspace;
@@ -1010,10 +999,10 @@ namespace sched
         if (thread->clear_child_tid)
         {
             const pid_t zero = 0;
-            const auto clear_child_tid = reinterpret_cast<pid_t __user *>(thread->clear_child_tid);
+            auto *clear_child_tid = reinterpret_cast<pid_t __user *>(thread->clear_child_tid);
             lib::copy_to_user(clear_child_tid, &zero, sizeof(pid_t));
 
-            const auto uaddr = reinterpret_cast<std::uint32_t __user *>(thread->clear_child_tid);
+            auto *uaddr = reinterpret_cast<std::uint32_t __user *>(thread->clear_child_tid);
             if (auto key = futex::resolve(uaddr, true))
                 futex::wake(*key, 1, futex::bitset_match_any);
         }
@@ -1137,7 +1126,7 @@ namespace sched
 
     [[noreturn]] void process_exit(int exit_code)
     {
-        auto proc = current_process();
+        auto *proc = current_process();
         proc->lock.lock();
         request_kill_siblings(exit_code);
 
@@ -1150,7 +1139,7 @@ namespace sched
 
     [[noreturn]] void process_exit_signal(int signo, bool core_dumped)
     {
-        auto proc = current_process();
+        auto *proc = current_process();
         proc->killed_by_signal = true;
         proc->term_signal = signo;
         proc->dumped_core = core_dumped;
@@ -1165,11 +1154,11 @@ namespace sched
             auto &rq = run_queue.unsafe_get();
             const std::unique_lock _ { rq.lock };
 
-            if (auto curr = rq.current)
+            if (auto *curr = rq.current)
             {
                 if (!curr->is_idle())
                 {
-                    const auto timer = chrono::main_timer();
+                    const auto *timer = chrono::main_timer();
                     const auto now = timer->ns();
                     const auto delta = rq.update_current(now);
 
@@ -1210,7 +1199,7 @@ namespace sched
         preempt_disable();
         auto &my_rq = run_queue.unsafe_get();
 
-        const auto timer = chrono::main_timer();
+        const auto *timer = chrono::main_timer();
         const auto now = timer->ns();
 
         if (now - my_rq.load_update < balance_interval_ns)
@@ -1257,8 +1246,8 @@ namespace sched
         }
 
         auto &src_rq = run_queue.unsafe_get(cpu::local::nth_base(busiest_cpu));
-        auto first = &my_rq;
-        auto second = &src_rq;
+        auto *first = &my_rq;
+        auto *second = &src_rq;
         if (my_rq.cpu_idx > src_rq.cpu_idx)
             std::swap(first, second);
 
@@ -1286,14 +1275,14 @@ namespace sched
         std::uint64_t migrated_weight = 0;
         std::size_t migrations = 0;
 
-        auto thread = src_rq.queue.last();
+        auto *thread = src_rq.queue.last();
         while (thread && migrations < balance_max_nr && migrated_weight < target)
         {
-            auto prev = thread->hook.predecessor;
+            auto *prev = thread->hook.predecessor;
 
             if (thread == src_rq.current || !can_run_on(thread, my_rq.cpu_idx) ||
                 thread->is_kernel() || // do not migrate kernel threads
-                migrated_weight + thread->weight > target + target / 2)
+                migrated_weight + thread->weight > target + (target / 2))
             {
                 thread = prev;
                 continue;
@@ -1324,7 +1313,7 @@ namespace sched
 
     int set_priority(int which, int who, int prio)
     {
-        auto proc = current_process();
+        auto *proc = current_process();
         const auto cred = proc->cred;
 
         prio = std::clamp<int>(prio, nice_t::min, nice_t::max);
@@ -1369,11 +1358,11 @@ namespace sched
             auto locked = target->threads.lock();
             for (auto &[tid, thrd] : *locked)
             {
-                auto thread = thrd.get();
-                run_queue_t *rq = static_cast<run_queue_t *>(thread->on_rq);
+                auto *thread = thrd.get();
+                auto *rq = static_cast<run_queue_t *>(thread->on_rq);
                 if (!rq && thread->state.load(std::memory_order_acquire) == thread_state::running)
                 {
-                    if (const auto running_on = thread->running_on)
+                    if (const auto *running_on = thread->running_on)
                         rq = &run_queue.unsafe_get(cpu::local::nth_base(running_on->idx));
                 }
 
@@ -1437,7 +1426,7 @@ namespace sched
 
     int get_priority(int which, int who)
     {
-        auto proc = current_process();
+        auto *proc = current_process();
 
         auto ret = -ESRCH;
         const auto check_proc = [&](process_t *proc) {
@@ -1445,8 +1434,7 @@ namespace sched
             for (auto &[tid, t] : *locked)
             {
                 const int niceval = 20 - t->nice.value();
-                if (niceval > ret)
-                    ret = niceval;
+                ret = std::max(niceval, ret);
             }
         };
 
@@ -1491,7 +1479,7 @@ namespace sched
         if (sig < (kernel ? 1 : 0) || sig > nsig)
             return -EINVAL;
 
-        const auto caller = current_process();
+        const auto *caller = current_process();
         const siginfo_t info {
             .signo = sig,
             .code = kernel ? si_kernel : si_user,
@@ -1510,7 +1498,7 @@ namespace sched
         if (pgid < 0)
             return -EINVAL;
 
-        const auto proc = current_process();
+        auto *proc = current_process();
         if (pid == 0)
             pid = proc->pid;
         if (pgid == 0)
@@ -1605,7 +1593,7 @@ namespace sched
 
     pid_t setsid()
     {
-        const auto proc = current_process();
+        auto *proc = current_process();
         if (proc->pid == proc->group->pgid)
             return -EPERM;
 
@@ -1644,8 +1632,8 @@ namespace sched
 
     pid_t clone(const kclone_args_t &args)
     {
-        const auto caller_thread = current_thread();
-        const auto caller_proc = caller_thread->proc.get();
+        const auto *caller_thread = current_thread();
+        auto *caller_proc = caller_thread->proc.get();
 
         const auto flags = args.flags;
 
@@ -1856,7 +1844,7 @@ namespace sched
 
         // TODO: better abstraction
 #if defined(__x86_64__)
-        auto regs = reinterpret_cast<cpu::registers *>(
+        auto *regs = reinterpret_cast<cpu::registers *>(
             target_thread->kstack_top - sizeof(cpu::registers)
         );
         std::memcpy(regs, caller_thread->saved_regs, sizeof(cpu::registers));
@@ -1915,8 +1903,8 @@ namespace sched
     )
     {
         {
-            auto old_thread = current_thread();
-            auto process = old_thread->proc.get();
+            auto *old_thread = current_thread();
+            auto *process = old_thread->proc.get();
 
             const auto mount_flags = path.mnt ? path.mnt->flags : 0ul;
             if (mount_flags & vfs::ms_noexec)
@@ -1939,8 +1927,7 @@ namespace sched
                     return -EACCES;
             }
 
-            auto file = vfs::file_t::create(path, 0, 0);
-            auto image = bin::exec::probe(std::move(file));
+            auto image = bin::exec::probe(vfs::file_t::create(path, 0, 0));
             if (!image)
                 return -lib::map_error(image.error());
 
@@ -2010,7 +1997,7 @@ namespace sched
                 {
                     preempt_disable();
                     auto &loaded = loaded_pmap.unsafe_get();
-                    const auto pmap = process->vmspace->pmap.get();
+                    const auto *pmap = process->vmspace->pmap.get();
                     if (loaded != pmap)
                     {
                         if (loaded)
@@ -2111,7 +2098,7 @@ namespace sched
 
     pid_t waitpid(pid_t wait_pid, int options, int *status, cputime_t *usage)
     {
-        const auto proc = current_process();
+        auto *proc = current_process();
         const bool no_hang = options & wnohang;
 
         const auto matches = [&](const process_t &child) {
@@ -2288,7 +2275,7 @@ namespace sched
             return group->signal_all(sig);
         }
 
-        const auto caller = current_process();
+        const auto *caller = current_process();
         if (pid == 0)
             return caller->group->signal_all(sig);
 
@@ -2445,8 +2432,7 @@ namespace sched
                                 {
                                     if (startcode == 0 || start < startcode)
                                         startcode = start;
-                                    if (end > endcode)
-                                        endcode = end;
+                                    endcode = std::max(end, endcode);
                                 }
                             }
                             startbrk = proc->vmspace->brk_start;
@@ -2463,8 +2449,8 @@ namespace sched
                             if (!locked->empty())
                                 nice_val = locked->begin()->second->nice.value();
                         }
-                        const auto utime_ticks = (total_runtime_ns / 1'000'000'000ul) * hz +
-                            ((total_runtime_ns % 1'000'000'000ul) * hz) / 1'000'000'000ul;
+                        const auto utime_ticks = ((total_runtime_ns / 1'000'000'000ul) * hz) +
+                            (((total_runtime_ns % 1'000'000'000ul) * hz) / 1'000'000'000ul);
                         const int priority = 20 - nice_val;
 
                         return fmt::format(

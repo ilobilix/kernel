@@ -75,7 +75,7 @@ namespace fs::tmpfs
     }
 
     lib::expect<std::size_t> ops_t::read(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -96,7 +96,7 @@ namespace fs::tmpfs
     }
 
     lib::expect<std::size_t> ops_t::write(
-        std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+        const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
         lib::maybe_uspan<std::byte> buffer
     )
     {
@@ -133,7 +133,7 @@ namespace fs::tmpfs
         return ret;
     }
 
-    lib::expect<void> ops_t::trunc(std::shared_ptr<vfs::file_t> file, std::size_t size)
+    lib::expect<void> ops_t::trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size)
     {
         auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
@@ -173,7 +173,7 @@ namespace fs::tmpfs
         return { };
     }
 
-    lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
+    lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
     {
         auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         return inod->memory;

@@ -35,14 +35,15 @@ export namespace sched
                 const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
-                    const auto thread = current_thread();
+                    auto *thread = current_thread();
 
                     if (_owner == nullptr)
                     {
                         _owner = thread;
                         return;
                     }
-                    else if (_owner == thread)
+
+                    if (_owner == thread)
                         lib::panic("mutex deadlock");
                 }
 
@@ -58,14 +59,15 @@ export namespace sched
                 const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
-                    const auto thread = current_thread();
+                    auto *thread = current_thread();
 
                     if (_owner == nullptr)
                     {
                         _owner = thread;
                         return true;
                     }
-                    else if (_owner == thread)
+
+                    if (_owner == thread)
                         lib::panic("mutex deadlock");
                 }
 
@@ -109,7 +111,7 @@ export namespace sched
             if (ns == 0)
                 return false;
 
-            const auto timer = chrono::main_timer();
+            const auto *timer = chrono::main_timer();
             const auto deadline = timer->ns() + ns;
 
             while (true)
@@ -166,20 +168,18 @@ export namespace sched
                 const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
-                    const auto thread = current_thread();
+                    auto *thread = current_thread();
+
                     if (_owner == nullptr)
                     {
                         lib::bug_on(_depth != 0);
                         _owner = thread;
-                        _depth++;
-                        return;
                     }
                     else if (_owner == thread)
-                    {
                         lib::bug_on(_depth == 0);
-                        _depth++;
-                        return;
-                    }
+
+                    _depth++;
+                    return;
                 }
 
                 _waiters.wait_unkillable_prepared(gen);
@@ -194,20 +194,18 @@ export namespace sched
                 const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
-                    const auto thread = current_thread();
+                    auto *thread = current_thread();
+
                     if (_owner == nullptr)
                     {
                         lib::bug_on(_depth != 0);
                         _owner = thread;
-                        _depth++;
-                        return true;
                     }
                     else if (_owner == thread)
-                    {
                         lib::bug_on(_depth == 0);
-                        _depth++;
-                        return true;
-                    }
+
+                    _depth++;
+                    return true;
                 }
 
                 const auto res = _waiters.wait_prepared(gen);
@@ -240,7 +238,7 @@ export namespace sched
         bool try_lock()
         {
             const std::unique_lock _ { _lock };
-            const auto thread = current_thread();
+            auto *thread = current_thread();
 
             if (_owner != nullptr && _owner != thread)
                 return false;
@@ -249,17 +247,12 @@ export namespace sched
             {
                 lib::bug_on(_depth != 0);
                 _owner = thread;
-                _depth++;
-                return true;
             }
             else if (_owner == thread)
-            {
                 lib::bug_on(_depth == 0);
-                _depth++;
-                return true;
-            }
 
-            return false;
+            _depth++;
+            return true;
         }
 
         bool try_lock_until(std::uint64_t ns)
@@ -270,7 +263,7 @@ export namespace sched
             if (ns == 0)
                 return false;
 
-            const auto timer = chrono::main_timer();
+            const auto *timer = chrono::main_timer();
             const auto deadline = timer->ns() + ns;
 
             while (true)
@@ -278,21 +271,18 @@ export namespace sched
                 const auto gen = _waiters.snapshot_gen();
                 {
                     const std::unique_lock _ { _lock };
-                    const auto thread = current_thread();
+                    auto *thread = current_thread();
 
                     if (_owner == nullptr)
                     {
                         lib::bug_on(_depth != 0);
                         _owner = thread;
-                        _depth++;
-                        return true;
                     }
                     else if (_owner == thread)
-                    {
                         lib::bug_on(_depth == 0);
-                        _depth++;
-                        return true;
-                    }
+
+                    _depth++;
+                    return true;
                 }
 
                 const auto now = timer->ns();

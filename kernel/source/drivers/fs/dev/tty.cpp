@@ -41,7 +41,7 @@ namespace fs::dev::tty
         }
 
         lib::expect<void> generic_open(
-            std::shared_ptr<vfs::file_t> file, std::shared_ptr<instance> inst,
+            const std::shared_ptr<vfs::file_t> &file, std::shared_ptr<instance> inst,
             int flags, pid_t pid, bool inst_opened
         )
         {
@@ -88,7 +88,7 @@ namespace fs::dev::tty
         }
 
         lib::expect<std::shared_ptr<instance>> open_or_create(
-            std::shared_ptr<vfs::file_t> file, driver *drv, std::uint32_t min,
+            const std::shared_ptr<vfs::file_t> &file, driver *drv, std::uint32_t min,
             int flags, pid_t pid)
         {
             auto locked = drv->instances.lock();
@@ -163,29 +163,29 @@ namespace fs::dev::tty
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);
-                return inst->read(std::move(file), buffer);
+                return inst->read(file, buffer);
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(offset);
                 lib::bug_on(!file || !file->private_data);
                 const auto inst = std::static_pointer_cast<instance>(file->private_data);
-                return inst->write(std::move(file), buffer);
+                return inst->write(file, buffer);
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t request,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t request,
                 lib::uptr_or_addr argp
             ) override
             {
@@ -195,7 +195,7 @@ namespace fs::dev::tty
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+                const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *pt
             ) override
             {
                 lib::bug_on(!file || !file->private_data);
@@ -548,7 +548,7 @@ namespace fs::dev::tty
             out_wq.wake_all();
 
             auto span = std::span { buffer.data(), num_chars };
-            if (const auto res = inst->transmit(std::move(span)); res != num_chars)
+            if (const auto res = inst->transmit(span); res != num_chars)
                 lib::error("tty: could not transmit {} characters (got {})", num_chars, res);
         }
     }
@@ -968,7 +968,7 @@ namespace fs::dev::tty
         }
     }
 
-    lib::expect<std::size_t> default_ldisc::read(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> default_ldisc::read(const std::shared_ptr<vfs::file_t> &file, lib::maybe_uspan<std::byte> buffer)
     {
         using enum ktermios::lflag;
         using enum ktermios::cc;
@@ -1218,7 +1218,7 @@ namespace fs::dev::tty
         std::unreachable();
     }
 
-    lib::expect<std::size_t> default_ldisc::write(std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer)
+    lib::expect<std::size_t> default_ldisc::write(const std::shared_ptr<vfs::file_t> &file, lib::maybe_uspan<std::byte> buffer)
     {
         lib::bug_on(!inst);
 
@@ -1867,7 +1867,7 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+        lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
             lib::bug_on(!file->path.dentry || !file->path.dentry->inode);
@@ -1896,7 +1896,7 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+        lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
             lib::unused(flags);
@@ -1927,7 +1927,7 @@ namespace fs::dev::tty
             return instance;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+        lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
 
@@ -1957,7 +1957,7 @@ namespace fs::dev::tty
         driver *drv;
         redirect_fn resolve;
 
-        lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+        lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
         {
             lib::bug_on(!file || file->private_data != nullptr);
             lib::bug_on(!drv || !resolve);

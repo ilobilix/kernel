@@ -91,7 +91,7 @@ namespace vfs::socket::netlink
                         return false;
                     }
 
-                    locked->queue.emplace_back(src_portid, dst_group, payload, std::move(cred));
+                    locked->queue.emplace_back(src_portid, dst_group, payload, cred);
                     locked->bytes += size;
                 }
 
@@ -321,7 +321,7 @@ namespace vfs::socket::netlink
                     member = (slocked->groups & bit) != 0;
                 }
                 if (member)
-                    sock.deliver(src_portid, group, payload, std::move(cred));
+                    sock.deliver(src_portid, group, payload, cred);
             }
         }
 

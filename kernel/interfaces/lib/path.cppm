@@ -138,7 +138,7 @@ export namespace lib
         path(path &&other) : _str { std::move(other._str) } { normalise(); }
 
         path(const path_view &other) : _str { other._str } { normalise(); }
-        path(path_view &&other) : _str { std::move(other._str) } { normalise(); }
+        path(path_view &&other) : _str { other._str } { normalise(); }
 
         path(const std::string &source) : _str { source } { normalise(); }
         path(std::string &&source) : _str { std::move(source) } { normalise(); }
@@ -154,7 +154,7 @@ export namespace lib
         path &operator=(path &&) = default;
 
         path &operator=(const path_view &rhs) { _str = rhs._str; return *this; }
-        path &operator=(path_view &&rhs) { _str = std::move(rhs._str); return *this; }
+        path &operator=(path_view &&rhs) { _str = rhs._str; return *this; }
 
         path &operator=(const auto &rhs) { _str = rhs; return *this; }
         path &operator=(auto &&rhs) { _str = std::move(rhs); return *this; }

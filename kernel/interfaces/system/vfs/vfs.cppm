@@ -66,12 +66,12 @@ export namespace vfs
         changeable_status_flags = o_append | o_async | o_direct | o_noatime | o_nonblock,
     };
 
-    inline constexpr bool is_read(int flags)
+    constexpr bool is_read(int flags)
     {
         return (flags & o_accmode) == o_rdonly || (flags & o_accmode) == o_rdwr;
     }
 
-    inline constexpr bool is_write(int flags)
+    constexpr bool is_write(int flags)
     {
         return (flags & o_accmode) == o_wronly || (flags & o_accmode) == o_rdwr;
     }
@@ -173,7 +173,7 @@ export namespace vfs
         dt_wht = 14
     };
 
-    inline constexpr dts stat_to_dt(enum stat::type type)
+    constexpr dts stat_to_dt(enum stat::type type)
     {
         switch (type)
         {
@@ -226,7 +226,7 @@ export namespace vfs
         virtual bool truncable() const { return false; }
         virtual bool seekable() const { return true; }
 
-        virtual lib::expect<void> open(std::shared_ptr<file_t> file, int flags, pid_t pid)
+        virtual lib::expect<void> open(const std::shared_ptr<file_t> &file, int flags, pid_t pid)
         {
             lib::unused(file, flags, pid);
             return { };
@@ -239,34 +239,34 @@ export namespace vfs
         }
 
         virtual lib::expect<std::size_t> read(
-            std::shared_ptr<file_t> file, std::uint64_t offset,
+            const std::shared_ptr<file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
         virtual lib::expect<std::size_t> write(
-            std::shared_ptr<file_t> file, std::uint64_t offset,
+            const std::shared_ptr<file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) = 0;
 
-        virtual lib::expect<void> trunc(std::shared_ptr<file_t> file, std::size_t size)
+        virtual lib::expect<void> trunc(const std::shared_ptr<file_t> &file, std::size_t size)
         {
             lib::unused(file, size);
             return std::unexpected { lib::err::invalid_argument };
         }
 
-        virtual lib::expect<void> getattr(std::shared_ptr<inode_t> inode)
+        virtual lib::expect<void> getattr(const std::shared_ptr<inode_t> &inode)
         {
             lib::unused(inode);
             return { };
         }
 
-        virtual lib::expect<std::uint16_t> poll(std::shared_ptr<file_t> file, poll_table_t *pt)
+        virtual lib::expect<std::uint16_t> poll(const std::shared_ptr<file_t> &file, poll_table_t *pt)
         {
             lib::unused(file, pt);
             return pollin | pollout;
         }
 
         virtual lib::expect<int> ioctl(
-            std::shared_ptr<file_t> file, std::uint64_t request,
+            const std::shared_ptr<file_t> &file, std::uint64_t request,
             lib::uptr_or_addr argp
         )
         {
@@ -274,9 +274,9 @@ export namespace vfs
             return std::unexpected { lib::err::inappropriate_ioctl };
         }
 
-        virtual lib::expect<vmm::object::ptr> map(std::shared_ptr<file_t> file);
+        virtual lib::expect<vmm::object::ptr> map(const std::shared_ptr<file_t> &file);
 
-        virtual lib::expect<void> sync(std::shared_ptr<file_t> file, bool data)
+        virtual lib::expect<void> sync(const std::shared_ptr<file_t> &file, bool data)
         {
             lib::unused(file, data);
             return { };
@@ -460,7 +460,7 @@ export namespace vfs
         void trunc_pcache(std::size_t size);
         void orphan_pcache();
 
-        inode_t(std::shared_ptr<struct ops_t> ops) : ops { ops } { }
+        inode_t(std::shared_ptr<struct ops_t> ops) : ops { std::move(ops) } { }
     };
 
     struct dentry_t : std::enable_shared_from_this<dentry_t>
@@ -738,15 +738,15 @@ export namespace vfs
             return buffer;
         }
 
-        static std::shared_ptr<file_t> create(const vfs::path_t &path, std::size_t offset, int flags)
+        static std::shared_ptr<file_t> create(vfs::path_t path, std::size_t offset, int flags)
         {
             auto file = std::make_shared<vfs::file_t>();
             file->opened = false;
-            file->path = path;
+            file->path = std::move(path);
             file->offset = offset;
             file->flags = flags;
-            if (path.dentry && path.dentry->inode)
-                file->ops = path.dentry->inode->get_ops();
+            if (file->path.dentry && file->path.dentry->inode)
+                file->ops = file->path.dentry->inode->get_ops();
             return file;
         }
     };
@@ -780,11 +780,7 @@ export namespace vfs
             std::size_t size = 0;
             rcu::pointer<fdslot> *slots = nullptr;
 
-            ~fdarray()
-            {
-                if (slots)
-                    delete[] slots;
-            }
+            ~fdarray() { delete[] slots; }
         };
 
         private:

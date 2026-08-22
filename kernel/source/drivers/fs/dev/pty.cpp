@@ -118,7 +118,7 @@ namespace fs::dev::pty
             return peer ? peer->raw_buffer.available() : 0;
         }
 
-        lib::expect<void> open(std::shared_ptr<vfs::file_t>) override { return { }; }
+        lib::expect<void> open(const std::shared_ptr<vfs::file_t> &) override { return { }; }
 
         lib::expect<void> close() override
         {
@@ -146,7 +146,7 @@ namespace fs::dev::pty
         std::atomic_bool packet = false;
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer
+            const std::shared_ptr<vfs::file_t> &file, lib::maybe_uspan<std::byte> buffer
         ) override;
 
         lib::expect<int> ioctl(std::uint64_t request, lib::uptr_or_addr argp) override;
@@ -166,7 +166,7 @@ namespace fs::dev::pty
         void flow_notify(bool stop) override;
         void set_termios(tty::ktermios &current, const tty::ktermios &old) override;
 
-        lib::expect<void> permit_open(std::shared_ptr<vfs::file_t>) override;
+        lib::expect<void> permit_open(const std::shared_ptr<vfs::file_t> &) override;
     };
 
     struct pty_driver_base : tty::driver
@@ -249,7 +249,7 @@ namespace fs::dev::pty
         raise(flow(current) ? pkt_dostop : pkt_nostop, pkt_dostop | pkt_nostop);
     }
 
-    lib::expect<void> pts_instance::permit_open(std::shared_ptr<vfs::file_t>)
+    lib::expect<void> pts_instance::permit_open(const std::shared_ptr<vfs::file_t> &)
     {
         const auto pty_pair = find_pair(minor);
         if (!pty_pair)
@@ -262,11 +262,11 @@ namespace fs::dev::pty
     }
 
     lib::expect<std::size_t> ptm_instance::read(
-        std::shared_ptr<vfs::file_t> file, lib::maybe_uspan<std::byte> buffer
+        const std::shared_ptr<vfs::file_t> &file, lib::maybe_uspan<std::byte> buffer
     )
     {
         if (!packet.load(std::memory_order_acquire))
-            return tty::instance::read(std::move(file), buffer);
+            return tty::instance::read(file, buffer);
 
         if (buffer.size() == 0)
             return 0uz;
@@ -311,7 +311,7 @@ namespace fs::dev::pty
             return 1uz;
         }
 
-        const auto ret = tty::instance::read(std::move(file), buffer.subspan(1));
+        const auto ret = tty::instance::read(file, buffer.subspan(1));
         if (!ret || *ret == 0)
             return ret;
 
@@ -526,7 +526,7 @@ namespace fs::dev::pty
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+            lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
             {
                 lib::unused(flags, pid);
                 lib::bug_on(!file || file->private_data != nullptr);
@@ -574,27 +574,27 @@ namespace fs::dev::pty
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(offset);
                 const auto master = std::static_pointer_cast<tty::instance>(file->private_data);
-                return master->read(std::move(file), buffer);
+                return master->read(file, buffer);
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
                 lib::unused(offset);
                 const auto master = std::static_pointer_cast<tty::instance>(file->private_data);
-                return master->write(std::move(file), buffer);
+                return master->write(file, buffer);
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t request,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t request,
                 lib::uptr_or_addr argp
             ) override
             {
@@ -603,7 +603,7 @@ namespace fs::dev::pty
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *poll_tab
+                const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *poll_tab
             ) override
             {
                 const auto master = std::static_pointer_cast<tty::instance>(file->private_data);

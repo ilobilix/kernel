@@ -465,12 +465,12 @@ namespace squashfs
         struct ops_t : vfs::ops_t
         {
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override;
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -478,16 +478,16 @@ namespace squashfs
                 return std::unexpected { lib::err::read_only_fs };
             }
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file_t> file, std::size_t size) override
+            lib::expect<void> trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size) override
             {
                 lib::unused(file, size);
                 return std::unexpected { lib::err::read_only_fs };
             }
 
             // TODO
-            // lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
+            // lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override;
 
-            lib::expect<void> sync(std::shared_ptr<vfs::file_t> file, bool datasync) override
+            lib::expect<void> sync(const std::shared_ptr<vfs::file_t> &file, bool datasync) override
             {
                 lib::unused(file, datasync);
                 return { };
@@ -983,7 +983,7 @@ namespace squashfs
         }
 
         lib::expect<std::size_t> ops_t::read(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         )
         {
@@ -993,7 +993,7 @@ namespace squashfs
         }
 
         // TODO
-        // lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
+        // lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
         // {
         //     return std::unexpected { lib::err::not_implemented };
         // }

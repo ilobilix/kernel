@@ -537,7 +537,7 @@ namespace dev
         }
 
         if (auto ref = current_ref.load(std::memory_order_acquire))
-            ref->add_object(std::move(kobj));
+            ref->add_object(kobj);
         return { };
     }
 

@@ -196,8 +196,8 @@ namespace fs::procfs
             inode_t(
                 inode_type type, std::shared_ptr<node_ops> ops, pid_t pid, int fd,
                 dev_t dev, ino_t ino, mode_t mode, std::shared_ptr<vfs::ops_t> iops
-            ) : vfs::inode_t { iops }, type { type },
-                ops { ops }, pid { pid }, fd { fd }
+            ) : vfs::inode_t { std::move(iops) }, type { type },
+                ops { std::move(ops) }, pid { pid }, fd { fd }
             {
                 stat.st_dev = dev;
                 stat.st_rdev = 0;
@@ -228,7 +228,7 @@ namespace fs::procfs
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -287,7 +287,7 @@ namespace fs::procfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -315,7 +315,7 @@ namespace fs::procfs
             }
 
             bool truncable() const override { return true; }
-            lib::expect<void> trunc(std::shared_ptr<vfs::file_t> file, std::size_t size) override
+            lib::expect<void> trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size) override
             {
                 lib::unused(size);
                 file->private_data.reset();

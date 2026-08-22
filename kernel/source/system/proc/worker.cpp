@@ -45,7 +45,7 @@ namespace sched
         _stopping.store(false, std::memory_order_relaxed);
 
         enqueue_new(thread.get());
-        _thread = std::move(thread);
+        _thread = thread;
 
         return { };
     }

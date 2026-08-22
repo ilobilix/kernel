@@ -724,20 +724,20 @@ namespace ext2
             bool truncable() const override { return true; }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override;
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override;
 
-            lib::expect<void> trunc(std::shared_ptr<vfs::file_t> file, std::size_t size) override;
+            lib::expect<void> trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size) override;
 
-            lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
+            lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override;
 
-            lib::expect<void> sync(std::shared_ptr<vfs::file_t> file, bool datasync) override;
+            lib::expect<void> sync(const std::shared_ptr<vfs::file_t> &file, bool datasync) override;
 
             static std::shared_ptr<ops_t> singleton()
             {
@@ -1038,7 +1038,7 @@ namespace ext2
         }
 
         lib::expect<std::size_t> ops_t::read(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         )
         {
@@ -1056,7 +1056,7 @@ namespace ext2
         }
 
         lib::expect<std::size_t> ops_t::write(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         )
         {
@@ -1105,7 +1105,7 @@ namespace ext2
             return num;
         }
 
-        lib::expect<void> ops_t::trunc(std::shared_ptr<vfs::file_t> file, std::size_t size)
+        lib::expect<void> ops_t::trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size)
         {
             const auto finode = inode_of(file);
             const auto fs = finode->owner;
@@ -1147,7 +1147,7 @@ namespace ext2
             return { };
         }
 
-        lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<vfs::file_t> file)
+        lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
         {
             const auto &dentry = file->path.dentry;
             if (!dentry || !dentry->inode)
@@ -1160,7 +1160,7 @@ namespace ext2
             return get_object(finode);
         }
 
-        lib::expect<void> ops_t::sync(std::shared_ptr<vfs::file_t> file, bool datasync)
+        lib::expect<void> ops_t::sync(const std::shared_ptr<vfs::file_t> &file, bool datasync)
         {
             lib::unused(datasync);
 

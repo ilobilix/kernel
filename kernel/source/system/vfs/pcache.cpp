@@ -43,7 +43,7 @@ namespace vfs
                     );
                     lib::bug_on(!span.has_value());
 
-                    const auto ret = file->pread((idx + i) * npsize, std::move(*span));
+                    const auto ret = file->pread((idx + i) * npsize, *span);
                     if (!ret.has_value())
                         return std::unexpected { ret.error() };
                 }
@@ -74,7 +74,7 @@ namespace vfs
                     );
                     lib::bug_on(!span.has_value());
 
-                    const auto ret = file->pwrite(offset, std::move(*span));
+                    const auto ret = file->pwrite(offset, *span);
                     if (!ret.has_value())
                         return std::unexpected { ret.error() };
                     if (*ret != len)
@@ -85,7 +85,7 @@ namespace vfs
         };
     } // namespace
 
-    lib::expect<vmm::object::ptr> ops_t::map(std::shared_ptr<file_t> file)
+    lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<file_t> &file)
     {
         const auto &dentry = file->path.dentry;
         if (!dentry || !dentry->inode)

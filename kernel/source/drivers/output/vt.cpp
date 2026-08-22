@@ -88,7 +88,7 @@ namespace output::vt
                 return std::numeric_limits<std::size_t>::max();
             }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file_t> file) override
+            lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file) override
             {
                 lib::unused(file);
                 return { };

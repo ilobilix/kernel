@@ -71,7 +71,7 @@ namespace sysctl
     {
         auto storage = std::make_shared<std::atomic<int>>(default_value);
         return register_int(
-            std::move(path),
+            path,
             [storage] { return storage->load(std::memory_order_relaxed); },
             [storage](int val) -> lib::expect<void> {
                 storage->store(val, std::memory_order_relaxed);

@@ -106,7 +106,7 @@ export namespace pci
         std::weak_ptr<bus> mybus;
 
         router(std::weak_ptr<router> parent, std::weak_ptr<bus> mybus)
-            : parent { parent }, mybus { mybus } { }
+            : parent { std::move(parent) }, mybus { std::move(mybus) } { }
 
         virtual std::shared_ptr<router> downstream(
             std::shared_ptr<router> me, std::shared_ptr<bus> &bus

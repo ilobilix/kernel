@@ -164,7 +164,7 @@ namespace output::frm
             vmm::object::ptr mmap_obj;
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file,
+                const std::shared_ptr<vfs::file_t> &file,
                 std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -183,7 +183,7 @@ namespace output::frm
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file,
+                const std::shared_ptr<vfs::file_t> &file,
                 std::uint64_t offset, lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -202,7 +202,7 @@ namespace output::frm
             }
 
             lib::expect<int> ioctl(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t request,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t request,
                 lib::uptr_or_addr argp
             ) override
             {
@@ -265,7 +265,7 @@ namespace output::frm
                 return std::unexpected { lib::err::inappropriate_ioctl };
             }
 
-            lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override
+            lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override
             {
                 lib::unused(file);
                 return mmap_obj;

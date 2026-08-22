@@ -138,7 +138,7 @@ export namespace dev
     {
         protected:
         kobject_t(std::string_view name, ktype_t &type, std::weak_ptr<kobject_t> parent)
-            : name { name }, parent { parent }, type { type } { }
+            : name { name }, parent { std::move(parent) }, type { type } { }
 
         public:
         const std::string name;
@@ -377,7 +377,7 @@ export namespace dev
         wfn_t wfn;
 
         make_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
-            : attribute_t { name, mode }, rfn { rfn }, wfn { wfn } { }
+            : attribute_t { name, mode }, rfn { std::move(rfn) }, wfn { std::move(wfn) } { }
 
         lib::expect<std::string> show(kobject_t &kobj) override
         {

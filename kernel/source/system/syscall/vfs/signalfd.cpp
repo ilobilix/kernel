@@ -95,14 +95,14 @@ namespace syscall::vfs
 
             bool seekable() const override { return false; }
 
-            lib::expect<void> open(std::shared_ptr<vfs::file_t> file, int flags, pid_t pid) override
+            lib::expect<void> open(const std::shared_ptr<vfs::file_t> &file, int flags, pid_t pid) override
             {
                 lib::unused(file, flags, pid);
                 return std::unexpected { lib::err::invalid_device_or_address };
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -165,7 +165,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -174,7 +174,7 @@ namespace syscall::vfs
             }
 
             lib::expect<std::uint16_t> poll(
-                std::shared_ptr<vfs::file_t> file, vfs::poll_table_t *pt
+                const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *pt
             ) override
             {
                 auto data = std::static_pointer_cast<data_t>(file->private_data);

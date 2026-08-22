@@ -520,8 +520,8 @@ namespace syscall::vfs
             auto rspan = buffer_uspan->subspan(0, to_read);
 
             const auto rret = off_in
-                ? in->pread(in_offset, std::move(rspan))
-                : in->read(std::move(rspan));
+                ? in->pread(in_offset, rspan)
+                : in->read(rspan);
             if (!rret.has_value())
             {
                 if (total > 0)
@@ -539,8 +539,8 @@ namespace syscall::vfs
                 auto wspan = buffer_uspan->subspan(written, nread - written);
 
                 const auto wret = off_out
-                    ? out->pwrite(out_offset, std::move(wspan))
-                    : out->write(std::move(wspan));
+                    ? out->pwrite(out_offset, wspan)
+                    : out->write(wspan);
                 if (!wret.has_value() || *wret == 0)
                 {
                     total += written;

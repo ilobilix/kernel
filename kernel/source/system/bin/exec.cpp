@@ -38,7 +38,7 @@ namespace bin::exec
     {
         const rcu::read_guard _ { };
 
-        const auto table = formats.dereference();
+        const auto *table = formats.dereference();
         if (!table)
             return nullptr;
 
@@ -58,7 +58,7 @@ namespace bin::exec
         std::vector<std::shared_ptr<format>> candidates;
         {
             const rcu::read_guard _ { };
-            if (const auto table = formats.dereference())
+            if (const auto *table = formats.dereference())
             {
                 candidates.reserve(table->size());
                 for (const auto &[_, fmt] : *table)

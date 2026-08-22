@@ -49,7 +49,7 @@ namespace bin::elf::exec
             if (!hdruspan.has_value())
                 return std::nullopt;
 
-            const auto ret = file->pread(0, std::move(*hdruspan));
+            const auto ret = file->pread(0, *hdruspan);
             if (!ret.has_value() || *ret != sizeof(ehdr))
                 return std::nullopt;
 
@@ -96,11 +96,7 @@ namespace bin::elf::exec
                 );
                 lib::bug_on(!phdruspan.has_value());
 
-                const auto ret = file->pread(
-                    ehdr.e_phoff + i * ehdr.e_phentsize,
-                    std::move(*phdruspan)
-                );
-
+                const auto ret = file->pread(ehdr.e_phoff + (i * ehdr.e_phentsize), *phdruspan);
                 if (!ret.has_value())
                 {
                     lib::error(
@@ -239,7 +235,7 @@ namespace bin::elf::exec
                         if (!has_phdr_load)
                         {
                             const auto phdr_end = ehdr.e_phoff +
-                                static_cast<std::uint64_t>(ehdr.e_phnum) * ehdr.e_phentsize;
+                                (static_cast<std::uint64_t>(ehdr.e_phnum) * ehdr.e_phentsize);
                             if (ehdr.e_phoff >= phdr.p_offset &&
                                 phdr_end <= phdr.p_offset + phdr.p_filesz)
                             {
@@ -285,7 +281,7 @@ namespace bin::elf::exec
                             phdr.p_filesz - 1
                         };
 
-                        if (lib::path_view { path } .is_absolute() == false)
+                        if (!lib::path_view { path } .is_absolute())
                         {
                             lib::error("elf: invalid interpreter path '{}'", path);
                             return std::nullopt;
@@ -337,8 +333,8 @@ namespace bin::elf::exec
                 auto &req = ctx->req;
                 auto &auxv = ctx->auxv;
 
-                const auto thread = sched::current_thread();
-                const auto proc = thread->proc.get();
+                const auto *thread = sched::current_thread();
+                const auto *proc = thread->proc.get();
 
                 const auto stack_size = boot::ustack_size;
                 const auto addr_top = thread->ustack_top;
@@ -353,7 +349,7 @@ namespace bin::elf::exec
                 };
 
                 const auto copy_to_user = [](std::uintptr_t dest, const void *src, std::size_t len) {
-                    auto ptr = reinterpret_cast<__user void *>(dest);
+                    auto *ptr = reinterpret_cast<__user void *>(dest);
                     // TODO
                     lib::panic_if(!lib::copy_to_user(ptr, src, len));
                 };
@@ -447,7 +443,7 @@ namespace bin::elf::exec
                 {
                     str_offset -= env.length() + 1;
                     const auto addr = addr_bottom + str_offset;
-                    copy_to_user(array_base + i * 8, &addr, sizeof(addr));
+                    copy_to_user(array_base + (i * 8), &addr, sizeof(addr));
                     i++;
                 }
 
@@ -461,7 +457,7 @@ namespace bin::elf::exec
                 {
                     str_offset -= arg.length() + 1;
                     const auto addr = addr_bottom + str_offset;
-                    copy_to_user(array_base + i * 8, &addr, sizeof(addr));
+                    copy_to_user(array_base + (i * 8), &addr, sizeof(addr));
                     i++;
                 }
 
@@ -532,7 +528,7 @@ namespace bin::elf::exec
             auto execfn = req.pathname.empty()
                 ? vfs::pathname_from(file->path)
                 : req.pathname;
-            const auto arg = new ctx {
+            const auto *arg = new ctx {
                 req, std::move(execfn), entry, interp_base, auxv
             };
             return sched::create_uthread(

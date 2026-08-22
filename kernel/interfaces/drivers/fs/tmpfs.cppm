@@ -18,19 +18,19 @@ export namespace fs::tmpfs
         }
 
         lib::expect<std::size_t> read(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
         lib::expect<std::size_t> write(
-            std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+            const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
             lib::maybe_uspan<std::byte> buffer
         ) override;
 
         bool truncable() const override { return true; }
-        lib::expect<void> trunc(std::shared_ptr<vfs::file_t> file, std::size_t size) override;
+        lib::expect<void> trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size) override;
 
-        lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override;
+        lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override;
     };
 
     struct fs_t : vfs::filesystem_t

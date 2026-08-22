@@ -33,7 +33,8 @@ namespace fs::sysfs
             inode_t(
                 type typ, std::shared_ptr<dev::kobject_t> kobj, dev::attribute_t *attr,
                 dev::bin_attribute_t *battr, dev_t dev, ino_t ino, std::shared_ptr<vfs::ops_t> iops
-            ) : vfs::inode_t { iops }, typ { typ }, kobj { kobj }, attr { attr }, battr { battr }
+            ) : vfs::inode_t { std::move(iops) }, typ { typ }, kobj { std::move(kobj) },
+                attr { attr }, battr { battr }
             {
                 stat.st_dev = dev;
                 stat.st_rdev = 0;
@@ -52,10 +53,10 @@ namespace fs::sysfs
                     case type::bin:
                         lib::bug_on(!battr);
                         stat.st_mode = stat::s_ifreg | battr->mode;
-                        stat.st_size = battr->size(*kobj);
+                        stat.st_size = battr->size(*this->kobj);
                         break;
                     case type::uevent:
-                        stat.st_mode = stat::s_ifreg | (kobj->as_device() ? 0644 : 0200);
+                        stat.st_mode = stat::s_ifreg | (this->kobj->as_device() ? 0644 : 0200);
                         break;
                     case type::symlink:
                         stat.st_mode = stat::s_iflnk | 0777;
@@ -86,7 +87,7 @@ namespace fs::sysfs
             }
 
             lib::expect<std::size_t> read(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -151,7 +152,7 @@ namespace fs::sysfs
             }
 
             lib::expect<std::size_t> write(
-                std::shared_ptr<vfs::file_t> file, std::uint64_t offset,
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t offset,
                 lib::maybe_uspan<std::byte> buffer
             ) override
             {
@@ -168,7 +169,8 @@ namespace fs::sysfs
                         return std::unexpected { ret.error() };
                     return *ret;
                 }
-                else if (inod->typ == inode_t::type::uevent)
+
+                if (inod->typ == inode_t::type::uevent)
                 {
                     std::string data(buffer.size(), '\0');
                     if (!buffer.copy_to(reinterpret_cast<std::byte *>(data.data())))
@@ -178,7 +180,8 @@ namespace fs::sysfs
                         return std::unexpected { ret.error() };
                     return buffer.size();
                 }
-                else if (inod->typ != inode_t::type::attr)
+
+                if (inod->typ != inode_t::type::attr)
                     return std::unexpected { lib::err::invalid_argument };
 
                 std::string data(buffer.size(), '\0');
@@ -193,7 +196,7 @@ namespace fs::sysfs
             }
 
             bool truncable() const override { return true; }
-            lib::expect<void> trunc(std::shared_ptr<vfs::file_t> file, std::size_t size) override
+            lib::expect<void> trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size) override
             {
                 lib::unused(size);
                 const auto inod = std::static_pointer_cast<inode_t>(file->path.dentry->inode);
@@ -203,7 +206,7 @@ namespace fs::sysfs
                 return { };
             }
 
-            lib::expect<vmm::object::ptr> map(std::shared_ptr<vfs::file_t> file) override
+            lib::expect<vmm::object::ptr> map(const std::shared_ptr<vfs::file_t> &file) override
             {
                 const auto inod = std::static_pointer_cast<inode_t>(file->path.dentry->inode);
                 if (inod->typ != inode_t::type::bin)
@@ -211,7 +214,7 @@ namespace fs::sysfs
                 return inod->battr->map(*inod->kobj);
             }
 
-            lib::expect<void> getattr(std::shared_ptr<vfs::inode_t> node) override
+            lib::expect<void> getattr(const std::shared_ptr<vfs::inode_t> &node) override
             {
                 const auto inod = std::static_pointer_cast<inode_t>(node);
                 if (inod->typ == inode_t::type::bin)
@@ -412,7 +415,7 @@ namespace fs::sysfs
                             dir->parent = dentry;
                         }
 
-                        for (auto attr : group.attributes)
+                        for (auto *attr : group.attributes)
                         {
                             auto child = std::make_shared<vfs::dentry_t>();
                             child->name = attr->name;
@@ -421,7 +424,7 @@ namespace fs::sysfs
                             dir->children.lock()->insert(std::move(child));
                         }
 
-                        for (auto battr : group.bin_attributes)
+                        for (auto *battr : group.bin_attributes)
                         {
                             auto child = std::make_shared<vfs::dentry_t>();
                             child->name = battr->name;

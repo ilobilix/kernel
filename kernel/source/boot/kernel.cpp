@@ -50,7 +50,7 @@ void kthread()
         }
         else
         {
-            for (auto val : init_paths)
+            for (const auto &val : init_paths)
             {
                 auto res = try_path(val);
                 if (!res)
@@ -66,8 +66,7 @@ void kthread()
 
         lib::info("loading '{}'", path);
 
-        auto file = vfs::file_t::create(std::move(init), 0, 0);
-        auto image = bin::exec::probe(file);
+        auto image = bin::exec::probe(vfs::file_t::create(std::move(init), 0, 0));
         if (!image || !*image)
             lib::panic("could not identify '{}' file format", path);
 

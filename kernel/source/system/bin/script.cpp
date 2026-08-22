@@ -19,7 +19,7 @@ namespace bin::script
 
         public:
         image(
-            const std::shared_ptr<vfs::file_t> &file, std::unique_ptr<exec::image> interp,
+            std::shared_ptr<vfs::file_t> file, std::unique_ptr<exec::image> interp,
             const std::string_view &interp_path, std::optional<std::string> interp_arg
         ) : exec::image { std::move(file) }, _interp { std::move(interp) },
             _interp_path { interp_path }, _interp_arg { std::move(interp_arg) } { }
@@ -70,14 +70,14 @@ namespace bin::script
             if (length < 3)
                 return nullptr;
 
-            auto buf = reinterpret_cast<char *>(data.data());
-            auto end = buf + length;
+            auto *buf = reinterpret_cast<char *>(data.data());
+            auto *end = buf + length;
 
             if (buf[0] != '#' || buf[1] != '!')
                 return nullptr;
             buf += 2;
 
-            auto line_end = buf;
+            auto *line_end = buf;
             while (line_end != end && *line_end != '\n' && *line_end != '\0')
                 line_end++;
             end = line_end;
@@ -92,7 +92,7 @@ namespace bin::script
             if (buf == end)
                 return std::unexpected { lib::err::invalid_exec };
 
-            const auto istart = buf;
+            const auto *istart = buf;
             while (buf != end && *buf != ' ' && *buf != '\t')
                 buf++;
             const std::string_view path { istart, buf };
@@ -102,7 +102,7 @@ namespace bin::script
             const std::string_view arg { buf, end };
 
             // TODO: relative paths?
-            if (lib::path_view { path } .is_absolute() == false)
+            if (!lib::path_view { path } .is_absolute())
                 return std::unexpected { lib::err::invalid_exec };
 
             auto rret = vfs::resolve(file->path, path);
@@ -113,8 +113,7 @@ namespace bin::script
             if (!res.has_value())
                 return std::unexpected { lib::err::invalid_exec };
 
-            auto interp_file = vfs::file_t::create(std::move(*res), 0, 0);
-            auto next = exec::probe(interp_file, depth);
+            auto next = exec::probe(vfs::file_t::create(std::move(*res), 0, 0), depth);
             if (!next.has_value())
                 return std::unexpected { next.error() };
             if (*next == nullptr)
