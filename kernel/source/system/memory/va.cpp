@@ -32,7 +32,7 @@ namespace vmm::va
                 if (paddr == 0)
                     return nullptr;
 
-                auto slots = reinterpret_cast<slot_t *>(lib::tohh(paddr));
+                auto *slots = reinterpret_cast<slot_t *>(lib::tohh(paddr));
                 for (std::size_t i = 0; i < slots_per_page; i++)
                 {
                     next_of(&slots[i]) = head;
@@ -40,40 +40,42 @@ namespace vmm::va
                 }
             }
 
-            auto slot = head;
+            auto *slot = head;
             head = next_of(slot);
             return new (&slot->storage) range_t { };
         }
 
         void pool_free(range_t *range)
         {
-            auto slot = reinterpret_cast<slot_t *>(range);
+            auto *slot = reinterpret_cast<slot_t *>(range);
             const std::unique_lock _ { lock };
             next_of(slot) = head;
             head = slot;
         }
     } // namespace
 
-    std::optional<std::uintptr_t> allocator::allocate(std::size_t pages)
+    std::optional<std::uintptr_t> allocator::allocate(std::size_t pages, std::size_t align_pages)
     {
-        if (pages == 0)
+        if (pages == 0 || align_pages == 0 || !std::has_single_bit(align_pages))
             return std::nullopt;
 
+        const auto tail = align_pages - 1;
         const std::unique_lock _ { _lock };
 
-        const auto page = find_free_region(_tree, _minp, _maxp, pages);
+        const auto page = find_free_region(_tree, _minp, _maxp, pages + tail);
         if (!page)
             return std::nullopt;
 
-        auto range = pool_alloc();
+        auto *range = pool_alloc();
         if (!range)
             return std::nullopt;
 
-        range->startp = *page;
-        range->endp = *page + pages;
+        const auto startp = lib::align_up(*page, align_pages);
+        range->startp = startp;
+        range->endp = startp + pages;
         _tree.insert(range);
 
-        return *page;
+        return startp;
     }
 
     bool allocator::free(std::uintptr_t startp, std::size_t pages)
@@ -89,7 +91,7 @@ namespace vmm::va
         if (it == overlapping.end())
             return false;
 
-        auto ent = it.value();
+        auto *ent = it.value();
         if (ent->startp != startp || ent->endp != endp)
             return false;
 

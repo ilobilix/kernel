@@ -219,6 +219,27 @@ namespace output::vt
             sched::send_signal(proc.get(), info);
         }
 
+        flanterm_context *get_context(std::size_t index)
+        {
+            if (index == 0 || index > num_consoles)
+                return nullptr;
+
+            auto &slot = slots[index];
+            if (slot.ctx)
+                return slot.ctx;
+
+            slot.ctx = term::create();
+            if (!slot.ctx)
+            {
+                lib::error("vt: could not create context for vt {}", index);
+                return nullptr;
+            }
+
+            term::set_visible(slot.ctx, false);
+            flanterm_set_callback(slot.ctx, callback);
+            return slot.ctx;
+        }
+
         void commit(std::size_t index)
         {
             pending = 0;
@@ -230,7 +251,7 @@ namespace output::vt
             previous = old;
             term::set_visible(slots[old].ctx, false);
 
-            auto ctx = slots[index].ctx;
+            auto *ctx = get_context(index);
             current.store(index, std::memory_order_release);
             input::kbd::refresh_leds();
 
@@ -309,6 +330,11 @@ namespace output::vt
                 if (minor == 0 || minor > num_consoles)
                     return nullptr;
 
+                {
+                    const std::unique_lock _ { switch_lock };
+                    get_context(minor);
+                }
+
                 auto inst = std::make_shared<vt_t>(this, minor);
                 slots[minor].inst = inst;
                 return inst;
@@ -326,7 +352,7 @@ namespace output::vt
                 lib::bug_on(!inst);
                 const auto index = inst->minor;
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 const bool tty_config = sched::capable(sched::cap_t::sys_tty_config);
 
                 const bool is_ctty = proc->session->ctty.lock()->get() == inst;
@@ -674,19 +700,10 @@ namespace output::vt
         lib::initgraph::require { output::initialised_stage() },
         [] {
             slots[1].ctx = term::main();
-            for (std::size_t i = 2; i <= num_consoles; i++)
+            if (slots[1].ctx)
             {
-                slots[i].ctx = term::create();
-                if (!slots[i].ctx)
-                    lib::warn("vt: could not create a context for vt {}", i);
-                term::set_visible(slots[i].ctx, false);
-            }
-            term::set_visible(slots[1].ctx, true);
-
-            for (auto &slot : slots)
-            {
-                if (slot.ctx)
-                    flanterm_set_callback(slot.ctx, callback);
+                term::set_visible(slots[1].ctx, true);
+                flanterm_set_callback(slots[1].ctx, callback);
             }
         }
     };

@@ -639,13 +639,14 @@ namespace vmm
         kernel_va.initialize(base / npsize, kvbase / npsize);
     }
 
-    std::uintptr_t alloc_vspace(std::size_t length)
+    std::uintptr_t alloc_vspace(std::size_t length, std::size_t alignment)
     {
         lib::bug_on(length == 0);
         lib::bug_on(!kernel_va.valid());
 
         const auto npsize = default_npsize();
-        const auto ret = kernel_va->allocate(lib::div_roundup(length, npsize));
+        const auto align_pages = std::max(lib::div_roundup(alignment, npsize), 1ul);
+        const auto ret = kernel_va->allocate(lib::div_roundup(length, npsize), align_pages);
         if (!ret.has_value())
             lib::panic("vmm: could not allocate 0x{:X} bytes of virtual address space", length);
         return *ret * npsize;

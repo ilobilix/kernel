@@ -12,13 +12,13 @@ namespace slab
     struct policy
     {
         // TODO: some issues on a certain laptop
-        std::uintptr_t map(std::size_t length)
+        static std::uintptr_t map(std::size_t length, std::size_t alignment)
         {
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
 
             const auto aligned = lib::align_up(length, npsize);
-            const auto vaddr = vmm::alloc_vspace(aligned);
+            const auto vaddr = vmm::alloc_vspace(aligned, alignment);
 
             const auto flags = vmm::pflag::rwg;
 
@@ -41,7 +41,7 @@ namespace slab
             return vaddr;
         }
 
-        void unmap(std::uintptr_t addr, std::size_t length)
+        static void unmap(std::uintptr_t addr, std::size_t length)
         {
             const auto psize = vmm::page_size::small;
             const auto npsize = vmm::pagemap::from_page_size(psize);
@@ -92,7 +92,7 @@ namespace slab
 
     void free(void *ptr)
     {
-        return kalloc->free(ptr);
+        kalloc->free(ptr);
     }
 
     void init()

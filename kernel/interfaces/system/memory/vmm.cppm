@@ -202,7 +202,7 @@ export namespace vmm
         {
             if (offp >= num_pages)
                 return std::nullopt;
-            return base + offp * default_npsize();
+            return base + (offp * default_npsize());
         }
 
         caching cache_attr() const override { return cache; }
@@ -321,7 +321,7 @@ export namespace vmm
     bool handle_spurious_pfault(const pfault_state &state);
     bool handle_pfault(const pfault_state &state);
 
-    std::uintptr_t alloc_vspace(std::size_t length);
+    std::uintptr_t alloc_vspace(std::size_t length, std::size_t alignment = 1);
     void free_vspace(std::uintptr_t addr, std::size_t length);
 
     void init();

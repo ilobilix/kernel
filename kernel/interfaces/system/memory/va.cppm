@@ -108,7 +108,7 @@ export namespace vmm::va
             lib::bug_on(minp >= maxp);
         }
 
-        std::optional<std::uintptr_t> allocate(std::size_t pages);
+        std::optional<std::uintptr_t> allocate(std::size_t pages, std::size_t align_pages = 1);
         bool free(std::uintptr_t startp, std::size_t pages);
     };
 } // export namespace vmm::va
