@@ -114,7 +114,7 @@ namespace lwip
 
         err_t link_out(netif *nif, pbuf *buf)
         {
-            auto state = static_cast<state_t *>(nif->state);
+            auto *state = static_cast<state_t *>(nif->state);
             auto nic = state->nic.lock();
             if (!nic)
                 return ERR_ARG;
@@ -135,7 +135,7 @@ namespace lwip
                 state->buffer = lib::membuffer { needed };
 
             pbuf_copy_partial(buf, state->buffer.data(), buf->tot_len, 0);
-            const auto span = state->buffer.span().subspan(0, buf->tot_len);
+            const auto span = state->buffer.span().first(buf->tot_len);
             if (const auto ret = nic->transmit(span); !ret)
                 return to_err(ret.error());
             return ERR_OK;
@@ -231,7 +231,7 @@ namespace lwip
 
     void deattach(const std::shared_ptr<dev::net::nic_t> &nic)
     {
-        auto nif = static_cast<netif *>(nic->lwip.get());
+        auto *nif = static_cast<netif *>(nic->lwip.get());
         if (nif == nullptr)
             return;
 

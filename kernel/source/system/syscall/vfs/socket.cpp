@@ -25,10 +25,10 @@ namespace syscall::vfs
             return inode->stat.type() == stat::s_ifsock;
         }
 
-        auto get_socket(sched::process_t *proc, int sockfd, bool *nonblock = nullptr)
+        auto get_socket(int sockfd, bool *nonblock = nullptr)
             -> lib::expect<std::shared_ptr<socket::socket_t>>
         {
-            const auto fdesc_res = detail::get_fd(proc, sockfd);
+            const auto fdesc_res = detail::get_fd(sched::current_process(), sockfd);
             if (!fdesc_res)
                 return std::unexpected { fdesc_res.error() };
 
@@ -218,7 +218,7 @@ namespace syscall::vfs
         if (!magic_enum::enum_contains(typ))
             return -ESOCKTNOSUPPORT;
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
 
         auto pres = socket::create_pair(
             static_cast<addr_fam>(family),
@@ -249,10 +249,8 @@ namespace syscall::vfs
         if (addrlen < sizeof(addr_fam) || addrlen > sizeof(sockaddr_storage))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -271,10 +269,8 @@ namespace syscall::vfs
         if (flags & ~(sock_cloexec | sock_nonblock))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -321,10 +317,8 @@ namespace syscall::vfs
         std::uint32_t flags, const sockaddr __user *addr, socklen_t addrlen
     )
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -363,10 +357,8 @@ namespace syscall::vfs
 
     std::ssize_t sendmsg(int sockfd, const msghdr __user *msg, std::uint32_t flags)
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -385,10 +377,8 @@ namespace syscall::vfs
 
     int sendmmsg(int fd, mmsghdr __user *mmsg, std::uint32_t vlen, std::uint32_t flags)
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, fd, &nonblock);
+        auto sockres = get_socket(fd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -433,10 +423,8 @@ namespace syscall::vfs
         std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
     )
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -482,10 +470,8 @@ namespace syscall::vfs
 
     std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags)
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, sockfd, &nonblock);
+        auto sockres = get_socket(sockfd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -507,17 +493,15 @@ namespace syscall::vfs
         std::uint32_t flags, timespec __user *timeout
     )
     {
-        const auto proc = sched::current_process();
-
         bool nonblock = false;
-        auto sockres = get_socket(proc, fd, &nonblock);
+        auto sockres = get_socket(fd, &nonblock);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
         if (nonblock)
             flags |= msg_dontwait;
 
-        const auto timer = chrono::main_timer();
+        const auto *timer = chrono::main_timer();
 
         timespec ktimeout;
         std::uint64_t deadline = 0;
@@ -594,9 +578,7 @@ namespace syscall::vfs
         if (how != shut_rd && how != shut_wr && how != shut_rdwr)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -611,9 +593,7 @@ namespace syscall::vfs
         if (addrlen < sizeof(addr_fam) || addrlen > sizeof(sockaddr_storage))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -629,9 +609,7 @@ namespace syscall::vfs
 
     int listen(int sockfd, int backlog)
     {
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -643,9 +621,7 @@ namespace syscall::vfs
 
     int getsockname(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen)
     {
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -671,9 +647,7 @@ namespace syscall::vfs
 
     int getpeername(int sockfd, sockaddr __user *addr, socklen_t __user *addrlen)
     {
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -699,9 +673,7 @@ namespace syscall::vfs
 
     int setsockopt(int sockfd, int level, int optname, const void __user *optval, socklen_t optlen)
     {
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -718,9 +690,7 @@ namespace syscall::vfs
 
     int getsockopt(int sockfd, int level, int optname, void __user *optval, socklen_t __user *optlen)
     {
-        const auto proc = sched::current_process();
-
-        auto sockres = get_socket(proc, sockfd);
+        auto sockres = get_socket(sockfd);
         if (!sockres)
             return -lib::map_error(sockres.error());
         auto sock = std::move(*sockres);
@@ -728,6 +698,9 @@ namespace syscall::vfs
         socklen_t in_len;
         if (!lib::copy_from_user(&in_len, optlen, sizeof(socklen_t)))
             return -EFAULT;
+
+        if (static_cast<std::make_signed_t<socklen_t>>(in_len) < 0)
+            return -EINVAL;
 
         auto optuspan = lib::maybe_uspan<std::byte>::create(optval, in_len);
         if (!optuspan)

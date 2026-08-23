@@ -11,7 +11,7 @@ namespace syscall::vfs
         const char __user *fstype, std::uint64_t flags, const void __user *data
     )
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
 
         if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
             return -EPERM;
@@ -43,7 +43,7 @@ namespace syscall::vfs
             auto val = detail::get_path(source);
             if (val.has_value())
                 source_path = std::move(*val);
-            else if (val.error() != lib::err::invalid_argument)
+            else if (val.error() != lib::err::not_found)
                 return -lib::map_error(val.error());
         }
 
@@ -73,7 +73,7 @@ namespace syscall::vfs
 
     int pivot_root(const char __user *new_root, const char __user *put_old)
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
 
         if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
             return -EPERM;
@@ -96,7 +96,7 @@ namespace syscall::vfs
 
     int umount2(const char __user *target, int flags)
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
 
         if (!sched::capable(proc->cred, sched::cap_t::sys_admin))
             return -EPERM;
@@ -124,7 +124,7 @@ namespace syscall::vfs
     {
         int do_fsync(int fd, bool data)
         {
-            const auto proc = sched::current_process();
+            auto *const proc = sched::current_process();
 
             const auto fdesc_res = detail::get_fd(proc, fd);
             if (!fdesc_res)

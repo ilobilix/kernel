@@ -4,6 +4,7 @@ export module lib:user;
 
 import :bug_on;
 import :types;
+import :error;
 import std;
 
 namespace lib::impl
@@ -112,6 +113,16 @@ export namespace lib
             return copy_to(std::span<Type> { dest, _span.size() });
         }
 
+        template<typename NType> requires std::is_trivially_copyable_v<NType>
+        expect<void> copy_val_to(NType &dest) const
+        {
+            if (size() < sizeof(NType))
+                return std::unexpected { err::invalid_argument };
+            if (!copy_to(std::as_writable_bytes(std::span { &dest, 1 })))
+                return std::unexpected { err::invalid_address };
+            return { };
+        }
+
         bool copy_from(std::span<const Type> src) const
         {
             if (src.size_bytes() > _span.size_bytes())
@@ -133,6 +144,15 @@ export namespace lib
         bool copy_from(const Type *src) const
         {
             return copy_from(std::span<const Type> { src, _span.size() });
+        }
+
+        template<typename NType> requires std::is_trivially_copyable_v<NType>
+        expect<std::size_t> copy_val_from(const NType &val) const
+        {
+            const auto num = std::min(size(), sizeof(NType));
+            if (!first(num).copy_from(std::as_bytes(std::span { &val, 1 }).first(num)))
+                return std::unexpected { err::invalid_address };
+            return num;
         }
 
         bool fill(std::uint8_t value, std::size_t count) const
@@ -169,14 +189,20 @@ export namespace lib
 
         maybe_uspan<Type> subspan(std::size_t offset, std::size_t length) const
         {
-            lib::bug_on(offset + length > _span.size());
+            bug_on(offset + length > _span.size());
             return maybe_uspan<Type> { _is_user, _span.subspan(offset, length) };
         }
 
         maybe_uspan<Type> subspan(std::size_t offset) const
         {
-            lib::bug_on(offset > _span.size());
+            bug_on(offset > _span.size());
             return maybe_uspan<Type> { _is_user, _span.subspan(offset) };
+        }
+
+        maybe_uspan<Type> first(std::size_t length) const
+        {
+            bug_on(length > _span.size());
+            return maybe_uspan<Type> { _is_user, _span.first(length) };
         }
     };
 
@@ -202,13 +228,13 @@ export namespace lib
         template<typename Type> requires std::is_trivially_copyable_v<Type>
         bool read(Type &val) const
         {
-            return lib::copy_from_user(&val, ptr, sizeof(Type));
+            return copy_from_user(&val, ptr, sizeof(Type));
         }
 
         template<typename Type> requires std::is_trivially_copyable_v<Type>
         bool write(const Type &val) const
         {
-            return lib::copy_to_user(ptr, &val, sizeof(Type));
+            return copy_to_user(ptr, &val, sizeof(Type));
         }
 
         uptr_or_addr add(std::size_t offset) const

@@ -180,7 +180,7 @@ export namespace syscall::vfs
     int sendmmsg(int fd, mmsghdr __user *mmsg, std::uint32_t vlen, std::uint32_t flags);
 
     std::ssize_t recvfrom(
-        int sockfd, void __user *buf, std::size_t size,
+        int sockfd, void __user *buf, std::size_t len,
         std::uint32_t flags, sockaddr __user *addr, socklen_t __user *addrlen
     );
     std::ssize_t recvmsg(int sockfd, msghdr __user *msg, std::uint32_t flags);

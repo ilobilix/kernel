@@ -71,6 +71,7 @@ export namespace lib
 
         address_family_unsupported = EAFNOSUPPORT,
         protocol_unsupported = EPROTONOSUPPORT,
+        protocol_not_available = ENOPROTOOPT,
         socket_unsupported = ESOCKTNOSUPPORT,
         operation_unsupported = EOPNOTSUPP,
         wrong_protocol = EPROTOTYPE,
@@ -84,6 +85,8 @@ export namespace lib
         address_in_use = EADDRINUSE,
         already_in_progress = EALREADY,
         operation_in_progress = EINPROGRESS,
+
+        out_of_domain = EDOM,
 
         would_block = EWOULDBLOCK,
         host_unreachable = EHOSTUNREACH,
@@ -99,8 +102,15 @@ export namespace lib
         return static_cast<errnos>(err);
     }
 
-    std::string_view error_name(err e)
+    constexpr err map_error(errnos errno)
     {
-        return magic_enum::enum_name(e);
+        const auto ret = static_cast<err>(errno);
+        lib::bug_on(!magic_enum::enum_contains(ret));
+        return ret;
+    }
+
+    std::string_view error_name(err err)
+    {
+        return magic_enum::enum_name(err);
     }
 } // export namespace lib

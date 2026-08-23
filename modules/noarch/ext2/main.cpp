@@ -1052,7 +1052,7 @@ namespace ext2
             if (real_size == 0)
                 return 0;
 
-            return get_object(finode)->read(offset, buffer.subspan(0, real_size));
+            return get_object(finode)->read(offset, buffer.first(real_size));
         }
 
         lib::expect<std::size_t> ops_t::write(

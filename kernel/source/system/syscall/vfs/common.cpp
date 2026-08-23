@@ -80,7 +80,7 @@ namespace syscall::vfs
             if (pathname_len < 0)
                 return std::unexpected { lib::err::invalid_address };
             if (pathname_len == 0)
-                return std::unexpected { lib::err::invalid_argument };
+                return std::unexpected { lib::err::not_found };
             if (pathname_len == path_max)
                 return std::unexpected { lib::err::path_too_long };
 
@@ -121,7 +121,7 @@ namespace syscall::vfs
             if (atim < stat.st_mtim || atim < stat.st_ctim)
                 return true;
 
-            constexpr timespec day { 24 * 60 * 60, 0 };
+            constexpr timespec day { 24l * 60 * 60, 0 };
             return chrono::now(chrono::realtime) - atim >= day;
         }
 

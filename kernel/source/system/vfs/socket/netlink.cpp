@@ -14,40 +14,31 @@ namespace vfs::socket::netlink
     namespace
     {
         constexpr std::size_t default_rcvbuf = lib::kib(208);
-        constexpr std::size_t min_rcvbuf = lib::kib(4);
-        constexpr std::size_t max_rcvbuf = lib::mib(16);
+        constexpr std::size_t min_capacity = lib::kib(4);
+        constexpr std::size_t max_capacity = lib::mib(16);
 
         struct netlink_sock_t;
         void register_sock(netlink_sock_t *sock);
         void unregister_sock(netlink_sock_t *sock);
 
+        struct state_data_t
+        {
+            std::uint32_t portid = 0;
+            std::uint32_t groups = 0;
+
+            std::uint32_t dest_portid = 0;
+            std::uint32_t dest_groups = 0;
+
+            bool bound = false;
+        };
+
         struct table_t;
-        struct netlink_sock_t : socket_t, std::enable_shared_from_this<netlink_sock_t>
+        struct netlink_sock_t : socket_impl_t<state_data_t>,
+            std::enable_shared_from_this<netlink_sock_t>
         {
             lib::intrusive_list_hook<netlink_sock_t> proto_hook;
 
             table_t *const table;
-
-            sched::wait_queue_t read_wait;
-            sched::wait_queue_t write_wait;
-
-            struct state_t
-            {
-                std::uint32_t portid = 0;
-                std::uint32_t groups = 0;
-
-                std::uint32_t dest_portid = 0;
-                std::uint32_t dest_groups = 0;
-
-                bool bound = false;
-                bool connected = false;
-                bool passcred = false;
-                bool overrun = false;
-
-                timeval rcvtimeo { };
-                timeval sndtimeo { };
-            };
-            lib::locker<state_t, sched::mutex_t> state;
 
             struct dgram_t
             {
@@ -66,8 +57,14 @@ namespace vfs::socket::netlink
             lib::locker<receive_t, sched::mutex_t> receive;
 
             netlink_sock_t(table_t *table, int protocol, sock_type type)
-                : socket_t { protocol, af_netlink, type }, proto_hook { }, table { table }
+                : socket_impl_t { protocol, af_netlink, type },
+                  proto_hook { }, table { table }
             {
+                {
+                    auto locked = state.lock();
+                    locked->sndbuf = default_rcvbuf;
+                    locked->rcvbuf = default_rcvbuf;
+                }
                 register_sock(this);
             }
 
@@ -87,7 +84,10 @@ namespace vfs::socket::netlink
                     auto locked = receive.lock();
                     if (locked->bytes + size > locked->rcvbuf)
                     {
-                        state.lock()->overrun = true;
+                        pending_err.store(
+                            lib::map_error(lib::err::no_buffer_space),
+                            std::memory_order_release
+                        );
                         return false;
                     }
 
@@ -154,7 +154,7 @@ namespace vfs::socket::netlink
                 }
 
                 std::uint16_t mask = pollout | pollwrnorm;
-                if (state.lock()->overrun)
+                if (pending_err.load(std::memory_order_acquire) != errnos { })
                     mask |= pollerr;
                 if (!receive.lock()->queue.empty())
                     mask |= pollin | pollrdnorm;
@@ -184,8 +184,7 @@ namespace vfs::socket::netlink
                 }
 
                 const auto len = std::min(out.size(), sizeof(sa));
-                if (!out.subspan(0, len)
-                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, len)))
+                if (!out.copy_from(std::as_bytes(std::span { &sa, 1 }).first(len)))
                     return std::unexpected { lib::err::invalid_address };
                 return sizeof(sa);
             }
@@ -200,27 +199,23 @@ namespace vfs::socket::netlink
                 };
                 {
                     auto locked = state.lock();
-                    if (!locked->connected)
+                    if (locked->state != connected)
                         return std::unexpected { lib::err::not_connected };
                     sa.pid = locked->dest_portid;
                     sa.groups = locked->dest_groups;
                 }
 
                 const auto len = std::min(out.size(), sizeof(sa));
-                if (!out.subspan(0, len)
-                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, len)))
+                if (!out.copy_from(std::as_bytes(std::span { &sa, 1 }).first(len)))
                     return std::unexpected { lib::err::invalid_address };
                 return sizeof(sa);
             }
 
-            auto setsockopt(
-                sock_lvl lvl, int opt,
-                lib::maybe_uspan<const std::byte> buf
-            ) -> lib::expect<void> override;
-            auto getsockopt(
-                sock_lvl lvl, int opt,
-                lib::maybe_uspan<std::byte> buf
-            ) -> lib::expect<std::size_t> override;
+            auto do_setsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf)
+                -> lib::expect<void> override;
+            void sol_sock_finish(core_state_t &core, sock_opt opt) override;
+            auto do_getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+                -> lib::expect<std::size_t> override;
 
             auto release() -> lib::expect<void> override;
         };
@@ -388,7 +383,7 @@ namespace vfs::socket::netlink
                 return std::unexpected { lib::err::invalid_argument };
 
             sockaddr_nl sa { };
-            if (!addr.subspan(0, sizeof(sa)).copy_to(std::as_writable_bytes(std::span { &sa, 1 })))
+            if (!addr.first(sizeof(sa)).copy_to(std::as_writable_bytes(std::span { &sa, 1 })))
                 return std::unexpected { lib::err::invalid_address };
 
             if (sa.family != af_netlink)
@@ -420,13 +415,13 @@ namespace vfs::socket::netlink
                 return std::unexpected { lib::err::invalid_argument };
 
             sockaddr_nl sa { };
-            if (!addr.subspan(0, sizeof(sa)).copy_to(std::as_writable_bytes(std::span { &sa, 1 })))
+            if (!addr.first(sizeof(sa)).copy_to(std::as_writable_bytes(std::span { &sa, 1 })))
                 return std::unexpected { lib::err::invalid_address };
 
             if (sa.family == af_unspec)
             {
                 auto slocked = state.lock();
-                slocked->connected = false;
+                slocked->state = unconnected;
                 slocked->dest_portid = 0;
                 slocked->dest_groups = 0;
                 return { };
@@ -439,7 +434,7 @@ namespace vfs::socket::netlink
                 return ret;
 
             auto slocked = state.lock();
-            slocked->connected = true;
+            slocked->state = connected;
             slocked->dest_portid = sa.pid;
             slocked->dest_groups = sa.groups;
             return { };
@@ -455,7 +450,7 @@ namespace vfs::socket::netlink
                 total += iov.size();
             if (total == 0)
                 return 0uz;
-            if (total > max_rcvbuf)
+            if (total > max_capacity)
                 return std::unexpected { lib::err::message_too_long };
 
             std::uint32_t dest_portid;
@@ -466,7 +461,7 @@ namespace vfs::socket::netlink
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_nl sa { };
-                if (!hdr.name.subspan(0, sizeof(sa))
+                if (!hdr.name.first(sizeof(sa))
                     .copy_to(std::as_writable_bytes(std::span { &sa, 1 })))
                     return std::unexpected { lib::err::invalid_address };
 
@@ -585,15 +580,14 @@ namespace vfs::socket::netlink
             for (const auto &iov : hdr.iovs)
                 total += iov.size();
 
+            if (const auto err = pending_err.exchange(errnos { }, std::memory_order_acq_rel);
+                err != errnos { })
+                return std::unexpected { lib::map_error(err) };
+
             bool passcred;
             std::size_t wait_ns;
             {
                 auto slocked = state.lock();
-                if (slocked->overrun)
-                {
-                    slocked->overrun = false;
-                    return std::unexpected { lib::err::no_buffer_space };
-                }
                 passcred = slocked->passcred;
                 wait_ns = slocked->rcvtimeo.to_ns();
             }
@@ -645,8 +639,8 @@ namespace vfs::socket::netlink
                             .groups = group_mask(msg->dst_group)
                         };
                         const auto copy_len = std::min(hdr.name.size(), sizeof(sa));
-                        if (!hdr.name.subspan(0, copy_len)
-                            .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                        if (!hdr.name.first(copy_len)
+                            .copy_from(std::as_bytes(std::span { &sa, 1 }).first(copy_len)))
                             return std::unexpected { lib::err::invalid_address };
                         hdr.addr_len_out = sizeof(sa);
                     }
@@ -675,182 +669,91 @@ namespace vfs::socket::netlink
             }
         }
 
-        auto netlink_sock_t::setsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<const std::byte> buf
+        auto netlink_sock_t::do_setsockopt(
+            sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf
         ) -> lib::expect<void>
         {
-            const auto read_int = [&](int &out) -> lib::expect<void> {
-                if (buf.size() < sizeof(int))
-                    return std::unexpected { lib::err::invalid_argument };
+            if (lvl != sol_netlink)
+                return std::unexpected { lib::err::protocol_not_available };
 
-                if (!buf.copy_to(std::as_writable_bytes(std::span { &out, 1 })))
-                    return std::unexpected { lib::err::invalid_address };
-                return { };
-            };
-
-            if (lvl == sol_netlink)
+            switch (const auto nopt = static_cast<netlink_opt>(opt))
             {
-                switch (const auto nopt = static_cast<netlink_opt>(opt))
+                case netlink_add_membership:
+                case netlink_drop_membership:
                 {
-                    case netlink_add_membership:
-                    case netlink_drop_membership:
-                    {
-                        int group;
-                        if (const auto ret = read_int(group); !ret)
-                            return ret;
-                        if (group <= 0 || static_cast<std::uint32_t>(group) > table->proto.ngroups)
-                            return std::unexpected { lib::err::invalid_argument };
+                    int group;
+                    if (const auto ret = buf.copy_val_to(group); !ret)
+                        return ret;
+                    if (group <= 0 || static_cast<std::uint32_t>(group) > table->proto.ngroups)
+                        return std::unexpected { lib::err::invalid_argument };
 
-                        const bool add = nopt == netlink_add_membership;
-                        if (add && !table->proto.nonroot_recv &&
-                            !sched::capable(sched::cap_t::net_admin))
-                            return std::unexpected { lib::err::not_permitted };
+                    const bool add = nopt == netlink_add_membership;
+                    if (add && !table->proto.nonroot_recv &&
+                        !sched::capable(sched::cap_t::net_admin))
+                        return std::unexpected { lib::err::not_permitted };
 
-                        if (const auto ret = autobind(); !ret)
-                            return ret;
+                    if (const auto ret = autobind(); !ret)
+                        return ret;
 
-                        const auto _ = registry.lock();
-                        auto slocked = state.lock();
+                    const auto _ = registry.lock();
+                    auto slocked = state.lock();
 
-                        const auto bit = group_mask(group);
-                        if (add)
-                            slocked->groups |= bit;
-                        else
-                            slocked->groups &= ~bit;
-                        return { };
-                    }
-                    case netlink_pktinfo:
-                    case netlink_broadcast_error:
-                    case netlink_no_enobufs:
-                    case netlink_cap_ack:
-                    case netlink_ext_ack:
-                    case netlink_get_strict_chk:
-                        // TODO
-                        return { };
-                    default:
-                        return std::unexpected { lib::err::protocol_unsupported };
+                    const auto bit = group_mask(group);
+                    if (add)
+                        slocked->groups |= bit;
+                    else
+                        slocked->groups &= ~bit;
+                    return { };
                 }
+                case netlink_pktinfo:
+                case netlink_broadcast_error:
+                case netlink_no_enobufs:
+                case netlink_cap_ack:
+                case netlink_ext_ack:
+                case netlink_get_strict_chk:
+                    // TODO
+                    return { };
+                default:
+                    return std::unexpected { lib::err::protocol_not_available };
             }
-            else if (lvl != sol_socket)
-                return std::unexpected { lib::err::protocol_unsupported };
+        }
 
-            if (opt == so_rcvbufforce)
-                opt = so_rcvbuf;
-            else if (opt == so_sndbufforce)
-                opt = so_sndbuf;
-            else if (opt == so_attach_filter || opt == so_detach_filter || opt == so_lock_filter)
-                return { }; // TODO
-
-            switch (static_cast<sock_opt>(opt))
+        void netlink_sock_t::sol_sock_finish(core_state_t &core, sock_opt opt)
+        {
+            auto &state = static_cast<state_t &>(core);
+            switch (opt)
             {
-                case so_rcvbuf:
                 case so_sndbuf:
-                {
-                    int val;
-                    if (const auto ret = read_int(val); !ret)
-                        return ret;
-
-                    receive.lock()->rcvbuf = std::clamp(
-                        std::max<std::size_t>(val, 0uz) * 2,
-                        min_rcvbuf, max_rcvbuf
+                    // TODO
+                    break;
+                case so_rcvbuf:
+                    state.rcvbuf = std::clamp(
+                        state.rcvbuf * 2, min_capacity, max_capacity
                     );
-                    return { };
-                }
-                case so_passcred:
-                {
-                    int val;
-                    if (const auto ret = read_int(val); !ret)
-                        return ret;
-                    state.lock()->passcred = val != 0;
-                    return { };
-                }
-                case so_rcvtimeo:
-                    if (buf.size() < sizeof(timeval))
-                        return std::unexpected { lib::err::invalid_argument };
-                    if (!buf.copy_to(std::as_writable_bytes(std::span { &state.lock()->rcvtimeo, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    return { };
-                case so_sndtimeo:
-                    if (buf.size() < sizeof(timeval))
-                        return std::unexpected { lib::err::invalid_argument };
-                    if (!buf.copy_to(std::as_writable_bytes(std::span { &state.lock()->sndtimeo, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    return { };
+                    receive.lock()->rcvbuf = state.rcvbuf;
+                    break;
                 case so_reuseaddr:
                 case so_reuseport:
                 case so_broadcast:
                 case so_dontroute:
                     // TODO
-                    return { };
                 default:
-                    return std::unexpected { lib::err::invalid_argument };
+                    break;
             }
         }
 
-        auto netlink_sock_t::getsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<std::byte> buf
-        ) -> lib::expect<std::size_t>
+        auto netlink_sock_t::do_getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+            -> lib::expect<std::size_t>
         {
-            const auto copy = [&]<typename Type>(Type val) -> lib::expect<std::size_t> {
-                const auto num = std::min(buf.size(), sizeof(Type));
-                if (!buf.subspan(0, num)
-                    .copy_from(std::as_bytes(std::span { &val, 1 }).subspan(0, num)))
-                    return std::unexpected { lib::err::invalid_address };
-                return sizeof(Type);
-            };
+            if (lvl != sol_netlink)
+                return std::unexpected { lib::err::protocol_not_available };
 
-            if (lvl == sol_netlink)
+            switch (static_cast<netlink_opt>(opt))
             {
-                switch (static_cast<netlink_opt>(opt))
-                {
-                    case netlink_list_memberships:
-                        return copy(state.lock()->groups);
-                    default:
-                        return std::unexpected { lib::err::protocol_unsupported };
-                }
-            }
-
-            if (lvl != sol_socket)
-                return std::unexpected { lib::err::protocol_unsupported };
-
-            switch (static_cast<sock_opt>(opt))
-            {
-                case so_type:
-                    return copy(static_cast<int>(type));
-                case so_domain:
-                    return copy(static_cast<int>(family));
-                case so_protocol:
-                    return copy(protocol);
-                case so_passcred:
-                    return copy(state.lock()->passcred ? 1 : 0);
-                case so_rcvbuf:
-                case so_sndbuf:
-                    return copy(static_cast<int>(receive.lock()->rcvbuf));
-                case so_error:
-                {
-                    auto slocked = state.lock();
-                    const auto err = slocked->overrun ? ENOBUFS : 0;
-                    slocked->overrun = false;
-                    return copy(err);
-                }
-                case so_rcvtimeo:
-                    if (buf.size() < sizeof(timeval))
-                        return std::unexpected { lib::err::invalid_argument };
-                    if (!buf.subspan(0, sizeof(timeval))
-                        .copy_from(std::as_bytes(std::span { &state.lock()->rcvtimeo, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    return sizeof(timeval);
-                case so_sndtimeo:
-                    if (buf.size() < sizeof(timeval))
-                        return std::unexpected { lib::err::invalid_argument };
-                    if (!buf.subspan(0, sizeof(timeval))
-                        .copy_from(std::as_bytes(std::span { &state.lock()->sndtimeo, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    return sizeof(timeval);
+                case netlink_list_memberships:
+                    return buf.copy_val_from(state.lock()->groups);
                 default:
-                    return std::unexpected { lib::err::invalid_argument };
+                    return std::unexpected { lib::err::protocol_not_available };
             }
         }
 

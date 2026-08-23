@@ -1081,14 +1081,7 @@ namespace fs::dev::tty
             }
 
             if (progress > 0)
-            {
-                lib::bug_on(
-                    !buffer.subspan(0, progress).copy_from(
-                        buf.span().subspan(0, progress)
-                    )
-                );
-            }
-
+                lib::bug_on(!buffer.copy_from(buf.span().first(progress)));
             return progress;
         }
 

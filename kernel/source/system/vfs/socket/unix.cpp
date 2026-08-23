@@ -71,16 +71,31 @@ namespace vfs::socket
             char sun_path[108];
         };
 
-        enum state { unconnected, connecting, connected, listening, disconnecting };
-        struct unix_sock : socket_t, std::enable_shared_from_this<unix_sock>
+        struct state_data_t
+        {
+            std::weak_ptr<unix_sock> peer;
+
+            std::shared_ptr<vfs::inode_t> bound_inode;
+            std::string bound_path;
+            bool bound = false;
+
+            lib::list<std::shared_ptr<unix_sock>> accept_queue;
+            std::size_t backlog = 0;
+
+            std::optional<std::size_t> resize_on_con;
+
+            ucred cred { };
+        };
+
+        struct unix_sock : socket_impl_t<state_data_t>, std::enable_shared_from_this<unix_sock>
         {
             struct private_t
             {
                 std::weak_ptr<unix_sock> sock;
 
-                static auto create(std::shared_ptr<unix_sock> sock)
+                static auto create(const std::shared_ptr<unix_sock> &sock)
                 {
-                    return std::make_shared<private_t>(std::move(sock));
+                    return std::make_shared<private_t>(sock);
                 }
 
                 static std::shared_ptr<unix_sock> bound_to(
@@ -100,41 +115,9 @@ namespace vfs::socket
                 bool empty() const { return passed_fds.empty() && !creds.has_value(); }
             };
 
-            sched::wait_queue_t read_wait;
-            sched::wait_queue_t write_wait;
-            sched::wait_queue_t accept_wait;
             sched::wait_queue_t conn_wait;
 
             lib::intrusive_list_hook<unix_sock> sockets_hook;
-
-            struct state_t
-            {
-                state state;
-
-                std::weak_ptr<unix_sock> peer;
-
-                std::shared_ptr<vfs::inode_t> bound_inode;
-                std::string bound_path;
-                bool bound = false;
-
-                lib::list<std::shared_ptr<unix_sock>> accept_queue;
-                std::size_t backlog = 0;
-
-                bool shut_read = false;
-                bool shut_write = false;
-                bool passcred = false;
-                int pending_error = 0;
-
-                std::optional<int> resize_on_con;
-
-                linger linger_opt { };
-                timeval rcvtimeo { }, sndtimeo { };
-
-                ucred cred { };
-
-                state_t(enum state state) : state { state } { }
-            };
-            lib::locker<state_t, sched::mutex_t> state;
 
             struct receive_t
             {
@@ -340,20 +323,26 @@ namespace vfs::socket
             }
 
             unix_sock(
-                int protocol, sock_type type, enum state state_ = unconnected,
+                int protocol, sock_type type, socket_state state_ = unconnected,
                 std::size_t cap = default_capacity
-            ) : socket_t { protocol, af_unix, type }, state { state_ }
+            ) : socket_impl_t { protocol, af_unix, type }
             {
+                std::size_t bufsize = dgram_cap;
                 if (type == sock_stream)
                 {
                     auto locked = receive.lock();
                     locked->capacity = cap;
                     locked->storage.allocate(locked->capacity);
+                    bufsize = locked->capacity;
                 }
 
                 {
                     const auto *proc = sched::current_process();
-                    state.lock()->cred = ucred {
+                    auto locked = state.lock();
+                    locked->state = state_;
+                    locked->sndbuf = bufsize;
+                    locked->rcvbuf = bufsize;
+                    locked->cred = ucred {
                         .pid = proc->pid,
                         .uid = proc->cred->euid,
                         .gid = proc->cred->egid
@@ -374,7 +363,7 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size())))
+                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).first(addr.size())))
                     return std::unexpected { lib::err::invalid_address };
 
                 if (sa.sun_family != af_unix)
@@ -473,8 +462,7 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
-                    .subspan(0, addr.size())))
+                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).first(addr.size())))
                     return std::unexpected { lib::err::invalid_address };
 
                 if (sa.sun_family == af_unspec)
@@ -543,8 +531,11 @@ namespace vfs::socket
 
                 if (type == sock_dgram)
                 {
+                    const auto target_cred = target->state.lock()->cred;
+
                     auto slocked = state.lock();
                     slocked->peer = target;
+                    slocked->peer_cred = target_cred;
                     slocked->state = connected;
                     return { };
                 }
@@ -583,6 +574,7 @@ namespace vfs::socket
                             if (tlocked->accept_queue.size() < tlocked->backlog + 1)
                             {
                                 std::shared_ptr<unix_sock> server;
+                                ucred client_cred { };
                                 {
                                     auto slocked = state.lock();
                                     server = std::make_shared<unix_sock>(
@@ -593,11 +585,14 @@ namespace vfs::socket
                                     );
                                     slocked->resize_on_con = std::nullopt;
                                     slocked->peer = server;
+                                    slocked->peer_cred = tlocked->cred;
                                     slocked->state = connected;
+                                    client_cred = slocked->cred;
                                 }
                                 {
                                     auto sslocked = server->state.lock();
                                     sslocked->peer = shared_from_this();
+                                    sslocked->peer_cred = client_cred;
                                     sslocked->state = connected;
                                     sslocked->bound_path = tlocked->bound_path;
                                     sslocked->passcred = tlocked->passcred;
@@ -655,6 +650,7 @@ namespace vfs::socket
                     .uid = proc->cred->euid,
                     .gid = proc->cred->egid
                 };
+                slocked->peer_cred = slocked->cred;
                 return { };
             }
 
@@ -719,8 +715,8 @@ namespace vfs::socket
                         if (peer_addr_out.size() > 0 && addr_len_inout)
                         {
                             const auto copy_len = std::min<std::size_t>(peer_addr_out.size(), actual);
-                            if (!peer_addr_out.subspan(0, copy_len).copy_from(
-                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                            if (!peer_addr_out.first(copy_len)
+                                .copy_from(std::as_bytes(std::span { &sa, 1 }).first(copy_len)))
                                 return std::unexpected { lib::err::invalid_address };
                             *addr_len_inout = actual;
                         }
@@ -915,7 +911,7 @@ namespace vfs::socket
                 {
                     sockaddr_un sa { };
                     if (!hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
-                        .subspan(0, hdr.name.size())))
+                        .first(hdr.name.size())))
                         return std::unexpected { lib::err::invalid_address };
 
                     if (sa.sun_family != af_unix)
@@ -1094,7 +1090,7 @@ namespace vfs::socket
                             const auto rest = want - first;
 
                             std::span span { locked->storage.data() + peek_tail, first };
-                            if (!iov.subspan(0, first).copy_from(span))
+                            if (!iov.copy_from(span))
                                 return std::unexpected { lib::err::invalid_address };
                             peek_tail = (peek_tail + first) & (locked->capacity - 1);
 
@@ -1276,8 +1272,8 @@ namespace vfs::socket
                                 msg->sender_path.size() + !is_abstract;
                             const auto copy_len = std::min(hdr.name.size(), sa_len);
 
-                            if (!hdr.name.subspan(0, copy_len).copy_from(
-                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                            if (!hdr.name.first(copy_len)
+                                .copy_from(std::as_bytes(std::span { &sa, 1 }).first(copy_len)))
                                 return std::unexpected { lib::err::invalid_address };
                             hdr.addr_len_out = sa_len;
                         }
@@ -1374,6 +1370,9 @@ namespace vfs::socket
                         ? locked->buffered > 0
                         : !locked->dgram_queue.empty();
                 }
+
+                if (pending_err.load(std::memory_order_acquire) != errnos { })
+                    mask |= pollerr;
 
                 if (is_listener)
                 {
@@ -1480,8 +1479,8 @@ namespace vfs::socket
                 }
 
                 const auto copy_len = std::min<std::size_t>(out.size(), actual);
-                if (!out.subspan(0, copy_len)
-                    .copy_from(std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                if (!out.first(copy_len)
+                    .copy_from(std::as_bytes(std::span { &sa, 1 }).first(copy_len)))
                     return std::unexpected { lib::err::invalid_address };
                 return actual;
             }
@@ -1494,201 +1493,56 @@ namespace vfs::socket
                 return peer_ptr->getsockname(out);
             }
 
-            auto setsockopt(
-                sock_lvl lvl, int opt,
-                lib::maybe_uspan<const std::byte> buf
-            ) -> lib::expect<void> override
+            auto do_setsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf)
+                -> lib::expect<void> override
             {
-                if (lvl != sol_socket)
-                    return std::unexpected { lib::err::protocol_unsupported };
+                lib::unused(lvl, opt, buf);
+                return std::unexpected { lib::err::protocol_not_available };
+            }
 
-                const auto read_int = [&](int &out) -> lib::expect<void> {
-                    if (buf.size() < sizeof(int))
-                        return std::unexpected { lib::err::invalid_argument };
-
-                    if (!buf.copy_to(std::as_writable_bytes(std::span { &out, 1 })))
-                        return std::unexpected { lib::err::invalid_address };
-                    return { };
-                };
-
-                switch (static_cast<sock_opt>(opt))
+            void sol_sock_finish(core_state_t &core, sock_opt opt) override
+            {
+                auto &state = static_cast<state_t &>(core);
+                switch (opt)
                 {
-                    case so_rcvbuf:
-                    {
-                        int val;
-                        if (const auto ret = read_int(val); !ret)
-                            return ret;
-
-                        auto locked = receive.lock();
-                        resize_storage(locked, val);
-                        return { };
-                    }
                     case so_sndbuf:
                     {
-                        int val;
-                        if (const auto ret = read_int(val); !ret)
-                            return ret;
+                        if (type != sock_stream)
+                            break;
 
-                        std::shared_ptr<unix_sock> peer_ptr;
+                        const auto peer_ptr = state.peer.lock();
+                        if (!peer_ptr)
                         {
-                            auto slocked = state.lock();
-                            if (!(peer_ptr = slocked->peer.lock()))
-                            {
-                                slocked->resize_on_con = val;
-                                return { };
-                            }
+                            state.sndbuf = round_capacity(state.sndbuf * 2);
+                            state.resize_on_con = state.sndbuf;
+                            break;
                         }
 
                         auto locked = peer_ptr->receive.lock();
-                        resize_storage(locked, val);
-                        return { };
+                        resize_storage(locked, state.sndbuf);
+                        state.sndbuf = locked->capacity;
+                        break;
+                    }
+                    case so_rcvbuf:
+                    {
+                        if (type != sock_stream)
+                            break;
+
+                        auto locked = receive.lock();
+                        resize_storage(locked, state.rcvbuf);
+                        state.rcvbuf = locked->capacity;
+                        break;
                     }
                     default:
                         break;
-                }
-
-                auto slocked = state.lock();
-                switch (static_cast<sock_opt>(opt))
-                {
-                    case so_passcred:
-                    {
-                        int val;
-                        if (const auto ret = read_int(val); !ret)
-                            return ret;
-
-                        slocked->passcred = val != 0;
-                        return { };
-                    }
-                    case so_linger:
-                        if (buf.size() < sizeof(linger))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->linger_opt, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return { };
-                    case so_rcvtimeo:
-                        if (buf.size() < sizeof(timeval))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->rcvtimeo, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return { };
-                    case so_sndtimeo:
-                        if (buf.size() < sizeof(timeval))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.copy_to(std::as_writable_bytes(std::span { &slocked->sndtimeo, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return { };
-                    case so_reuseaddr:
-                    case so_reuseport:
-                    case so_keepalive:
-                    case so_broadcast:
-                    case so_dontroute:
-                        // no-op
-                        return { };
-                    default:
-                        return std::unexpected { lib::err::invalid_argument };
                 }
             }
 
-            auto getsockopt(
-                sock_lvl lvl, int opt,
-                lib::maybe_uspan<std::byte> buf
-            ) -> lib::expect<std::size_t> override
+            auto do_getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+                -> lib::expect<std::size_t> override
             {
-                if (lvl != sol_socket)
-                    return std::unexpected { lib::err::protocol_unsupported };
-
-                const auto copy = [&]<typename Type>(Type val) -> lib::expect<std::size_t> {
-                    const auto num = std::min(buf.size(), sizeof(Type));
-                    if (!buf.subspan(0, num)
-                        .copy_from(std::as_bytes(std::span { &val, 1 }).subspan(0, num)))
-                        return std::unexpected { lib::err::invalid_address };
-                    return sizeof(Type);
-                };
-
-                switch (static_cast<sock_opt>(opt))
-                {
-                    case so_rcvbuf:
-                    {
-                        const auto locked = receive.lock();
-                        return copy(static_cast<int>(locked->capacity));
-                    }
-                    case so_sndbuf:
-                    {
-                        const auto peer_ptr = state.lock()->peer.lock();
-                        if (!peer_ptr)
-                            return copy(static_cast<int>(default_capacity));
-
-                        const auto locked = peer_ptr->receive.lock();
-                        return copy(static_cast<int>(locked->capacity));
-                    }
-                    case so_peercred:
-                    {
-                        if (buf.size() < sizeof(ucred))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        const auto peer_ptr = state.lock()->peer.lock();
-                        if (!peer_ptr)
-                            return std::unexpected { lib::err::not_connected };
-
-                        const ucred cred = peer_ptr->state.lock()->cred;
-                        if (!buf.subspan(0, sizeof(ucred))
-                            .copy_from(std::as_bytes(std::span { &cred, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return sizeof(ucred);
-                    }
-                    default:
-                        break;
-                }
-
-                auto slocked = state.lock();
-                switch (static_cast<sock_opt>(opt))
-                {
-                    case so_type:
-                        return copy(static_cast<int>(type));
-                    case so_domain:
-                        return copy(static_cast<int>(family));
-                    case so_protocol:
-                        return copy(protocol);
-                    case so_acceptconn:
-                        return copy(slocked->state == listening ? 1 : 0);
-                    case so_passcred:
-                        return copy(slocked->passcred ? 1 : 0);
-                    case so_error:
-                    {
-                        const int err = slocked->pending_error;
-                        slocked->pending_error = 0;
-                        return copy(err);
-                    }
-                    case so_linger:
-                        if (buf.size() < sizeof(linger))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.subspan(0, sizeof(linger))
-                            .copy_from(std::as_bytes(std::span { &slocked->linger_opt, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return sizeof(linger);
-                    case so_rcvtimeo:
-                        if (buf.size() < sizeof(timeval))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.subspan(0, sizeof(timeval))
-                            .copy_from(std::as_bytes(std::span { &slocked->rcvtimeo, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return sizeof(timeval);
-                    case so_sndtimeo:
-                        if (buf.size() < sizeof(timeval))
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (!buf.subspan(0, sizeof(timeval))
-                            .copy_from(std::as_bytes(std::span { &slocked->sndtimeo, 1 })))
-                            return std::unexpected { lib::err::invalid_address };
-                        return sizeof(timeval);
-                    default:
-                        return std::unexpected { lib::err::invalid_argument };
-                }
+                lib::unused(lvl, opt, buf);
+                return std::unexpected { lib::err::protocol_not_available };
             }
 
             auto release() -> lib::expect<void> override
@@ -1790,7 +1644,10 @@ namespace vfs::socket
                         {
                             clocked->state = disconnecting;
                             clocked->peer.reset();
-                            clocked->pending_error = ECONNRESET;
+                            conn->pending_err.store(
+                                lib::map_error(lib::err::connection_reset),
+                                std::memory_order_release
+                            );
                         }
                     }
 
@@ -1929,11 +1786,13 @@ namespace vfs::socket
                     auto locked = one->state.lock();
                     locked->peer = two;
                     locked->cred = cred;
+                    locked->peer_cred = cred;
                 }
                 {
                     auto locked = two->state.lock();
                     locked->peer = one;
                     locked->cred = cred;
+                    locked->peer_cred = cred;
                 }
 
                 return std::make_pair(std::move(one), std::move(two));
@@ -1968,7 +1827,8 @@ namespace vfs::socket
                         for (auto &sock : *locked)
                         {
                             const auto slocked = sock.state.lock();
-                            const std::uint32_t flags = (slocked->state == listening) ? 0x10000 : 0;
+                            const std::uint32_t flags = (slocked->state == listening)
+                                ? 0x10000 : 0;
 
                             std::uint32_t st = 0;
                             switch (slocked->state)

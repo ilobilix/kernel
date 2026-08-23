@@ -123,7 +123,7 @@ namespace fs::tmpfs
         if (real_size == 0)
             return 0;
 
-        return inod->memory->read(offset, buffer.subspan(0, real_size));
+        return inod->memory->read(offset, buffer.first(real_size));
     }
 
     lib::expect<std::size_t> ops_t::write(
@@ -155,7 +155,7 @@ namespace fs::tmpfs
                 return std::unexpected { lib::err::no_space_left };
         }
 
-        const auto ret = inod->memory->write(offset, buffer.subspan(0, size));
+        const auto ret = inod->memory->write(offset, buffer.first(size));
 
         if (grew)
         {

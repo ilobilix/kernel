@@ -223,6 +223,8 @@ namespace fs::dev::pty
             case tty::tcioflush:
                 raise(pkt_flushread | pkt_flushwrite);
                 break;
+            default:
+                std::unreachable();
         }
     }
 
@@ -276,7 +278,7 @@ namespace fs::dev::pty
 
         const auto put = [&](std::uint8_t value) {
             const auto byte = static_cast<std::byte>(value);
-            return buffer.subspan(0, 1).copy_from(std::span { &byte, 1 });
+            return buffer.copy_from(std::span { &byte, 1 });
         };
 
         while (true)
@@ -391,7 +393,7 @@ namespace fs::dev::pty
             case tiocgptpeer:
             {
                 const int open_flags = argp.value();
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 if (!proc || !proc->fdt)
                     return std::unexpected { lib::err::io_error };
 
@@ -440,7 +442,7 @@ namespace fs::dev::pty
         std::uint32_t pty_minor;
         {
             auto state = allocator.lock();
-            const auto first_free = std::ranges::find(state->minor_used, false);
+            auto *const first_free = std::ranges::find(state->minor_used, false);
             if (first_free == state->minor_used.end())
                 return std::unexpected { lib::err::no_space_left };
             *first_free = true;

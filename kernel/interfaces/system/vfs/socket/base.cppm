@@ -2,6 +2,8 @@
 
 export module system.vfs.socket:base;
 
+import system.sched.wait_queue;
+import system.sched.mutex;
 import system.vfs;
 import lib;
 import std;
@@ -10,10 +12,11 @@ export
 {
     constexpr int somaxconn = 4096;
     constexpr std::size_t uio_maxiov = 1024;
+    constexpr uid_t unset_id = -1u;
 
     constexpr std::size_t cmsg_align = sizeof(std::size_t);
 
-    enum prot_fam : int
+    enum prot_fam
     {
         pf_unspec = 0,
         pf_local = 1,
@@ -121,7 +124,7 @@ export
         af_max = pf_max
     };
 
-    enum sock_lvl : int
+    enum sock_lvl
     {
         sol_socket = 1,
         sol_raw = 255,
@@ -154,7 +157,7 @@ export
         sol_vsock = 287
     };
 
-    enum sock_opt : int
+    enum sock_opt
     {
         so_debug = 1,
         so_reuseaddr = 2,
@@ -182,7 +185,7 @@ export
         so_lock_filter = 44
     };
 
-    enum sock_type : int
+    enum sock_type
     {
         sock_stream = 1,
         sock_dgram = 2,
@@ -199,13 +202,13 @@ export
         sock_nonblock = 00004000
     };
 
-    enum scm_type : int
+    enum scm_type
     {
         scm_rights = 1,
         scm_credentials = 2
     };
 
-    enum msg_flag : int
+    enum msg_flag
     {
         msg_oob = 0x01,
         msg_peek = 0x02,
@@ -231,7 +234,7 @@ export
         msg_cmsg_cloexec = 0x40000000
     };
 
-    enum shut : int
+    enum shut
     {
         shut_rd = 0,
         shut_wr = 1,
@@ -302,14 +305,57 @@ export namespace vfs::socket
         lib::expect<bool> write_cmsg(int type, std::span<const std::byte> data);
     };
 
+    enum socket_state
+    {
+        unconnected,
+        connecting,
+        connected,
+        listening,
+        disconnecting
+    };
+
+    struct core_state_t
+    {
+        socket_state state = unconnected;
+
+        std::size_t sndbuf = 0;
+        std::size_t rcvbuf = 0;
+
+        bool shut_read = false;
+        bool shut_write = false;
+
+        bool passcred = false;
+        bool reuseaddr = false;
+        bool reuseport = false;
+        bool broadcast = false;
+        bool keepalive = false;
+        bool dontroute = false;
+
+        timeval rcvtimeo { }, sndtimeo { };
+        linger linger_opt { };
+
+        std::optional<ucred> peer_cred;
+    };
+
+    using core_state_ptr = lib::locked_ptr<core_state_t, sched::mutex_t>;
+
     struct socket_t
     {
-        int protocol;
-        addr_fam family;
-        sock_type type;
+        const int protocol;
+        const addr_fam family;
+        const sock_type type;
 
-        socket_t(int protocol, addr_fam family, sock_type type)
-            : protocol { protocol }, family { family }, type { type } { }
+        core_state_ptr core_state;
+
+        std::atomic<errnos> pending_err { };
+
+        sched::wait_queue_t read_wait { };
+        sched::wait_queue_t write_wait { };
+        sched::wait_queue_t accept_wait { };
+
+        socket_t(int protocol, addr_fam family, sock_type type, core_state_ptr core_state)
+            : protocol { protocol }, family { family }, type { type },
+              core_state { std::move(core_state) } { }
 
         virtual auto bind(lib::maybe_uspan<const std::byte> addr) -> lib::expect<void> = 0;
         virtual auto connect(
@@ -332,18 +378,39 @@ export namespace vfs::socket
         virtual auto getsockname(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> = 0;
         virtual auto getpeername(lib::maybe_uspan<std::byte> out) -> lib::expect<socklen_t> = 0;
 
-        virtual auto setsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<const std::byte> buf
-        ) -> lib::expect<void> = 0;
-        virtual auto getsockopt(
-            sock_lvl lvl, int opt,
-            lib::maybe_uspan<std::byte> buf
-        ) -> lib::expect<std::size_t> = 0;
+        virtual auto do_setsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf)
+            -> lib::expect<void> = 0;
+        virtual void sol_sock_finish(core_state_t &core, sock_opt opt) = 0;
+        virtual auto do_getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+            -> lib::expect<std::size_t> = 0;
+
+        auto setsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<const std::byte> buf)
+            -> lib::expect<void>;
+        auto getsockopt(sock_lvl lvl, int opt, lib::maybe_uspan<std::byte> buf)
+            -> lib::expect<std::size_t>;
 
         virtual auto release() -> lib::expect<void> = 0;
 
         virtual ~socket_t() = default;
+    };
+
+    template<typename Type>
+    struct socket_impl_t : socket_t
+    {
+        struct state_t : core_state_t, Type { };
+        using state_ptr = lib::locked_ptr<state_t, sched::mutex_t>;
+
+        state_ptr state;
+
+        socket_impl_t(int protocol, addr_fam family, sock_type type)
+            : socket_impl_t {
+                protocol, family, type,
+                lib::make_locked<state_t, sched::mutex_t>()
+            } { }
+
+        private:
+        socket_impl_t(int protocol, addr_fam family, sock_type type, state_ptr state)
+            : socket_t { protocol, family, type, state }, state { std::move(state) } { }
     };
 
     std::shared_ptr<socket_t> from_file(const vfs::file_t &file);

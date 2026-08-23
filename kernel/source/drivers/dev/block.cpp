@@ -64,10 +64,10 @@ namespace dev::block
                 struct drive_attribute_t : make_attribute_t
                 {
                     using rfn_t = lib::expect<std::string> (*)(
-                        device_t &, std::shared_ptr<drive_t>
+                        device_t &, const std::shared_ptr<drive_t> &
                     );
                     using wfn_t = lib::expect<void> (*)(
-                        device_t &, std::shared_ptr<drive_t>, std::string_view
+                        device_t &, const std::shared_ptr<drive_t> &, std::string_view
                     );
 
                     drive_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
@@ -76,20 +76,20 @@ namespace dev::block
                                 auto drive = drive_from(dev);
                                 if (!drive)
                                     return std::unexpected { lib::err::io_error };
-                                return rfn(dev, std::move(drive));
+                                return rfn(dev, drive);
                             },
                             wfn == nullptr ? make_attribute_t::wfn_t { } :
                             [wfn](device_t &dev, std::string_view value) -> lib::expect<void> {
                                 auto drive = drive_from(dev);
                                 if (!drive)
                                     return std::unexpected { lib::err::io_error };
-                                return wfn(dev, std::move(drive), value);
+                                return wfn(dev, drive, value);
                             }, name, mode
                         } { }
                 };
 
                 static drive_attribute_t size {
-                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<drive_t> &drv) -> lib::expect<std::string> {
                         auto sectors = to_sectors(drv->block_count(), *drv);
                         if (!sectors)
                             return std::unexpected { lib::err::io_error };
@@ -97,18 +97,18 @@ namespace dev::block
                     }, nullptr, "size", 0444
                 };
                 static drive_attribute_t diskseq {
-                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<drive_t> &drv) -> lib::expect<std::string> {
                         return fmt::format("{}\n", drv->seq());
                     }, nullptr, "diskseq", 0444
                 };
                 static drive_attribute_t ro {
-                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<drive_t> &drv) -> lib::expect<std::string> {
                         lib::unused(drv);
                         return "0\n"; // TODO
                     }, nullptr, "ro", 0444
                 };
                 static drive_attribute_t removable {
-                    [](device_t &, std::shared_ptr<drive_t> drv) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<drive_t> &drv) -> lib::expect<std::string> {
                         lib::unused(drv);
                         return "0\n"; // TODO
                     }, nullptr, "removable", 0444
@@ -126,7 +126,7 @@ namespace dev::block
 
             void fill_uevent(kobject_t &kobj, uevent_t &uev) override
             {
-                auto device = kobj.as_device();
+                auto *const device = kobj.as_device();
                 if (!device)
                     return;
 
@@ -146,10 +146,10 @@ namespace dev::block
                 struct part_attribute_t : make_attribute_t
                 {
                     using rfn_t = lib::expect<std::string> (*)(
-                        device_t &, std::shared_ptr<part_data_t>
+                        device_t &, const std::shared_ptr<part_data_t> &
                     );
                     using wfn_t = lib::expect<void> (*)(
-                        device_t &, std::shared_ptr<part_data_t>, std::string_view
+                        device_t &, const std::shared_ptr<part_data_t> &, std::string_view
                     );
 
                     part_attribute_t(rfn_t rfn, wfn_t wfn, std::string_view name, mode_t mode)
@@ -172,7 +172,7 @@ namespace dev::block
                 };
 
                 static part_attribute_t size {
-                    [](device_t &dev, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                    [](device_t &dev, const std::shared_ptr<part_data_t> &part) -> lib::expect<std::string> {
                         if (!dev.fops)
                             return std::unexpected { lib::err::io_error };
 
@@ -189,7 +189,7 @@ namespace dev::block
                     }, nullptr, "size", 0444
                 };
                 static part_attribute_t start {
-                    [](device_t &dev, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                    [](device_t &dev, const std::shared_ptr<part_data_t> &part) -> lib::expect<std::string> {
                         if (!dev.fops)
                             return std::unexpected { lib::err::io_error };
 
@@ -207,12 +207,12 @@ namespace dev::block
                     }, nullptr, "start", 0444
                 };
                 static part_attribute_t partition {
-                    [](device_t &, std::shared_ptr<part_data_t> part) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<part_data_t> &part) -> lib::expect<std::string> {
                         return fmt::format("{}\n", part->id);
                     }, nullptr, "partition", 0444
                 };
                 static part_attribute_t removable {
-                    [](device_t &, std::shared_ptr<part_data_t>) -> lib::expect<std::string> {
+                    [](device_t &, const std::shared_ptr<part_data_t> &) -> lib::expect<std::string> {
                         return "0\n"; // TODO
                     }, nullptr, "removable", 0444
                 };
@@ -229,7 +229,7 @@ namespace dev::block
 
             void fill_uevent(kobject_t &kobj, uevent_t &uev) override
             {
-                auto device = kobj.as_device();
+                auto *const device = kobj.as_device();
                 if (!device)
                     return;
 
@@ -495,11 +495,11 @@ namespace dev::block
         if (file->flags & vfs::o_direct)
         {
             if (const auto ret = drv->rw(false, true, offset,
-                    std::views::single(buffer.subspan(0, real_size))); !ret)
+                    std::views::single(buffer.first(real_size))); !ret)
                 return std::unexpected { ret.error() };
             return real_size;
         }
-        return mem.read(offset, buffer.subspan(0, real_size));
+        return mem.read(offset, buffer.first(real_size));
     }
 
     lib::expect<std::size_t> ops_t::write(
@@ -523,11 +523,11 @@ namespace dev::block
         if (file->flags & vfs::o_direct)
         {
             if (const auto ret = drv->rw(true, sync, offset,
-                    std::views::single(buffer.subspan(0, real_size))); !ret)
+                    std::views::single(buffer.first(real_size))); !ret)
                 return std::unexpected { ret.error() };
             return real_size;
         }
-        return mem.write(offset, buffer.subspan(0, real_size)); // TODO: sync
+        return mem.write(offset, buffer.first(real_size)); // TODO: sync
     }
 
     lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
@@ -573,7 +573,7 @@ namespace dev::block
         const auto read_lbas = [&](std::uint64_t idx, std::uint32_t count)
             -> lib::expect<lib::membuffer>
         {
-            lib::membuffer lba0 { count * 512 };
+            lib::membuffer lba0 { count * 512uz };
             auto uspan = lba0.uspan();
             lib::bug_on(!uspan);
 
@@ -591,7 +591,7 @@ namespace dev::block
         if (!mbr->is_valid())
             return { };
 
-        const auto add_part = [&](std::string name, std::uint64_t lba_start, std::uint64_t lba_count)
+        const auto add_part = [&](const std::string &name, std::uint64_t lba_start, std::uint64_t lba_count)
         {
             const auto max = drive->block_count();
             lib::bug_on(lba_start >= max || lba_count > max || lba_start > max - lba_count);
@@ -626,7 +626,7 @@ namespace dev::block
                 if (!buf.has_value())
                     return buf;
 
-                auto hdr = std::start_lifetime_as<gpt::table_t>(buf->data());
+                auto *hdr = std::start_lifetime_as<gpt::table_t>(buf->data());
                 if (!hdr->is_valid())
                     return std::unexpected { lib::err::corrupted_data };
                 return buf;
@@ -639,7 +639,7 @@ namespace dev::block
                 if (!buf.has_value())
                     return std::unexpected { buf.error() };
 
-                if (lib::crc32::compute(buf->span().subspan(0, bytes)) != hdr->partchecksum)
+                if (lib::crc32::compute(buf->span().first(bytes)) != hdr->partchecksum)
                     return std::unexpected { lib::err::corrupted_data };
                 return buf;
             };
@@ -658,7 +658,7 @@ namespace dev::block
                 backup = true;
             }
 
-            auto hdr = std::start_lifetime_as<gpt::table_t>(hdr_buf->data());
+            auto *hdr = std::start_lifetime_as<gpt::table_t>(hdr_buf->data());
             auto entries_buf = read_entries(hdr);
             if (!entries_buf)
             {
@@ -703,7 +703,7 @@ namespace dev::block
             for (std::size_t i = 0; i < hdr->parts; i++)
             {
                 const auto *part = std::start_lifetime_as<gpt::partition_t>(
-                    entries_buf->data() + hdr->partentrysize * i
+                    entries_buf->data() + (hdr->partentrysize * i)
                 );
                 if (part->is_unused())
                     continue;

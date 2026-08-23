@@ -108,7 +108,7 @@ namespace fs::sysfs
                     if (!ret)
                         return std::unexpected { ret.error() };
 
-                    const auto sub = buffer.subspan(0, *ret);
+                    const auto sub = buffer.first(*ret);
                     if (!sub.copy_from(buf.span()))
                         return std::unexpected { lib::err::invalid_address };
                     return *ret;
@@ -144,7 +144,7 @@ namespace fs::sysfs
                 if (to_copy == 0)
                     return 0uz;
 
-                const auto sub = buffer.subspan(0, to_copy);
+                const auto sub = buffer.first(to_copy);
                 if (!sub.copy_from(reinterpret_cast<const std::byte *>(content->data() + offset)))
                     return std::unexpected { lib::err::invalid_address };
 

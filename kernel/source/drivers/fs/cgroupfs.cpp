@@ -157,7 +157,7 @@ namespace fs::cgroupfs
                     return 0uz;
 
                 const auto count = std::min(buffer.size(), out.size() - offset);
-                if (!buffer.subspan(0, count)
+                if (!buffer.first(count)
                     .copy_from(std::as_bytes(std::span { out.data() + offset, count })))
                     return std::unexpected { lib::err::invalid_address };
 
@@ -174,7 +174,7 @@ namespace fs::cgroupfs
                 const auto size = std::min(buffer.size(), 32uz);
                 std::string str;
                 str.resize(size);
-                if (!buffer.subspan(0, size)
+                if (!buffer.first(size)
                     .copy_to(reinterpret_cast<std::byte *>(str.data())))
                     return std::unexpected { lib::err::invalid_address };
 

@@ -20,7 +20,7 @@ namespace output::frm
 {
     void init()
     {
-        const auto frms = boot::requests::framebuffer.response->framebuffers;
+        const auto *frms = boot::requests::framebuffer.response->framebuffers;
         const auto num = boot::requests::framebuffer.response->framebuffer_count;
 
         lib::info("available framebuffers: {}", num);
@@ -176,8 +176,8 @@ namespace output::frm
                 if (to_copy == 0)
                     return 0;
 
-                if (!buffer.subspan(0, to_copy).copy_from(
-                    reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
+                if (!buffer.first(to_copy)
+                    .copy_from(reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
                     return std::unexpected { lib::err::invalid_address };
                 return to_copy;
             }
@@ -195,8 +195,8 @@ namespace output::frm
                 if (to_copy == 0)
                     return 0;
 
-                if (!buffer.subspan(0, to_copy).copy_to(
-                    reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
+                if (!buffer.first(to_copy)
+                    .copy_to(reinterpret_cast<std::byte *>(lib::tohh(fix.smem_start) + offset)))
                     return std::unexpected { lib::err::invalid_address };
                 return to_copy;
             }
@@ -281,7 +281,7 @@ namespace output::frm
 
             lib::expect<std::string> show(dev::kobject_t &kobj) override
             {
-                const auto device = kobj.as_device();
+                auto *const device = kobj.as_device();
                 if (!device || !device->fops)
                     return std::unexpected { lib::err::io_error };
                 return fn(*device, *static_cast<fb_dev *>(device->fops.get()));
@@ -358,7 +358,7 @@ namespace output::frm
                     std::uint32_t height = -1, width = -1;
                     if (fb.edid)
                     {
-                        const auto edid = reinterpret_cast<edid_info *>(fb.edid);
+                        const auto *edid = reinterpret_cast<edid_info *>(fb.edid);
                         if (edid->max_hor_size && edid->max_ver_size)
                         {
                             width = edid->max_hor_size * 10;

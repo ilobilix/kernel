@@ -254,7 +254,7 @@ namespace fs::procfs
                     if (*produced == 0)
                         return 0uz;
 
-                    if (!buffer.subspan(0, *produced)
+                    if (!buffer.first(*produced)
                         .copy_from(reinterpret_cast<const std::byte *>(tmp.data())))
                         return std::unexpected { lib::err::invalid_address };
                     return *produced;
@@ -279,7 +279,7 @@ namespace fs::procfs
                 if (to_copy == 0)
                     return 0uz;
 
-                const auto sub = buffer.subspan(0, to_copy);
+                const auto sub = buffer.first(to_copy);
                 if (!sub.copy_from(reinterpret_cast<const std::byte *>(content->data() + offset)))
                     return std::unexpected { lib::err::invalid_address };
 
