@@ -859,6 +859,9 @@ namespace sched
         else
             target = self_idx;
 
+        if (!can_run_on(thread, target))
+            target = find_least_loaded(thread);
+
         enqueue_on(thread, target, false);
 
         const bool on_self = (target == self_idx);
@@ -1305,6 +1308,55 @@ namespace sched
 
         second->lock.unlock();
         first->lock.unlock();
+
+        preempt_enable();
+    }
+
+    void set_affinity(thread_t *thread, const lib::bitmap &mask)
+    {
+        preempt_disable();
+
+        auto *rq = static_cast<run_queue_t *>(thread->on_rq);
+        if (!rq && thread->state.load(std::memory_order_acquire) == thread_state::running)
+        {
+            if (const auto *running_on = thread->running_on)
+                rq = &run_queue.unsafe_get(cpu::local::nth_base(running_on->idx));
+        }
+
+        const auto copy = [&] {
+            std::memcpy(
+                thread->affinity.data(), mask.data(),
+                std::min(thread->affinity.size_bytes(), mask.size_bytes())
+            );
+        };
+
+        bool migrate = false;
+        if (rq)
+        {
+            const std::unique_lock _ { rq->lock };
+            copy();
+
+            if (!can_run_on(thread, rq->cpu_idx))
+            {
+                if (thread->on_rq == rq)
+                {
+                    rq->dequeue(thread);
+                    if (!thread->is_idle())
+                        rq->nr_running--;
+                    migrate = true;
+                }
+                else if (thread == rq->current)
+                {
+                    thread->set_flag(thread_flags::needs_resched);
+                    if (rq->cpu_idx != cpu::self().unsafe_get().idx)
+                        arch::wake_up_other(rq->cpu_idx);
+                }
+            }
+        }
+        else copy();
+
+        if (migrate)
+            enqueue_on(thread, find_least_loaded(thread), false);
 
         preempt_enable();
     }
@@ -2257,8 +2309,7 @@ namespace sched
                     return 0;
 
                 locked.unlock();
-                const auto res = proc->wait_child.wait_prepared(gen);
-                if (res.interrupted || res.killed)
+                if (const auto res = proc->wait_child.wait_prepared(gen); res.aborted())
                     return -EINTR;
             }
         }

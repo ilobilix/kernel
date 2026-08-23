@@ -275,9 +275,9 @@ namespace input
             void revoke() override
             {
                 const rcu::read_guard _ { };
-                if (const auto list = clients.dereference())
+                if (const auto *list = clients.dereference())
                 {
-                    for (const auto client : *list)
+                    for (auto *client : *list)
                         client->revoke();
                 }
             }
@@ -295,11 +295,11 @@ namespace input
                 };
 
                 const rcu::read_guard _ { };
-                if (const auto client = grabbed.dereference())
+                if (auto *client = grabbed.dereference())
                     client->receive_values(times, packet);
-                else if (const auto list = clients.dereference())
+                else if (const auto *list = clients.dereference())
                 {
-                    for (const auto client : *list)
+                    for (auto *client : *list)
                         client->receive_values(times, packet);
                 }
             }
@@ -414,8 +414,7 @@ namespace input
                         gen = handle->wait.snapshot_gen();
                     }
 
-                    const auto res = handle->wait.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = handle->wait.wait_prepared(gen); res.aborted())
                         return std::unexpected { lib::err::interrupted };
                 }
                 return count * sizeof(event_t);
@@ -736,6 +735,8 @@ namespace input
                         handle->clkid = static_cast<type>(id);
                         return 0;
                     }
+                    default:
+                        break;
                 }
 
                 const std::size_t size = lib::ioc::make_size(request);
@@ -806,6 +807,8 @@ namespace input
                     }
                     // TODO
                     // case eviocsff:
+                    default:
+                        break;
                 }
 
                 // Multi-number variable-length handlers
@@ -939,14 +942,14 @@ namespace input
 
         void drain()
         {
-            auto list = [] {
+            auto *list = [] {
                 const std::unique_lock _ { wake_lock };
                 return std::exchange(wake_head, nullptr);
             } ();
 
             while (list)
             {
-                const auto next = list->next_pending;
+                auto *const next = list->next_pending;
                 auto self = std::move(list->self_ref);
 
                 list->next_pending = nullptr;

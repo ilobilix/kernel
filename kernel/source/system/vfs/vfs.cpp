@@ -191,7 +191,8 @@ namespace vfs
 
     filesystem_t::instance_t::instance_t() : dev_id { allocate_dev() } { }
 
-    auto filesystem_t::instance_t::readlink(std::shared_ptr<dentry_t> dentry) -> lib::expect<lib::path>
+    auto filesystem_t::instance_t::readlink(std::shared_ptr<dentry_t> dentry)
+        -> lib::expect<lib::path>
     {
         if (!dentry || dentry->symlinked_to.empty())
             return std::unexpected { lib::err::invalid_argument };
@@ -247,7 +248,7 @@ namespace vfs
     {
         if (stat.type() == stat::type::s_ififo)
             return pipe::fifo_ops();
-        else if (stat.type() == stat::type::s_ifsock)
+        if (stat.type() == stat::type::s_ifsock)
             return socket::sock_ops();
         if (ops)
             return ops;
@@ -476,7 +477,7 @@ namespace vfs
     {
         if (!absolute)
         {
-            auto proc = sched::current_process();
+            const auto *proc = sched::current_process();
             if (proc->vfs) [[likely]]
                 return proc->vfs->root.dentry;
         }
@@ -544,7 +545,7 @@ namespace vfs
     auto path_for(lib::path _path) -> lib::expect<path_t>
     {
         // hmmm is this correct?
-        auto res = resolve(std::nullopt, _path);
+        auto res = resolve(std::nullopt, std::move(_path));
         if (!res)
             return std::unexpected { res.error() };
         return res->target;
@@ -909,7 +910,7 @@ namespace vfs
             return { };
         }
 
-        auto fs = find_fs(fstype);
+        auto *fs = find_fs(fstype);
         if (!fs)
             return std::unexpected { lib::err::no_such_device };
 
@@ -1088,7 +1089,7 @@ namespace vfs
         if (resolve(parent, _path))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(parent, _path.dirname());
+        auto pres = resolve_real_dir(std::move(parent), _path.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
@@ -1129,7 +1130,7 @@ namespace vfs
         if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(parent, src.dirname());
+        auto pres = resolve_real_dir(std::move(parent), src.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
@@ -1163,14 +1164,14 @@ namespace vfs
         if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(parent, src.dirname());
+        auto pres = resolve_real_dir(std::move(parent), src.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
         const auto real_parent = std::move(*pres);
         const auto name = src.basename();
 
-        auto res = resolve(tgtparent, target);
+        auto res = resolve(std::move(tgtparent), std::move(target));
         if (!res)
             return std::unexpected { res.error() };
 
@@ -1217,7 +1218,7 @@ namespace vfs
         if (base == "." || base == "..")
             return std::unexpected { lib::err::invalid_argument };
 
-        const auto res = resolve(parent, path);
+        const auto res = resolve(std::move(parent), std::move(path));
         if (!res)
             return std::unexpected { res.error() };
 
@@ -1277,7 +1278,7 @@ namespace vfs
             new_base.str() == "."sv || new_base.str() == ".."sv)
             return std::unexpected { lib::err::invalid_argument };
 
-        const auto old_res = resolve(old_parent, old_path);
+        const auto old_res = resolve(std::move(old_parent), std::move(old_path));
         if (!old_res)
             return std::unexpected { old_res.error() };
 
@@ -1309,7 +1310,7 @@ namespace vfs
             }
         }
 
-        const auto existing = resolve(new_parent, new_path);
+        const auto existing = resolve(std::move(new_parent), std::move(new_path));
         std::shared_ptr<dentry_t> new_dentry;
         if (existing.has_value())
         {
@@ -1370,18 +1371,17 @@ namespace vfs
                 auto locked = old_parent_dentry->children.lock();
                 return do_rename(locked, locked);
             }
-            else if (old_parent_dentry.get() < new_parent_dentry.get())
+
+            if (old_parent_dentry.get() < new_parent_dentry.get())
             {
                 auto locked_old = old_parent_dentry->children.lock();
                 auto locked_new = new_parent_dentry->children.lock();
                 return do_rename(locked_old, locked_new);
             }
-            else
-            {
-                auto locked_new = new_parent_dentry->children.lock();
-                auto locked_old = old_parent_dentry->children.lock();
-                return do_rename(locked_old, locked_new);
-            }
+
+            auto locked_new = new_parent_dentry->children.lock();
+            auto locked_old = old_parent_dentry->children.lock();
+            return do_rename(locked_old, locked_new);
         } ();
 
         if (result.has_value() && replaced_inode)
@@ -1428,7 +1428,7 @@ namespace vfs
         if (is_unsupported_xattr(name))
             return std::unexpected { lib::err::not_supported };
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto &cred = proc->cred;
 
         if (!can_read_xattr(cred, name))
@@ -1461,7 +1461,7 @@ namespace vfs
         if (is_unsupported_xattr(name))
             return std::unexpected { lib::err::not_supported };
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto &cred = proc->cred;
 
         auto &inode = target.dentry->inode;
@@ -1508,7 +1508,7 @@ namespace vfs
         if (is_unsupported_xattr(name))
             return std::unexpected { lib::err::not_supported };
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto &cred = proc->cred;
 
         auto &inode = target.dentry->inode;
@@ -1597,7 +1597,7 @@ namespace vfs
 
     fdtable::fdarray *fdtable::reserve(std::size_t need)
     {
-        const auto old = table.unsafe_load();
+        auto *old = table.unsafe_load();
         if (old && need <= old->size)
             return old;
 
@@ -1607,7 +1607,7 @@ namespace vfs
         while (size < need)
             size *= 2;
 
-        const auto next = new fdarray;
+        auto *next = new fdarray;
         next->size = size;
         next->slots = new rcu::pointer<fdslot>[size];
 
@@ -1625,7 +1625,7 @@ namespace vfs
 
     std::shared_ptr<vfs::filedesc> fdtable::clear(fdarray *arr, std::size_t fd)
     {
-        const auto old = arr->slots[fd].exchange(nullptr);
+        auto *old = arr->slots[fd].exchange(nullptr);
         if (!old)
             return nullptr;
 
@@ -1646,7 +1646,7 @@ namespace vfs
         {
             const std::unique_lock _ { write_lock };
 
-            const auto arr = table.unsafe_load();
+            auto *arr = table.unsafe_load();
             if (!arr || static_cast<std::size_t>(fd) >= arr->size)
                 return false;
 
@@ -1661,13 +1661,13 @@ namespace vfs
         {
             const rcu::read_guard _ { };
 
-            const auto arr = table.dereference();
+            const auto *arr = table.dereference();
             if (!arr)
                 return;
 
             for (std::size_t fd = first; fd <= last && fd < arr->size; fd++)
             {
-                const auto slot = arr->slots[fd].dereference();
+                auto *slot = arr->slots[fd].dereference();
                 if (!slot)
                     continue;
 
@@ -1682,7 +1682,7 @@ namespace vfs
         {
             const std::unique_lock _ { write_lock };
 
-            const auto arr = table.unsafe_load();
+            auto *arr = table.unsafe_load();
             if (!arr)
                 return;
 
@@ -1700,7 +1700,7 @@ namespace vfs
         {
             const std::unique_lock _ { write_lock };
 
-            const auto arr = table.unsafe_load();
+            auto *arr = table.unsafe_load();
             if (!arr)
                 return;
 
@@ -1711,7 +1711,7 @@ namespace vfs
 
             for (std::size_t i = 0; i < arr->size; i++)
             {
-                const auto slot = arr->slots[i].unsafe_load();
+                auto *slot = arr->slots[i].unsafe_load();
                 if (!slot || !is_cloexec(slot))
                     continue;
 
@@ -1728,11 +1728,11 @@ namespace vfs
 
         const rcu::read_guard _ { };
 
-        const auto arr = table.dereference();
+        const auto *arr = table.dereference();
         if (!arr || static_cast<std::size_t>(fd) >= arr->size)
             return nullptr;
 
-        const auto slot = arr->slots[fd].dereference();
+        auto *slot = arr->slots[fd].dereference();
         return slot ? slot->desc.lock().value() : nullptr;
     }
 
@@ -1745,7 +1745,7 @@ namespace vfs
         {
             const std::unique_lock _ { write_lock };
 
-            const auto arr = table.unsafe_load();
+            const auto *arr = table.unsafe_load();
             const auto taken = [&](std::size_t i) {
                 return arr && i < arr->size && arr->slots[i].unsafe_load() != nullptr;
             };
@@ -1761,11 +1761,10 @@ namespace vfs
             if (static_cast<rlim_t>(fd) >= max_fd)
                 return std::unexpected { lib::err::too_many_files };
 
-            const auto slot = new fdslot;
+            auto *slot = new fdslot;
             slot->desc.lock().value() = std::move(desc);
 
-            const auto old = reserve(static_cast<std::size_t>(fd) + 1)->slots[fd].exchange(slot);
-            if (old)
+            if (auto *old = reserve(static_cast<std::size_t>(fd) + 1)->slots[fd].exchange(slot))
             {
                 dying = std::move(old->desc.lock().value());
                 old->retire();
@@ -1794,11 +1793,11 @@ namespace vfs
 
     fdtable::~fdtable()
     {
-        if (const auto arr = table.unsafe_load())
+        if (const auto *arr = table.unsafe_load())
         {
             for (std::size_t i = 0; i < arr->size; i++)
             {
-                if (const auto slot = arr->slots[i].unsafe_load())
+                if (auto *slot = arr->slots[i].unsafe_load())
                 {
                     const auto dying = std::move(slot->desc.lock().value());
                     slot->retire();
@@ -1811,23 +1810,23 @@ namespace vfs
     {
         const std::unique_lock _ { other.write_lock };
 
-        const auto src = other.table.unsafe_load();
+        const auto *src = other.table.unsafe_load();
         next_fd = other.next_fd;
         if (!src)
             return;
 
-        const auto arr = new fdarray;
+        auto *arr = new fdarray;
         arr->size = src->size;
         arr->slots = new rcu::pointer<fdslot> [src->size];
 
         for (std::size_t i = 0; i < src->size; i++)
         {
-            const auto slot = src->slots[i].unsafe_load();
+            auto *slot = src->slots[i].unsafe_load();
             const auto desc = slot ? slot->desc.lock().value() : nullptr;
             if (!desc)
                 continue;
 
-            const auto copy = new fdslot;
+            auto *copy = new fdslot;
             copy->desc.lock().value() = std::make_shared<vfs::filedesc>(
                 desc->file,
                 desc->closexec.load(std::memory_order_relaxed)
@@ -1841,8 +1840,8 @@ namespace vfs
     auto create_anon_fd(const anon_fd_args &args)
         -> lib::expect<std::pair<int, std::shared_ptr<filedesc>>>
     {
-        const auto proc = sched::current_process();
-        auto &fdt = proc->fdt;
+        const auto *proc = sched::current_process();
+        const auto &fdt = proc->fdt;
 
         std::shared_ptr<inode_t> inode;
         if (!args.inode)
@@ -1914,20 +1913,21 @@ namespace vfs
             }
         };
 
+        std::shared_ptr<vfs::filedesc> get_fdesc(sched::process_t *proc, int fd)
+        {
+            if (!proc)
+                return nullptr;
+
+            const std::unique_lock _ { proc->lock };
+            const auto fdt = proc->fdt;
+            return fdt ? fdt->get(fd) : nullptr;
+        }
+
         std::shared_ptr<fs::procfs::node_ops> make_fdsym_ops(int fd)
         {
             return fs::procfs::make_symlink_ops(
                 [fd](sched::process_t *proc) -> lib::expect<lib::path> {
-                    if (!proc)
-                        return std::unexpected { lib::err::not_found };
-
-                    std::shared_ptr<vfs::filedesc> fdesc;
-                    {
-                        const std::unique_lock _ { proc->lock };
-                        if (!proc->fdt)
-                            return std::unexpected { lib::err::not_found };
-                        fdesc = proc->fdt->get(fd);
-                    }
+                    const auto fdesc = get_fdesc(proc, fd);
                     if (!fdesc || !fdesc->file || !fdesc->file->path.dentry)
                         return std::unexpected { lib::err::not_found };
 
@@ -1954,10 +1954,102 @@ namespace vfs
                     return fmt::format("anon_inode:{}", fdesc->file->path.dentry->name);
                 },
                 [fd](sched::process_t *proc) {
-                    return proc->fdt->get(fd) != nullptr;
+                    return get_fdesc(proc, fd) != nullptr;
                 }
             );
-        };
+        }
+
+        std::shared_ptr<fs::procfs::node_ops> make_fdinfo_ops(int fd)
+        {
+            return fs::procfs::make_file_ops(
+                [fd](sched::process_t *proc) -> lib::expect<std::string> {
+                    const auto fdesc = get_fdesc(proc, fd);
+                    if (!fdesc || !fdesc->file)
+                        return std::unexpected { lib::err::not_found };
+
+                    const auto &file = fdesc->file;
+                    auto flags = file->flags;
+                    if (fdesc->closexec.load(std::memory_order_relaxed))
+                        flags |= o_cloexec;
+
+                    const auto &inode = file->path.dentry
+                        ? file->path.dentry->inode : nullptr;
+
+                    std::string out;
+                    fmt::format_to(std::back_inserter(out),
+                        "pos:\t{}\nflags:\t0{:o}\nmnt_id:\t{}\nino:\t{}\n",
+                        file->offset, static_cast<std::uint32_t>(flags),
+                        file->path.mnt ? file->path.mnt->id : 0,
+                        inode ? inode->stat.st_ino : 0
+                    );
+
+                    if (file->ops)
+                        file->ops->show_fdinfo(file, out);
+                    return out;
+                }
+            );
+        }
+
+        std::shared_ptr<fs::procfs::node_ops> make_fd_dir_ops(
+            mode_t mode, fs::procfs::node_type type,
+            std::shared_ptr<fs::procfs::node_ops> (*make)(int fd)
+        )
+        {
+            using namespace fs::procfs;
+            return make_dir_ops(
+                [mode, type, make](sched::process_t *proc, std::string_view name)
+                    -> lib::expect<node_t>
+                {
+                    char *end;
+                    const auto res = lib::str2int<int>(name.data(), &end, 10);
+                    if (!res.has_value() || end != name.data() + name.size())
+                        return std::unexpected { lib::err::not_found };
+
+                    if (!get_fdesc(proc, *res))
+                        return std::unexpected { lib::err::not_found };
+
+                    return node_t {
+                        .name = std::string { name },
+                        .mode = mode,
+                        .type = type,
+                        .ops = make(*res)
+                    };
+                },
+                [mode, type, make](sched::process_t *proc) -> lib::expect<lib::list<node_t>> {
+                    if (!proc)
+                        return std::unexpected { lib::err::not_found };
+
+                    std::shared_ptr<fdtable> fdt;
+                    {
+                        const std::unique_lock _ { proc->lock };
+                        fdt = proc->fdt;
+                    }
+                    if (!fdt)
+                        return std::unexpected { lib::err::not_found };
+
+                    lib::list<node_t> result;
+                    const rcu::read_guard _ { };
+
+                    const auto *arr = fdt->table.dereference();
+                    if (!arr)
+                        return result;
+
+                    for (std::size_t fd = 0; fd < arr->size; fd++)
+                    {
+                        if (!arr->slots[fd].dereference())
+                            continue;
+
+                        result.push_back(node_t {
+                            .name = std::to_string(fd),
+                            .mode = mode,
+                            .type = type,
+                            .ops = make(fd)
+                        });
+                    }
+                    return result;
+                }
+            );
+        }
 
         lib::initgraph::task procfs_register_task
         {
@@ -2054,54 +2146,13 @@ namespace vfs
                 ));
 
                 lib::bug_on(!register_per_pid("fd",
-                    make_dir_ops(
-                        [](sched::process_t *proc, std::string_view name) -> lib::expect<node_t> {
-                            if (!proc || !proc->fdt)
-                                return std::unexpected { lib::err::not_found };
+                    make_fd_dir_ops(0777, node_type::symlink, make_fdsym_ops),
+                    node_type::dir, 0500
+                ));
 
-                            char *end;
-                            const auto res = lib::str2int<int>(name.data(), &end, 10);
-                            if (!res.has_value() || end != name.data() + name.size())
-                                return std::unexpected { lib::err::not_found };
-                            const auto fd = *res;
-
-                            auto file = proc->fdt->get(fd);
-                            if (!file)
-                                return std::unexpected { lib::err::not_found };
-
-                            return node_t {
-                                .name = std::string { name },
-                                .mode = 0777,
-                                .type = node_type::symlink,
-                                .ops = make_fdsym_ops(fd)
-                            };
-                        },
-                        [](sched::process_t *proc) -> lib::expect<lib::list<node_t>> {
-                            if (!proc || !proc->fdt)
-                                return std::unexpected { lib::err::not_found };
-
-                            lib::list<node_t> result;
-                            const rcu::read_guard _ { };
-
-                            const auto arr = proc->fdt->table.dereference();
-                            if (!arr)
-                                return result;
-
-                            for (std::size_t fd = 0; fd < arr->size; fd++)
-                            {
-                                if (!arr->slots[fd].dereference())
-                                    continue;
-
-                                result.push_back(node_t {
-                                    .name = std::to_string(fd),
-                                    .mode = 0777,
-                                    .type = node_type::symlink,
-                                    .ops = make_fdsym_ops(fd)
-                                });
-                            };
-                            return result;
-                        }
-                    ), node_type::dir, 0555
+                lib::bug_on(!register_per_pid("fdinfo",
+                    make_fd_dir_ops(0400, node_type::file, make_fdinfo_ops),
+                    node_type::dir, 0500
                 ));
             }
         };

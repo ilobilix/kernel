@@ -128,8 +128,7 @@ namespace vfs::pipe
                 if (nonblock)
                     return { };
 
-                const auto res = pdata->open_wait.wait_prepared(gen);
-                if (res.interrupted || res.killed)
+                if (const auto res = pdata->open_wait.wait_prepared(gen); res.aborted())
                 {
                     const std::unique_lock _ { pdata->lock };
                     pdata->readers--;
@@ -156,8 +155,7 @@ namespace vfs::pipe
                     gen = pdata->open_wait.snapshot_gen();
                 }
 
-                const auto res = pdata->open_wait.wait_prepared(gen);
-                if (res.interrupted || res.killed)
+                if (const auto res = pdata->open_wait.wait_prepared(gen); res.aborted())
                 {
                     const std::unique_lock _ { pdata->lock };
                     pdata->writers--;
@@ -283,8 +281,7 @@ namespace vfs::pipe
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto res = pdata->read_wait.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = pdata->read_wait.wait_prepared(gen); res.aborted())
                         return std::unexpected { lib::err::interrupted };
                 }
             }
@@ -343,7 +340,7 @@ namespace vfs::pipe
                         if (written > 0)
                             return written;
 
-                        const auto thread = sched::current_thread();
+                        auto *const thread = sched::current_thread();
                         lib::bug_on(!thread);
 
                         const sched::siginfo_t info {
@@ -378,8 +375,7 @@ namespace vfs::pipe
                         return std::unexpected { lib::err::try_again };
                     }
 
-                    const auto res = pdata->write_wait.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = pdata->write_wait.wait_prepared(gen); res.aborted())
                     {
                         if (written > 0)
                             return written;

@@ -679,7 +679,7 @@ namespace syscall::proc
 
                 if (res.expired)
                     return -EAGAIN;
-                if (res.interrupted || res.killed)
+                if (res.aborted())
                     return -EINTR;
             }
         } ();
@@ -708,7 +708,7 @@ namespace syscall::proc
             const auto res = queue.wait();
             if (consume_pending_stops())
                 continue;
-            if (res.interrupted || res.killed)
+            if (res.aborted())
                 break;
         }
 
@@ -1458,11 +1458,7 @@ namespace syscall::proc
         if (!perm_ok)
             return -EPERM;
 
-        thread->affinity = std::move(bm);
-        if (thread->state.load(std::memory_order_acquire) == sched::thread_state::running &&
-            !thread->affinity.get(thread->running_on->idx))
-            thread->set_flag(sched::thread_flags::needs_resched);
-
+        sched::set_affinity(thread, bm);
         return 0;
     }
 

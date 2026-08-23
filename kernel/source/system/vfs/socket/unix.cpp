@@ -29,7 +29,7 @@ namespace vfs::socket
 
         void raise_sigpipe()
         {
-            const auto thread = sched::current_thread();
+            auto *const thread = sched::current_thread();
             lib::bug_on(!thread);
 
             const sched::siginfo_t info {
@@ -166,7 +166,7 @@ namespace vfs::socket
 
             static lib::expect<void> check_creds(const ucred &cred)
             {
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 const auto pcred = proc->cred;
 
                 if (cred.pid != proc->pid && !sched::capable(sched::cap_t::sys_admin))
@@ -183,13 +183,13 @@ namespace vfs::socket
                 return { };
             }
 
-            auto parse_ancdata(msg_header_t &hdr) -> lib::expect<ancdata_t>
+            static lib::expect<ancdata_t> parse_ancdata(msg_header_t &hdr)
             {
                 ancdata_t anc;
                 if (hdr.msgctrl.empty())
                     return anc;
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 std::size_t off = 0;
 
                 while (off + sizeof(cmsghdr) <= hdr.msgctrl.size())
@@ -252,14 +252,14 @@ namespace vfs::socket
                 return anc;
             }
 
-            lib::expect<void> deliver_ancdata(
+            static lib::expect<void> deliver_ancdata(
                 msg_header_t &hdr, ancdata_t &anc, int flags, bool passcred
             )
             {
                 if (anc.empty())
                     return { };
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 const bool cloexec = (flags & msg_cmsg_cloexec) != 0;
                 const auto max_fd = proc->rlimits->get(sched::rlimit_nofile).cur;
 
@@ -352,7 +352,7 @@ namespace vfs::socket
                 }
 
                 {
-                    const auto proc = sched::current_process();
+                    const auto *proc = sched::current_process();
                     state.lock()->cred = ucred {
                         .pid = proc->pid,
                         .uid = proc->cred->euid,
@@ -447,7 +447,7 @@ namespace vfs::socket
                     return std::unexpected { lib::err::address_in_use };
                 }
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 const auto ret = vfs::create(
                     proc->vfs->cwd, path, (0777 & ~proc->vfs->umask) | stat::s_ifsock, 0
                 );
@@ -473,7 +473,8 @@ namespace vfs::socket
                     return std::unexpected { lib::err::invalid_argument };
 
                 sockaddr_un sa { };
-                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 }).subspan(0, addr.size())))
+                if (!addr.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
+                    .subspan(0, addr.size())))
                     return std::unexpected { lib::err::invalid_address };
 
                 if (sa.sun_family == af_unspec)
@@ -508,7 +509,7 @@ namespace vfs::socket
                 }
                 else return std::unexpected { lib::err::not_found };
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 std::shared_ptr<unix_sock> target;
 
                 if (is_abstract)
@@ -607,7 +608,7 @@ namespace vfs::socket
                                 target->accept_wait.wake_all();
                                 return { };
                             }
-                            else gen = target->conn_wait.snapshot_gen();
+                            gen = target->conn_wait.snapshot_gen();
                         }
 
                         if (nonblock)
@@ -617,7 +618,7 @@ namespace vfs::socket
                         }
 
                         const auto res = target->conn_wait.wait_prepared(gen, wait_ns);
-                        if (res.interrupted || res.killed)
+                        if (res.aborted())
                         {
                             state.lock()->state = unconnected;
                             return std::unexpected { lib::err::interrupted };
@@ -648,7 +649,7 @@ namespace vfs::socket
                 slocked->backlog = std::clamp(backlog, 0, somaxconn);
                 slocked->state = listening;
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 slocked->cred = ucred {
                     .pid = proc->pid,
                     .uid = proc->cred->euid,
@@ -731,7 +732,7 @@ namespace vfs::socket
                         return std::unexpected { lib::err::try_again };
 
                     const auto res = accept_wait.wait_prepared(gen, wait_ns);
-                    if (res.interrupted || res.killed)
+                    if (res.aborted())
                         return std::unexpected { lib::err::interrupted };
                     if (res.expired)
                         return std::unexpected { lib::err::try_again };
@@ -783,7 +784,7 @@ namespace vfs::socket
 
                         if (pslocked->passcred && !anc.creds.has_value())
                         {
-                            const auto proc = sched::current_process();
+                            const auto *proc = sched::current_process();
                             anc.creds = ucred {
                                 .pid = proc->pid,
                                 .uid = proc->cred->euid,
@@ -888,7 +889,7 @@ namespace vfs::socket
                         }
 
                         const auto res = peer_ptr->write_wait.wait_prepared(gen, wait_ns);
-                        if (res.interrupted || res.killed)
+                        if (res.aborted())
                         {
                             if (sent > 0)
                                 return sent;
@@ -904,126 +905,125 @@ namespace vfs::socket
 
                     return sent;
                 }
-                else // sock_dgram and sock_seqpacket
+
+                // sock_dgram and sock_seqpacket
+                if (total > msg_cap)
+                    return std::unexpected { lib::err::message_too_long };
+
+                std::shared_ptr<unix_sock> dest;
+                if (!hdr.name.empty())
                 {
-                    if (total > msg_cap)
-                        return std::unexpected { lib::err::message_too_long };
+                    sockaddr_un sa { };
+                    if (!hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
+                        .subspan(0, hdr.name.size())))
+                        return std::unexpected { lib::err::invalid_address };
 
-                    std::shared_ptr<unix_sock> dest;
-                    if (!hdr.name.empty())
+                    if (sa.sun_family != af_unix)
+                        return std::unexpected { lib::err::address_family_unsupported };
+
+                    const auto max_len = hdr.name.size() - sizeof(addr_fam);
+                    if (max_len == 0)
+                        return std::unexpected { lib::err::invalid_argument };
+
+                    if (sa.sun_path[0] == '\0')
                     {
-                        sockaddr_un sa { };
-                        if (!hdr.name.copy_to(std::as_writable_bytes(std::span { &sa, 1 })
-                            .subspan(0, hdr.name.size())))
-                            return std::unexpected { lib::err::invalid_address };
+                        const std::string_view path { sa.sun_path, max_len };
 
-                        if (sa.sun_family != af_unix)
-                            return std::unexpected { lib::err::address_family_unsupported };
-
-                        const auto max_len = hdr.name.size() - sizeof(addr_fam);
-                        if (max_len == 0)
-                            return std::unexpected { lib::err::invalid_argument };
-
-                        if (sa.sun_path[0] == '\0')
-                        {
-                            const std::string_view path { sa.sun_path, max_len };
-
-                            auto registry = abstract.lock();
-                            auto it = registry->find(path);
-                            if (it == registry->end())
-                                return std::unexpected { lib::err::connection_refused };
-
-                            dest = it->second.lock();
-                        }
-                        else
-                        {
-                            const auto len = std::strnlen(sa.sun_path, max_len);
-                            const std::string_view path { sa.sun_path, len };
-
-                            const auto proc = sched::current_process();
-                            const auto res = vfs::resolve(proc->vfs->cwd, path);
-                            if (!res)
-                                return std::unexpected { res.error() };
-
-                            auto &inode = res->target.dentry->inode;
-                            if (inode->stat.type() != stat::s_ifsock)
-                                return std::unexpected { lib::err::connection_refused };
-
-                            dest = private_t::bound_to(inode);
-                        }
-
-                        if (!dest)
+                        auto registry = abstract.lock();
+                        auto it = registry->find(path);
+                        if (it == registry->end())
                             return std::unexpected { lib::err::connection_refused };
+
+                        dest = it->second.lock();
                     }
                     else
                     {
-                        dest = state.lock()->peer.lock();
-                        if (!dest)
-                            return std::unexpected { lib::err::not_connected };
+                        const auto len = std::strnlen(sa.sun_path, max_len);
+                        const std::string_view path { sa.sun_path, len };
+
+                        const auto *proc = sched::current_process();
+                        const auto res = vfs::resolve(proc->vfs->cwd, path);
+                        if (!res)
+                            return std::unexpected { res.error() };
+
+                        auto &inode = res->target.dentry->inode;
+                        if (inode->stat.type() != stat::s_ifsock)
+                            return std::unexpected { lib::err::connection_refused };
+
+                        dest = private_t::bound_to(inode);
                     }
 
-                    if (dest->type != type)
-                        return std::unexpected { lib::err::wrong_protocol };
+                    if (!dest)
+                        return std::unexpected { lib::err::connection_refused };
+                }
+                else
+                {
+                    dest = state.lock()->peer.lock();
+                    if (!dest)
+                        return std::unexpected { lib::err::not_connected };
+                }
 
-                    if (dest->state.lock()->passcred && !anc.creds.has_value())
-                    {
-                        const auto proc = sched::current_process();
-                        anc.creds = ucred {
-                            .pid = proc->pid,
-                            .uid = proc->cred->euid,
-                            .gid = proc->cred->egid
-                        };
-                    }
+                if (dest->type != type)
+                    return std::unexpected { lib::err::wrong_protocol };
 
-                    lib::membuffer payload { total };
-                    std::size_t off = 0;
-                    for (const auto &iov : hdr.iovs)
-                    {
-                        if (!iov.copy_to({ payload.data() + off, iov.size() }))
-                            return std::unexpected { lib::err::invalid_address };
-                        off += iov.size();
-                    }
+                if (dest->state.lock()->passcred && !anc.creds.has_value())
+                {
+                    const auto *proc = sched::current_process();
+                    anc.creds = ucred {
+                        .pid = proc->pid,
+                        .uid = proc->cred->euid,
+                        .gid = proc->cred->egid
+                    };
+                }
 
-                    std::string sender_path;
-                    std::size_t wait_ns;
-                    {
-                        auto slocked = state.lock();
-                        sender_path = slocked->bound_path;
-                        wait_ns = slocked->sndtimeo.to_ns();
-                    }
+                lib::membuffer payload { total };
+                std::size_t off = 0;
+                for (const auto &iov : hdr.iovs)
+                {
+                    if (!iov.copy_to({ payload.data() + off, iov.size() }))
+                        return std::unexpected { lib::err::invalid_address };
+                    off += iov.size();
+                }
 
-                    while (true)
+                std::string sender_path;
+                std::size_t wait_ns;
+                {
+                    auto slocked = state.lock();
+                    sender_path = slocked->bound_path;
+                    wait_ns = slocked->sndtimeo.to_ns();
+                }
+
+                while (true)
+                {
+                    sched::gen_t gen;
                     {
-                        sched::gen_t gen;
+                        auto locked = dest->receive.lock();
+                        std::size_t queued = 0;
+                        for (auto &dgram : locked->dgram_queue)
+                            queued += std::max(dgram.payload.size(), 1uz);
+
+                        if (queued <= dgram_cap - std::max(total, 1uz))
                         {
-                            auto locked = dest->receive.lock();
-                            std::size_t queued = 0;
-                            for (auto &dgram : locked->dgram_queue)
-                                queued += std::max(dgram.payload.size(), 1uz);
-
-                            if (queued <= dgram_cap - std::max(total, 1uz))
-                            {
-                                locked->dgram_queue.push_back({
-                                    std::move(sender_path),
-                                    std::move(payload),
-                                    std::move(anc)
-                                });
-                                dest->read_wait.wake_all();
-                                return total;
-                            }
-
-                            gen = dest->write_wait.snapshot_gen();
+                            locked->dgram_queue.push_back({
+                                std::move(sender_path),
+                                std::move(payload),
+                                std::move(anc)
+                            });
+                            dest->read_wait.wake_all();
+                            return total;
                         }
 
-                        if (flags & msg_dontwait)
-                            return std::unexpected { lib::err::try_again };
-
-                        const auto res = dest->write_wait.wait_prepared(gen, wait_ns);
-                        if (res.interrupted || res.killed)
-                            return std::unexpected { lib::err::interrupted };
-                        if (res.expired)
-                            return std::unexpected { lib::err::try_again };
+                        gen = dest->write_wait.snapshot_gen();
                     }
+
+                    if (flags & msg_dontwait)
+                        return std::unexpected { lib::err::try_again };
+
+                    const auto res = dest->write_wait.wait_prepared(gen, wait_ns);
+                    if (res.aborted())
+                        return std::unexpected { lib::err::interrupted };
+                    if (res.expired)
+                        return std::unexpected { lib::err::try_again };
                 }
             }
 
@@ -1205,7 +1205,7 @@ namespace vfs::socket
                         }
 
                         const auto res = read_wait.wait_prepared(gen, wait_ns);
-                        if (res.interrupted || res.killed)
+                        if (res.aborted())
                         {
                             if (received > 0)
                                 return received;
@@ -1221,89 +1221,87 @@ namespace vfs::socket
 
                     return received;
                 }
-                else // sock_dgram and sock_seqpacket
+
+                // sock_dgram and sock_seqpacket
+                while (true)
                 {
-                    auto peer_weak = state.lock()->peer;
-                    while (true)
+                    std::optional<receive_t::dgram> msg;
+                    sched::gen_t gen;
+
                     {
-                        std::optional<receive_t::dgram> msg;
-                        sched::gen_t gen;
-
+                        auto locked = receive.lock();
+                        if (!locked->dgram_queue.empty())
                         {
-                            auto locked = receive.lock();
-                            if (!locked->dgram_queue.empty())
+                            if (!(flags & msg_peek))
                             {
-                                if (!(flags & msg_peek))
-                                {
-                                    msg = std::move(locked->dgram_queue.front());
-                                    locked->dgram_queue.pop_front();
-                                }
-                                else msg = locked->dgram_queue.front();
+                                msg = std::move(locked->dgram_queue.front());
+                                locked->dgram_queue.pop_front();
                             }
-                            else gen = read_wait.snapshot_gen();
+                            else msg = locked->dgram_queue.front();
                         }
-
-                        if (msg)
-                        {
-                            const auto payload_size = msg->payload.size();
-                            std::size_t out = 0;
-
-                            for (auto &iov : hdr.iovs)
-                            {
-                                if (out >= payload_size)
-                                    break;
-
-                                const auto want = std::min(iov.size(), payload_size - out);
-                                if (!iov.copy_from({ msg->payload.data() + out, want }))
-                                    return std::unexpected { lib::err::invalid_address };
-                                out += want;
-                            }
-
-                            if (payload_size > total)
-                                hdr.out_flags |= msg_trunc;
-
-                            if (!hdr.name.empty() && !msg->sender_path.empty())
-                            {
-                                sockaddr_un sa { };
-                                sa.sun_family = af_unix;
-
-                                const bool is_abstract = msg->sender_path[0] == 0;
-                                const auto copy_size = std::min(
-                                    msg->sender_path.size(), sizeof(sa.sun_path)
-                                );
-                                std::memcpy(sa.sun_path, msg->sender_path.data(), copy_size);
-
-                                const auto sa_len = sizeof(addr_fam) +
-                                    msg->sender_path.size() + !is_abstract;
-                                const auto copy_len = std::min(hdr.name.size(), sa_len);
-
-                                if (!hdr.name.subspan(0, copy_len).copy_from(
-                                    std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
-                                    return std::unexpected { lib::err::invalid_address };
-                                hdr.addr_len_out = sa_len;
-                            }
-
-                            if (const auto ret = deliver_ancdata(
-                                hdr, msg->ancdata, flags, passcred); !ret)
-                                return std::unexpected { ret.error() };
-
-                            if (auto peer_ptr = peer_weak.lock())
-                                peer_ptr->write_wait.wake_all();
-
-                            return (flags & msg_trunc)
-                                ? payload_size
-                                : std::min(total, payload_size);
-                        }
-
-                        if (flags & msg_dontwait)
-                            return std::unexpected { lib::err::try_again };
-
-                        const auto res = read_wait.wait_prepared(gen, wait_ns);
-                        if (res.interrupted || res.killed)
-                            return std::unexpected { lib::err::interrupted };
-                        if (res.expired)
-                            return std::unexpected { lib::err::try_again };
+                        else gen = read_wait.snapshot_gen();
                     }
+
+                    if (msg)
+                    {
+                        const auto payload_size = msg->payload.size();
+                        std::size_t out = 0;
+
+                        for (auto &iov : hdr.iovs)
+                        {
+                            if (out >= payload_size)
+                                break;
+
+                            const auto want = std::min(iov.size(), payload_size - out);
+                            if (!iov.copy_from({ msg->payload.data() + out, want }))
+                                return std::unexpected { lib::err::invalid_address };
+                            out += want;
+                        }
+
+                        if (payload_size > total)
+                            hdr.out_flags |= msg_trunc;
+
+                        if (!hdr.name.empty() && !msg->sender_path.empty())
+                        {
+                            sockaddr_un sa { };
+                            sa.sun_family = af_unix;
+
+                            const bool is_abstract = msg->sender_path[0] == 0;
+                            const auto copy_size = std::min(
+                                msg->sender_path.size(), sizeof(sa.sun_path)
+                            );
+                            std::memcpy(sa.sun_path, msg->sender_path.data(), copy_size);
+
+                            const auto sa_len = sizeof(addr_fam) +
+                                msg->sender_path.size() + !is_abstract;
+                            const auto copy_len = std::min(hdr.name.size(), sa_len);
+
+                            if (!hdr.name.subspan(0, copy_len).copy_from(
+                                std::as_bytes(std::span { &sa, 1 }).subspan(0, copy_len)))
+                                return std::unexpected { lib::err::invalid_address };
+                            hdr.addr_len_out = sa_len;
+                        }
+
+                        if (const auto ret = deliver_ancdata(
+                            hdr, msg->ancdata, flags, passcred); !ret)
+                            return std::unexpected { ret.error() };
+
+                        if (auto peer_ptr = peer_weak.lock())
+                            peer_ptr->write_wait.wake_all();
+
+                        return (flags & msg_trunc)
+                            ? payload_size
+                            : std::min(total, payload_size);
+                    }
+
+                    if (flags & msg_dontwait)
+                        return std::unexpected { lib::err::try_again };
+
+                    const auto res = read_wait.wait_prepared(gen, wait_ns);
+                    if (res.aborted())
+                        return std::unexpected { lib::err::interrupted };
+                    if (res.expired)
+                        return std::unexpected { lib::err::try_again };
                 }
             }
 
@@ -1920,7 +1918,7 @@ namespace vfs::socket
                 auto one = std::make_shared<unix_sock>(protocol, type, connected);
                 auto two = std::make_shared<unix_sock>(protocol, type, connected);
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 const ucred cred {
                     .pid = proc->pid,
                     .uid = proc->cred->euid,
@@ -1965,7 +1963,7 @@ namespace vfs::socket
                         };
 
                         const auto locked = sockets.lock();
-                        out.reserve(out.size() + locked->size() * 96);
+                        out.reserve(out.size() + (locked->size() * 96));
                         auto it = std::back_inserter(out);
                         for (auto &sock : *locked)
                         {

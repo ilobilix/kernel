@@ -2,6 +2,8 @@
 
 module system.syscall.vfs;
 
+import fmt;
+
 namespace syscall::vfs
 {
     using namespace ::vfs;
@@ -115,7 +117,7 @@ namespace syscall::vfs
 
                 const bool nonblock = file->flags & sfd_nonblock;
                 auto data = std::static_pointer_cast<data_t>(file->private_data);
-                auto thread = sched::current_thread();
+                auto *const thread = sched::current_thread();
 
                 const auto mask = *data->mask.lock();
                 const auto drain = [&](std::size_t &count) -> lib::expect<void>
@@ -150,8 +152,7 @@ namespace syscall::vfs
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto res = data->bell.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = data->bell.wait_prepared(gen); res.aborted())
                     {
                         std::size_t after = 0;
                         if (const auto ret = drain(after); !ret)
@@ -182,8 +183,8 @@ namespace syscall::vfs
                     pt->add(data->bell);
 
                 const auto mask = *data->mask.lock();
-                auto thread = sched::current_thread();
-                auto proc = thread->proc.get();
+                auto *const thread = sched::current_thread();
+                auto *const proc = thread->proc.get();
 
                 {
                     const std::unique_lock _ { thread->sigqueue.lock };
@@ -196,6 +197,19 @@ namespace syscall::vfs
                     return pollin;
 
                 return 0;
+            }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                auto data = std::static_pointer_cast<data_t>(file->private_data);
+                if (!data)
+                    return;
+
+                const auto mask = *data->mask.lock();
+                out.append("sigmask:\t");
+                for (std::size_t i = sched::sigset_words; i-- > 0; )
+                    fmt::format_to(std::back_inserter(out), "{:016x}", mask.bits[i]);
+                out.push_back('\n');
             }
         };
     } // namespace

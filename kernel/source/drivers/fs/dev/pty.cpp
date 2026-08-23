@@ -299,8 +299,7 @@ namespace fs::dev::pty
             if (nonblock)
                 return std::unexpected { lib::err::try_again };
 
-            const auto res = ld->in_wq.wait_prepared(gen);
-            if (res.interrupted || res.killed)
+            if (const auto res = ld->in_wq.wait_prepared(gen); res.aborted())
                 return std::unexpected { lib::err::interrupted };
         }
 

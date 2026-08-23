@@ -282,6 +282,11 @@ export namespace vfs
             return { };
         }
 
+        virtual void show_fdinfo(const std::shared_ptr<file_t> &file, std::string &out)
+        {
+            lib::unused(file, out);
+        }
+
         virtual ~ops_t() = default;
     };
 

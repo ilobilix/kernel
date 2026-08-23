@@ -1440,7 +1440,7 @@ namespace vmm
         if (!obj && !amap)
             return false;
 
-        if (!(prot & prot::read))
+        if (prot == prot::none)
             return false;
 
         if (state.is_write && !(prot & prot::write))
@@ -1691,7 +1691,7 @@ namespace vmm
             if (entry.flags != flags)
                 goto fail;
 
-            if (!(entry.prot & prot::read))
+            if (entry.prot == prot::none)
                 goto fail;
             if (state.is_write && !(entry.prot & prot::write))
                 goto fail;

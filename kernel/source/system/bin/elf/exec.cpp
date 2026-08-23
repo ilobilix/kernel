@@ -20,8 +20,8 @@ namespace bin::elf::exec
     namespace
     {
         constexpr std::string_view fmt_name { "elf" };
-        constexpr std::uintptr_t default_base = 0x400000;
-        constexpr std::uintptr_t default_interp_base = 0x40000000;
+        constexpr std::uintptr_t default_base = 0x555555554000;
+        constexpr std::uintptr_t default_interp_base = vmm::vmspace::mmap_max;
 
         struct auxval
         {
@@ -358,19 +358,19 @@ namespace bin::elf::exec
                     copy_to_user(curr(), &val, sizeof(val));
                 };
 
-                const auto envp_top = offset;
-                for (const auto &env : req.envp)
+                for (const auto &env : req.envp | std::views::reverse)
                 {
                     offset -= env.length() + 1;
                     copy_to_user(curr(), env.c_str(), env.length() + 1);
                 }
+                const auto envp_bottom = offset;
 
-                const auto argv_top = offset;
-                for (const auto &arg : req.argv)
+                for (const auto &arg : req.argv | std::views::reverse)
                 {
                     offset -= arg.length() + 1;
                     copy_to_user(curr(), arg.c_str(), arg.length() + 1);
                 }
+                const auto argv_bottom = offset;
 
                 std::uintptr_t execfn_offset = 0;
                 {
@@ -438,12 +438,12 @@ namespace bin::elf::exec
 
                 offset -= 8 * req.envp.size();
                 auto array_base = addr_bottom + offset;
-                auto str_offset = envp_top;
+                auto str_offset = envp_bottom;
                 for (std::size_t i = 0; const auto &env : req.envp)
                 {
-                    str_offset -= env.length() + 1;
                     const auto addr = addr_bottom + str_offset;
                     copy_to_user(array_base + (i * 8), &addr, sizeof(addr));
+                    str_offset += env.length() + 1;
                     i++;
                 }
 
@@ -452,12 +452,12 @@ namespace bin::elf::exec
 
                 offset -= 8 * req.argv.size();
                 array_base = addr_bottom + offset;
-                str_offset = argv_top;
+                str_offset = argv_bottom;
                 for (std::size_t i = 0; const auto &arg : req.argv)
                 {
-                    str_offset -= arg.length() + 1;
                     const auto addr = addr_bottom + str_offset;
                     copy_to_user(array_base + (i * 8), &addr, sizeof(addr));
+                    str_offset += arg.length() + 1;
                     i++;
                 }
 

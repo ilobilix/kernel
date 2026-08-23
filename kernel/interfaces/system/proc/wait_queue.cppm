@@ -95,6 +95,8 @@ export namespace sched
             bool interrupted;
             bool expired;
             bool killed;
+
+            bool aborted() const { return interrupted || killed; }
         };
 
         private:

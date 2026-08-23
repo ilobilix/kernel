@@ -178,9 +178,9 @@ export namespace fs::dev::tty
         speed_t c_ispeed;
         speed_t c_ospeed;
 
-        static inline constexpr auto ctrl(cc_t c)
+        static constexpr auto ctrl(cc_t ctr)
         {
-            return c & 0x1F;
+            return ctr & 0x1F;
         }
 
         speed_t get_ispeed() const
@@ -636,7 +636,7 @@ export namespace fs::dev::tty
             return pushed;
         }
 
-        void wakeup_link();
+        void wakeup_link() const;
 
         void hangup();
         void detach(sched::session_t *session) override;

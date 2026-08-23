@@ -4,6 +4,7 @@ module system.syscall.vfs;
 
 import system.chrono;
 import magic_enum;
+import fmt;
 
 namespace syscall::vfs
 {
@@ -20,6 +21,7 @@ namespace syscall::vfs
         struct instance_t : sched::timer_t
         {
             std::uint64_t ticks = 0;
+            int settime_flags = 0;
             bool might_cancel = false; // cancel_on_set
             bool cancelled = false;
 
@@ -148,11 +150,10 @@ namespace syscall::vfs
 
                         const auto gen = data->bell.snapshot_gen();
                         locked.unlock();
-                        {
-                            const auto res = data->bell.wait_prepared(gen);
-                            if (res.interrupted || res.killed)
-                                return std::unexpected { lib::err::interrupted };
-                        }
+
+                        if (const auto res = data->bell.wait_prepared(gen); res.aborted())
+                            return std::unexpected { lib::err::interrupted };
+
                         locked.lock();
                     }
 
@@ -217,6 +218,31 @@ namespace syscall::vfs
 
                 data->bell.wake_all();
                 return 0;
+            }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                auto data = std::static_pointer_cast<instance_t>(file->private_data);
+                if (!data)
+                    return;
+
+                const auto its = data->query().to_itimerspec();
+
+                std::uint64_t ticks = 0;
+                int settime_flags = 0;
+                {
+                    const std::unique_lock _ { data->lock };
+                    ticks = data->ticks;
+                    settime_flags = data->settime_flags;
+                }
+
+                fmt::format_to(std::back_inserter(out),
+                    "clockid: {}\nticks: {}\nsettime flags: 0{:o}\n"
+                    "it_value: ({}, {})\nit_interval: ({}, {})\n",
+                    std::to_underlying(data->clockid), ticks, settime_flags,
+                    its.value.tv_sec, its.value.tv_nsec,
+                    its.interval.tv_sec, its.interval.tv_nsec
+                );
             }
         };
 
@@ -291,6 +317,7 @@ namespace syscall::vfs
 
         {
             const std::unique_lock _ { data->lock };
+            data->settime_flags = flags & (tfd_timer_abstime | tfd_timer_cancel_on_set);
             data->might_cancel = might_cancel;
         }
 

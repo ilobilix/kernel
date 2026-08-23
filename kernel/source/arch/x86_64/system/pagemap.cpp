@@ -78,7 +78,7 @@ namespace vmm
 
         std::uintptr_t ret = 0;
 
-        if ((flags & pflag::read) != pflag::none)
+        if ((flags & pflag::rwx) != pflag::none)
             ret |= arch::flag::present;
         if ((flags & pflag::write) != pflag::none)
             ret |= arch::flag::write;

@@ -196,6 +196,8 @@ export namespace sched
         prio_user = 2
     };
 
+    void set_affinity(thread_t *thread, const lib::bitmap &mask);
+
     int get_priority(int which, int who);
     int set_priority(int which, int who, int prio);
 

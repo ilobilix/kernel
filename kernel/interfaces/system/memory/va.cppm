@@ -31,6 +31,28 @@ export namespace vmm::va
         const auto root = tree.root();
         const auto nil = tree.nil();
 
+        if (root->interval.subtree_max > maxp)
+        {
+            std::optional<std::uintptr_t> found;
+            auto prev = minp;
+
+            for (const auto &ent : tree)
+            {
+                if (const auto top = std::min(ent.startp, maxp);
+                    top > prev && (top - prev) >= pages)
+                    found = top - pages;
+
+                if (ent.endp > prev)
+                    prev = ent.endp;
+                if (prev >= maxp)
+                    return found;
+            }
+
+            if (maxp - prev >= pages)
+                found = maxp - pages;
+            return found;
+        }
+
         const auto high_gap = maxp - root->interval.subtree_max;
         const auto max_gap = root->interval.subtree_max_gap;
         const auto low_gap = root->interval.subtree_min > minp

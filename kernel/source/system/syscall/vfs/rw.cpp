@@ -6,423 +6,223 @@ namespace syscall::vfs
 {
     using namespace ::vfs;
 
-    std::ssize_t read(int fd, void __user *buf, std::size_t count)
+    namespace
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_read(file->flags))
-            return -EBADF;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
-        if (!uspan.has_value())
-            return -EFAULT;
-
-        const auto ret = fdesc->file->read(*uspan);
-        if (!ret.has_value())
-            return -lib::map_error(ret.error());
-
-        if (const auto err = detail::touch_atime(file); err < 0)
-            return err;
-
-        if (file->flags & (o_sync | o_dsync))
+        rlim_t fsize_limit(const std::shared_ptr<file_t> &file)
         {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
+            if (file->path.dentry->inode->stat.type() != stat::type::s_ifreg)
+                return rlim_inf;
+            return sched::current_process()->rlimits->get(sched::rlimit_fsize).cur;
         }
 
-        return *ret;
+        bool exceeds_fsize(rlim_t limit, rlim_t offset, std::size_t count)
+        {
+            if (limit == rlim_inf || count == 0)
+                return false;
+            return offset >= limit || count > limit - offset;
+        }
+
+        lib::expect<std::shared_ptr<file_t>> rw_file(int fd, bool write)
+        {
+            auto *const proc = sched::current_process();
+
+            const auto fdesc_res = detail::get_fd(proc, fd);
+            if (!fdesc_res)
+                return std::unexpected { fdesc_res.error() };
+
+            const auto &file = (*fdesc_res)->file;
+            if (write ? !is_write(file->flags) : !is_read(file->flags))
+                return std::unexpected { lib::err::invalid_fd };
+
+            if (write && detail::readonly_mount(file->path))
+                return std::unexpected { lib::err::read_only_fs };
+
+            if (file->path.dentry->inode->stat.type() == stat::type::s_ifdir)
+                return std::unexpected { lib::err::target_is_a_dir };
+
+            return file;
+        }
+
+        int rw_finish(const std::shared_ptr<file_t> &file, bool write)
+        {
+            const auto &dentry = file->path.dentry;
+            if (dentry && dentry->inode)
+            {
+                if (write)
+                {
+                    auto &inode = dentry->inode;
+                    const std::unique_lock _ { inode->lock };
+                    inode->stat.update_time(kstat::time::modify | kstat::time::status);
+
+                    if (const auto ret = dirty_inode(file->path); !ret)
+                        return -lib::map_error(ret.error());
+                }
+                else if (const auto err = detail::touch_atime(file); err < 0)
+                    return err;
+            }
+
+            if (file->flags & (o_sync | o_dsync))
+            {
+                if (const auto ret = file->sync(); !ret)
+                    return -lib::map_error(ret.error());
+            }
+            return 0;
+        }
+
+        lib::expect<std::size_t> transfer(
+            const std::shared_ptr<file_t> &file, std::uint64_t offset,
+            lib::maybe_uspan<std::byte> buffer, bool write, bool pos
+        )
+        {
+            if (write)
+                return pos ? file->pwrite(offset, buffer) : file->write(buffer);
+            return pos ? file->pread(offset, buffer) : file->read(buffer);
+        }
+
+        std::ssize_t do_rw(
+            int fd, const void __user *buf, std::size_t count,
+            off_t offset, bool write, bool pos
+        )
+        {
+            if (pos && offset < 0)
+                return -EINVAL;
+
+            const auto file_res = rw_file(fd, write);
+            if (!file_res)
+                return -lib::map_error(file_res.error());
+            const auto &file = *file_res;
+
+            const off_t off = pos ? offset : file->offset;
+            if (write && exceeds_fsize(fsize_limit(file), off, count))
+                return -EFBIG;
+
+            const auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
+            if (!uspan.has_value())
+                return -EFAULT;
+
+            const auto ret = transfer(file, off, *uspan, write, pos);
+            if (!ret.has_value())
+                return -lib::map_error(ret.error());
+
+            if (const auto err = rw_finish(file, write); err < 0)
+                return err;
+
+            return *ret;
+        }
+
+        std::ssize_t do_rw_iovec(
+            int fd, const iovec __user *iov, int iovcnt,
+            off_t offset, bool write, bool pos
+        )
+        {
+            if (pos && offset < 0)
+                return -EINVAL;
+
+            const auto file_res = rw_file(fd, write);
+            if (!file_res)
+                return -lib::map_error(file_res.error());
+            const auto &file = *file_res;
+
+            if (iovcnt < 0 || static_cast<std::size_t>(iovcnt) > uio_maxiov)
+                return -EINVAL;
+
+            constexpr std::size_t count_max = std::numeric_limits<std::ssize_t>::max();
+            const auto limit = write ? fsize_limit(file) : rlim_inf;
+
+            std::size_t total = 0;
+            std::ssize_t err = 0;
+
+            for (int i = 0; i < iovcnt; i++)
+            {
+                iovec local_iov;
+                if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
+                {
+                    err = -EFAULT;
+                    break;
+                }
+
+                if (local_iov.iov_len > count_max - total)
+                {
+                    err = -EINVAL;
+                    break;
+                }
+
+                const off_t off = pos ? offset + total : file->offset;
+                if (write && exceeds_fsize(limit, off, local_iov.iov_len))
+                {
+                    err = -EFBIG;
+                    break;
+                }
+
+                const auto uspan = lib::maybe_uspan<std::byte>::create(
+                    local_iov.iov_base, local_iov.iov_len
+                );
+                if (!uspan.has_value())
+                {
+                    err = -EFAULT;
+                    break;
+                }
+
+                const auto ret = transfer(file, off, *uspan, write, pos);
+                if (!ret.has_value())
+                {
+                    err = -lib::map_error(ret.error());
+                    break;
+                }
+
+                total += *ret;
+                if (*ret != local_iov.iov_len)
+                    break;
+            }
+
+            if (total == 0 && err < 0)
+                return err;
+
+            if (const auto ret = rw_finish(file, write); ret < 0)
+                return ret;
+
+            return total;
+        }
+    } // namespace
+
+    std::ssize_t read(int fd, void __user *buf, std::size_t count)
+    {
+        return do_rw(fd, buf, count, 0, false, false);
     }
 
     std::ssize_t write(int fd, const void __user *buf, std::size_t count)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_write(file->flags))
-            return -EBADF;
-
-        if (detail::readonly_mount(file->path))
-            return -EROFS;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
-        if (!uspan.has_value())
-            return -EFAULT;
-
-        const auto ret = fdesc->file->write(*uspan);
-        if (!ret.has_value())
-            return -lib::map_error(ret.error());
-
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::modify | kstat::time::status);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return *ret;
+        return do_rw(fd, buf, count, 0, true, false);
     }
 
     std::ssize_t pread(int fd, void __user *buf, std::size_t count, off_t offset)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_read(file->flags))
-            return -EBADF;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
-        if (!uspan.has_value())
-            return -EFAULT;
-
-        const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
-        if (!ret.has_value())
-            return -lib::map_error(ret.error());
-
-        if (const auto err = detail::touch_atime(file); err < 0)
-            return err;
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return *ret;
+        return do_rw(fd, buf, count, offset, false, true);
     }
 
     std::ssize_t pwrite(int fd, const void __user *buf, std::size_t count, off_t offset)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_write(file->flags))
-            return -EBADF;
-
-        if (detail::readonly_mount(file->path))
-            return -EROFS;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        if (stat.type() == stat::type::s_ifreg)
-        {
-            const auto fsize = proc->rlimits->get(sched::rlimit_fsize).cur;
-            if (static_cast<rlim_t>(offset) >= fsize ||
-                static_cast<rlim_t>(offset) + count > fsize)
-                return -EFBIG;
-        }
-
-        auto uspan = lib::maybe_uspan<std::byte>::create(buf, count);
-        if (!uspan.has_value())
-            return -EFAULT;
-
-        const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
-        if (!ret.has_value())
-            return -lib::map_error(ret.error());
-
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::modify | kstat::time::status);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return *ret;
+        return do_rw(fd, buf, count, offset, true, true);
     }
 
     std::ssize_t readv(int fd, const iovec __user *iov, int iovcnt)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_read(file->flags))
-            return -EBADF;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        std::size_t total_read = 0;
-        for (int i = 0; i < iovcnt; i++)
-        {
-            iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return -EFAULT;
-
-            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
-            if (!uspan.has_value())
-                return -EFAULT;
-
-            const auto ret = fdesc->file->read(*uspan);
-            if (!ret.has_value())
-                return -lib::map_error(ret.error());
-
-            if (*ret == 0)
-                break;
-
-            total_read += *ret;
-        }
-
-        if (const auto err = detail::touch_atime(file); err < 0)
-            return err;
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return static_cast<std::ssize_t>(total_read);
+        return do_rw_iovec(fd, iov, iovcnt, 0, false, false);
     }
 
     std::ssize_t writev(int fd, const iovec __user *iov, int iovcnt)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_write(file->flags))
-            return -EBADF;
-
-        if (detail::readonly_mount(file->path))
-            return -EROFS;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        std::size_t total_written = 0;
-        for (int i = 0; i < iovcnt; i++)
-        {
-            iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return -EFAULT;
-
-            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
-            if (!uspan.has_value())
-                return -EFAULT;
-
-            const auto ret = fdesc->file->write(*uspan);
-            if (!ret.has_value())
-                return -lib::map_error(ret.error());
-
-            total_written += *ret;
-        }
-
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::modify | kstat::time::status);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return static_cast<std::ssize_t>(total_written);
+        return do_rw_iovec(fd, iov, iovcnt, 0, true, false);
     }
 
     std::ssize_t preadv(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_read(file->flags))
-            return -EBADF;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        std::size_t total_read = 0;
-        for (int i = 0; i < iovcnt; i++)
-        {
-            iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return -EFAULT;
-
-            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
-            if (!uspan.has_value())
-                return -EFAULT;
-
-            const auto ret = fdesc->file->pread(static_cast<std::uint64_t>(offset), *uspan);
-            if (!ret.has_value())
-                return -lib::map_error(ret.error());
-
-            if (*ret == 0)
-                break;
-
-            total_read += *ret;
-            offset += static_cast<off_t>(*ret);
-        }
-
-        if (const auto err = detail::touch_atime(file); err < 0)
-            return err;
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return static_cast<std::ssize_t>(total_read);
+        return do_rw_iovec(fd, iov, iovcnt, offset, false, true);
     }
 
     std::ssize_t pwritev(int fd, const iovec __user *iov, int iovcnt, off_t offset)
     {
-        const auto proc = sched::current_process();
-
-        const auto fdesc_res = detail::get_fd(proc, fd);
-        if (!fdesc_res)
-            return -lib::map_error(fdesc_res.error());
-        const auto &fdesc = *fdesc_res;
-
-        const auto &file = fdesc->file;
-        if (!is_write(file->flags))
-            return -EBADF;
-
-        if (detail::readonly_mount(file->path))
-            return -EROFS;
-
-        auto &dentry = file->path.dentry;
-        auto &inode = dentry->inode;
-        auto &stat = inode->stat;
-
-        if (stat.type() == stat::type::s_ifdir)
-            return -EISDIR;
-
-        const bool check_fsize = stat.type() == stat::type::s_ifreg;
-        const auto fsize = proc->rlimits->get(sched::rlimit_fsize).cur;
-
-        std::size_t total_written = 0;
-        for (int i = 0; i < iovcnt; i++)
-        {
-            iovec local_iov;
-            if (!lib::copy_from_user(&local_iov, iov + i, sizeof(iovec)))
-                return -EFAULT;
-
-            if (check_fsize && (static_cast<rlim_t>(offset) >= fsize ||
-                static_cast<rlim_t>(offset) + local_iov.iov_len > fsize))
-            {
-                if (total_written == 0)
-                    return -EFBIG;
-                break;
-            }
-
-            auto uspan = lib::maybe_uspan<std::byte>::create(local_iov.iov_base, local_iov.iov_len);
-            if (!uspan.has_value())
-                return -EFAULT;
-
-            const auto ret = fdesc->file->pwrite(static_cast<std::uint64_t>(offset), *uspan);
-            if (!ret.has_value())
-                return -lib::map_error(ret.error());
-
-            total_written += *ret;
-            offset += static_cast<off_t>(*ret);
-        }
-
-        {
-            const std::unique_lock _ { inode->lock };
-            stat.update_time(kstat::time::modify | kstat::time::status);
-
-            if (const auto ret = dirty_inode(file->path); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        if (file->flags & (o_sync | o_dsync))
-        {
-            if (const auto ret = file->sync(); !ret)
-                return -lib::map_error(ret.error());
-        }
-
-        return static_cast<std::ssize_t>(total_written);
+        return do_rw_iovec(fd, iov, iovcnt, offset, true, true);
     }
 
     // std::ssize_t preadv2(int fd, const iovec __user *iov, int iovcnt, off_t offset, int flags);
@@ -435,7 +235,7 @@ namespace syscall::vfs
         std::size_t len, std::uint32_t flags
     )
     {
-        constexpr std::size_t chunk_max = 64 * 1024;
+        constexpr std::size_t chunk_max = 64uz * 1024;
 
         constexpr std::uint32_t splice_f_move = 1;
         constexpr std::uint32_t splice_f_nonblock = 2;
@@ -445,7 +245,7 @@ namespace syscall::vfs
         if (flags & ~(splice_f_move | splice_f_nonblock | splice_f_more | splice_f_gift))
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto in_res = detail::get_fd(proc, fd_in);
         if (!in_res)
@@ -566,27 +366,22 @@ namespace syscall::vfs
         }
 
         done:
+        if (const auto ret = rw_finish(in, false); ret < 0 && total == 0)
+            return ret;
+        if (const auto ret = rw_finish(out, true); ret < 0 && total == 0)
+            return ret;
+
         if (off_in && !lib::copy_to_user(off_in, &in_offset, sizeof(in_offset)))
             return -EFAULT;
         if (off_out && !lib::copy_to_user(off_out, &out_offset, sizeof(out_offset)))
             return -EFAULT;
-
-        if (type_of(out) == stat::type::s_ifreg)
-        {
-            auto &inode = out->path.dentry->inode;
-            const std::unique_lock _ { inode->lock };
-
-            inode->stat.update_time(kstat::time::modify | kstat::time::status);
-            if (const auto ret = dirty_inode(out->path); !ret)
-                return -lib::map_error(ret.error());
-        }
 
         return total;
     }
 
     off_t lseek(int fd, off_t offset, int whence)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto fdesc_res = detail::get_fd(proc, fd);
         if (!fdesc_res)
@@ -664,7 +459,7 @@ namespace syscall::vfs
         if (length < 0)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         if (static_cast<rlim_t>(length) > proc->rlimits->get(sched::rlimit_fsize).cur)
             return -EFBIG;
 
@@ -684,7 +479,7 @@ namespace syscall::vfs
         if (length < 0)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         if (static_cast<rlim_t>(length) > proc->rlimits->get(sched::rlimit_fsize).cur)
             return -EFBIG;
 
@@ -713,7 +508,7 @@ namespace syscall::vfs
             return -EOPNOTSUPP;
         }
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const auto fdesc_res = detail::get_fd(proc, fd);
         if (!fdesc_res)
             return -lib::map_error(fdesc_res.error());
@@ -751,7 +546,7 @@ namespace syscall::vfs
         if (offset < 0)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const auto fdesc_res = detail::get_fd(proc, fd);
         if (!fdesc_res)
             return -lib::map_error(fdesc_res.error());

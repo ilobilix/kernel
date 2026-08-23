@@ -2,6 +2,8 @@
 
 module system.syscall.vfs;
 
+import fmt;
+
 namespace syscall::vfs
 {
     using namespace ::vfs;
@@ -63,6 +65,20 @@ namespace syscall::vfs
                     pt->add(proc->exited);
 
                 return proc->is_zombie ? pollin : 0; // TODO: pollhup when reaped
+            }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                auto proc = std::static_pointer_cast<sched::process_t>(file->private_data);
+                if (!proc)
+                    return;
+
+                const auto reaped = sched::get_process(proc->pid) != proc;
+                const auto val = reaped ? -1 : proc->pid;
+
+                fmt::format_to(std::back_inserter(out), "Pid:\t{}\n", val);
+                if (val > 0)
+                    fmt::format_to(std::back_inserter(out), "NSpid:\t{}\n", val);
             }
         };
 

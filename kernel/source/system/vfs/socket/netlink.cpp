@@ -99,7 +99,7 @@ namespace vfs::socket::netlink
                 return true;
             }
 
-            std::uint32_t alloc_portid();
+            std::uint32_t alloc_portid() const;
             lib::expect<void> bind_portid(std::uint32_t portid);
             lib::expect<void> autobind();
 
@@ -279,7 +279,7 @@ namespace vfs::socket::netlink
                 if (protocol < 0 || protocol >= netlink_max_links)
                     return std::unexpected { lib::err::protocol_unsupported };
 
-                auto table = (*registry.lock())[protocol].get();
+                auto *const table = (*registry.lock())[protocol].get();
                 if (!table)
                     return std::unexpected { lib::err::protocol_unsupported };
 
@@ -325,7 +325,7 @@ namespace vfs::socket::netlink
             }
         }
 
-        std::uint32_t netlink_sock_t::alloc_portid()
+        std::uint32_t netlink_sock_t::alloc_portid() const
         {
             const auto preferred = sched::current_process()->pid;
             if (!table->by_portid.contains(preferred))
@@ -509,7 +509,7 @@ namespace vfs::socket::netlink
                 }
             }
 
-            const auto proc = sched::current_process();
+            const auto *proc = sched::current_process();
             ucred cred {
                 .pid = proc->pid,
                 .uid = proc->cred->euid,
@@ -569,7 +569,7 @@ namespace vfs::socket::netlink
                     return std::unexpected { lib::err::try_again };
 
                 const auto res = keepalive->write_wait.wait_prepared(gen, wait_ns);
-                if (res.interrupted || res.killed)
+                if (res.aborted())
                     return std::unexpected { lib::err::interrupted };
                 if (res.expired)
                     return std::unexpected { lib::err::try_again };
@@ -668,7 +668,7 @@ namespace vfs::socket::netlink
                     return std::unexpected { lib::err::try_again };
 
                 const auto res = read_wait.wait_prepared(gen, wait_ns);
-                if (res.interrupted || res.killed)
+                if (res.aborted())
                     return std::unexpected { lib::err::interrupted };
                 if (res.expired)
                     return std::unexpected { lib::err::try_again };
@@ -914,7 +914,7 @@ namespace vfs::socket::netlink
             return std::unexpected { lib::err::invalid_argument };
 
         auto locked = registry.lock();
-        auto table = (*locked)[protocol].get();
+        auto *const table = (*locked)[protocol].get();
         if (!table)
             return std::unexpected { lib::err::protocol_unsupported };
         if (group > table->proto.ngroups)
@@ -940,7 +940,7 @@ namespace vfs::socket::netlink
             return std::unexpected { lib::err::invalid_argument };
 
         auto locked = registry.lock();
-        auto table = (*locked)[protocol].get();
+        auto *const table = (*locked)[protocol].get();
         if (!table)
             return std::unexpected { lib::err::protocol_unsupported };
 

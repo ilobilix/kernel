@@ -2,6 +2,8 @@
 
 module system.syscall.vfs;
 
+import fmt;
+
 namespace syscall::vfs
 {
     using namespace ::vfs;
@@ -80,11 +82,10 @@ namespace syscall::vfs
                         {
                             const auto gen = data->bell.snapshot_gen();
                             locked.unlock();
-                            {
-                                const auto res = data->bell.wait_prepared(gen);
-                                if (res.interrupted || res.killed)
-                                    return std::unexpected { lib::err::interrupted };
-                            }
+
+                            if (const auto res = data->bell.wait_prepared(gen); res.aborted())
+                                return std::unexpected { lib::err::interrupted };
+
                             locked.lock();
                             if (*locked != 0)
                                 goto again;
@@ -142,8 +143,7 @@ namespace syscall::vfs
                     if (nonblock)
                         return std::unexpected { lib::err::try_again };
 
-                    const auto res = data->bell.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = data->bell.wait_prepared(gen); res.aborted())
                         return std::unexpected { lib::err::interrupted };
                 }
             }
@@ -165,6 +165,22 @@ namespace syscall::vfs
                     mask |= pollout;
 
                 return mask;
+            }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                auto data = std::static_pointer_cast<data_t>(file->private_data);
+                if (!data)
+                    return;
+
+                const auto count = *data->counter.lock();
+                fmt::format_to(std::back_inserter(out),
+                    "eventfd-count:\t{:16x}\neventfd-id:\t{}\neventfd-semaphore:\t{}\n",
+                    count,
+                    file->path.dentry && file->path.dentry->inode
+                        ? file->path.dentry->inode->stat.st_ino : 0,
+                    data->semaphore ? 1 : 0
+                );
             }
         };
     } // namespace

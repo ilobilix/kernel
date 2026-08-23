@@ -41,7 +41,7 @@ namespace fs::dev::tty
         }
 
         lib::expect<void> generic_open(
-            const std::shared_ptr<vfs::file_t> &file, std::shared_ptr<instance> inst,
+            const std::shared_ptr<vfs::file_t> &file, const std::shared_ptr<instance> &inst,
             int flags, pid_t pid, bool inst_opened
         )
         {
@@ -81,7 +81,7 @@ namespace fs::dev::tty
             return { };
         }
 
-        lib::expect<void> generic_close(vfs::file_t &file, std::shared_ptr<instance> inst)
+        lib::expect<void> generic_close(vfs::file_t &file, const std::shared_ptr<instance> &inst)
         {
             lib::unused(file);
             return inst->close();
@@ -131,7 +131,7 @@ namespace fs::dev::tty
                 lib::bug_on(prev == 0);
                 if (prev == 1)
                 {
-                    const auto drv = inst->drv;
+                    auto *const drv = inst->drv;
                     lib::bug_on(drv == nullptr);
                     {
                         auto locked = drv->instances.lock();
@@ -206,8 +206,8 @@ namespace fs::dev::tty
 
         lib::expect<void> background_check(instance &inst, int sig)
         {
-            const auto thread = sched::current_thread();
-            const auto proc = thread->proc.get();
+            const auto *thread = sched::current_thread();
+            const auto *proc = thread->proc.get();
 
             auto fg_group = inst.ctrl.lock()->group.lock();
             if (!fg_group || fg_group == proc->group)
@@ -457,8 +457,7 @@ namespace fs::dev::tty
                     return { };
             }
 
-            const auto res = out_wq.wait_prepared(gen);
-            if (res.interrupted || res.killed)
+            if (const auto res = out_wq.wait_prepared(gen); res.aborted())
                 return std::unexpected { lib::err::interrupted };
         }
         return { };
@@ -680,11 +679,10 @@ namespace fs::dev::tty
                 else self->raw_wq.wait_prepared(raw_gen);
                 continue;
             }
-            else if (self->raw_buffer.available() >= raw_space_wake)
+            if (self->raw_buffer.available() >= raw_space_wake)
                 self->raw_space_wq.wake_all();
 
             auto chr = static_cast<char>(ret.value());
-
             termios = *tios;
 
             const auto input_push = [&](char value)
@@ -780,7 +778,7 @@ namespace fs::dev::tty
                     self->set_stopped(true);
                     continue;
                 }
-                else if (chr == termios.c_cc[vstart])
+                if (chr == termios.c_cc[vstart])
                 {
                     self->set_stopped(false);
                     continue;
@@ -1042,7 +1040,8 @@ namespace fs::dev::tty
 
             return copy(in_locked, available, 0);
         }
-        else if (is_cooked)
+
+        if (is_cooked)
         {
             lib::membuffer buf;
             std::size_t progress = 0;
@@ -1057,8 +1056,7 @@ namespace fs::dev::tty
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
 
-                    const auto res = in_wq.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
+                    if (const auto res = in_wq.wait_prepared(gen); res.aborted())
                         return std::unexpected { lib::err::interrupted };
 
                     in_locked.lock();
@@ -1093,127 +1091,126 @@ namespace fs::dev::tty
 
             return progress;
         }
-        else // raw
-        {
-            if (min == 0 && time == 0)
-            {
-                // if data is available, return immediately
-                // otherwise return 0
 
-                auto in_locked = in_buffer.lock();
-                const auto available = get_available(in_locked);
-                if (available == 0)
+        // raw
+        if (min == 0 && time == 0)
+        {
+            // if data is available, return immediately
+            // otherwise return 0
+
+            auto in_locked = in_buffer.lock();
+            const auto available = get_available(in_locked);
+            if (available == 0)
+                return 0;
+
+            return copy(in_locked, available, 0);
+        }
+
+        if (min > 0 && time == 0)
+        {
+            // block until at least vmin bytes are available
+
+            auto in_locked = in_buffer.lock();
+            auto available = get_available(in_locked);
+            while (available < min)
+            {
+                if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
                     return 0;
 
-                return copy(in_locked, available, 0);
+                const auto gen = in_wq.snapshot_gen();
+                in_locked.unlock();
+
+                if (const auto res = in_wq.wait_prepared(gen); res.aborted())
+                    return std::unexpected { lib::err::interrupted };
+
+                in_locked.lock();
+                available = get_available(in_locked);
             }
-            else if (min > 0 && time == 0)
+
+            return copy(in_locked, available, 0);
+        }
+
+        if (min == 0 && time > 0)
+        {
+            // return when at least one byte is available
+            // if timer expires, return 0
+
+            auto in_locked = in_buffer.lock();
+            auto available = get_available(in_locked);
+            if (available == 0)
             {
-                // block until at least vmin bytes are available
+                if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
+                    return 0;
 
-                auto in_locked = in_buffer.lock();
-                auto available = get_available(in_locked);
-                while (available < min)
-                {
-                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
-                        return 0;
+                const auto gen = in_wq.snapshot_gen();
+                in_locked.unlock();
 
-                    const auto gen = in_wq.snapshot_gen();
-                    in_locked.unlock();
+                if (const auto res = in_wq.wait_prepared(gen, ms * 1'000'000ul); res.aborted())
+                    return std::unexpected { lib::err::interrupted };
 
-                    const auto res = in_wq.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
-                        return std::unexpected { lib::err::interrupted };
-
-                    in_locked.lock();
-                    available = get_available(in_locked);
-                }
-
-                return copy(in_locked, available, 0);
-            }
-            else if (min == 0 && time > 0)
-            {
-                // return when at least one byte is available
-                // if timer expires, return 0
-
-                auto in_locked = in_buffer.lock();
-                auto available = get_available(in_locked);
+                in_locked.lock();
+                available = get_available(in_locked);
                 if (available == 0)
-                {
-                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
-                        return 0;
-
-                    const auto gen = in_wq.snapshot_gen();
-                    in_locked.unlock();
-
-                    const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
-                    if (res.interrupted || res.killed)
-                        return std::unexpected { lib::err::interrupted };
-
-                    in_locked.lock();
-                    available = get_available(in_locked);
-                    if (available == 0)
-                        return 0;
-                }
-
-                return copy(in_locked, available, 0);
+                    return 0;
             }
-            else if (min > 0 && time > 0)
-            {
-                // wait until at least one byte is available
-                // timer is started after each byte received
-                // return when:
-                //    vmin bytes received or
-                //    buffer.size() bytes received or
-                //    timer expired
 
-                auto in_locked = in_buffer.lock();
-                auto available = get_available(in_locked);
+            return copy(in_locked, available, 0);
+        }
+
+        if (min > 0 && time > 0)
+        {
+            // wait until at least one byte is available
+            // timer is started after each byte received
+            // return when:
+            //    vmin bytes received or
+            //    buffer.size() bytes received or
+            //    timer expired
+
+            auto in_locked = in_buffer.lock();
+            auto available = get_available(in_locked);
+            while (available == 0)
+            {
+                if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
+                    return 0;
+
+                const auto gen = in_wq.snapshot_gen();
+                in_locked.unlock();
+
+                if (const auto res = in_wq.wait_prepared(gen); res.aborted())
+                    return std::unexpected { lib::err::interrupted };
+
+                in_locked.lock();
+                available = get_available(in_locked);
+            }
+
+            std::size_t progress = 0;
+            while (progress < size)
+            {
+                progress += copy(in_locked, available, progress);
+
+                if (progress >= min || progress >= size)
+                    return progress;
+
+                available = get_available(in_locked);
                 while (available == 0)
                 {
-                    if (inst->hung_up.load(std::memory_order_relaxed) && pipeline_empty())
-                        return 0;
+                    if (inst->hung_up.load(std::memory_order_relaxed))
+                        return progress;
 
                     const auto gen = in_wq.snapshot_gen();
                     in_locked.unlock();
 
-                    const auto res = in_wq.wait_prepared(gen);
-                    if (res.interrupted || res.killed)
-                        return std::unexpected { lib::err::interrupted };
+                    const auto res = in_wq.wait_prepared(gen, ms * 1'000'000ul);
+                    if (res.aborted())
+                        return progress;
 
                     in_locked.lock();
                     available = get_available(in_locked);
-                }
-
-                std::size_t progress = 0;
-                while (progress < size)
-                {
-                    progress += copy(in_locked, available, progress);
-
-                    if (progress >= min || progress >= size)
+                    if (available == 0 && res.expired)
                         return progress;
-
-                    available = get_available(in_locked);
-                    while (available == 0)
-                    {
-                        if (inst->hung_up.load(std::memory_order_relaxed))
-                            return progress;
-
-                        const auto gen = in_wq.snapshot_gen();
-                        in_locked.unlock();
-
-                        const auto res = in_wq.wait_prepared(gen, ms * 1'000'000);
-                        if (res.interrupted || res.killed)
-                            return progress;
-
-                        in_locked.lock();
-                        available = get_available(in_locked);
-                        if (available == 0 && res.expired)
-                            return progress;
-                    }
                 }
-                return progress;
             }
+            return progress;
         }
         std::unreachable();
     }
@@ -1274,7 +1271,7 @@ namespace fs::dev::tty
                 if (inst->hung_up.load(std::memory_order_relaxed))
                     return std::unexpected { lib::err::io_error };
 
-                if (res.interrupted || res.killed)
+                if (res.aborted())
                 {
                     if (progress == 0)
                         return std::unexpected { lib::err::interrupted };
@@ -1639,7 +1636,7 @@ namespace fs::dev::tty
             }
             case tiocgpgrp:
             {
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
 
                 auto locked = target->ctrl.lock();
                 if (locked->session.lock() != proc->session)
@@ -1659,7 +1656,7 @@ namespace fs::dev::tty
                 if (pgid < 0)
                     return std::unexpected { lib::err::invalid_argument };
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
 
                 std::shared_ptr<sched::session_t> tty_session;
                 {
@@ -1687,7 +1684,7 @@ namespace fs::dev::tty
             }
             case tiocgsid:
             {
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
 
                 auto locked = target->ctrl.lock();
                 const auto tty_session = locked->session.lock();
@@ -1714,7 +1711,7 @@ namespace fs::dev::tty
             {
                 const int force = argp.value();
 
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 if (proc->pid != proc->session->sid)
                     return std::unexpected { lib::err::not_permitted };
 
@@ -1748,7 +1745,7 @@ namespace fs::dev::tty
             }
             case tiocnotty:
             {
-                const auto proc = sched::current_process();
+                const auto *proc = sched::current_process();
                 std::shared_ptr<sched::group_t> fg_group;
                 {
                     auto locked = ctrl.lock();
@@ -1776,6 +1773,8 @@ namespace fs::dev::tty
                 }
                 return 0;
             }
+            default:
+                break;
         }
 
         const auto res = drv->ioctl(this, request, argp);
@@ -1797,6 +1796,8 @@ namespace fs::dev::tty
             case tiocslcktrmios:
                 ldisc_target = target;
                 break;
+            default:
+                break;
         }
 
         auto ld = ldisc_target->ldisc.lock().value();
@@ -1813,7 +1814,7 @@ namespace fs::dev::tty
         return ld->poll(pt);
     }
 
-    void instance::wakeup_link()
+    void instance::wakeup_link() const
     {
         const auto peer = link.lock();
         if (!peer)
@@ -1873,7 +1874,7 @@ namespace fs::dev::tty
             lib::bug_on(!file->path.dentry || !file->path.dentry->inode);
 
             const auto rdev = file->path.dentry->inode->stat.st_rdev;
-            auto drv = get_driver(rdev);
+            auto *const drv = get_driver(rdev);
             if (!drv)
                 return std::unexpected { lib::err::no_such_device };
 
@@ -1994,7 +1995,7 @@ namespace fs::dev::tty
 
     void set_console(dev_t rdev)
     {
-        auto drv = get_driver(rdev);
+        auto *const drv = get_driver(rdev);
         if (!drv)
         {
             lib::warn(

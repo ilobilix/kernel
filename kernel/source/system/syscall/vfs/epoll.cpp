@@ -3,6 +3,7 @@
 module system.syscall.vfs;
 
 import system.chrono;
+import fmt;
 
 namespace syscall::vfs
 {
@@ -219,6 +220,42 @@ namespace syscall::vfs
                         return pollin;
                 }
                 return 0;
+            }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                auto epi = std::static_pointer_cast<epoll_instance_t>(file->private_data);
+                if (!epi)
+                    return;
+
+                const std::unique_lock _ { epi->lock };
+                for (const auto &[fd, ent] : epi->watched)
+                {
+                    if (!ent)
+                        continue;
+
+                    std::uint64_t ino = 0;
+                    std::uint64_t pos = 0;
+                    dev_t sdev = 0;
+
+                    if (const auto file = ent->wfile.lock())
+                    {
+                        pos = file->offset;
+                        if (file->path.dentry && file->path.dentry->inode)
+                            ino = file->path.dentry->inode->stat.st_ino;
+
+                        if (file->path.mnt)
+                        {
+                            if (const auto fs = file->path.mnt->fs.lock())
+                                sdev = fs->dev_id;
+                        }
+                    }
+
+                    fmt::format_to(std::back_inserter(out),
+                        "tfd: {:8} events: {:8x} data: {:16x}  pos:{} ino:{:x} sdev:{:x}\n",
+                        fd, ent->events, ent->data.u64, pos, ino, sdev
+                    );
+                }
             }
         };
 

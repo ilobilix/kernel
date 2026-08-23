@@ -610,8 +610,7 @@ namespace output::vt
                             if (current.load(std::memory_order_acquire) == target)
                                 return 0;
 
-                            const auto res = switch_wq.wait_prepared(gen);
-                            if (res.interrupted || res.killed)
+                            if (const auto res = switch_wq.wait_prepared(gen); res.aborted())
                                 return std::unexpected { lib::err::interrupted };
                         }
                     }

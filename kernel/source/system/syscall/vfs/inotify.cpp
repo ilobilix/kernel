@@ -72,11 +72,17 @@ namespace syscall::vfs
                 lib::unused(file, request, argp);
                 return std::unexpected { lib::err::inappropriate_ioctl };
             }
+
+            void show_fdinfo(const std::shared_ptr<vfs::file_t> &file, std::string &out) override
+            {
+                // TODO
+                lib::unused(file, out);
+            }
         };
 
         lib::expect<std::shared_ptr<instance_t>> get_instance(int fd)
         {
-            const auto proc = sched::current_process();
+            auto *const proc = sched::current_process();
             const auto fdesc_res = detail::get_fd(proc, fd);
             if (!fdesc_res)
                 return std::unexpected { fdesc_res.error() };
@@ -128,7 +134,7 @@ namespace syscall::vfs
         if (!path)
             return -lib::map_error(path.error());
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         if (const auto res = ::vfs::resolve(proc->vfs->cwd, path->str()); !res)
             return -lib::map_error(res.error());
 
