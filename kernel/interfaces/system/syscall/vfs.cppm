@@ -248,6 +248,9 @@ export namespace syscall::vfs
     int inotify_add_watch(int fd, const char __user *pathname, std::uint32_t mask);
     int inotify_rm_watch(int fd, std::int32_t wd);
 
+    int memfd_create(const char __user *name, std::uint32_t flags);
+    int memfd_secret(std::uint32_t flags);
+
     int pidfd_open(pid_t pid, std::uint32_t flags);
     int pidfd_getfd(int pidfd, int fd, std::uint32_t flags);
     int pidfd_send_signal(

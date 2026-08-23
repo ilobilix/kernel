@@ -219,10 +219,13 @@ namespace syscall::vfs
         if (!fdres.has_value())
             return -lib::map_error(fdres.error());
 
-        if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
+        if (!(flags & o_path))
         {
-            proc->fdt->close(*fdres);
-            return -lib::map_error(ret.error());
+            if (const auto ret = fdesc->file->open(flags, proc->pid); !ret)
+            {
+                proc->fdt->close(*fdres);
+                return -lib::map_error(ret.error());
+            }
         }
 
         if (trunc && fdesc->file->truncable())

@@ -883,6 +883,8 @@ export namespace vfs
     auto listxattrs(const path_t &target) -> lib::expect<std::vector<std::string>>;
     auto lenxattrs(const path_t &target) -> lib::expect<std::size_t>;
 
+    ino_t alloc_anon_ino();
+
     struct anon_fd_args
     {
         std::string_view name;

@@ -14,7 +14,7 @@ namespace syscall::vfs
         constexpr std::uint64_t fioclex = 0x5451;
         constexpr std::uint64_t fionclex = 0x5450;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto fdesc_res = detail::get_fd(proc, fd);
         if (!fdesc_res)
@@ -40,6 +40,8 @@ namespace syscall::vfs
             case fionclex:
                 fdesc->closexec.store(false, std::memory_order_relaxed);
                 return 0;
+            default:
+                break;
         }
 
         const auto ret = fdesc->file->ioctl(request, lib::uptr_or_addr { argp });
@@ -50,7 +52,7 @@ namespace syscall::vfs
 
     int fcntl(int fd, int cmd, std::uintptr_t arg)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto fdesc_res = detail::get_fd(proc, fd);
         if (!fdesc_res)
@@ -105,6 +107,23 @@ namespace syscall::vfs
                 if (!ret)
                     return -lib::map_error(ret.error());
                 return *ret;
+            }
+            case 1033: // F_ADD_SEALS
+            {
+                // TODO
+                // const auto ret = fdesc->file->ops->add_seals(*fdesc->file, arg);
+                // if (!ret)
+                //     return -lib::map_error(ret.error());
+                break;
+            }
+            case 1034: // F_GET_SEALS
+            {
+                // TODO
+                // const auto ret = fdesc->file->ops->get_seals(*fdesc->file);
+                // if (!ret)
+                //     return -lib::map_error(ret.error());
+                // return *ret;
+                break;
             }
             // TODO: actually enforce locks
             case 5: // F_GETLK
@@ -168,7 +187,7 @@ namespace syscall::vfs
             (operation & ~lock_nb) != lock_un)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
         const auto fdesc = detail::get_fd(proc, fd);
         if (!fdesc)
             return -lib::map_error(fdesc.error());
@@ -177,7 +196,7 @@ namespace syscall::vfs
 
     int dup(int oldfd)
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto fdres = proc->fdt->dup(
             oldfd, 0, false, false,
             proc->rlimits->get(sched::rlimit_nofile).cur
@@ -189,7 +208,7 @@ namespace syscall::vfs
 
     int dup2(int oldfd, int newfd)
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto fdres = proc->fdt->dup(
             oldfd, newfd, false, true,
             proc->rlimits->get(sched::rlimit_nofile).cur
@@ -204,7 +223,7 @@ namespace syscall::vfs
         if (oldfd == newfd || (flags & ~o_cloexec) != 0)
             return -EINVAL;
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         const auto fdres = proc->fdt->dup(
             oldfd, newfd, (flags & o_cloexec) != 0, true,
             proc->rlimits->get(sched::rlimit_nofile).cur
@@ -216,7 +235,7 @@ namespace syscall::vfs
 
     int getcwd(char __user *buf, std::size_t size)
     {
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
 
         const auto path_str = pathname_from(proc->vfs->cwd, proc->vfs->root.dentry);
         if (path_str.empty())
@@ -234,7 +253,7 @@ namespace syscall::vfs
 
     int chdir(const char __user *pathname)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto target = get_target(proc, at_fdcwd, pathname, true, false, true);
         if (!target.has_value())
@@ -254,7 +273,7 @@ namespace syscall::vfs
 
     int chroot(const char __user *pathname)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         if (!sched::capable(proc->cred, sched::cap_t::sys_chroot))
             return -EPERM;
@@ -277,7 +296,7 @@ namespace syscall::vfs
 
     int fchdir(int fd)
     {
-        const auto proc = sched::current_process();
+        auto *const proc = sched::current_process();
 
         const auto target = get_target(proc, fd, nullptr, true, true, true);
         if (!target.has_value())

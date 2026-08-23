@@ -250,6 +250,7 @@ namespace x86_64::syscall
         [316] = { "renameat2", vfs::renameat2 },
         [317] = { "seccomp", misc::seccomp, true },
         [318] = { "getrandom", misc::getrandom, true },
+        [319] = { "memfd_create", vfs::memfd_create, true },
         [322] = { "execveat", proc::execveat },
         [332] = { "statx", vfs::statx },
         [334] = { "rseq", proc::rseq },
@@ -262,6 +263,7 @@ namespace x86_64::syscall
         [439] = { "faccessat2", vfs::faccessat2 },
         [441] = { "epoll_pwait2", vfs::epoll_pwait2, true },
         [444] = { "landlock_create_ruleset", misc::landlock_create_ruleset, true },
+        [447] = { "memfd_secret", vfs::memfd_secret, true },
         [452] = { "fchmodat2", vfs::fchmodat2 }
     };
 

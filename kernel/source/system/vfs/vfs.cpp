@@ -53,10 +53,6 @@ namespace vfs
         }
 
         std::atomic<ino_t> next_anon_ino { 1 };
-        ino_t allocate_anon_ino()
-        {
-            return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
-        }
 
         sched::mutex_t mount_tree_lock;
 
@@ -1837,6 +1833,11 @@ namespace vfs
         table.assign(arr);
     }
 
+    ino_t alloc_anon_ino()
+    {
+        return next_anon_ino.fetch_add(1, std::memory_order_relaxed);
+    }
+
     auto create_anon_fd(const anon_fd_args &args)
         -> lib::expect<std::pair<int, std::shared_ptr<filedesc>>>
     {
@@ -1847,7 +1848,7 @@ namespace vfs
         if (!args.inode)
         {
             inode = std::make_shared<vfs::inode_t>(args.ops);
-            inode->stat.st_ino = allocate_anon_ino();
+            inode->stat.st_ino = alloc_anon_ino();
             inode->stat.st_blksize = 0x1000;
             inode->stat.st_mode = args.st_mode;
             inode->stat.st_uid = proc->cred->euid;

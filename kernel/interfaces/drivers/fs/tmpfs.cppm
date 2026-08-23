@@ -110,5 +110,7 @@ export namespace fs::tmpfs
         ~inode_t();
     };
 
+    std::shared_ptr<inode_t> anon_inode(mode_t mode, bool sealable);
+
     lib::initgraph::stage *registered_stage();
 } // export namespace fs::tmpfs

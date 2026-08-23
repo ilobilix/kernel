@@ -2440,13 +2440,18 @@ namespace sched
                 using namespace fs::procfs;
                 lib::bug_on(!register_per_pid("status",
                     make_file_ops([](process_t *proc) {
-                        // TODO: VmPeak/VmSize/VmRSS/VmData/VmStk, SigQ, CapInh, etc.
+                        // TODO: VmPeak/VmSize/VmRSS/VmData/VmStk, SigQ, etc.
                         const std::unique_lock _ { proc->lock };
 
                         auto parent_ptr = proc->parent.lock();
                         const pid_t ppid = parent_ptr ? parent_ptr->pid : 0;
                         const auto threads = proc->alive_threads.load(std::memory_order_relaxed);
                         const auto cred = proc->cred ? *proc->cred : cred_t { };
+
+                        const auto get_cap = [](cap_t set) {
+                            return static_cast<std::uint64_t>(set) &
+                                ((static_cast<std::uint64_t>(cap_t::checkpoint_restore) << 1) - 1);
+                        };
 
                         return fmt::format(
                             "Name:\t{}\n"
@@ -2457,12 +2462,21 @@ namespace sched
                             "Uid:\t{} {} {} {}\n"
                             "Gid:\t{} {} {} {}\n"
                             "Threads:\t{}\n"
+                            "CapInh:\t{:016x}\n"
+                            "CapPrm:\t{:016x}\n"
+                            "CapEff:\t{:016x}\n"
+                            "CapBnd:\t{:016x}\n"
+                            "CapAmb:\t{:016x}\n"
                             "NoNewPrivs:\t{}\n",
                             comm_of(proc), state_letter(proc),
                             proc->pid, proc->pid, ppid,
                             cred.ruid, cred.euid, cred.suid, cred.fsuid,
                             cred.rgid, cred.egid, cred.sgid, cred.fsgid,
-                            threads, proc->no_new_privs ? 1 : 0
+                            threads,
+                            get_cap(cred.inheritable), get_cap(cred.permitted),
+                            get_cap(cred.effective), get_cap(cred.bounding),
+                            get_cap(cred.ambient),
+                            proc->no_new_privs ? 1 : 0
                         );
                     }), node_type::file, 0444
                 ));

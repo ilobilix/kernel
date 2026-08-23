@@ -31,6 +31,37 @@ namespace fs::tmpfs
                 cur, cur + delta, std::memory_order_relaxed));
             return true;
         }
+
+        bool reserve(inode_t *inode, std::size_t growth)
+        {
+            if (!inode->owner)
+                return true;
+            return reserve(inode->owner->current_size, inode->owner->max_size, growth);
+        }
+
+        void free(inode_t *inod, std::size_t amount)
+        {
+            if (inod->owner)
+                inod->owner->current_size.fetch_sub(amount, std::memory_order_relaxed);
+        }
+
+        bool can_grow(const inode_t *inode, std::size_t old_size, std::size_t new_end)
+        {
+            // TODO
+            // if (new_end > old_size && (inode->seals & seal_grow))
+            //     return false;
+            lib::unused(inode, old_size, new_end);
+            return true;
+        }
+
+        bool can_write(const inode_t *inode)
+        {
+            // TODO
+            // if (inode->seals & (seal_write | seal_future_write))
+            //     return false;
+            lib::unused(inode);
+            return true;
+        }
     }
 
     inode_t::inode_t(
@@ -50,7 +81,7 @@ namespace fs::tmpfs
         stat.st_mode = mode;
         stat.st_nlink = 1;
 
-        const auto proc = sched::current_process();
+        const auto *proc = sched::current_process();
         stat.st_uid = proc->cred->euid;
         stat.st_gid = proc->cred->egid;
 
@@ -79,7 +110,7 @@ namespace fs::tmpfs
         lib::maybe_uspan<std::byte> buffer
     )
     {
-        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
+        auto *inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         auto size = buffer.size_bytes();
@@ -100,7 +131,7 @@ namespace fs::tmpfs
         lib::maybe_uspan<std::byte> buffer
     )
     {
-        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
+        auto *inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         if (file->flags & vfs::o_append)
@@ -114,10 +145,13 @@ namespace fs::tmpfs
         const auto new_end = offset + size;
         const bool grew = new_end > old_size;
 
+        if (!can_write(inod) || !can_grow(inod, old_size, new_end))
+            return std::unexpected { lib::err::not_permitted };
+
         if (grew)
         {
             const auto growth = page_charge(new_end) - page_charge(old_size);
-            if (growth > 0 && !reserve(inod->owner->current_size, inod->owner->max_size, growth))
+            if (growth > 0 && !reserve(inod, growth))
                 return std::unexpected { lib::err::no_space_left };
         }
 
@@ -135,12 +169,19 @@ namespace fs::tmpfs
 
     lib::expect<void> ops_t::trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size)
     {
-        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
+        auto *inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         const std::unique_lock _ { inod->lock };
 
         const auto old_size = static_cast<std::size_t>(inod->stat.st_size);
         if (size == old_size)
             return { };
+
+        // TODO
+        // if (size < old_size && (inod->seals & seal_shrink))
+        //     return std::unexpected { lib::err::not_permitted };
+
+        if (!can_grow(inod, old_size, size))
+            return std::unexpected { lib::err::not_permitted };
 
         const auto old_charge = page_charge(old_size);
         const auto new_charge = page_charge(size);
@@ -150,7 +191,7 @@ namespace fs::tmpfs
             if (new_charge > old_charge)
             {
                 const auto growth = new_charge - old_charge;
-                if (!reserve(inod->owner->current_size, inod->owner->max_size, growth))
+                if (!reserve(inod, growth))
                     return std::unexpected { lib::err::no_space_left };
             }
             inod->memory->clear(old_size, 0, size - old_size);
@@ -158,11 +199,7 @@ namespace fs::tmpfs
         else
         {
             if (old_charge > new_charge)
-            {
-                inod->owner->current_size.fetch_sub(
-                    old_charge - new_charge, std::memory_order_relaxed
-                );
-            }
+                free(inod, old_charge - new_charge);
             inod->memory->clear(size, 0, old_size - size);
         }
 
@@ -175,7 +212,7 @@ namespace fs::tmpfs
 
     lib::expect<vmm::object::ptr> ops_t::map(const std::shared_ptr<vfs::file_t> &file)
     {
-        auto inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
+        auto *inod = reinterpret_cast<inode_t *>(file->path.dentry->inode.get());
         return inod->memory;
     }
 
@@ -200,7 +237,7 @@ namespace fs::tmpfs
     ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
     {
         lib::unused(target);
-        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, nullptr);
+        return create(parent, name, static_cast<mode_t>(stat::type::s_iflnk), 0, std::nullopt);
     }
 
     auto fs_t::instance::link(
@@ -425,6 +462,17 @@ namespace fs::tmpfs
         root->parent = root;
 
         return std::make_shared<struct vfs::mount_t>(std::move(instance), root);
+    }
+
+    std::shared_ptr<inode_t> anon_inode(mode_t mode, bool sealable)
+    {
+        auto inode = std::make_shared<inode_t>(
+            nullptr, 0, 0, vfs::alloc_anon_ino(), mode, ops_t::singleton()
+        );
+        // TODO
+        // inode->seals = sealable ? 0 : seal_seal;
+        lib::unused(sealable);
+        return inode;
     }
 
     lib::initgraph::stage *registered_stage()
