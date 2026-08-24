@@ -29,11 +29,15 @@ export namespace sched::arch
 
     struct data
     {
-        std::uintptr_t gs_base;
-        std::uintptr_t fs_base;
+        std::uintptr_t gs_base = 0;
+        std::uintptr_t fs_base = 0;
 
-        std::byte *fpu;
-        std::size_t fpu_size;
+        std::uint64_t trap_no = 0;
+        std::uint64_t error_code = 0;
+        std::uintptr_t fault_cr2 = 0;
+
+        std::byte *fpu = nullptr;
+        std::size_t fpu_size = 0;
     };
 
     struct mcontext_t

@@ -55,7 +55,7 @@ namespace x86_64::idt
             const auto idx = cpu::self().unsafe_get().idx;
             arch::dump_regs(idx, regs, cpu::extra_regs::read());
 
-            const auto thread = sched::current_thread();
+            auto *const thread = sched::current_thread();
             lib::error(
                 "exception {}: '{}' on cpu {} on [{}:{}] '{}'",
                 regs->vector, exception_messages[regs->vector], idx,
@@ -69,14 +69,10 @@ namespace x86_64::idt
                     signo = sched::sigfpe;
                     break;
                 case 1: // #DB
-                    signo = sched::sigtrap;
-                    break;
                 case 3: // #BP
                     signo = sched::sigtrap;
                     break;
                 case 4: // #OF
-                    signo = sched::sigsegv;
-                    break;
                 case 5: // #BR
                     signo = sched::sigsegv;
                     break;
@@ -87,8 +83,6 @@ namespace x86_64::idt
                     signo = sched::sigfpe;
                     break;
                 case 13: // #GP
-                    signo = sched::sigsegv;
-                    break;
                 case 14: // #PF
                     signo = sched::sigsegv;
                     break;
@@ -108,6 +102,11 @@ namespace x86_64::idt
             const auto code = regs->vector == 14
                 ? ((regs->error_code & 1) ? sched::segv_accerr : sched::segv_maperr)
                 : sched::si_kernel;
+
+            thread->adata.trap_no = regs->vector;
+            thread->adata.error_code = regs->error_code;
+            if (regs->vector == 14)
+                thread->adata.fault_cr2 = cr2;
 
             const sched::siginfo_t info {
                 .signo = signo,
@@ -252,7 +251,7 @@ namespace x86_64::idt
 
     void vector_domain::free(std::span<irq::irq_data *> data)
     {
-        for (auto entry : data)
+        for (const auto *entry : data)
         {
             if (auto handler = idt::handler_at(entry->aux, entry->hwirq))
                 handler->reset_all();
@@ -421,7 +420,7 @@ namespace x86_64::idt
 
                 if ((regs->cs & 3) != 3 && sched::is_ready())
                 {
-                    const auto thread = sched::current_thread();
+                    auto *const thread = sched::current_thread();
                     if (thread->fault_frame.pc != 0 &&
                         lib::classify_address(cr2, 1) == lib::address_space::user)
                     {
@@ -438,7 +437,7 @@ namespace x86_64::idt
 
             if (sched::is_ready())
             {
-                const auto thread = sched::current_thread();
+                const auto *thread = sched::current_thread();
                 lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
                     vector, exception_messages[vector],
                     self.idx, thread->proc->pid, thread->tid
@@ -460,7 +459,7 @@ namespace x86_64::idt
         end:
         if (sched::is_ready())
         {
-            const auto thread = sched::current_thread();
+            const auto *thread = sched::current_thread();
             if (!sched::is_preempt_disabled() && thread->irq_depth == 0 && thread->needs_resched())
                 sched::schedule();
 

@@ -722,14 +722,7 @@ namespace syscall::proc
 
         auto *thread = current_thread();
 
-        const bool active = [sp = thread->saved_regs->sp(), &ss = thread->altstack] {
-            if (ss.sp == 0 || ss.size == 0)
-                return false;
-            const auto end = ss.sp + ss.size;
-            if (end < ss.sp)
-                return false;
-            return sp > ss.sp && sp <= end;
-        } ();
+        const bool active = on_altstack(thread, thread->saved_regs->sp());
 
         stack_t news { };
         if (ss && !lib::copy_from_user(&news, ss, sizeof(news)))

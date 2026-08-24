@@ -29,8 +29,8 @@ namespace sched::arch
 
         extern "C" void sched_trampoline_entry()
         {
-            auto thread = current_thread();
-            if (auto released = thread->prev_to_release)
+            auto *thread = current_thread();
+            if (auto *released = thread->prev_to_release)
             {
                 thread->prev_to_release = nullptr;
                 released->on_cpu.store(false, std::memory_order_release);
@@ -50,7 +50,7 @@ namespace sched::arch
 
             if (thread->set_child_tid)
             {
-                auto set_child_tid = reinterpret_cast<pid_t __user *>(thread->set_child_tid);
+                auto *set_child_tid = reinterpret_cast<pid_t __user *>(thread->set_child_tid);
                 if (!lib::copy_to_user(set_child_tid, &thread->tid, sizeof(pid_t)))
                 {
                     const sched::siginfo_t info {
@@ -93,7 +93,7 @@ namespace sched::arch
     {
         lib::bug_on(!thread || (thread->is_kernel() && (is_trampoline || is_clone)));
 
-        auto ctx = &thread->ctx;
+        auto *ctx = &thread->ctx;
         ctx->rflags = 0x002;
 
         if (!thread->is_kernel())
@@ -214,7 +214,8 @@ namespace sched::arch
     )
     {
         auto sp = regs->rsp;
-        if ((action.flags & sa_onstack) && thread->altstack.sp != 0 && thread->altstack.size > 0)
+        if ((action.flags & sa_onstack) && !on_altstack(thread, sp) &&
+            thread->altstack.sp != 0 && thread->altstack.size > 0)
             sp = thread->altstack.sp + thread->altstack.size;
 
         sp -= 128;
@@ -261,13 +262,16 @@ namespace sched::arch
         mc.rflags = regs->rflags;
         mc.rsp = regs->rsp;
         mc.ss  = regs->ss;
+        mc.trapno = thread->adata.trap_no;
+        mc.err = thread->adata.error_code;
+        mc.cr2 = thread->adata.fault_cr2;
 
         const auto &fpu = cpu::features::get_fpu();
         fpu.save(thread->adata.fpu);
 
         if (fpu.is_xsave)
         {
-            auto hdr = reinterpret_cast<fpx_sw_bytes *>(thread->adata.fpu + 464);
+            auto *hdr = reinterpret_cast<fpx_sw_bytes *>(thread->adata.fpu + 464);
             hdr->magic1 = 0x46505853U;
             hdr->extended_size = fpu_size + 4;
             hdr->xstate_bv = fpu.xcr0;

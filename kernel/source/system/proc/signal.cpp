@@ -26,7 +26,7 @@ namespace sched
                         wake_up(thread, true);
                     break;
                 case thread_state::running:
-                    if (auto on = thread->running_on)
+                    if (const auto *on = thread->running_on)
                     {
                         thread->set_flag(thread_flags::needs_resched);
                         if (on != &cpu::self().unsafe_get())
@@ -79,7 +79,7 @@ namespace sched
 
                     if (state == thread_state::running)
                     {
-                        if (auto on = thread->running_on)
+                        if (const auto *on = thread->running_on)
                         {
                             thread->set_flag(thread_flags::needs_resched);
                             if (on != &cpu::self().unsafe_get())
@@ -215,7 +215,7 @@ namespace sched
                     return sig;
             }
 
-            auto proc = thread->proc.get();
+            auto *const proc = thread->proc.get();
             const std::unique_lock _ { proc->sigqueue.lock };
             return (proc->sigqueue.pending & ~thread->sigmask).lowest();
         }
@@ -228,7 +228,7 @@ namespace sched
                     return dequeue_from(thread->sigqueue, sig);
             }
 
-            auto proc = thread->proc.get();
+            auto *const proc = thread->proc.get();
             const std::unique_lock _ { proc->sigqueue.lock };
             if (proc->sigqueue.pending.has(sig))
                 return dequeue_from(proc->sigqueue, sig);
@@ -320,7 +320,7 @@ namespace sched
                 return true;
         }
 
-        auto proc = thread->proc.get();
+        auto *const proc = thread->proc.get();
         const std::unique_lock _ { proc->sigqueue.lock };
         return (proc->sigqueue.pending & ~thread->sigmask).any();
     }
@@ -374,7 +374,7 @@ namespace sched
         if (sig < 1 || sig > nsig)
             return false;
 
-        auto proc = thread->proc.get();
+        auto *const proc = thread->proc.get();
 
         if (sig == sigcont)
             drop_queued_all(proc, is_stop_signal);
@@ -407,7 +407,7 @@ namespace sched
         if (sig < 1 || sig > nsig)
             return false;
 
-        auto proc = thread->proc.get();
+        auto *const proc = thread->proc.get();
         {
             const std::unique_lock _ { proc->sigactions->lock };
             auto &action = proc->sigactions->actions[sig - 1];
@@ -491,10 +491,22 @@ namespace sched
 
     std::uintptr_t sigreturn()
     {
-        auto thread = current_thread();
+        auto *const thread = current_thread();
         if (!arch::restore_sigframe(thread, thread->saved_regs))
             process_exit_signal(sigsegv);
         return thread->saved_regs->ret();
+    }
+
+    bool on_altstack(const thread_t *thread, std::uintptr_t sp)
+    {
+        const auto &stack = thread->altstack;
+        if (stack.sp == 0 || stack.size == 0)
+            return false;
+
+        const auto end = stack.sp + stack.size;
+        if (end < stack.sp)
+            return false;
+        return sp > stack.sp && sp <= end;
     }
 
     std::size_t min_altstack_size()
@@ -527,8 +539,8 @@ namespace sched
 
     bool consume_pending_stops()
     {
-        auto thread = current_thread();
-        auto proc = thread->proc.get();
+        auto *const thread = current_thread();
+        auto *const proc = thread->proc.get();
 
         bool stopped = false;
         while (true)
@@ -574,8 +586,8 @@ namespace sched
         if (!arch::in_user_mode(regs))
             return;
 
-        auto thread = current_thread();
-        auto proc = thread->proc.get();
+        auto *const thread = current_thread();
+        auto *const proc = thread->proc.get();
 
         bool delivered = false;
         while (true)

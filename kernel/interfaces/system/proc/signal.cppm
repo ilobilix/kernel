@@ -379,6 +379,8 @@ export namespace sched
     bool force_signal(thread_t *thread, const siginfo_t &info);
 
     std::uintptr_t sigreturn();
+
+    bool on_altstack(const thread_t *thread, std::uintptr_t sp);
     std::size_t min_altstack_size();
 
     void handle_pending_signals(cpu::registers *regs);
