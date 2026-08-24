@@ -17,7 +17,7 @@ See [ilobilix/ilobilix](https://github.com/ilobilix/ilobilix) for more informati
 - Buddy PMM, UVM inspired VMM, ASIDs
 - ACPI via uACPI
 - Linux compatible syscalls, input subsystem, procfs, sysfs, etc
-- UNIX sockets, netlink, pipes, ttys, ptys, VTs
+- UNIX sockets, netlink, inet, pipes, ttys, ptys, VTs
 - Networking via lwIP
 - EXT2, SquashFS, TMPFS, USTAR and CPIO initrd
 - NVMe, Virtio pci, input, net, entropy
