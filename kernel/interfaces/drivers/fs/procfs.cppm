@@ -3,6 +3,7 @@
 export module drivers.fs.procfs;
 
 import system.sched;
+import system.vfs;
 import lib;
 import std;
 
@@ -64,6 +65,12 @@ export namespace fs::procfs
             return std::unexpected { lib::err::not_supported };
         }
 
+        virtual lib::expect<std::optional<vfs::path_t>> follow_magic(sched::process_t *proc)
+        {
+            lib::unused(proc);
+            return std::optional<vfs::path_t> { };
+        }
+
         virtual bool revalidate(sched::process_t *proc)
         {
             lib::unused(proc);
@@ -78,13 +85,16 @@ export namespace fs::procfs
     )>;
     using write_fn = std::function<lib::expect<void> (sched::process_t *, std::string_view)>;
     using readlink_fn = std::function<lib::expect<lib::path> (sched::process_t *)>;
+    using magic_fn = std::function<lib::expect<std::optional<vfs::path_t>> (sched::process_t *)>;
     using lookup_fn = std::function<lib::expect<node_t> (sched::process_t *, std::string_view)>;
     using readdir_fn = std::function<lib::expect<lib::list<node_t>> (sched::process_t *)>;
     using revalidate_fn = std::function<bool (sched::process_t *)>;
 
     std::shared_ptr<node_ops> make_file_ops(gen_fn gfn, write_fn wfn = nullptr);
     std::shared_ptr<node_ops> make_streaming_file_ops(stream_fn sfn, write_fn wfn = nullptr);
-    std::shared_ptr<node_ops> make_symlink_ops(readlink_fn rdlfn, revalidate_fn rvfn = nullptr);
+    std::shared_ptr<node_ops> make_symlink_ops(
+        readlink_fn rdlfn, revalidate_fn rvfn = nullptr, magic_fn mgfn = nullptr
+    );
     std::shared_ptr<node_ops> make_dir_ops(lookup_fn lfn = nullptr, readdir_fn rfn = nullptr);
 
     // /proc/<path>

@@ -3,6 +3,7 @@
 module system.syscall.vfs;
 
 import magic_enum;
+import fmt;
 
 namespace syscall::vfs
 {
@@ -64,8 +65,7 @@ namespace syscall::vfs
                 return -EIO;
 
             const auto cmode = (mode & ~proc->vfs->umask) | stat::type::s_ifreg;
-            // hmmmmm
-            auto inode_res = fs->create(dir.dentry->inode, "", cmode, 0, std::nullopt);
+            auto inode_res = fs->tmpfile(dir.dentry->inode, cmode);
             if (!inode_res.has_value())
                 return -lib::map_error(inode_res.error());
 
@@ -74,6 +74,7 @@ namespace syscall::vfs
                 const std::unique_lock _ { tmp_inode->lock };
 
                 tmp_inode->stat.st_nlink = 0;
+                tmp_inode->linkable.store((flags & o_excl) == 0, std::memory_order_release);
                 tmp_inode->stat.st_uid = proc->cred->euid;
                 if (dir_stat.st_mode & s_isgid)
                     tmp_inode->stat.st_gid = dir_stat.st_gid;
@@ -81,13 +82,15 @@ namespace syscall::vfs
                     tmp_inode->stat.st_gid = proc->cred->egid;
             }
 
-            auto dentry = std::make_shared<vfs::dentry_t>();
+            auto dentry = vfs::dentry_t::create();
             dentry->parent = dir.dentry;
+            dentry->name = fmt::format("#{}", tmp_inode->stat.st_ino);
+            dentry->unlinked = true;
             dentry->inode = std::move(tmp_inode);
 
             const path_t target { dir.mnt, std::move(dentry) };
 
-            const auto fdesc = filedesc::create(target, flags);
+            const auto fdesc = filedesc_t::create(target, flags);
             const auto fdres = fdt->alloc(fdesc, 0, false, fd_max);
             if (!fdres.has_value())
                 return -lib::map_error(fdres.error());
@@ -213,7 +216,7 @@ namespace syscall::vfs
                 return -EACCES;
         }
 
-        const auto fdesc = filedesc::create(target, flags);
+        const auto fdesc = filedesc_t::create(target, flags);
 
         const auto fdres = fdt->alloc(fdesc, 0, false, fd_max);
         if (!fdres.has_value())

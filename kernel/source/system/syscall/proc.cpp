@@ -5,6 +5,7 @@ module system.syscall.proc;
 import system.syscall.vfs;
 import system.vfs;
 import system.memory.virt;
+import system.cpu.local;
 import system.cpu.regs;
 import system.cpu.arch;
 import system.cpu;
@@ -352,9 +353,9 @@ namespace syscall::proc
         return 0;
     }
 
-    int set_tid_address(int __user *tidptr)
+    int set_tid_address(const int __user *tidptr)
     {
-        auto *thread = sched::current_thread();
+        auto *const thread = sched::current_thread();
         thread->clear_child_tid = reinterpret_cast<std::uintptr_t>(tidptr);
         return thread->tid;
     }
@@ -1409,6 +1410,23 @@ namespace syscall::proc
                 return -EFAULT;
         }
 
+        return 0;
+    }
+
+    int getcpu(std::uint32_t __user *cpu, std::uint32_t __user *node, void __user *cache)
+    {
+        lib::unused(cache);
+
+        const std::uint32_t idx = cpu::self().unsafe_get().idx;
+        if (cpu != nullptr && !lib::copy_to_user(cpu, &idx, sizeof(idx)))
+            return -EFAULT;
+
+        if (node != nullptr)
+        {
+            // TODO
+            if (!lib::fill_user(node, 0, sizeof(*node)))
+                return -EFAULT;
+        }
         return 0;
     }
 

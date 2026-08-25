@@ -49,7 +49,7 @@ export namespace syscall::proc
     int capget(struct cap_user_header __user *header, struct cap_user_data __user *data);
     int capset(struct cap_user_header __user *header, const struct cap_user_data __user *data);
 
-    int set_tid_address(int __user *tidptr);
+    int set_tid_address(const int __user *tidptr);
 
     std::uint32_t alarm(std::uint32_t seconds);
 
@@ -125,6 +125,8 @@ export namespace syscall::proc
         int idtype, pid_t id, sched::user_siginfo_t __user *infop,
         int options, struct rusage __user *rusage
     );
+
+    int getcpu(std::uint32_t __user *cpu, std::uint32_t __user *node, void __user *cache);
 
     int sched_setaffinity(pid_t pid, std::size_t cpusetsize, const std::uint8_t __user *mask);
     int sched_getaffinity(pid_t pid, std::size_t cpusetsize, std::uint8_t __user *mask);

@@ -109,7 +109,7 @@ namespace vfs::socket
 
             struct ancdata_t
             {
-                std::vector<std::shared_ptr<vfs::filedesc>> passed_fds;
+                std::vector<std::shared_ptr<vfs::filedesc_t>> passed_fds;
                 std::optional<ucred> creds;
 
                 bool empty() const { return passed_fds.empty() && !creds.has_value(); }
@@ -253,7 +253,7 @@ namespace vfs::socket
 
                     for (auto &fdesc : anc.passed_fds)
                     {
-                        auto new_fdesc = std::make_shared<vfs::filedesc>(fdesc->file, cloexec);
+                        auto new_fdesc = std::make_shared<vfs::filedesc_t>(fdesc->file, cloexec);
                         auto res = proc->fdt->alloc(new_fdesc, 0, false, max_fd);
                         if (!res)
                         {

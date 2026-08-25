@@ -13,8 +13,8 @@ namespace pci
         lib::map::flat_hash<std::uint32_t, std::shared_ptr<configio>> ios;
         std::vector<std::shared_ptr<bus>> rbs;
 
-        lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> brdgs;
-        lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> devs;
+        lib::btree::map<std::uint32_t, std::shared_ptr<bridge>> brdgs;
+        lib::btree::map<std::uint32_t, std::shared_ptr<device>> devs;
 
         void enum_bus(const auto &bus);
         void enum_func(const auto &bus, std::uint8_t dev, std::uint8_t func)
@@ -106,7 +106,7 @@ namespace pci
                 if (bridge->is_pcie && bridge->is_secondary)
                     devs32 = false;
             }
-            for (std::uint8_t i = 0; i < (devs32 ? 32 : 1); i++)
+            for (std::uint8_t i = 0; i < static_cast<std::uint8_t>(devs32 ? 32 : 1); i++)
                 enum_dev(bus, i);
         }
     } // namespace
@@ -115,7 +115,7 @@ namespace pci
     {
         if (mod == model::root)
         {
-            const auto entry = std::ranges::find_if(table, [&](const auto &entry) {
+            auto *const entry = std::ranges::find_if(table, [&](const auto &entry) {
                 bool ret = (entry.dev == dev && entry.pin == pin);
                 if (func != -1)
                     ret = ret && (entry.func == -1 || entry.func == func);
@@ -127,9 +127,9 @@ namespace pci
 
             return std::addressof(*entry);
         }
-        else if (mod == model::expansion)
-            return bridge_irq[(static_cast<std::size_t>(pin) - 1 + dev) % 4];
 
+        if (mod == model::expansion)
+            return bridge_irq[(static_cast<std::size_t>(pin) - 1 + dev) % 4];
         return nullptr;
     }
 
@@ -160,7 +160,7 @@ namespace pci
     }
 
     entity::entity(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-        : dev { dev }, func { func }, parent { parent }
+        : dev { dev }, func { func }, parent { std::move(parent) }
     {
         if (const auto status = read<16>(reg::status); status & (1 << 4))
         {
@@ -190,7 +190,7 @@ namespace pci
             bar ret { 0, 0, 0, false, false, bar::type::invalid };
             bool bit64 = false;
 
-            auto offset = std::to_underlying(reg::bar0) + i * sizeof(std::uint32_t);
+            auto offset = std::to_underlying(reg::bar0) + (i * sizeof(std::uint32_t));
             auto bar = read<std::uint32_t>(offset);
 
             write<std::uint32_t>(offset, 0xFFFFFFFF);
@@ -262,7 +262,7 @@ namespace pci
             }
 
             bars[i] = ret;
-            if (bit64 == true)
+            if (bit64)
                 bars[++i] = { 0, 0, 0, false, true, bar::type::invalid };
         }
     }
@@ -379,7 +379,7 @@ namespace pci
         lib::bug_on(!static_cast<bool>(io));
         const std::uint32_t idx = (seg << 8 | bus);
         lib::bug_on(ios.contains(idx));
-        ios[idx] = io;
+        ios[idx] = std::move(io);
     }
 
     std::shared_ptr<configio> getio(std::uint16_t seg, std::uint8_t bus)
@@ -393,11 +393,11 @@ namespace pci
     void addrb(std::shared_ptr<bus> rb)
     {
         lib::bug_on(!static_cast<bool>(rb));
-        rbs.push_back(rb);
+        rbs.emplace_back(std::move(rb));
     }
 
-    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges() { return brdgs; }
-    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices() { return devs; }
+    const lib::btree::map<std::uint32_t, std::shared_ptr<bridge>> &bridges() { return brdgs; }
+    const lib::btree::map<std::uint32_t, std::shared_ptr<device>> &devices() { return devs; }
 
     namespace arch
     {

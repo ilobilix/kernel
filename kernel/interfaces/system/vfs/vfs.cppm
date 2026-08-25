@@ -324,6 +324,13 @@ export namespace vfs
                 mode_t mode, dev_t rdev, std::optional<std::shared_ptr<ops_t>> ops
             ) -> lib::expect<std::shared_ptr<inode_t>> = 0;
 
+            virtual auto tmpfile(std::shared_ptr<inode_t> &parent, mode_t mode)
+                -> lib::expect<std::shared_ptr<inode_t>>
+            {
+                lib::unused(parent, mode);
+                return std::unexpected { lib::err::operation_unsupported };
+            }
+
             virtual auto symlink(
                 std::shared_ptr<inode_t> &parent,
                 std::string_view name, lib::path target
@@ -348,12 +355,19 @@ export namespace vfs
             virtual auto readdir(std::shared_ptr<dentry_t> dir, std::size_t cookie)
                 -> lib::expect<lib::list<dir_entry>> = 0;
 
-            virtual auto lookup(std::shared_ptr<dentry_t> dir,std::string_view name)
+            virtual auto lookup(const std::shared_ptr<dentry_t> &dir,std::string_view name)
                 -> lib::expect<dir_entry>;
 
-            virtual auto readlink(std::shared_ptr<dentry_t> dentry) -> lib::expect<lib::path>;
+            virtual auto readlink(const std::shared_ptr<dentry_t> &dentry) -> lib::expect<lib::path>;
 
-            virtual bool revalidate(std::shared_ptr<dentry_t> dentry)
+            virtual auto follow_magic(const std::shared_ptr<dentry_t> &dentry)
+                -> lib::expect<std::optional<path_t>>
+            {
+                lib::unused(dentry);
+                return std::optional<path_t> { };
+            }
+
+            virtual bool revalidate(const std::shared_ptr<dentry_t> &dentry)
             {
                 lib::unused(dentry);
                 return true;
@@ -451,6 +465,9 @@ export namespace vfs
         kstat stat;
         bool dirty = false;
 
+        // for o_tmpfile inodes
+        std::atomic<bool> linkable = false;
+
         lib::map::flat_hash<
             std::string,
             lib::membuffer
@@ -500,7 +517,7 @@ export namespace vfs
             public:
             children() = default;
 
-            void insert(std::shared_ptr<dentry_t> dentry)
+            void insert(const std::shared_ptr<dentry_t> &dentry)
             {
                 lib::bug_on(_child_map.contains(dentry->name));
                 _child_list.push_back({ dentry, _next_cookie++ });
@@ -565,6 +582,9 @@ export namespace vfs
 
         std::string name;
         lib::path symlinked_to;
+
+        // for o_tmpfile inodes
+        bool unlinked = false;
 
         std::shared_ptr<inode_t> inode;
 
@@ -743,9 +763,9 @@ export namespace vfs
             return buffer;
         }
 
-        static std::shared_ptr<file_t> create(vfs::path_t path, std::size_t offset, int flags)
+        static std::shared_ptr<file_t> create(path_t path, std::size_t offset, int flags)
         {
-            auto file = std::make_shared<vfs::file_t>();
+            auto file = std::make_shared<file_t>();
             file->opened = false;
             file->path = std::move(path);
             file->offset = offset;
@@ -756,15 +776,15 @@ export namespace vfs
         }
     };
 
-    struct filedesc
+    struct filedesc_t
     {
         std::shared_ptr<file_t> file { };
         std::atomic_bool closexec = false;
 
-        static std::shared_ptr<filedesc> create(const path_t &path, int flags)
+        static std::shared_ptr<filedesc_t> create(const path_t &path, int flags)
         {
-            auto fd = std::make_shared<filedesc>();
-            fd->file = vfs::file_t::create(path, 0, flags & ~creation_flags);
+            auto fd = std::make_shared<filedesc_t>();
+            fd->file = file_t::create(path, 0, flags & ~creation_flags);
             fd->closexec = (flags & o_cloexec) != 0;
             return fd;
         }
@@ -775,7 +795,7 @@ export namespace vfs
         struct fdslot : rcu::obj_base<fdslot>
         {
             lib::locker<
-                std::shared_ptr<vfs::filedesc>,
+                std::shared_ptr<filedesc_t>,
                 lib::spinlock
             > desc;
         };
@@ -790,19 +810,19 @@ export namespace vfs
 
         private:
         fdarray *reserve(std::size_t need);
-        std::shared_ptr<vfs::filedesc> clear(fdarray *arr, std::size_t fd);
+        std::shared_ptr<filedesc_t> clear(fdarray *arr, std::size_t fd);
 
         public:
         rcu::owner<fdarray> table;
         sched::mutex_t write_lock;
         int next_fd = 0;
 
-        std::shared_ptr<vfs::filedesc> get(int fd);
+        std::shared_ptr<filedesc_t> get(int fd);
         bool close(int fd);
         void close_range(std::size_t first, std::size_t last, bool cloexec);
         void close_on_exec();
 
-        lib::expect<int> alloc(std::shared_ptr<vfs::filedesc> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
+        lib::expect<int> alloc(std::shared_ptr<filedesc_t> desc, int fd, bool force, rlim_t max_fd = rlim_inf);
         lib::expect<int> dup(int oldfd, int newfd, bool closexec, bool force, rlim_t max_fd = rlim_inf);
 
         std::shared_ptr<fdtable> clone();
@@ -825,7 +845,7 @@ export namespace vfs
     bool unregister_fs(filesystem_t &fs);
     filesystem_t *find_fs(std::string_view name);
 
-    std::string pathname_from(path_t path, std::shared_ptr<dentry_t> boundary = nullptr);
+    std::string pathname_from(path_t path, const std::shared_ptr<dentry_t> &boundary = nullptr);
 
     auto path_for(lib::path _path) -> lib::expect<path_t>;
     auto resolve(std::optional<path_t> parent, lib::path path, bool automount = true)
@@ -894,11 +914,11 @@ export namespace vfs
         mode_t st_mode;
         int flags;
         bool skip_open;
-        std::shared_ptr<vfs::inode_t> inode;
+        std::shared_ptr<inode_t> inode;
     };
 
     auto create_anon_fd(const anon_fd_args &args)
-        -> lib::expect<std::pair<int, std::shared_ptr<filedesc>>>;
+        -> lib::expect<std::pair<int, std::shared_ptr<filedesc_t>>>;
 
     lib::initgraph::stage *root_mounted_stage();
 } // export namespace vfs

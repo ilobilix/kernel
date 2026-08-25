@@ -139,6 +139,7 @@ namespace fs::procfs
             write_fn wfn = nullptr;
             readlink_fn rdlfn = nullptr;
             revalidate_fn rvfn = nullptr;
+            magic_fn mgfn = nullptr;
 
             bool can_trunc() override { return wfn != nullptr; }
             bool can_stream() override { return sfn != nullptr; }
@@ -169,6 +170,13 @@ namespace fs::procfs
                 if (!rdlfn)
                     return node_ops::readlink(proc);
                 return rdlfn(proc);
+            }
+
+            lib::expect<std::optional<vfs::path_t>> follow_magic(sched::process_t *proc) override
+            {
+                if (!mgfn)
+                    return node_ops::follow_magic(proc);
+                return mgfn(proc);
             }
 
             bool revalidate(sched::process_t *proc) override
@@ -541,7 +549,7 @@ namespace fs::procfs
                     std::unreachable();
                 }
 
-                auto lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+                auto lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
                     -> lib::expect<vfs::dir_entry> override
                 {
                     const auto inod = std::static_pointer_cast<inode_t>(dir->inode);
@@ -600,7 +608,7 @@ namespace fs::procfs
                     std::unreachable();
                 }
 
-                auto readlink(std::shared_ptr<vfs::dentry_t> dentry)
+                auto readlink(const std::shared_ptr<vfs::dentry_t> &dentry)
                     -> lib::expect<lib::path> override
                 {
                     const auto inod = std::static_pointer_cast<inode_t>(dentry->inode);
@@ -618,7 +626,24 @@ namespace fs::procfs
                     return inod->ops->readlink(proc.get());
                 }
 
-                bool revalidate(std::shared_ptr<vfs::dentry_t> dentry) override
+                auto follow_magic(const std::shared_ptr<vfs::dentry_t> &dentry)
+                    -> lib::expect<std::optional<vfs::path_t>> override
+                {
+                    const auto inod = std::static_pointer_cast<inode_t>(dentry->inode);
+                    if (inod->type != inode_type::symlink)
+                        return std::optional<vfs::path_t> { };
+
+                    std::shared_ptr<sched::process_t> proc;
+                    if (inod->pid >= 0)
+                    {
+                        proc = sched::get_process(inod->pid);
+                        if (!proc)
+                            return std::unexpected { lib::err::not_found };
+                    }
+                    return inod->ops->follow_magic(proc.get());
+                }
+
+                bool revalidate(const std::shared_ptr<vfs::dentry_t> &dentry) override
                 {
                     const auto inod = std::static_pointer_cast<inode_t>(dentry->inode);
                     if (inod->pid <= 0)
@@ -724,11 +749,14 @@ namespace fs::procfs
         return ret;
     }
 
-    std::shared_ptr<node_ops> make_symlink_ops(readlink_fn rdlfn, revalidate_fn rvfn)
+    std::shared_ptr<node_ops> make_symlink_ops(
+        readlink_fn rdlfn, revalidate_fn rvfn, magic_fn mgfn
+    )
     {
         auto ret = std::shared_ptr<file_ops>(new file_ops { });
         ret->rdlfn = std::move(rdlfn);
         ret->rvfn = std::move(rvfn);
+        ret->mgfn = std::move(mgfn);
         return ret;
     }
 

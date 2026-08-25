@@ -46,7 +46,7 @@ namespace ext2
             const std::uint32_t size = data.size();
             for (std::uint32_t i = 0; i < size; )
             {
-                const auto de = reinterpret_cast<dir_entry_2_t *>(data.data() + i);
+                auto *const de = reinterpret_cast<dir_entry_2_t *>(data.data() + i);
                 const std::uint32_t rec = de->rec_len;
 
                 if (rec < sizeof(dir_entry_2_t) || (rec % dirent_align) != 0 || i + rec > size)
@@ -174,7 +174,7 @@ namespace ext2
 
             std::uint32_t blocks_in_group(std::uint32_t group) const
             {
-                const auto sb = superblock();
+                const auto *sb = superblock();
                 const std::uint64_t total = sb->blocks_count - sb->first_data_block;
                 const auto base = static_cast<std::uint64_t>(group) * sb->blocks_per_group;
                 return std::min<std::uint64_t>(sb->blocks_per_group, total - base);
@@ -182,7 +182,7 @@ namespace ext2
 
             std::uint32_t inodes_in_group(std::uint32_t group) const
             {
-                const auto sb = superblock();
+                const auto *sb = superblock();
                 const auto base = static_cast<std::uint64_t>(group) * sb->inodes_per_group;
                 return std::min<std::uint64_t>(sb->inodes_per_group, sb->inodes_count - base);
             }
@@ -205,8 +205,8 @@ namespace ext2
                 const auto ipg = superblock()->inodes_per_group;
                 const auto group = (ino - 1) / ipg;
                 const auto index = (ino - 1) % ipg;
-                return static_cast<std::uint64_t>(gds.at(group).inode_table) * block_size +
-                    static_cast<std::uint64_t>(index) * inode_size;
+                return (static_cast<std::uint64_t>(gds.at(group).inode_table) * block_size) +
+                    (static_cast<std::uint64_t>(index) * inode_size);
             }
 
             auto read_ino(ino_t ino) -> lib::expect<lib::buffer<inode_t>>
@@ -324,12 +324,12 @@ namespace ext2
                         return std::unexpected { res.error() };
                     const auto [phys, run] = *res;
 
-                    const auto run_bytes = static_cast<std::uint64_t>(run) * block_size - boff;
+                    const auto run_bytes = (static_cast<std::uint64_t>(run) * block_size) - boff;
                     const auto chunk = std::min(run_bytes, total - progress);
 
                     const auto ret = fn(
                         progress,
-                        phys ? static_cast<std::uint64_t>(phys) * block_size + boff : 0,
+                        phys ? (static_cast<std::uint64_t>(phys) * block_size) + boff : 0,
                         chunk
                     );
                     if (!ret.has_value())
@@ -405,7 +405,7 @@ namespace ext2
                 if (!bm.has_value())
                     return std::unexpected { bm.error() };
 
-                auto bits = reinterpret_cast<std::uint8_t *>(bm->data());
+                auto *const bits = reinterpret_cast<std::uint8_t *>(bm->data());
 
                 const auto scan = [&](std::uint32_t from, std::uint32_t to) -> std::optional<std::uint32_t>
                 {
@@ -450,7 +450,7 @@ namespace ext2
                 if (!bm.has_value())
                     return std::unexpected { bm.error() };
 
-                auto bits = reinterpret_cast<std::uint8_t *>(bm->data());
+                auto *const bits = reinterpret_cast<std::uint8_t *>(bm->data());
                 if (!(bits[bit >> 3] & (1u << (bit & 7))))
                     return false;
                 bits[bit >> 3] &= ~(1u << (bit & 7));
@@ -462,13 +462,13 @@ namespace ext2
 
             auto commit_group(std::uint32_t group) -> lib::expect<void>
             {
-                const auto off = gdt_offset() + group * sizeof(group_desc_t);
+                const auto off = gdt_offset() + (group * sizeof(group_desc_t));
                 return write_bytes(off, std::as_bytes(gds.span().subspan(group, 1)));
             }
 
             auto alloc_block(std::uint32_t target_group) -> lib::expect<std::uint32_t>
             {
-                auto sb = superblock();
+                auto *const sb = superblock();
                 if (sb->free_blocks_count == 0)
                     return 0;
 
@@ -496,14 +496,14 @@ namespace ext2
                     if (const auto ret = commit_group(group); !ret.has_value())
                         return std::unexpected { ret.error() };
 
-                    return group * sb->blocks_per_group + sb->first_data_block + **bit;
+                    return (group * sb->blocks_per_group) + sb->first_data_block + **bit;
                 }
                 return 0;
             }
 
             auto free_block(std::uint32_t phys) -> lib::expect<void>
             {
-                auto sb = superblock();
+                auto *const sb = superblock();
                 if (phys < sb->first_data_block || phys >= sb->blocks_count)
                     return std::unexpected { lib::err::corrupted_data };
 
@@ -529,7 +529,7 @@ namespace ext2
 
             auto alloc_inode(std::uint32_t target_group, bool is_dir) -> lib::expect<std::uint32_t>
             {
-                auto sb = superblock();
+                auto *const sb = superblock();
                 if (sb->free_inodes_count == 0)
                     return 0;
 
@@ -556,14 +556,14 @@ namespace ext2
                     if (const auto ret = commit_group(group); !ret.has_value())
                         return std::unexpected { ret.error() };
 
-                    return group * sb->inodes_per_group + **bit + 1;
+                    return (group * sb->inodes_per_group) + **bit + 1;
                 }
                 return 0;
             }
 
             auto free_inode(std::uint32_t ino, bool was_dir) -> lib::expect<void>
             {
-                auto sb = superblock();
+                auto *const sb = superblock();
                 if (ino == 0 || ino > sb->inodes_count)
                     return std::unexpected { lib::err::corrupted_data };
 
@@ -601,8 +601,8 @@ namespace ext2
             ) -> lib::expect<bool>;
             auto truncate_blocks(fs_inode_t *finode, std::uint64_t new_size) -> lib::expect<void>;
 
-            void set_size(fs_inode_t *finode, std::uint64_t size);
-            void fold_stat_to_ino(fs_inode_t *finode);
+            static void set_size(fs_inode_t *finode, std::uint64_t size);
+            static void fold_stat_to_ino(fs_inode_t *finode);
 
             auto write_inode_impl(fs_inode_t *finode) -> lib::expect<void>;
 
@@ -630,6 +630,9 @@ namespace ext2
                 mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops_t>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode_t>> override;
 
+            auto tmpfile(std::shared_ptr<vfs::inode_t> &parent, mode_t mode)
+                -> lib::expect<std::shared_ptr<vfs::inode_t>> override;
+
             auto symlink(
                 std::shared_ptr<vfs::inode_t> &parent,
                 std::string_view name, lib::path target
@@ -654,17 +657,18 @@ namespace ext2
             auto readdir(std::shared_ptr<vfs::dentry_t> dir, std::size_t cookie)
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
-            auto lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+            auto lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
                 -> lib::expect<vfs::dir_entry> override;
 
-            auto readlink(std::shared_ptr<vfs::dentry_t> dentry) -> lib::expect<lib::path> override;
+            auto readlink(const std::shared_ptr<vfs::dentry_t> &dentry)
+                -> lib::expect<lib::path> override;
 
             void statfs(struct ::statfs &out) override
             {
                 vfs::filesystem_t::instance_t::statfs(out);
 
                 const std::unique_lock _ { io_lock };
-                const auto sb = superblock();
+                const auto *sb = superblock();
 
                 out.f_bsize = block_size;
                 out.f_frsize = block_size;
@@ -823,17 +827,17 @@ namespace ext2
             ~fs_inode_t();
         };
 
-        fs_inode_t *inode_of(const std::shared_ptr<vfs::file_t> &file)
+        fs_inode_t *get_inode(const std::shared_ptr<vfs::file_t> &file)
         {
             return static_cast<fs_inode_t *>(file->path.dentry->inode.get());
         }
 
-        fs_inode_t *inode_of(const std::shared_ptr<vfs::inode_t> &inode)
+        fs_inode_t *get_inode(const std::shared_ptr<vfs::inode_t> &inode)
         {
             return static_cast<fs_inode_t *>(inode.get());
         }
 
-        fs_inode_t *inode_of(const std::shared_ptr<vfs::dentry_t> &dentry)
+        fs_inode_t *get_inode(const std::shared_ptr<vfs::dentry_t> &dentry)
         {
             return static_cast<fs_inode_t *>(dentry->inode.get());
         }
@@ -920,7 +924,7 @@ namespace ext2
 
                 const auto npsize = vmm::default_npsize();
 
-                auto fs = inode->owner;
+                auto *const fs = inode->owner;
                 const std::unique_lock _ { fs->io_lock };
 
                 const std::uint64_t file_size = inode->stat.st_size;
@@ -932,7 +936,7 @@ namespace ext2
                     {
                         const auto poff = at % npsize;
                         const auto take = std::min<std::uint64_t>(npsize - poff, len);
-                        auto dst = reinterpret_cast<std::byte *>(
+                        auto *const dst = reinterpret_cast<std::byte *>(
                             lib::tohh(vmm::paddr_from(pages[at / npsize]))
                         ) + poff;
 
@@ -980,7 +984,7 @@ namespace ext2
 
                 const auto npsize = vmm::default_npsize();
 
-                auto fs = inode->owner;
+                auto *const fs = inode->owner;
                 if (fs->read_only())
                     return std::unexpected { lib::err::read_only_fs };
 
@@ -996,7 +1000,9 @@ namespace ext2
                     if (page_off >= file_size)
                         continue;
 
-                    auto base = reinterpret_cast<std::byte *>(lib::tohh(vmm::paddr_from(pages[i])));
+                    auto *const base = reinterpret_cast<std::byte *>(
+                        lib::tohh(vmm::paddr_from(pages[i]))
+                    );
                     for (std::uint64_t bo = 0; bo < npsize; bo += bs)
                     {
                         const auto block_off = page_off + bo;
@@ -1042,7 +1048,7 @@ namespace ext2
             lib::maybe_uspan<std::byte> buffer
         )
         {
-            const auto finode = inode_of(file);
+            auto *const finode = get_inode(file);
 
             const auto file_size = static_cast<std::uint64_t>(finode->stat.st_size);
             if (offset >= file_size)
@@ -1060,8 +1066,8 @@ namespace ext2
             lib::maybe_uspan<std::byte> buffer
         )
         {
-            const auto finode = inode_of(file);
-            const auto fs = finode->owner;
+            auto *const finode = get_inode(file);
+            auto *const fs = finode->owner;
             if (fs->read_only())
                 return std::unexpected { lib::err::read_only_fs };
 
@@ -1097,7 +1103,7 @@ namespace ext2
                 const auto npsize = vmm::default_npsize();
                 const auto ret = obj->write_back(
                     offset / npsize,
-                    lib::div_roundup(new_end, npsize) - offset / npsize
+                    lib::div_roundup(new_end, npsize) - (offset / npsize)
                 );
                 if (!ret.has_value())
                     return std::unexpected { ret.error() };
@@ -1107,8 +1113,8 @@ namespace ext2
 
         lib::expect<void> ops_t::trunc(const std::shared_ptr<vfs::file_t> &file, std::size_t size)
         {
-            const auto finode = inode_of(file);
-            const auto fs = finode->owner;
+            auto *const finode = get_inode(file);
+            auto *const fs = finode->owner;
             if (fs->read_only())
                 return std::unexpected { lib::err::read_only_fs };
 
@@ -1153,7 +1159,7 @@ namespace ext2
             if (!dentry || !dentry->inode)
                 return std::unexpected { lib::err::no_such_device };
 
-            const auto finode = inode_of(file);
+            auto *const finode = get_inode(file);
             if (finode->stat.type() != stat::s_ifreg)
                 return std::unexpected { lib::err::no_such_device };
 
@@ -1164,8 +1170,8 @@ namespace ext2
         {
             lib::unused(datasync);
 
-            const auto finode = inode_of(file);
-            const auto owner = finode->owner;
+            auto *const finode = get_inode(file);
+            auto *const owner = finode->owner;
             if (owner->read_only())
                 return { };
 
@@ -1222,7 +1228,7 @@ namespace ext2
             constexpr std::size_t max_batch = 256;
             lib::list<vfs::dir_entry> out;
 
-            const auto dirnode = inode_of(dir);
+            auto *const dirnode = get_inode(dir);
             const auto ret = walk_dir(dirnode, cookie,
                 [&](std::string_view name, ino_t ino, std::uint64_t off) -> lib::expect<bool>
                 {
@@ -1240,11 +1246,11 @@ namespace ext2
             return out;
         }
 
-        auto instance_t::lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+        auto instance_t::lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
             -> lib::expect<vfs::dir_entry>
         {
             std::shared_ptr<fs_inode_t> found;
-            const auto dirnode = inode_of(dir);
+            auto *const dirnode = get_inode(dir);
             const auto ret = walk_dir(dirnode, 0,
                 [&](std::string_view ename, ino_t ino, std::uint64_t off) -> lib::expect<bool>
                 {
@@ -1269,10 +1275,10 @@ namespace ext2
             return vfs::dir_entry { std::string { name }, std::move(found), 0 };
         }
 
-        auto instance_t::readlink(std::shared_ptr<vfs::dentry_t> dentry) -> lib::expect<lib::path>
+        auto instance_t::readlink(const std::shared_ptr<vfs::dentry_t> &dentry) -> lib::expect<lib::path>
         {
-            const auto finode = inode_of(dentry);
-            const auto ino = finode->inode();
+            auto *const finode = get_inode(dentry);
+            auto *const ino = finode->inode();
             const std::uint64_t size = finode->stat.st_size;
 
             if (size < fast_symlink_size && ino->blocks == 0)
@@ -1290,7 +1296,7 @@ namespace ext2
         auto instance_t::bmap_alloc(fs_inode_t *finode, std::uint32_t lblk)
             -> lib::expect<std::pair<std::uint32_t, bool>>
         {
-            const auto ino = finode->inode();
+            auto *const ino = finode->inode();
             const auto goal = (finode->stat.st_ino - 1) / superblock()->inodes_per_group;
             const auto ppb = ptrs_per_block();
             const auto spb = sectors_per_block();
@@ -1400,7 +1406,7 @@ namespace ext2
             std::uint64_t from, fs_inode_t *finode
         ) -> lib::expect<bool>
         {
-            const auto ino = finode->inode();
+            auto *const ino = finode->inode();
             const auto ppb = ptrs_per_block();
             const auto spb = sectors_per_block();
 
@@ -1420,7 +1426,7 @@ namespace ext2
             for (std::uint64_t i = 0; i < ppb; i++)
             {
                 const auto child = buf->at(i);
-                const auto slot_base = base + i * span;
+                const auto slot_base = base + (i * span);
 
                 if (slot_base + span <= from)
                 {
@@ -1475,7 +1481,7 @@ namespace ext2
         auto instance_t::truncate_blocks(fs_inode_t *finode, std::uint64_t new_size)
             -> lib::expect<void>
         {
-            const auto ino = finode->inode();
+            auto *const ino = finode->inode();
             const auto ppb = ptrs_per_block();
             const auto spb = sectors_per_block();
             const auto from = lib::div_roundup(new_size, block_size);
@@ -1518,7 +1524,7 @@ namespace ext2
             if (const auto ret = free_tree(dind_block, 2, ndir_blocks + ppb); !ret.has_value())
                 return ret;
             if (const auto ret = free_tree(tind_block, 3, ndir_blocks + ppb +
-                    static_cast<std::uint64_t>(ppb) * ppb); !ret.has_value())
+                    (static_cast<std::uint64_t>(ppb) * ppb)); !ret.has_value())
                 return ret;
 
             if (const auto tail = new_size % block_size; tail != 0)
@@ -1552,7 +1558,7 @@ namespace ext2
 
         void instance_t::fold_stat_to_ino(fs_inode_t *finode)
         {
-            const auto ino = finode->inode();
+            auto *const ino = finode->inode();
             const auto &stat = finode->stat;
 
             ino->mode = stat.st_mode;
@@ -1735,7 +1741,7 @@ namespace ext2
 
             const auto place = [&](std::byte *dst, std::uint32_t rec_len)
             {
-                const auto ne = reinterpret_cast<dir_entry_2_t *>(dst);
+                auto *const ne = reinterpret_cast<dir_entry_2_t *>(dst);
                 ne->inode = new_ino;
                 ne->rec_len = rec_len;
                 ne->name_len = nlen;
@@ -1856,7 +1862,7 @@ namespace ext2
 
             const std::unique_lock _ { io_lock };
 
-            const auto pfi = inode_of(parent);
+            auto *const pfi = get_inode(parent);
             const auto type = stat::type(mode);
             const bool is_dir = type == stat::s_ifdir;
             const auto goal = (pfi->stat.st_ino - 1) / superblock()->inodes_per_group;
@@ -1869,10 +1875,10 @@ namespace ext2
             const auto ino_num = *ino_res;
 
             lib::buffer<ext2::inode_t> ibuf { 1, lib::zeroed };
-            const auto di = ibuf.data();
+            auto *const di = ibuf.data();
             di->mode = static_cast<std::uint16_t>(mode);
 
-            const auto proc = sched::current_process();
+            const auto *proc = sched::current_process();
             const uid_t uid = proc->cred->euid;
             const gid_t gid = proc->cred->egid;
 
@@ -1901,14 +1907,14 @@ namespace ext2
 
                     lib::membuffer blk { block_size, lib::zeroed };
 
-                    const auto dot = reinterpret_cast<dir_entry_2_t *>(blk.data());
+                    auto *const dot = reinterpret_cast<dir_entry_2_t *>(blk.data());
                     dot->inode = ino_num;
                     dot->rec_len = dirent_reclen(1);
                     dot->name_len = 1;
                     dot->file_type = ft_dir;
                     dot->name[0] = '.';
 
-                    const auto dotdot = reinterpret_cast<dir_entry_2_t *>(
+                    auto *const dotdot = reinterpret_cast<dir_entry_2_t *>(
                         blk.data() + dot->rec_len
                     );
                     dotdot->inode = pfi->stat.st_ino;
@@ -1962,17 +1968,18 @@ namespace ext2
             return std::static_pointer_cast<vfs::inode_t>(std::move(finode));
         }
 
-        auto instance_t::symlink(
-            std::shared_ptr<vfs::inode_t> &parent, std::string_view name, lib::path target
-        ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
+        auto instance_t::tmpfile(std::shared_ptr<vfs::inode_t> &parent, mode_t mode)
+            -> lib::expect<std::shared_ptr<vfs::inode_t>>
         {
             if (read_only())
                 return std::unexpected { lib::err::read_only_fs };
 
-            const std::unique_lock _ { io_lock };
+            if (stat::type(mode) != stat::s_ifreg)
+                return std::unexpected { lib::err::invalid_argument };
 
-            const auto pfi = inode_of(parent);
-            const auto tstr = target.str();
+            std::unique_lock guard { io_lock };
+
+            auto *const pfi = get_inode(parent);
             const auto goal = (pfi->stat.st_ino - 1) / superblock()->inodes_per_group;
 
             const auto ino_res = alloc_inode(goal, false);
@@ -1983,10 +1990,72 @@ namespace ext2
             const auto ino_num = *ino_res;
 
             lib::buffer<ext2::inode_t> ibuf { 1, lib::zeroed };
-            const auto di = ibuf.data();
+            auto *const di = ibuf.data();
+            di->mode = static_cast<std::uint16_t>(mode);
+
+            const auto *proc = sched::current_process();
+            const uid_t uid = proc->cred->euid;
+            const gid_t gid = proc->cred->egid;
+
+            di->uid = uid;
+            di->osd2.linux2.uid_high = uid >> 16;
+            di->gid = gid;
+            di->osd2.linux2.gid_high = gid >> 16;
+
+            di->links_count = 0;
+
+            const auto now = now_secs();
+            di->atime = di->ctime = di->mtime = now;
+            di->dtime = now;
+
+            auto finode = fs_inode_t::create(this, pfi->handle, std::move(ibuf), ino_num);
+            finode->destroy = true;
+
+            if (const auto ret = write_inode_impl(finode.get()); !ret.has_value())
+            {
+                finode->destroy = false;
+                if (const auto undo = free_inode(ino_num, false); !undo.has_value())
+                {
+                    lib::error(
+                        "ext2: could not free inode {}: {}",
+                        ino_num, lib::error_name(undo.error())
+                    );
+                }
+
+                guard.unlock();
+                finode.reset();
+                return std::unexpected { ret.error() };
+            }
+
+            icache[ino_num] = finode;
+            return std::static_pointer_cast<vfs::inode_t>(std::move(finode));
+        }
+
+        auto instance_t::symlink(
+            std::shared_ptr<vfs::inode_t> &parent, std::string_view name, lib::path target
+        ) -> lib::expect<std::shared_ptr<vfs::inode_t>>
+        {
+            if (read_only())
+                return std::unexpected { lib::err::read_only_fs };
+
+            const std::unique_lock _ { io_lock };
+
+            auto *const pfi = get_inode(parent);
+            const auto &tstr = target.str();
+            const auto goal = (pfi->stat.st_ino - 1) / superblock()->inodes_per_group;
+
+            const auto ino_res = alloc_inode(goal, false);
+            if (!ino_res.has_value())
+                return std::unexpected { ino_res.error() };
+            if (*ino_res == 0)
+                return std::unexpected { lib::err::no_space_left };
+            const auto ino_num = *ino_res;
+
+            lib::buffer<ext2::inode_t> ibuf { 1, lib::zeroed };
+            auto *const di = ibuf.data();
             di->mode = stat::s_iflnk | 0777;
 
-            const auto proc = sched::current_process();
+            const auto *proc = sched::current_process();
             di->uid = proc->cred->euid;
             di->gid = proc->cred->egid;
             di->links_count = 1;
@@ -2054,15 +2123,20 @@ namespace ext2
 
             const std::unique_lock _ { io_lock };
 
-            const auto pfi = inode_of(parent);
-            const auto tfi = inode_of(target);
+            auto *const pfi = get_inode(parent);
+            auto *const tfi = get_inode(target);
 
             if (const auto ret = dirent_insert(
                     pfi, name, tfi->stat.st_ino, get_filetype(tfi->stat.st_mode)
                 ); !ret.has_value())
                 return std::unexpected { ret.error() };
 
-            tfi->stat.st_nlink++;
+            if (++tfi->stat.st_nlink == 1)
+            {
+                tfi->destroy = false;
+                tfi->inode()->dtime = 0;
+            }
+
             tfi->stat.update_time(kstat::time::status);
             tfi->dirty = true;
 
@@ -2086,8 +2160,8 @@ namespace ext2
 
             const std::unique_lock _ { io_lock };
 
-            const auto pfi = inode_of(parent);
-            const auto fi = inode_of(inode);
+            auto *const pfi = get_inode(parent);
+            auto *const fi = get_inode(inode);
 
             if (const auto ret = dirent_remove(pfi, name); !ret.has_value())
                 return ret;
@@ -2128,8 +2202,8 @@ namespace ext2
 
             const std::unique_lock _ { io_lock };
 
-            const auto opfi = inode_of(old_parent);
-            const auto npfi = inode_of(new_parent);
+            auto *const opfi = get_inode(old_parent);
+            auto *const npfi = get_inode(new_parent);
 
             const auto mv = dirent_lookup(opfi, old_name);
             if (!mv.has_value())
@@ -2140,7 +2214,7 @@ namespace ext2
             const auto moving = iget(opfi->handle, **mv);
             if (!moving.has_value())
                 return std::unexpected { moving.error() };
-            const auto mfi = moving->get();
+            auto *const mfi = moving->get();
 
             const bool is_dir = mfi->stat.type() == stat::s_ifdir;
             const auto ft = get_filetype(mfi->stat.st_mode);
@@ -2172,7 +2246,7 @@ namespace ext2
 
             if (replaced)
             {
-                const auto rfi = inode_of(replaced);
+                auto *const rfi = get_inode(replaced);
                 if (rfi->stat.type() == stat::s_ifdir)
                 {
                     npfi->stat.st_nlink--;
@@ -2221,7 +2295,7 @@ namespace ext2
                 return { };
 
             const std::unique_lock _ { io_lock };
-            return write_inode_impl(inode_of(inode));
+            return write_inode_impl(get_inode(inode));
         }
 
         auto instance_t::dirty_inode(std::shared_ptr<vfs::inode_t> &inode) -> lib::expect<void>
@@ -2274,7 +2348,7 @@ namespace ext2
             {
                 {
                     const std::unique_lock _ { io_lock };
-                    auto sb = superblock();
+                    auto *const sb = superblock();
                     sb->state &= ~state_clean;
                     sb->mnt_count++;
                     sb->mtime = now_secs();
@@ -2390,7 +2464,7 @@ namespace ext2
 
                 if (rw)
                 {
-                    auto msb = locked->superblock();
+                    auto *const msb = locked->superblock();
                     msb->state &= ~state_clean;
                     msb->mnt_count++;
                     msb->mtime = now_secs();

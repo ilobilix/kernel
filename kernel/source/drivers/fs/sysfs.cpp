@@ -308,7 +308,7 @@ namespace fs::sysfs
                     return result;
                 }
 
-                auto lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+                auto lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
                     -> lib::expect<vfs::dir_entry> override
                 {
                     const auto locked = dir->children.lock();

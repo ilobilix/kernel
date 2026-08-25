@@ -246,6 +246,7 @@ namespace x86_64::syscall
         [299] = { "recvmmsg", vfs::recvmmsg, true },
         [302] = { "prlimit", proc::prlimit },
         [307] = { "sendmmsg", vfs::sendmmsg, true },
+        [309] = { "getcpu", proc::getcpu, true },
         [313] = { "finit_module", vfs::finit_module },
         [316] = { "renameat2", vfs::renameat2 },
         [317] = { "seccomp", misc::seccomp, true },

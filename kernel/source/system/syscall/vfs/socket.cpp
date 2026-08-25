@@ -13,7 +13,7 @@ namespace syscall::vfs
 
     namespace
     {
-        bool is_socket(const std::shared_ptr<vfs::filedesc> &fdesc)
+        bool is_socket(const std::shared_ptr<vfs::filedesc_t> &fdesc)
         {
             if (!fdesc->file || !fdesc->file->path.dentry)
                 return false;

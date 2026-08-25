@@ -179,7 +179,7 @@ namespace syscall::vfs
             return -EBADF;
 
         const auto *caller = sched::current_process();
-        auto newfdesc = std::make_shared<filedesc>(fdesc->file, true);
+        auto newfdesc = std::make_shared<filedesc_t>(fdesc->file, true);
 
         const auto ret = caller->fdt->alloc(
             std::move(newfdesc), 0, false,

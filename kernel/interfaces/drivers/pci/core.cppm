@@ -220,7 +220,7 @@ export namespace pci
         std::array<bar, 2> bars;
 
         bridge(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-            : entity { parent, dev, func } { read_bars(2); }
+            : entity { std::move(parent), dev, func } { read_bars(2); }
 
         std::span<bar> get_bars() override { return bars; }
     };
@@ -250,7 +250,7 @@ export namespace pci
         } irq;
 
         device(std::weak_ptr<pci::bus> parent, std::uint8_t dev, std::uint8_t func)
-            : entity { parent, dev, func } { read_bars(6); }
+            : entity { std::move(parent), dev, func } { read_bars(6); }
 
         std::span<bar> get_bars() override { return bars; }
 
@@ -291,8 +291,8 @@ export namespace pci
         return devidx(parent->seg, parent->id, dev->dev, dev->func);
     }
 
-    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<bridge>> &bridges();
-    const lib::map::flat_hash<std::uint32_t, std::shared_ptr<device>> &devices();
+    const lib::btree::map<std::uint32_t, std::shared_ptr<bridge>> &bridges();
+    const lib::btree::map<std::uint32_t, std::shared_ptr<device>> &devices();
 
     namespace acpi
     {

@@ -390,19 +390,20 @@ namespace squashfs
             auto readdir(std::shared_ptr<vfs::dentry_t> dir, std::size_t cookie)
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
-            auto lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+            auto lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
                 -> lib::expect<vfs::dir_entry> override;
 
-            auto readlink(std::shared_ptr<vfs::dentry_t> dentry) -> lib::expect<lib::path> override;
+            auto readlink(const std::shared_ptr<vfs::dentry_t> &dentry)
+                -> lib::expect<lib::path> override;
 
             void statfs(struct ::statfs &out) override
             {
                 vfs::filesystem_t::instance_t::statfs(out);
 
-                const auto sb = superblock();
+                const auto *sb = superblock();
                 out.f_bsize = sb->block_size;
                 out.f_frsize = sb->block_size;
-                out.f_blocks = 1 + (sb->bytes_used - 1) / sb->block_size;
+                out.f_blocks = ((sb->bytes_used - 1) / sb->block_size) + 1;
                 out.f_bfree = 0;
                 out.f_bavail = 0;
                 out.f_files = sb->inodes;
@@ -717,7 +718,7 @@ namespace squashfs
             if (!base_res)
                 return std::unexpected { base_res.error() };
 
-            const auto base = std::move(*base_res);
+            const auto base = *base_res;
             if (!magic_enum::enum_contains(base.type) || (base.perms & stat::s_ifmt) != 0 ||
                 base.uid >= ids.size() || base.gid >= ids.size() ||
                 base.ino == 0 || base.ino > sb->inodes)
@@ -1002,7 +1003,7 @@ namespace squashfs
             -> lib::expect<lib::list<vfs::dir_entry>>
         {
             lib::list<vfs::dir_entry> entries;
-            const auto inode = get_inode(dir);
+            auto *const inode = get_inode(dir);
 
             const auto ret = walk_dir(*this, inode, cookie, std::nullopt,
                 [&](std::string_view name, std::uint64_t reference, std::uint32_t ino,
@@ -1021,7 +1022,7 @@ namespace squashfs
             return entries;
         }
 
-        auto instance_t::lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+        auto instance_t::lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
             -> lib::expect<vfs::dir_entry>
         {
             if (name.empty() || name.size() > max_namelen || name == "." || name == ".." ||
@@ -1029,7 +1030,7 @@ namespace squashfs
                 return std::unexpected { lib::err::not_found };
 
             std::optional<vfs::dir_entry> result;
-            const auto inode = get_inode(dir);
+            auto *const inode = get_inode(dir);
 
             const auto ret = walk_dir(*this, inode, 3, name,
                 [&](std::string_view entry_name, std::uint64_t reference, std::uint32_t ino,
@@ -1055,9 +1056,10 @@ namespace squashfs
             return std::move(*result);
         }
 
-        auto instance_t::readlink(std::shared_ptr<vfs::dentry_t> dentry) -> lib::expect<lib::path>
+        auto instance_t::readlink(const std::shared_ptr<vfs::dentry_t> &dentry)
+            -> lib::expect<lib::path>
         {
-            const auto inode = get_inode(dentry);
+            const auto *inode = get_inode(dentry);
             if (inode->stat.type() != stat::s_iflnk)
                 return std::unexpected { lib::err::invalid_argument };
 

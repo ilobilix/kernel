@@ -237,7 +237,7 @@ namespace fs::cgroupfs
                     child->name = name;
                     child->inode = std::move(*inode);
                     child->parent = dir;
-                    locked->insert(std::move(child));
+                    locked->insert(child);
                 }
             }
 
@@ -248,11 +248,11 @@ namespace fs::cgroupfs
                 return tmpfs::fs_t::instance::readdir(std::move(dir), cookie);
             }
 
-            auto lookup(std::shared_ptr<vfs::dentry_t> dir, std::string_view name)
+            auto lookup(const std::shared_ptr<vfs::dentry_t> &dir, std::string_view name)
                 -> lib::expect<vfs::dir_entry> override
             {
                 populate(dir);
-                return tmpfs::fs_t::instance::lookup(std::move(dir), name);
+                return tmpfs::fs_t::instance::lookup(dir, name);
             }
 
             ~instance_t() = default;

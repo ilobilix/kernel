@@ -401,7 +401,7 @@ namespace fs::dev::pty
                 if (!resolved.has_value())
                     return std::unexpected { resolved.error() };
 
-                auto slave_fdesc = vfs::filedesc::create(resolved->target, open_flags);
+                auto slave_fdesc = vfs::filedesc_t::create(resolved->target, open_flags);
                 const auto fdres = proc->fdt->alloc(
                     slave_fdesc, 0, false,
                     proc->rlimits->get(sched::rlimit_nofile).cur

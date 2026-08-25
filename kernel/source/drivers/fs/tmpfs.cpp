@@ -231,6 +231,17 @@ namespace fs::tmpfs
         );
     }
 
+    auto fs_t::instance::tmpfile(std::shared_ptr<vfs::inode_t> &parent, mode_t mode)
+        -> lib::expect<std::shared_ptr<vfs::inode_t>>
+    {
+        auto ret = create(parent, "", mode, 0, std::nullopt);
+        if (!ret.has_value())
+            return ret;
+
+        (*ret)->stat.st_nlink = 0;
+        return ret;
+    }
+
     auto fs_t::instance::symlink(
         std::shared_ptr<vfs::inode_t> &parent,
         std::string_view name, lib::path target
@@ -294,7 +305,7 @@ namespace fs::tmpfs
         return result;
     }
 
-    auto fs_t::instance::lookup(std::shared_ptr<vfs::dentry_t> dir,std::string_view name)
+    auto fs_t::instance::lookup(const std::shared_ptr<vfs::dentry_t> &dir,std::string_view name)
         -> lib::expect<vfs::dir_entry>
     {
         const auto locked = dir->children.lock();

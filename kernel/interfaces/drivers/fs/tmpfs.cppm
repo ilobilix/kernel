@@ -51,6 +51,9 @@ export namespace fs::tmpfs
                 mode_t mode, dev_t rdev, std::optional<std::shared_ptr<vfs::ops_t>> ops
             ) -> lib::expect<std::shared_ptr<vfs::inode_t>> override;
 
+            auto tmpfile(std::shared_ptr<vfs::inode_t> &parent, mode_t mode)
+                -> lib::expect<std::shared_ptr<vfs::inode_t>> override;
+
             auto symlink(
                 std::shared_ptr<vfs::inode_t> &parent,
                 std::string_view name, lib::path target
@@ -75,7 +78,7 @@ export namespace fs::tmpfs
             auto readdir(std::shared_ptr<vfs::dentry_t> dir, std::size_t cookie)
                 -> lib::expect<lib::list<vfs::dir_entry>> override;
 
-            auto lookup(std::shared_ptr<vfs::dentry_t> dir,std::string_view name)
+            auto lookup(const std::shared_ptr<vfs::dentry_t> &dir,std::string_view name)
                 -> lib::expect<vfs::dir_entry> override;
 
             auto write_inode(std::shared_ptr<vfs::inode_t> &inode) -> lib::expect<void> override;

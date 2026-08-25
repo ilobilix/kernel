@@ -282,7 +282,7 @@ namespace syscall::vfs::detail
 {
     using namespace ::vfs;
 
-    lib::expect<std::shared_ptr<filedesc>> get_fd(sched::process_t *proc, int fdnum);
+    lib::expect<std::shared_ptr<filedesc_t>> get_fd(sched::process_t *proc, int fdnum);
 
     lib::expect<path_t> get_parent(sched::process_t *proc, int dirfd, lib::path_view path);
 

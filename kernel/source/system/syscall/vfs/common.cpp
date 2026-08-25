@@ -10,7 +10,7 @@ namespace syscall::vfs
 
     namespace detail
     {
-        lib::expect<std::shared_ptr<filedesc>> get_fd(sched::process_t *proc, int fdnum)
+        lib::expect<std::shared_ptr<filedesc_t>> get_fd(sched::process_t *proc, int fdnum)
         {
             if (fdnum < 0)
                 return std::unexpected { lib::err::invalid_fd };
