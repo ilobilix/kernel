@@ -386,6 +386,30 @@ namespace vfs::pipe
                 return written;
             }
 
+            lib::expect<int> ioctl(
+                const std::shared_ptr<vfs::file_t> &file, std::uint64_t request,
+                lib::uptr_or_addr argp
+            ) override
+            {
+                lib::bug_on(!file || !file->private_data);
+                const auto pdata = std::static_pointer_cast<data>(file->private_data);
+
+                switch (request)
+                {
+                    case 0x541B: // FIONREAD
+                    {
+                        const std::unique_lock _ { pdata->lock };
+
+                        const int count = pdata->buffered;
+                        if (!argp.write(count))
+                            return std::unexpected { lib::err::invalid_address };
+                        return 0;
+                    }
+                    default:
+                        return std::unexpected { lib::err::inappropriate_ioctl };
+                }
+            }
+
             lib::expect<std::uint16_t> poll(
                 const std::shared_ptr<vfs::file_t> &file, vfs::poll_table_t *pt
             ) override

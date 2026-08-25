@@ -61,21 +61,21 @@ namespace vmm
                 {
                     lib::tohh(ret)->entries[i].access()
                         .clear()
-                        .setaddr(addr + i * npsize)
+                        .setaddr(addr + (i * npsize))
                         .setflags(flags, true)
                         .write();
                 }
 
                 accessor.clear()
                     .setaddr(reinterpret_cast<std::uintptr_t>(ret))
-                    .setflags(valid_table_flags, true)
+                    .setflags(user ? new_user_table_flags : new_kernel_table_flags, true)
                     .write();
             }
             else ret = reinterpret_cast<table *>(addr);
         }
         else
         {
-            if (allocate == false)
+            if (!allocate)
                 return nullptr;
 
             accessor.clear()
@@ -93,9 +93,9 @@ namespace vmm
     ) const -> lib::expect<std::pair<entry *, page_size>>
     {
         static constexpr std::uintptr_t bits = 0b111111111;
-        static constexpr std::size_t shift_start = 12 + (levels - 1) * 9;
+        static constexpr std::size_t shift_start = 12 + ((levels - 1) * 9);
 
-        auto pml = lib::tohh(get_arch_table(vaddr));
+        auto *pml = lib::tohh(get_arch_table(vaddr));
         auto shift = shift_start;
 
         const auto [ustart, uend] = user_range();
@@ -169,7 +169,7 @@ namespace vmm
                 return std::unexpected { ret.error() };
             }
 
-            auto pte = *ret;
+            auto *pte = *ret;
             auto accessor = pte->access();
 
             const auto addr = accessor.getaddr();
@@ -259,7 +259,7 @@ namespace vmm
                 continue;
             }
 
-            auto pte = *ret;
+            auto *pte = *ret;
             auto accessor = pte->access();
 
             if (!accessor.getflags(valid_table_flags))
@@ -275,9 +275,10 @@ namespace vmm
             const auto old_flags = accessor.getflags();
             const auto aflags = to_arch(flags, cache, use_psize);
 
-            accessor.clearflags()
-                .setflags(aflags, true)
-                .write();
+            if (!(aflags & valid_table_flags))
+                accessor.clear().write();
+            else
+                accessor.clearflags().setflags(aflags, true).write();
 
             const bool local_only = is_upgrade(
                 from_arch(old_flags, use_psize),
@@ -351,7 +352,7 @@ namespace vmm
                 continue;
             }
 
-            auto pte = *ret;
+            auto *pte = *ret;
             pte->access().clear().write();
 
             fr_out.extend(current_vaddr, current_vaddr + npsize);
@@ -524,7 +525,7 @@ namespace vmm
 
             for (std::size_t i = start; i < end; i++)
             {
-                auto lvl = getlvl(
+                auto *lvl = getlvl(
                     ptr->entries[i], false, false,
                      static_cast<page_size>(level - 1), true
                 );
@@ -546,12 +547,12 @@ namespace vmm
         {
             lib::debug("vmm: - mapping memory map entries");
 
-            const auto memmaps = boot::requests::memmap.response->entries;
+            const auto *memmaps = boot::requests::memmap.response->entries;
             const std::size_t num = boot::requests::memmap.response->entry_count;
 
             for (std::size_t i = 0; i < num; i++)
             {
-                const auto memmap = memmaps[i];
+                const auto *memmap = memmaps[i];
                 const auto type = static_cast<boot::memmap>(memmap->type);
 
                 if (type == boot::memmap::reserved || type == boot::memmap::acpi_reclaimable ||
@@ -584,11 +585,11 @@ namespace vmm
         {
             static constexpr auto cache = caching::normal;
 
-            const auto kernel_file = boot::requests::kernel_file.response->executable_file;
-            const auto kernel_addr = boot::requests::kernel_address.response;
+            const auto *kernel_file = boot::requests::kernel_file.response->executable_file;
+            const auto *kernel_addr = boot::requests::kernel_address.response;
 
-            const auto ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
-            auto phdr = reinterpret_cast<Elf64_Phdr *>(
+            const auto *ehdr = reinterpret_cast<Elf64_Ehdr *>(kernel_file->address);
+            auto *phdr = reinterpret_cast<Elf64_Phdr *>(
                 reinterpret_cast<std::byte *>(kernel_file->address) + ehdr->e_phoff
             );
 

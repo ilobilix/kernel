@@ -841,14 +841,12 @@ namespace input
 
                     if ((nr & ~uabs_mask) == lib::ioc::make_nr(eviocgabs(0)))
                     {
-                        const auto copy = dev->get_abs(nr & abs_max);
-                        if (!copy)
-                            return std::unexpected { lib::err::invalid_argument };
+                        const auto copy = dev->get_abs(nr & abs_max).value_or({ });
 
-                        const auto len = std::min(size, sizeof(*copy));
+                        const auto len = std::min(size, sizeof(copy));
                         const auto out = out_at(argp.value(), len);
 
-                        const auto span = std::as_bytes(std::span { std::addressof(*copy), 1 });
+                        const auto span = std::as_bytes(std::span { std::addressof(copy), 1 });
                         if (!out || !out->copy_from(span.first(len)))
                             return std::unexpected { lib::err::invalid_address };
                         return 0;

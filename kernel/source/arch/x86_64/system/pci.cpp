@@ -6,6 +6,8 @@ namespace pci
 {
     struct legacy : configio
     {
+        static inline lib::spinlock_irq _lock;
+
         std::size_t size() const override { return 256; }
 
         std::uint32_t read(
@@ -21,6 +23,8 @@ namespace pci
                 (static_cast<std::uint32_t>(dev) << 11) |
                 (static_cast<std::uint32_t>(func) << 8) |
                 (static_cast<std::uint32_t>(uoff) & ~(3u)) | 0x80000000u;
+
+            const std::unique_lock _ { _lock };
 
             lib::io::out<std::uint32_t>(0xCF8, addr);
             switch (width)
@@ -50,6 +54,8 @@ namespace pci
                 (static_cast<std::uint32_t>(dev) << 11) |
                 (static_cast<std::uint32_t>(func) << 8) |
                 (static_cast<std::uint32_t>(uoff) & ~(3u)) | 0x80000000u;
+
+            const std::unique_lock _ { _lock };
 
             lib::io::out<std::uint32_t>(0xCF8, addr);
             switch (width)
@@ -105,8 +111,9 @@ namespace pci
                     );
                     return val;
                 }
+                default:
+                    std::unreachable();
             }
-            std::unreachable();
         }
 
         void ecam_write(std::uintptr_t addr, std::uint32_t value, std::size_t width)

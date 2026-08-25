@@ -145,6 +145,9 @@ namespace pmm
 
             void split_to(std::size_t target)
             {
+                if (target >= max_order)
+                    return;
+
                 auto current = target + 1;
                 while (lists[current].next == nullptr)
                 {
@@ -270,7 +273,7 @@ namespace pmm
                 pg->buddy.allocated = 0;
 
                 put(order, reinterpret_cast<list *>(lib::tohh(addr)));
-                return size;
+                return page_size * lib::pow2(order);
             }
 
             std::pair<std::uintptr_t, std::size_t> alloc(std::size_t npages)

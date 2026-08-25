@@ -146,10 +146,14 @@ export namespace vmm
         public:
         object_type type;
         std::atomic_bool shared_mapped;
+        std::atomic_bool priv_mapped;
         lib::intrusive_ptr_hook hook;
 
         lib::expect<void> read_pages(std::uint64_t offp, std::span<page *> pages, std::size_t idx);
         lib::expect<void> write_back(std::uint64_t offp, std::size_t num_pages);
+
+        void set_shared();
+        void set_private();
 
         void drop_cached(std::uint64_t offp, std::size_t num_pages);
         lib::expect<void> populate(std::size_t num_pages);
@@ -166,7 +170,7 @@ export namespace vmm
         virtual caching cache_attr() const { return caching::normal; }
 
         explicit object(object_type type = object_type::file)
-            : type { type }, shared_mapped { false } { }
+            : type { type }, shared_mapped { false }, priv_mapped { false } { }
         virtual ~object();
 
         using ptr = lib::intrusive_ptr<object, &object::hook>;

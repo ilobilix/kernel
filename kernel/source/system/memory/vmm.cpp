@@ -145,6 +145,7 @@ namespace vmm
                         {
                             if (pg && pg->unref())
                                 pmm::free(paddr_from(pg), num_alloc_pages);
+                            pages[j] = nullptr;
                             continue;
                         }
 
@@ -210,6 +211,7 @@ namespace vmm
                     {
                         if (pg && pg->unref())
                             pmm::free(paddr_from(pg), num_alloc_pages);
+                        pages[j] = nullptr;
                         continue;
                     }
 
@@ -370,6 +372,24 @@ namespace vmm
         return { };
     }
 
+    void object::set_shared()
+    {
+        if (shared_mapped.load(std::memory_order_acquire))
+            return;
+
+        const auto _ = cache.lock();
+        shared_mapped.store(true, std::memory_order_release);
+    }
+
+    void object::set_private()
+    {
+        if (priv_mapped.load(std::memory_order_acquire))
+            return;
+
+        const auto _ = cache.lock();
+        priv_mapped.store(true, std::memory_order_release);
+    }
+
     void object::drop_cached(std::uint64_t offp, std::size_t num_pages)
     {
         if (num_pages == 0)
@@ -386,6 +406,10 @@ namespace vmm
         auto locked = cache.lock();
         while (true)
         {
+            if (shared_mapped.load(std::memory_order_acquire) ||
+                priv_mapped.load(std::memory_order_acquire))
+                return;
+
             const auto it = locked->lower_bound(offp);
             if (it == locked->end() || it->first >= end_idx)
                 break;
@@ -629,7 +653,7 @@ namespace vmm
             target_obj = std::move(obj);
 
         if (target_obj && (flags & flag::shared))
-            target_obj->shared_mapped.store(true, std::memory_order_release);
+            target_obj->set_shared();
 
         if ((flags & flag::private_) && !is_mmio)
         {
@@ -796,6 +820,18 @@ namespace vmm
 
             if (const auto ret = pmap->unmap(unmap_vaddr, unmap_length, psize); !ret)
                 return std::unexpected { ret.error() };
+
+            if (ent->amap)
+            {
+                const std::unique_lock _ { ent->amap->lock };
+
+                const auto first = ent->anon_idx + (overlap_start - ent->startp);
+                for (std::size_t i = 0; i < overlap_end - overlap_start; i++)
+                {
+                    lib::bug_on(first + i >= ent->amap->nslots);
+                    ent->amap->slots[first + i] = nullptr;
+                }
+            }
 
             locked->remove(ent);
 
@@ -1552,8 +1588,6 @@ namespace vmm
                         goto end;
                     }
 
-                    opg->ref();
-                    pinned = opg;
                     paddr = paddr_from(opg);
                     from_amap = true;
                 }
@@ -1598,30 +1632,42 @@ namespace vmm
                 if (!state.is_present)
                 {
                     page *opg = nullptr;
+                    bool owned = false;
+
                     if (!amap->slots[anon_idx + offp])
                     {
                         lib::bug_on(!obj);
+                        if (!state.is_write)
+                            obj->set_private();
+
                         opg = fetch(obj_offp + offp);
                         if (!opg)
                             return false;
+                        owned = true;
                     }
                     else
                     {
                         opg = amap->slots[anon_idx + offp]->pg;
-                        opg->ref();
                         from_amap = true;
+
+                        if (state.is_write)
+                        {
+                            opg->ref();
+                            owned = true;
+                        }
                     }
 
                     if (!state.is_write)
                     {
-                        pinned = opg;
+                        if (owned)
+                            pinned = opg;
                         paddr = paddr_from(opg);
                     }
                     else
                     {
                         if (!copy_old(opg, amap->slots[anon_idx + offp], true))
                         {
-                            if (opg->unref())
+                            if (owned && opg->unref())
                                 pmm::free(paddr_from(opg), num_alloc_pages);
                             return false;
                         }
@@ -1636,8 +1682,6 @@ namespace vmm
                         opg = amap->slots[anon_idx + offp]->pg;
                         if (opg->refcount.load(std::memory_order_acquire) == 1)
                         {
-                            opg->ref();
-                            pinned = opg;
                             paddr = paddr_from(opg);
                             from_amap = true;
                             goto end;

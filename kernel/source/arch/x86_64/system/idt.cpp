@@ -53,14 +53,7 @@ namespace x86_64::idt
                 return false;
 
             const auto idx = cpu::self().unsafe_get().idx;
-            arch::dump_regs(idx, regs, cpu::extra_regs::read());
-
             auto *const thread = sched::current_thread();
-            lib::error(
-                "exception {}: '{}' on cpu {} on [{}:{}] '{}'",
-                regs->vector, exception_messages[regs->vector], idx,
-                thread->proc->pid, thread->tid, sched::comm_of(thread)
-            );
 
             int signo = 0;
             switch (regs->vector)
@@ -97,6 +90,22 @@ namespace x86_64::idt
                     break;
                 default:
                     return false;
+            }
+
+            const bool handled = [&] {
+                const std::unique_lock _ { thread->proc->sigactions->lock };
+                const auto handler = thread->proc->sigactions->actions[signo - 1].handler;
+                return handler != sched::sig_dfl && handler != sched::sig_ign;
+            } ();
+
+            if (!handled)
+            {
+                arch::dump_regs(idx, regs, cpu::extra_regs::read());
+                lib::error(
+                    "exception {}: '{}' on cpu {} on [{}:{}] '{}'",
+                    regs->vector, exception_messages[regs->vector], idx,
+                    thread->proc->pid, thread->tid, sched::comm_of(thread)
+                );
             }
 
             const auto code = regs->vector == 14
