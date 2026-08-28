@@ -3,7 +3,7 @@
 module system.cpu.call;
 
 import x86_64.system.lapic;
-import x86_64.system.idt;
+import x86_64.system.vector;
 import system.cpu.local;
 
 namespace cpu
@@ -12,12 +12,12 @@ namespace cpu
 
     void install_handler(std::size_t cpu_idx)
     {
-        auto slot = idt::handler_at(cpu_idx, idt::vec_cpu_call);
+        auto slot = vector::handler_at(cpu_idx, vector::vec_cpu_call);
         lib::bug_on(!slot.has_value() || slot->used());
         slot->set([](auto) { handle_ipi(); });
     }
 
-    void notify_mask(const lib::bitmap_view mask)
+    void notify_mask(lib::const_bitmap_view mask)
     {
         const auto self_idx = self().unsafe_get().idx;
         for (std::size_t i = 0; i < mask.length(); i++)
@@ -33,7 +33,7 @@ namespace cpu
                 proc->arch_id,
                 apic::destination::physical,
                 apic::delivery::fixed,
-                idt::vec_cpu_call
+                vector::vec_cpu_call
             );
         }
     }

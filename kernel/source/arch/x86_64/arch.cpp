@@ -3,6 +3,7 @@
 module arch;
 
 import x86_64.drivers.timers.tsc;
+import x86_64.system.vector;
 import x86_64.system.lapic;
 import x86_64.system.idt;
 import drivers.timers;
@@ -18,11 +19,9 @@ namespace arch
             while (true)
                 asm volatile ("hlt");
         }
-        else
-        {
-            while (true)
-                asm volatile ("cli; hlt");
-        }
+
+        while (true)
+            asm volatile ("cli; hlt");
         std::unreachable();
     }
 
@@ -170,10 +169,11 @@ namespace arch
     {
         void entry(std::uintptr_t addr)
         {
-            auto ptr = reinterpret_cast<cpu::processor *>(addr);
+            auto *ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::gs::write(addr);
 
             x86_64::gdt::init_on(ptr);
+            x86_64::vector::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::features::enable();
@@ -193,10 +193,11 @@ namespace arch
 
         void bsp(std::uintptr_t addr)
         {
-            auto ptr = reinterpret_cast<cpu::processor *>(addr);
+            auto *ptr = reinterpret_cast<cpu::processor *>(addr);
             cpu::gs::write(addr);
 
             x86_64::gdt::init_on(ptr);
+            x86_64::vector::init_on(ptr);
             x86_64::idt::init_on(ptr);
 
             cpu::features::enable();

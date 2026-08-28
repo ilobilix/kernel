@@ -6,9 +6,9 @@ module;
 
 module x86_64.system.ioapic;
 
+import x86_64.system.vector;
 import x86_64.system.lapic;
 import x86_64.system.pic;
-import x86_64.system.idt;
 import system.memory;
 import system.acpi;
 import system.cpu;
@@ -166,7 +166,7 @@ namespace x86_64::apic::io
             return ret;
         }
 
-        void level_flow(cpu::registers *regs, idt::slot &slot)
+        void level_flow(cpu::registers *regs, vector::slot_t &slot)
         {
             const std::uint32_t gsi = slot.flow_data;
             mask_gsi(gsi);
@@ -197,7 +197,7 @@ namespace x86_64::apic::io
     bool is_initialised() { return initialised; }
 
     ioapic_domain::ioapic_domain()
-        : domain { "x86_64-ioapic", idt::get_vector_domain() } { }
+        : domain { "x86_64-ioapic", vector::get_domain() } { }
 
     lib::expect<void> ioapic_domain::alloc(
         std::span<irq::irq_data *> data, const irq::fwspec &spec
@@ -225,10 +225,10 @@ namespace x86_64::apic::io
 
         const irq::fwspec pspec {
             .param_count = 2,
-            .params = { cpu_idx, gsi + idt::irq(0) }
+            .params = { cpu_idx, gsi + vector::irq(0) }
         };
 
-        auto pd_ptr = parent_data.get();
+        auto *pd_ptr = parent_data.get();
         if (auto ret = parent->alloc({ &pd_ptr, 1 }, pspec); !ret)
             return std::unexpected { ret.error() };
 
@@ -246,7 +246,7 @@ namespace x86_64::apic::io
 
     void ioapic_domain::free(std::span<irq::irq_data *> data)
     {
-        for (auto entry : data)
+        for (auto *entry : data)
         {
             mask_gsi(entry->hwirq);
             live_gsis.lock()->erase(entry->hwirq);
@@ -256,7 +256,7 @@ namespace x86_64::apic::io
 
             if (pd)
             {
-                auto pd_ptr = pd.get();
+                auto *pd_ptr = pd.get();
                 parent->free({ &pd_ptr, 1 });
             }
         }
@@ -270,7 +270,7 @@ namespace x86_64::apic::io
         auto &pd = *data.parent;
         parent->attach(pd, fn);
 
-        if (auto handler = idt::handler_at(pd.aux, pd.hwirq))
+        if (auto handler = vector::handler_at(pd.aux, pd.hwirq))
         {
             if (is_level(data.trig))
                 handler->set_flow(level_flow, data.hwirq);
@@ -285,7 +285,7 @@ namespace x86_64::apic::io
             return;
 
         auto &pd = *data.parent;
-        if (auto handler = idt::handler_at(pd.aux, pd.hwirq))
+        if (auto handler = vector::handler_at(pd.aux, pd.hwirq))
             handler->clear_flow();
         parent->detach(*data.parent);
     }
@@ -301,7 +301,7 @@ namespace x86_64::apic::io
     }
 
     lib::expect<void> ioapic_domain::set_affinity(
-        irq::irq_data &data, const lib::bitmap_view cpus, bool force
+        irq::irq_data &data, lib::const_bitmap_view cpus, bool force
     )
     {
         if (!data.parent)

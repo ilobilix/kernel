@@ -8,3 +8,4 @@ export import x86_64.system.ioapic;
 export import x86_64.system.lapic;
 export import x86_64.system.pic;
 export import x86_64.system.syscall;
+export import x86_64.system.vector;

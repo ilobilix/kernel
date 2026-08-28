@@ -10,7 +10,7 @@ namespace cpu
         lib::unused(cpu_idx);
     }
 
-    void notify_mask(const lib::bitmap_view mask)
+    void notify_mask(lib::const_bitmap_view mask)
     {
         if (mask.empty())
             return;

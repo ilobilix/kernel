@@ -11,7 +11,7 @@ namespace cpu
 {
     // implemented by arch
     void install_handler(std::size_t cpu_idx);
-    void notify_mask(const lib::bitmap_view mask);
+    void notify_mask(lib::const_bitmap_view mask);
 } // namespace cpu
 
 export namespace cpu
@@ -34,7 +34,7 @@ export namespace cpu
     void handle_ipi();
     void queue(std::size_t target_idx, call_t *call);
 
-    inline void notify(const lib::bitmap_view mask)
+    inline void notify(lib::const_bitmap_view mask)
     {
         return notify_mask(mask);
     }

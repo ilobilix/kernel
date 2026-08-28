@@ -142,7 +142,7 @@ namespace irq
         desc->leaf.virq = next_virq.fetch_add(1, std::memory_order_relaxed);
         desc->leaf.dom = &leaf;
 
-        auto node = &desc->leaf;
+        auto *node = &desc->leaf;
         if (auto ret = leaf.alloc({ &node, 1 }, spec); !ret)
             return std::unexpected { ret.error() };
 
@@ -210,7 +210,7 @@ namespace irq
         if (ret.old != nullptr)
             ret.old->retire();
 
-        auto node = &desc->leaf;
+        auto *node = &desc->leaf;
         desc->leaf.dom->free({ &node, 1 });
     }
 
@@ -249,7 +249,7 @@ namespace irq
         if (detached)
             wait_for_handlers();
 
-        for (auto old : stale)
+        for (auto *old : stale)
             old->retire();
 
         if (dying.empty())
@@ -262,7 +262,7 @@ namespace irq
 
         for (std::size_t i = 0; i < dying.size(); )
         {
-            auto dom = dying[i]->leaf.dom;
+            auto *dom = dying[i]->leaf.dom;
             nodes.clear();
 
             while (i < dying.size() && dying[i]->leaf.dom == dom)
@@ -371,7 +371,7 @@ namespace irq
             desc->leaf.dom->unmask(desc->leaf);
     }
 
-    lib::expect<void> set_affinity(handle_t handle, const lib::bitmap_view cpus, bool force)
+    lib::expect<void> set_affinity(handle_t handle, lib::const_bitmap_view cpus, bool force)
     {
         auto desc = lookup(handle);
         if (!desc)

@@ -1,0 +1,499 @@
+// Copyright (C) 2024-2026  ilobilo
+
+module;
+
+#include <uacpi/acpi.h>
+
+module x86_64.system.vector;
+
+import x86_64.system.lapic;
+import system.memory.virt;
+import system.random;
+import system.sched;
+import system.acpi;
+import system.cpu;
+import frigg;
+import arch;
+
+namespace x86_64::vector
+{
+    namespace
+    {
+        constinit bool early = true;
+
+        constexpr std::array<std::string_view, 32> exception_messages
+        {
+            "division by zero", "debug",
+            "non-maskable interrupt",
+            "breakpoint", "detected overflow",
+            "out-of-bounds", "invalid opcode",
+            "no coprocessor", "double fault",
+            "coprocessor segment overrun",
+            "bad TSS", "segment not present",
+            "stack fault", "general protection fault",
+            "page fault", "unknown interrupt",
+            "coprocessor fault", "alignment check",
+            "machine check", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved",
+            "reserved", "reserved", "reserved"
+        };
+
+        bool deliver_fault_signal(cpu::registers *regs, std::uintptr_t cr2)
+        {
+            if (!sched::is_ready())
+                return false;
+            if ((regs->cs & 3) != 3)
+                return false;
+
+            const auto idx = cpu::self().unsafe_get().idx;
+            auto *const thread = sched::current_thread();
+
+            int signo = 0;
+            switch (regs->vector)
+            {
+                case 0: // #DE
+                    signo = sched::sigfpe;
+                    break;
+                case 1: // #DB
+                case 3: // #BP
+                    signo = sched::sigtrap;
+                    break;
+                case 4: // #OF
+                case 5: // #BR
+                    signo = sched::sigsegv;
+                    break;
+                case 6: // #UD
+                    signo = sched::sigill;
+                    break;
+                case 7: // #NM
+                    signo = sched::sigfpe;
+                    break;
+                case 13: // #GP
+                case 14: // #PF
+                    signo = sched::sigsegv;
+                    break;
+                case 16: // #MF
+                    signo = sched::sigfpe;
+                    break;
+                case 17: // #AC
+                    signo = sched::sigbus;
+                    break;
+                case 19: // #XM
+                    signo = sched::sigfpe;
+                    break;
+                default:
+                    return false;
+            }
+
+            const bool handled = [&] {
+                const std::unique_lock _ { thread->proc->sigactions->lock };
+                const auto handler = thread->proc->sigactions->actions[signo - 1].handler;
+                return handler != sched::sig_dfl && handler != sched::sig_ign;
+            } ();
+
+            if (!handled)
+            {
+                arch::dump_regs(idx, regs, cpu::extra_regs::read());
+                lib::error(
+                    "exception {}: '{}' on cpu {} on [{}:{}] '{}'",
+                    regs->vector, exception_messages[regs->vector], idx,
+                    thread->proc->pid, thread->tid, sched::comm_of(thread)
+                );
+            }
+
+            const auto code = regs->vector == 14
+                ? ((regs->error_code & 1) ? sched::segv_accerr : sched::segv_maperr)
+                : sched::si_kernel;
+
+            thread->adata.trap_no = regs->vector;
+            thread->adata.error_code = regs->error_code;
+            if (regs->vector == 14)
+                thread->adata.fault_cr2 = cr2;
+
+            const sched::siginfo_t info {
+                .signo = signo,
+                .code = code,
+                .err = 0,
+                .pid = 0,
+                .uid = 0,
+                .status = 0,
+                .addr = (regs->vector == 14) ? cr2 : regs->rip,
+                .value = 0
+            };
+            sched::force_signal(thread, info);
+            return true;
+        }
+
+        lib::expect<std::size_t> reserve_one(std::size_t cpu_idx, std::size_t hint)
+        {
+            if (hint >= num_ints)
+                return std::unexpected { lib::err::invalid_argument };
+
+            if (hint < irq(0))
+                hint += irq(0);
+
+            if ((!acpi::madt::hdr || (acpi::madt::hdr->flags & ACPI_PIC_ENABLED)) &&
+                hint >= irq(0) && hint <= irq(15))
+            {
+                if (auto ret = handler_at(cpu_idx, hint); ret && !ret->used() && !ret->is_reserved())
+                {
+                    ret->reserve();
+                    return hint;
+                }
+            }
+
+            for (std::size_t i = hint; i < num_ints; i++)
+            {
+                auto handler = handler_at(cpu_idx, i);
+                if (!handler)
+                    continue;
+
+                if (!handler->used() && !handler->is_reserved())
+                {
+                    handler->reserve();
+                    return i;
+                }
+            }
+            return std::unexpected { lib::err::no_space_left };
+        }
+
+        lib::expect<std::size_t> reserve_num(std::size_t cpu_idx, std::size_t count)
+        {
+            count = std::bit_ceil(count);
+            auto base = lib::align_up(irq(0), count);
+
+            while (base + count <= num_ints)
+            {
+                bool all_free = true;
+                for (std::size_t i = 0; i < count; i++)
+                {
+                    const auto handler = handler_at(cpu_idx, base + i);
+                    if (!handler || handler->used() || handler->is_reserved())
+                    {
+                        all_free = false;
+                        break;
+                    }
+                }
+
+                if (all_free)
+                {
+                    for (std::size_t i = 0; i < count; i++)
+                        handler_at(cpu_idx, base + i)->reserve();
+                    return base;
+                }
+                base += count;
+            }
+            return std::unexpected { lib::err::no_space_left };
+        }
+    } // namespace
+
+    using irq_vec = frg::small_vector<
+        slot_t, num_preints,
+        frg::allocator<slot_t>
+    >;
+    cpu_local(irq_vec, irq_handlers);
+
+    [[nodiscard]]
+    std::optional<slot_t &> handler_at(std::size_t cpuidx, std::uint8_t num)
+    {
+        if (num < irq(0))
+            return std::nullopt;
+
+        num -= irq(0);
+
+        auto &handlers = irq_handlers.unsafe_get(cpu::local::nth_base(cpuidx));
+        if (num >= handlers.size())
+            handlers.resize(std::max(num_ints, static_cast<std::size_t>(num) + 5));
+
+        return handlers[num];
+    }
+
+    lib::expect<void> domain_t::alloc(
+        std::span<irq::irq_data *> data,
+        const irq::fwspec &spec
+    )
+    {
+        if (data.empty())
+            return { };
+
+        const auto cpu_idx = (spec.param_count > domain_t::param_cpu)
+            ? spec.params[domain_t::param_cpu]
+            : cpu::bsp_idx();
+
+        if (data.size() == 1)
+        {
+            const auto hint = (spec.param_count > domain_t::param_hint)
+                ? spec.params[domain_t::param_hint]
+                : 0;
+
+            auto vec = reserve_one(cpu_idx, hint);
+            if (!vec)
+                return std::unexpected { vec.error() };
+
+            data[0]->hwirq = *vec;
+            data[0]->aux = cpu_idx;
+            data[0]->parent = nullptr;
+            return { };
+        }
+
+        auto base = reserve_num(cpu_idx, data.size());
+        if (!base)
+            return std::unexpected { base.error() };
+
+        for (std::size_t i = 0; i < data.size(); i++)
+        {
+            data[i]->hwirq = *base + i;
+            data[i]->aux = cpu_idx;
+            data[i]->parent = nullptr;
+        }
+        return { };
+    }
+
+    void domain_t::free(std::span<irq::irq_data *> data)
+    {
+        for (const auto *entry : data)
+        {
+            if (auto handler = handler_at(entry->aux, entry->hwirq))
+                handler->reset_all();
+        }
+    }
+
+    void domain_t::attach(irq::irq_data &data, irq::handler_fn *fn)
+    {
+        auto handler = handler_at(data.aux, data.hwirq);
+        if (!handler)
+            return;
+
+        handler->set([fn](cpu::registers *regs) { if (*fn) (*fn)(regs); });
+    }
+
+    void domain_t::detach(irq::irq_data &data)
+    {
+        if (auto handler = handler_at(data.aux, data.hwirq))
+            handler->reset();
+    }
+
+    lib::expect<void> domain_t::set_affinity(
+        irq::irq_data &data, lib::const_bitmap_view cpus, bool force
+    )
+    {
+        lib::unused(force);
+
+        std::size_t target = -1;
+        for (std::size_t i = 0; i < cpus.length(); i++)
+        {
+            if (!cpus.get(i))
+                continue;
+
+            target = i;
+            break;
+        }
+        if (target == -1zu)
+            return std::unexpected { lib::err::invalid_argument };
+
+        const auto old_cpu = data.aux;
+        const auto old_vec = data.hwirq;
+        if (target == old_cpu)
+            return { };
+
+        auto nv = reserve_one(target, 0);
+        if (!nv)
+            return std::unexpected { nv.error() };
+
+        auto old_slot = handler_at(old_cpu, old_vec);
+        auto new_slot = handler_at(target, *nv);
+        if (!old_slot || !new_slot)
+        {
+            if (new_slot)
+                new_slot->reset_all();
+            return std::unexpected { lib::err::invalid_argument };
+        }
+
+        new_slot->set(std::move(old_slot->handler));
+        new_slot->set_flow(old_slot->flow, old_slot->flow_data);
+
+        old_slot->reset_all();
+
+        data.hwirq = *nv;
+        data.aux = target;
+        return { };
+    }
+
+    lib::expect<irq::msi_msg> domain_t::compose_msi(irq::irq_data &data)
+    {
+        const auto vec = static_cast<std::uint8_t>(data.hwirq);
+        const auto cpu_idx = data.aux;
+        const auto aid = cpu::local::nth(cpu_idx)->arch_id;
+        if (aid > 0xFE)
+            return std::unexpected { lib::err::not_supported };
+
+        return irq::msi_msg {
+            .address = 0xFEE00000ull | (static_cast<std::uint64_t>(aid) << 12),
+            .data = static_cast<std::uint32_t>(vec)
+        };
+    }
+
+    domain_t *get_domain()
+    {
+        static domain_t inst { };
+        return &inst;
+    }
+
+    void dispatch(cpu::registers *regs)
+    {
+        const auto vector = regs->vector;
+        if (early) [[unlikely]]
+        {
+            if (vector < irq(0))
+                lib::panic(regs, "exception {}: '{}'", vector, exception_messages[vector]);
+            else
+                lib::panic(regs, "unknown interrupt {}", vector);
+            std::unreachable();
+        }
+
+        auto &self = cpu::self().unsafe_get();
+
+        const bool old = self.in_interrupt.exchange(true, std::memory_order_relaxed);
+        std::atomic_signal_fence(std::memory_order_acquire);
+
+        if (vector >= irq(0) && vector <= 0xFF)
+        {
+            random::add_irq_jitter(vector, regs->rip);
+
+            self.in_hard_irq.store(true, std::memory_order_relaxed);
+
+            const auto idx = vector - irq(0);
+            auto &irqh = irq_handlers.unsafe_get();
+            if (irqh.size() > idx)
+            {
+                auto &slot = irqh[idx];
+                if (slot.flow) [[unlikely]]
+                    slot.flow(regs, slot);
+                else if (slot.used()) [[likely]]
+                {
+                    apic::eoi();
+                    slot(regs);
+                }
+                else lib::panic(regs, "unhandled irq {}", vector);
+            }
+            else apic::eoi();
+
+            self.in_hard_irq.store(false, std::memory_order_relaxed);
+        }
+        else if (vector < irq(0))
+        {
+            if (vector == 2)
+            {
+                lib::check_if_panicking(regs);
+
+                const auto status = lib::io::in<8>(0x61);
+                if (status & (1 << 7))
+                    lib::panic("nmi: parity check");
+                else if (status & (1 << 6))
+                    lib::panic("nmi: channel check");
+
+                goto skip_sched;
+            }
+
+            std::uintptr_t cr2 = 0;
+            if (vector == 14)
+            {
+                cr2 = cpu::read_reg<"cr2">();
+                vmm::pfault_state state {
+                    cr2,
+                    (regs->error_code & (1 << 0)) != 0,
+                    (regs->error_code & (1 << 1)) != 0,
+                    (regs->error_code & (1 << 4)) != 0,
+                    (regs->error_code & (1 << 2)) != 0
+                };
+
+                if (vmm::handle_spurious_pfault(state))
+                    goto end;
+
+                const bool cant_handle = self.in_hard_irq.load(std::memory_order_relaxed) ||
+                    (sched::is_ready() &&
+                        (sched::current_thread()->irq_depth != 0 || sched::is_preempt_disabled()));
+
+                if (!cant_handle && vmm::handle_pfault(state))
+                    goto end;
+
+                if ((regs->cs & 3) != 3 && sched::is_ready())
+                {
+                    auto *const thread = sched::current_thread();
+                    if (thread->fault_frame.pc != 0 &&
+                        lib::classify_address(cr2, 1) == lib::address_space::user)
+                    {
+                        regs->rsp = thread->fault_frame.sp;
+                        regs->rip = thread->fault_frame.pc;
+                        thread->fault_frame.pc = 0;
+                        goto end;
+                    }
+                }
+            }
+
+            if (deliver_fault_signal(regs, cr2))
+                goto end;
+
+            if (sched::is_ready())
+            {
+                const auto *thread = sched::current_thread();
+                lib::panic(regs, "exception {}: '{}' on cpu {} on [{}:{}]",
+                    vector, exception_messages[vector],
+                    self.idx, thread->proc->pid, thread->tid
+                );
+            }
+
+            lib::panic(
+                regs, "exception {}: '{}' on cpu {}",
+                vector, exception_messages[vector], self.idx
+            );
+            std::unreachable();
+        }
+        else
+        {
+            lib::panic(regs, "unknown interrupt {}", vector);
+            std::unreachable();
+        }
+
+        end:
+        if (sched::is_ready())
+        {
+            const auto *thread = sched::current_thread();
+            if (!sched::is_preempt_disabled() && thread->irq_depth == 0 && thread->needs_resched())
+                sched::schedule();
+
+            if ((regs->cs & 3) == 3)
+            {
+                sched::die_if_kill_pending();
+                sched::handle_pending_signals(regs);
+            }
+        }
+
+        skip_sched:
+        std::atomic_signal_fence(std::memory_order_release);
+        cpu::self().unsafe_get().in_interrupt.store(old, std::memory_order_relaxed);
+    }
+
+    void init_on(cpu::processor *cpu)
+    {
+        if (cpu->idx == cpu::bsp_idx())
+            lib::info("vector: setting up irq handlers");
+
+        irq_handlers.unsafe_get(cpu::local::nth_base(cpu->idx)).resize(num_preints);
+
+        if (cpu->idx == cpu::bsp_idx())
+            early = false;
+    }
+
+    lib::initgraph::task msi_parent_task
+    {
+        "x86_64.vector.msi-parent",
+        lib::initgraph::presched_init_engine,
+        lib::initgraph::require { arch::bsp_initialised_stage() },
+        [] {
+            irq::set_msi_parent(get_domain());
+        }
+    };
+} // namespace x86_64::vector
