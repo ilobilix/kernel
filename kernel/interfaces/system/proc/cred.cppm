@@ -24,12 +24,12 @@ export namespace sched
         exec_deny_interactive_locked = 11
     };
 
-    inline constexpr int issecure_mask(secure_t sec)
+    constexpr int issecure_mask(secure_t sec)
     {
         return (1 << static_cast<std::size_t>(sec));
     }
 
-    enum class secbit_t
+    enum class secbit_t : std::uint64_t
     {
         none = 0,
         noroot = issecure_mask(secure_t::noroot),
@@ -99,22 +99,22 @@ export namespace sched
 
     using namespace magic_enum::bitwise_operators;
 
-    inline constexpr bool cap_valid(cap_t cap)
+    constexpr bool cap_valid(cap_t cap)
     {
         return magic_enum::enum_flags_contains(cap);
     }
 
-    inline constexpr bool secbit_valid(secbit_t bits)
+    constexpr bool secbit_valid(secbit_t bits)
     {
-        return magic_enum::enum_flags_contains(bits);
+        return bits == secbit_t::none || magic_enum::enum_flags_contains(bits);
     }
 
-    inline constexpr bool has_cap(cap_t set, cap_t cap)
+    constexpr bool has_cap(cap_t set, cap_t cap)
     {
         return (set & cap) == cap;
     }
 
-    inline constexpr bool has_secbit(secbit_t bits, secbit_t flag)
+    constexpr bool has_secbit(secbit_t bits, secbit_t flag)
     {
         return (bits & flag) == flag;
     }

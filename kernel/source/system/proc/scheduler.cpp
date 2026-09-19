@@ -1734,7 +1734,8 @@ namespace sched
             return -EINVAL;
 
         // TODO: namespaces
-        if ((flags & (clone_newipc | clone_newnet | clone_newpid | clone_newuser | clone_newuts)))
+        if ((flags & (clone_newcgroup | clone_newipc | clone_newnet | clone_newns | clone_newpid |
+            clone_newtime | clone_newuser | clone_newuts)))
             return -EINVAL;
 
         if ((flags & clone_parent) && caller_proc->pid == 1)

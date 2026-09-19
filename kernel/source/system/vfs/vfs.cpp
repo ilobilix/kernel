@@ -53,8 +53,7 @@ namespace vfs
         }
 
         std::atomic<ino_t> next_anon_ino { 1 };
-
-        sched::mutex_t mount_tree_lock;
+        sched::mutex_t tree_lock;
 
         void detach_mount(const std::shared_ptr<mount_t> &mnt)
         {
@@ -108,20 +107,6 @@ namespace vfs
             }
             return path;
         };
-
-        auto resolve_real_dir(std::optional<path_t> parent, lib::path dir) -> lib::expect<path_t>
-        {
-            auto res = resolve(std::move(parent), std::move(dir));
-            if (!res)
-                return std::unexpected { res.error() };
-            if (res->target.dentry->inode->stat.type() != stat::type::s_iflnk)
-                return std::move(res->target);
-
-            auto reduced = reduce(res->parent, res->target);
-            if (!reduced)
-                return std::unexpected { reduced.error() };
-            return std::move(*reduced);
-        }
 
         bool is_unsupported_xattr(std::string_view name)
         {
@@ -542,13 +527,19 @@ namespace vfs
         return result;
     }
 
-    auto path_for(lib::path _path) -> lib::expect<path_t>
+    auto resolve_follow(std::optional<path_t> parent, lib::path path, bool automount)
+        -> lib::expect<path_t>
     {
-        // hmmm is this correct?
-        auto res = resolve(std::nullopt, std::move(_path));
+        auto res = resolve(std::move(parent), std::move(path), automount);
         if (!res)
             return std::unexpected { res.error() };
-        return res->target;
+        if (res->target.dentry->inode->stat.type() != stat::type::s_iflnk)
+            return std::move(res->target);
+
+        auto reduced = reduce(res->parent, res->target, automount);
+        if (!reduced)
+            return std::unexpected { reduced.error() };
+        return std::move(*reduced);
     }
 
     auto resolve(std::optional<path_t> parent, lib::path _path, bool automount)
@@ -781,7 +772,7 @@ namespace vfs
 
         if (flags & ms_remount)
         {
-            auto ret = path_for(target_path);
+            auto ret = resolve_follow(std::nullopt, target_path);
             if (!ret)
                 return std::unexpected { ret.error() };
 
@@ -802,7 +793,7 @@ namespace vfs
 
         if (flags & ms_move)
         {
-            auto src = path_for(source_path);
+            auto src = resolve_follow(std::nullopt, source_path);
             if (!src)
                 return std::unexpected { src.error() };
 
@@ -810,13 +801,13 @@ namespace vfs
                 !src->mnt->mounted_on.has_value() || src->mnt->parent_id == 0)
                 return std::unexpected { lib::err::invalid_argument };
 
-            auto tgt = resolve_real_dir(std::nullopt, target_path);
+            auto tgt = resolve_follow(std::nullopt, target_path);
             if (!tgt)
                 return std::unexpected { tgt.error() };
             if (tgt->dentry->inode->stat.type() != stat::type::s_ifdir)
                 return std::unexpected { lib::err::not_a_dir };
 
-            const std::unique_lock _ { mount_tree_lock };
+            const std::unique_lock _ { tree_lock };
 
             for (auto mnt = tgt->mnt; mnt; )
             {
@@ -838,13 +829,13 @@ namespace vfs
 
         if (flags & ms_bind)
         {
-            auto src = resolve_real_dir(std::nullopt, source_path);
+            auto src = resolve_follow(std::nullopt, source_path);
             if (!src)
                 return std::unexpected { src.error() };
             if (!src->mnt)
                 return std::unexpected { lib::err::invalid_argument };
 
-            auto tgt = resolve_real_dir(std::nullopt, target_path);
+            auto tgt = resolve_follow(std::nullopt, target_path);
             if (!tgt)
                 return std::unexpected { tgt.error() };
 
@@ -859,7 +850,7 @@ namespace vfs
                 };
             }
 
-            const std::unique_lock _ { mount_tree_lock };
+            const std::unique_lock _ { tree_lock };
 
             const auto make_bind = [&](
                 const path_t &from, const std::shared_ptr<dentry_t> &root_dentry
@@ -937,7 +928,7 @@ namespace vfs
             if (source_path.empty())
                 return std::unexpected { lib::err::invalid_argument };
 
-            auto ret = path_for(source_path);
+            auto ret = resolve_follow(std::nullopt, source_path);
             if (!ret)
                 return std::unexpected { ret.error() };
 
@@ -946,7 +937,7 @@ namespace vfs
                 return std::unexpected { lib::err::not_a_block };
         }
 
-        auto ret = resolve_real_dir(std::nullopt, target_path);
+        auto ret = resolve_follow(std::nullopt, target_path);
         if (!ret)
             return std::unexpected { ret.error() };
 
@@ -981,7 +972,7 @@ namespace vfs
 
     auto unmount(lib::path target) -> lib::expect<void>
     {
-        auto res = path_for(target);
+        auto res = resolve_follow(std::nullopt, target);
         if (!res)
             return std::unexpected { res.error() };
 
@@ -989,7 +980,7 @@ namespace vfs
         if (!mnt || res->dentry != mnt->root)
             return std::unexpected { lib::err::invalid_argument };
 
-        const std::unique_lock _ { mount_tree_lock };
+        const std::unique_lock _ { tree_lock };
 
         if (mnt->parent_id == 0)
             return std::unexpected { lib::err::target_is_busy };
@@ -1020,19 +1011,19 @@ namespace vfs
 
     auto pivot_root(lib::path new_root, lib::path put_old) -> lib::expect<void>
     {
-        auto nr = resolve_real_dir(std::nullopt, new_root);
+        auto nr = resolve_follow(std::nullopt, new_root);
         if (!nr)
             return std::unexpected { nr.error() };
         if (nr->dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
 
-        auto po = resolve_real_dir(std::nullopt, put_old);
+        auto po = resolve_follow(std::nullopt, put_old);
         if (!po)
             return std::unexpected { po.error() };
         if (po->dentry->inode->stat.type() != stat::type::s_ifdir)
             return std::unexpected { lib::err::not_a_dir };
 
-        const std::unique_lock _ { mount_tree_lock };
+        const std::unique_lock _ { tree_lock };
 
         if (!nr->mnt || nr->dentry != nr->mnt->root)
             return std::unexpected { lib::err::invalid_argument };
@@ -1106,7 +1097,7 @@ namespace vfs
         if (resolve(parent, _path))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(std::move(parent), _path.dirname());
+        auto pres = resolve_follow(std::move(parent), _path.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
@@ -1147,7 +1138,7 @@ namespace vfs
         if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(std::move(parent), src.dirname());
+        auto pres = resolve_follow(std::move(parent), src.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
@@ -1181,7 +1172,7 @@ namespace vfs
         if (resolve(parent, src))
             return std::unexpected { lib::err::already_exists };
 
-        auto pres = resolve_real_dir(std::move(parent), src.dirname());
+        auto pres = resolve_follow(std::move(parent), src.dirname());
         if (!pres)
             return std::unexpected { pres.error() };
 
@@ -1319,7 +1310,7 @@ namespace vfs
         if (!old_res)
             return std::unexpected { old_res.error() };
 
-        const auto new_pres = resolve_real_dir(new_parent, new_path.dirname());
+        const auto new_pres = resolve_follow(new_parent, new_path.dirname());
         if (!new_pres)
             return std::unexpected { new_pres.error() };
 

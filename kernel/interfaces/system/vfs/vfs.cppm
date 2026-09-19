@@ -847,13 +847,15 @@ export namespace vfs
 
     std::string pathname_from(path_t path, const std::shared_ptr<dentry_t> &boundary = nullptr);
 
-    auto path_for(lib::path _path) -> lib::expect<path_t>;
     auto resolve(std::optional<path_t> parent, lib::path path, bool automount = true)
         -> lib::expect<resolve_res>;
     auto reduce(
         path_t parent, path_t src, bool automount = true,
         std::size_t symlink_depth = symloop_max
     ) -> lib::expect<path_t>;
+
+    auto resolve_follow(std::optional<path_t> parent, lib::path path, bool automount = true)
+        -> lib::expect<path_t>;
 
     auto mount(
         lib::path source_path, lib::path target_path,

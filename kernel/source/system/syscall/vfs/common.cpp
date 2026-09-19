@@ -57,18 +57,11 @@ namespace syscall::vfs
             sched::process_t *proc, int dirfd, lib::path_view path
         )
         {
-            auto res = resolve_from(proc, dirfd, path);
-            if (!res.has_value())
-                return std::unexpected { res.error() };
+            auto parent = get_parent(proc, dirfd, path);
+            if (!parent)
+                return std::unexpected { parent.error() };
 
-            if (res->target.dentry->inode->stat.type() == stat::type::s_iflnk)
-            {
-                auto reduced = reduce(res->parent, res->target);
-                if (!reduced.has_value())
-                    return std::unexpected { reduced.error() };
-                return std::move(*reduced);
-            }
-            return std::move(res->target);
+            return resolve_follow(std::move(*parent), path);
         }
 
         lib::expect<lib::path> get_path(const char __user *pathname)
